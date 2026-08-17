@@ -750,6 +750,214 @@ git commit -m "feat: Ghidra headless decompilation export pipeline"
 
 ---
 
+### Task 4b: Recover string pointers from code immediates
+
+**Why this task exists.** Task 2's length-prefix scan is structurally ambiguous:
+an ASCII space (`0x20`) is indistinguishable from a length byte of 32, so the
+scanner resynchronises mid-string and emits plausible-looking fragments.
+Measured against this binary, roughly 60–90 of its 657 non-suspect entries are
+misframed — e.g. offset `0xBCF8` yields `'боксёров(-75% что сломают челюст'`,
+truncated before the closing `ь)`.
+
+The fix is to stop guessing where strings start. Borland Pascal passes a string
+constant's address to the RTL as a 16-bit immediate, so the true starts are
+exactly the immediate operands the code actually uses as pointers. A naive byte
+scan for opcode `BA`/`B8`/`BF`/`BE`/`68` is NOT sufficient — it produced 218
+false starts including a consecutive run at `0x18D0`–`0x18DA`, which is the
+signature of random byte pairs being read as immediates. You must work from
+Ghidra's real disassembly so that only genuine instruction operands are
+considered.
+
+**Verified viability (do not re-derive):** the immediate-operand approach
+recovers `0xBCDD` → `'30^7  купить зубную защиту боксёров(-75% что сломают
+челюсть)'`, complete and correctly terminated, and 558 of its candidate starts
+agree with Task 2's scan.
+
+**Files:**
+- Create: `tools/ghidra/DumpImmediates.java`
+- Create: `data/string_pointers.json`
+- Create: `docs/re/string-pointers.md`
+- Test: `tools/test_string_pointers.py`
+
+**Interfaces:**
+- Consumes: the Ghidra project created in Task 4.
+- Produces: `data/string_pointers.json` — `{"note": str, "pointers": [int]}`,
+  a sorted, deduplicated list of **file offsets** that code uses as string
+  constant addresses. Task 2b consumes this.
+
+- [ ] **Step 1: Write the Ghidra script**
+
+`tools/ghidra/DumpImmediates.java` iterates `currentProgram.getListing().getInstructions(true)`.
+For each instruction, for each operand, take scalar values via
+`instr.getScalar(opIndex)`. Keep 16-bit scalars in the range `0x0000..0xFFFF`.
+For each, compute the candidate file offset and write it out with the
+instruction's address and mnemonic so the artifact is auditable.
+
+The address mapping, already established: the program image begins at file
+offset `0x18D0` and loads at segment `0x1000`, so for a scalar `imm` used as a
+DS/CS-relative offset within the first code block, `file_offset = 0x18D0 + imm`.
+Record the mapping you use in `docs/re/string-pointers.md`; if a scalar's
+segment differs, derive its base from the containing memory block rather than
+assuming `0x1000`.
+
+- [ ] **Step 2: Filter to genuine string starts**
+
+A candidate offset qualifies as a string pointer when `blob[off]` is a length
+`N` in `3..=250`, `off + 1 + N <= len(blob)`, and every payload byte is either
+printable ASCII (`0x20..0x7E`), CP866 high-range (`0x80..0xF1`), or one of the
+separators `0x07`, `0x0A`, `0x0D`. `0x07` is the original's line separator
+inside multi-line menu strings — it is legitimate content, not noise.
+
+- [ ] **Step 3: Write the failing test**
+
+Create `tools/test_string_pointers.py`:
+
+```python
+#!/usr/bin/env python3
+import json
+import pathlib
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def test_pointers():
+    data = json.loads((ROOT / "data" / "string_pointers.json").read_text(encoding="utf-8"))
+    ptrs = data["pointers"]
+
+    assert ptrs == sorted(ptrs), "pointers must be sorted"
+    assert len(set(ptrs)) == len(ptrs), "pointers must be unique"
+    assert len(ptrs) >= 400, f"expected >=400 string pointers, got {len(ptrs)}"
+
+    blob = (ROOT / "orig" / "g.exe").read_bytes()
+
+    # Every pointer must land on a well-formed length-prefixed string.
+    for off in ptrs:
+        n = blob[off]
+        assert 3 <= n <= 250, f"{off:#x}: implausible length {n}"
+        assert off + 1 + n <= len(blob), f"{off:#x}: payload runs past EOF"
+
+    # The known-truncated case from Task 2 must now resolve completely.
+    assert 0xBCDD in ptrs, "0xBCDD (the боксёров line) not recovered"
+    n = blob[0xBCDD]
+    text = blob[0xBCDE : 0xBCDE + n].decode("cp866")
+    assert text.endswith("челюсть)"), f"still truncated: {text!r}"
+
+    # The consecutive run at 0x18D0-0x18DA is the signature of naive byte
+    # scanning. Real instruction operands do not produce it.
+    run = [o for o in ptrs if 0x18D0 <= o <= 0x18DA]
+    assert len(run) <= 2, f"byte-scan false positives leaked in: {[hex(o) for o in run]}"
+
+    print(f"OK {len(ptrs)} string pointers recovered and validated")
+
+
+if __name__ == "__main__":
+    test_pointers()
+```
+
+- [ ] **Step 4: Run it to verify it fails**
+
+Run: `python3 tools/test_string_pointers.py`
+Expected: FAIL — `data/string_pointers.json` does not exist yet.
+
+- [ ] **Step 5: Implement, run the Ghidra script, and regenerate**
+
+Run the script through `tools/ghidra/run_ghidra.sh` (extend it to invoke
+`DumpImmediates.java` as a second `-postScript`), then re-run the test.
+Expected: `OK <n> string pointers recovered and validated`
+
+- [ ] **Step 6: Document**
+
+`docs/re/string-pointers.md`: the address mapping used, the opcode/operand
+extraction method, the count recovered, and an explicit list of any candidate
+offsets rejected by the filter and why.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add tools/ghidra/DumpImmediates.java tools/ghidra/run_ghidra.sh data/string_pointers.json tools/test_string_pointers.py docs/re/string-pointers.md
+git commit -m "feat: recover string constant pointers from code immediates"
+```
+
+---
+
+### Task 2b: Re-extract strings anchored on recovered pointers
+
+**Files:**
+- Modify: `tools/extract_strings.py`
+- Modify: `tools/test_extract_strings.py`
+- Regenerate: `data/strings.json`
+- Create: `docs/re/strings.md`
+
+**Interfaces:**
+- Consumes: `data/string_pointers.json` from Task 4b.
+- Produces: `data/strings.json`, same record shape as Task 2
+  (`{"off", "text", "plain", "suspect"}`), but with `off` values taken from the
+  recovered pointer list rather than from a blind scan.
+
+- [ ] **Step 1: Change the extraction source**
+
+Replace the blind forward scan with: for each offset in
+`data/string_pointers.json`, read the length byte and payload, decode CP866,
+compute `plain`, and compute `suspect` with the existing rule. Keep the
+`suspect` field — it still guards against a pointer that happens to address
+non-text.
+
+Retain the old scanner in the file as `scan_blind()` **only if** Task 4b's
+pointer list turns out to miss strings the scan found; if it is unused, delete
+it rather than keeping dead code.
+
+- [ ] **Step 2: Update the test**
+
+The count and suspect assertions from Task 2 are now wrong — they described the
+blind scan. Replace them with:
+
+```python
+    # Anchored extraction must fix the framing bugs the blind scan produced.
+    by_off = {i["off"]: i for i in items}
+
+    assert 0xBCDD in by_off, "the боксёров line was not extracted"
+    assert by_off[0xBCDD]["plain"].endswith("челюсть)"), (
+        f"still truncated: {by_off[0xBCDD]['plain']!r}"
+    )
+
+    # No entry may end cut off mid-word: if the payload's last byte and the
+    # byte immediately after it are both alphanumeric, the string was cut.
+    blob = (ROOT / "orig" / "g.exe").read_bytes()
+
+    def alnum(c):
+        return (0x80 <= c <= 0xAF or 0xE0 <= c <= 0xF1
+                or 48 <= c <= 57 or 65 <= c <= 90 or 97 <= c <= 122)
+
+    cut = []
+    for i in items:
+        if i["suspect"]:
+            continue
+        off = i["off"]
+        end = off + 1 + blob[off]
+        if end < len(blob) and alnum(blob[end - 1]) and alnum(blob[end]):
+            cut.append(hex(off))
+    assert len(cut) <= 5, f"{len(cut)} entries still cut mid-word: {cut[:10]}"
+```
+
+Record the actual measured totals in `docs/re/strings.md` rather than
+hardcoding a guessed count into the test.
+
+- [ ] **Step 3: Run, compare, and document**
+
+Run `python3 tools/test_extract_strings.py`. In `docs/re/strings.md` record:
+the new entry count, how many entries the blind scan had that the anchored
+extraction dropped (and spot-check a sample of them), how many are new, and the
+residual mid-word-cut count with an explanation for each survivor.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add tools/extract_strings.py tools/test_extract_strings.py data/strings.json docs/re/strings.md
+git commit -m "fix: anchor string extraction on recovered pointers, fixing truncation"
+```
+
+---
+
 ### Task 5: Save format decoder validated against all five real saves
 
 **Files:**
