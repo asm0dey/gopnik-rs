@@ -53,23 +53,24 @@ def test_extraction():
         f"still truncated: {by_off[0xBCDD]['plain']!r}"
     )
 
-    # No entry may end cut off mid-word: if the payload's last byte and the
-    # byte immediately after it are both alphanumeric, the string was cut.
+    # Framing is checked structurally, by tiling. The string region is packed
+    # with no delimiter, so a truncated string strands its tail in the gap
+    # before the next string's start, and an over-long one runs into it.
     blob = (ROOT / "orig" / "g.exe").read_bytes()
 
     def alnum(c):
         return (0x80 <= c <= 0xAF or 0xE0 <= c <= 0xF1
                 or 48 <= c <= 57 or 65 <= c <= 90 or 97 <= c <= 122)
 
-    cut = []
-    for i in items:
-        if i["suspect"]:
-            continue
-        off = i["off"]
-        end = off + 1 + blob[off]
-        if end < len(blob) and alnum(blob[end - 1]) and alnum(blob[end]):
-            cut.append(hex(off))
-    assert len(cut) <= 5, f"{len(cut)} entries still cut mid-word: {cut[:10]}"
+    offs = sorted(by_off)
+    for a, b in zip(offs, offs[1:]):
+        end = a + 1 + blob[a]
+        assert end <= b, f"0x{a:X} (len {blob[a]}) overlaps next string 0x{b:X}"
+        if b - end < 40:
+            tail = blob[end:b]
+            assert not any(alnum(c) for c in tail), (
+                f"letter bytes stranded after 0x{a:X}: {tail!r}"
+            )
 
     suspects = [i for i in items if i["suspect"]]
     print(f"OK {len(items)} strings extracted, {len(suspects)} flagged suspect")

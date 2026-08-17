@@ -169,93 +169,136 @@ fall into four groups:
    content doesn't look like game text, so `is_suspect()` correctly flags
    them. Kept, not deleted, per the standing rule.
 
-## Residual mid-word-cut check: 39 survivors (over the brief's bound of 5)
+## Structural tiling check (supersedes the next-byte heuristic)
 
-The brief's check flags any non-suspect entry whose payload's last byte and
-the byte immediately following the payload are *both* "alphanumeric"
-(CP866 Cyrillic range, ASCII digit, or ASCII letter). Running it against
-the new 749-entry list produces **39 survivors**, not the ≤5 the brief
-expects. This was investigated rather than tuned away, per the task's
-explicit instruction not to weaken the assertion.
+The original mid-word-cut check flagged an entry when its payload's last
+byte and the byte immediately following it were both "alphanumeric." That
+check is structurally broken and was abandoned, not tuned: strings in this
+binary's constant pool are packed **back-to-back with no delimiter byte**,
+so the byte after any correctly-terminated string is always either the
+length-prefix byte of the very next string or an opcode byte of the
+following function's machine code, and both land inside the
+"alphanumeric" ranges by ordinary coincidence (a length of 53 is the ASCII
+digit `0x35`('5'), `PUSH BP` is `0x55`('U'), etc.). It flagged 34/39 false
+positives from adjacent length bytes and 5/39 from `PUSH BP` prologues
+alone. A tighter same-alphabet-class variant (matching the length byte's
+value against the *specific* character class it collided with, rather than
+"alphanumeric" broadly) was also tried and still produced 3 false
+positives (`0x1AD0`, `0x7CE3`, `0xBE63`, each followed by a length byte of
+`0x35`/`0x37`/`0x31`). No rule that inspects only the single byte after a
+string's payload can distinguish "string ends here" from "length byte of
+the next string happens to look like a letter." This is itself a real
+finding about the binary's layout, not just a test bug, so it is recorded
+here per the plan's evidence-in-`docs/re/` requirement rather than left
+only in the commit history.
 
-**Root cause: every one of the 39 is a correctly-terminated, complete
-string. None is actually cut mid-word.** The check's premise — that a real
-cut leaves two word-characters glued together across the cut point — holds
-for a scan with gaps between accepted spans, but Pascal shortstrings in this
-binary's constant pool are packed **back-to-back with no delimiter byte**.
-The byte immediately after a complete, correctly-terminated string's payload
-is therefore *always* either the length-prefix byte of the very next string,
-or (at the end of a string run) the first opcode byte of the following
-function's machine code — and both of those bytes have no reason to avoid
-the "alphanumeric" ranges the check tests:
+The replacement check drops the next-byte heuristic entirely and instead
+tiles the whole offset-sorted entry list against `orig/g.exe`: for each
+adjacent pair of entries `(a, b)`, `a`'s computed end (`a + 1 + len_byte`)
+must not exceed `b` (no overlap — a real cut/overrun would overlap), and
+if the gap between them is under 40 bytes, that gap must contain no
+"alphanumeric" byte (a genuine truncation would strand a partial word
+there; a length byte alone is one byte, not a run).
 
-- **34 of the 39**: the byte right after the payload is the length prefix
-  of another accepted string (`end` offset is itself a key in
-  `data/strings.json`). Typical Cyrillic game-text strings run roughly
-  10–90 bytes long, and that range overwhelmingly overlaps the check's
-  "alphanumeric" byte values (`0x30–0x39`, `0x41–0x5A`, `0x61–0x7A`,
-  `0x80–0xAF`, `0xE0–0xF1`) purely by decimal coincidence — a length of 53
-  is the ASCII digit-range byte `0x35`('5'), a length of 85 is `0x55`('U'),
-  and so on. There is no missing byte in any of these 34 cases; the next
-  string simply starts immediately.
-- **5 of the 39** (`0x1FE5`, `0x4283`, `0x55B9`, `0x77D2`, `0x8DDC`): the
-  byte right after the payload is `0x55` (`PUSH BP`) — the first byte of a
-  standard Borland Pascal procedure prologue (`55 89 E5` = `PUSH BP; MOV
-  BP,SP`), immediately following the last string in that constant-pool run
-  before code resumes. `0x55` happens to equal ASCII `'U'`, which the check
-  counts as alphanumeric, but it is machine code, not a text byte.
+**Measured result, independently verified against the numbers relayed for
+this task (they matched exactly):**
 
-All 39 offsets, with the byte at `end` and the cause:
+```
+749 entries, 748 adjacent pairs
+0 overlaps
+633 exact abutments (end == next start)
+115 gaps (end < next start)
+  69 gaps >= 40 bytes  -- inter-region separators
+  46 gaps <  40 bytes
+      7 clean (no alphanumeric byte)
+     39 contain an alphanumeric byte -- the check's assertion fails on the
+        first of these it reaches (offset 0x23A0)
+```
 
-| Offset | `end` | byte@end | Cause | `plain` tail |
-|---|---|---|---|---|
-| `0x1AD0` | `0x1B0E` | `0x35` ('5') | next string's length byte | `...Версия 1.02` |
-| `0x1B0E` | `0x1B44` | `0x4D` ('M') | next string's length byte | `...кнопку` |
-| `0x1FE5` | `0x201B` | `0x55` (`PUSH BP`) | function prologue follows | `...кнопку` |
-| `0x41E4` | `0x4208` | `0x37` ('7') | next string's length byte | `...л. пива` |
-| `0x4240` | `0x424C` | `0x36` ('6') | next string's length byte | `...Пива нету` |
-| `0x4283` | `0x4294` | `0x55` (`PUSH BP`) | function prologue follows | `...Кончилось пиво` |
-| `0x4B13` | `0x4B21` | `0x30` ('0') | next string's length byte | `...Ты промазал` |
-| `0x4C49` | `0x4C59` | `0x31` ('1') | next string's length byte | `...Враг промазал` |
-| `0x4DCD` | `0x4DF0` | `0x38` ('8') | next string's length byte | `...# косяков` |
-| `0x528A` | `0x52C8` | `0x35` ('5') | next string's length byte | `...понтовости` |
-| `0x55B9` | `0x55E1` | `0x55` (`PUSH BP`) | function prologue follows | `...за помощь` |
-| `0x717B` | `0x71C9` | `0x4B` ('K') | next string's length byte | `...при получении` |
-| `0x7243` | `0x7276` | `0x42` ('B') | next string's length byte | `...1 здоровья` |
-| `0x74F5` | `0x751E` | `0x51` ('Q') | next string's length byte | `...и царапины` |
-| `0x751E` | `0x7570` | `0x4E` ('N') | next string's length byte | `...жизни. У неё` |
-| `0x7570` | `0x75BF` | `0x4F` ('O') | next string's length byte | `...здоровье` |
-| `0x75BF` | `0x760F` | `0x51` ('Q') | next string's length byte | `...заходи туда` |
-| `0x76DE` | `0x76F8` | `0x37` ('7') | next string's length byte | `...проигрывать` |
-| `0x76F8` | `0x7730` | `0x50` ('P') | next string's length byte | `...навыки` |
-| `0x7730` | `0x7781` | `0x50` ('P') | next string's length byte | `...награбленый` |
-| `0x77D2` | `0x7825` | `0x55` (`PUSH BP`) | function prologue follows | `...Исходный размер` |
-| `0x7C3B` | `0x7C69` | `0x36` ('6') | next string's length byte | `...сохранился` |
-| `0x7CE3` | `0x7D21` | `0x37` ('7') | next string's length byte | `...Default` |
-| `0x7DB4` | `0x7DD4` | `0x36` ('6') | next string's length byte | `...забивал` |
-| `0x8DDC` | `0x8E08` | `0x55` (`PUSH BP`) | function prologue follows | `...дело предложить` |
-| `0xA300` | `0xA33C` | `0x4D` ('M') | next string's length byte | `...не заметил` |
-| `0xAAB8` | `0xAAC7` | `0x35` ('5') | next string's length byte | `...Косяк` |
-| `0xABA0` | `0xABCA` | `0x56` ('V') | next string's length byte | `...кастет` |
-| `0xAD43` | `0xAD58` | `0x36` ('6') | next string's length byte | `...деньжат` |
-| `0xADE1` | `0xAE01` | `0x34` ('4') | next string's length byte | `...деньжат` |
-| `0xB89B` | `0xB8CE` | `0x37` ('7') | next string's length byte | `...стоит сходить` |
-| `0xB96B` | `0xB980` | `0x39` ('9') | next string's length byte | `...наваровал денег` |
-| `0xBB3D` | `0xBB6C` | `0x37` ('7') | next string's length byte | `...победу в игре` |
-| `0xBE63` | `0xBE6E` | `0x31` ('1') | next string's length byte | `...Броня +1` |
-| `0xBF3B` | `0xBF5E` | `0x39` ('9') | next string's length byte | `...# косяков` |
-| `0xC07D` | `0xC0A6` | `0x32` ('2') | next string's length byte | `...к ветеринару` |
-| `0xC0A6` | `0xC0D9` | `0x33` ('3') | next string's length byte | `...своей девчонке` |
-| `0xC156` | `0xC195` | `0x36` ('6') | next string's length byte | `...уродскую рожу` |
-| `0xC195` | `0xC1CC` | `0x43` ('C') | next string's length byte | `...пинаемому мудаку` |
+The 69 large gaps (210 to 17,285 bytes) sit at the boundaries between
+separate string regions of the binary — e.g. between the splash-screen
+box-art block and the main dialogue block, or between the last recovered
+string and the executable's end — not inside any string's payload. They
+are inter-region padding/other-data spans, not stranded text.
 
-This was not turned into a weaker assertion, a `suspect` special-case, or a
-narrower content filter — the task brief is explicit that none of those are
-acceptable ways to make the count fit, and every one of the 39 was traced
-to a specific, non-content byte. `tools/test_extract_strings.py` keeps the
-brief's exact `assert len(cut) <= 5` and **fails** at 39; this is reported
-as a known, investigated, documented discrepancy rather than silently
-adjusted.
+**The 39 small-gap violations are a genuine, confirmed finding, not a test
+bug, and were not tuned away.** 37 of the 39 gaps tile *perfectly* as
+further complete, correctly-framed Pascal shortstrings when the same
+length-prefix rule is applied recursively inside the gap — i.e. the gap is
+not noise, it is one or more real strings that neither the pointer scan
+(Task 4b, literal instruction operands) nor the table scan (Task 4c,
+`base + i*256` indexed tables) reached, so `extract_strings.py` never
+anchored on them and they were never added to `data/strings.json`:
+
+| Gap (`end`–`b`) | Raw bytes | Tiles as | Context (`a` → `b`) |
+|---|---|---|---|
+| `0x23A4`–`0x23B0` | `02 91 5E 02 93 5E 02 8F 5E 02 85 5E` | `С^` \| `У^` \| `П^` \| `Е^` | `'Ы ^'` → `'Р ^'` |
+| `0x3D87`–`0x3D89` | `01 31` | `1` | `'^1Сила +1 '` → `'^1Ловкость +1 '` |
+| `0x3D98`–`0x3D9A` | `01 32` | `2` | `'^1Ловкость +1 '` → `'^1Живучесть +1 '` |
+| `0x3DAA`–`0x3DAC` | `01 33` | `3` | `'^1Живучесть +1 '` → `'^1Удача +1 '` |
+| `0x3DB8`–`0x3DBA` | `01 34` | `4` | `'^1Удача +1 '` → `'^6Сейчас у тебя...'` |
+| `0x4A52`–`0x4A54` | `01 6B` | `k` | `'^0Битва\'` → `'^2Точный удар!!!'` |
+| `0x4E6F`–`0x4E76` | `01 73 02 73 76 01 65` | `s` \| `sv` \| `e` | `'^6Ты неможешь схавать...'` → `'^2Подошли пацаны...'` |
+| `0x4E96`–`0x4E98` | `01 76` | `v` | `'^2Подошли пацаны...'` → `'^2Подошли пацаны....'` |
+| `0x4FE4`–`0x4FE6` | `01 66` | `f` | `'^4Подмоге надоело...'` → `'^6Тельзя тут стрелять!...'` |
+| `0x7240`–`0x7243` | `02 5E 30` | `^0` | `'^0 остальными навыками...'` → `'^0 Сила - увеличивает урон...'` |
+| `0x8D79`–`0x8D7B` | `01 79` | `y` | `'Ты хочешь сохраниться?'` → `'save_r0.sav'` |
+| `0x9BF1`–`0x9BF5` | `01 5C 01 79` | `\` \| `y` | `'^0Хочешь сохранить...'` → `'save_r'` |
+| `0x9D5E`–`0x9D60` | `01 77` | `w` | `'^1А вот и он...'` → `'run'` |
+| `0xA69A`–`0xA69C` | `01 31` | `1` | `'^0Базар\'` → `'^4Ты не можешь хавать...'` |
+| `0xA71B`–`0xA71D` | `01 32` | `2` | `'^6Да неохота хавать'` → `'^4Не хватает'` |
+| `0xA775`–`0xA777` | `01 33` | `3` | `'^2Ну чё по пиву?.'` → `'^4Не хватает бабок'` |
+| `0xA7C7`–`0xA7C9` | `01 34` | `4` | `'^6У тебя есть очки...'` → `'^4Не хватает денег'` |
+| `0xA83B`–`0xA83D` | `01 35` | `5` | `'^6У тебя есть более крутой...'` → `'^4Нету на них денег'` |
+| `0xA896`–`0xA898` | `01 36` | `6` | `'^6У тебя бутсы по круче.'` → `'^4Не достаточно бабла'` |
+| `0xA8F3`–`0xA8F5` | `01 37` | `7` | `'^6Утебя есть кожанка круче.'` → `'^2Чистый гопник.'` |
+| `0xA925`–`0xA927` | `01 38` | `8` | `'^6У тебя уже есть этот костюм.'` → `'^2Офигенные бутцы.'` |
+| `0xA93A`–`0xA93C` | `01 39` | `9` | `'^2Офигенные бутцы.'` → `'^2Ну крутой, сдохнуть можно!'` |
+| `0xA959`–`0xA95B` | `01 74` | `t` | `'^2Ну крутой...'` → `'^6Ты получаешь # качков опыта'` |
+| `0xAF9E`–`0xAFA0` | `01 78` | `x` | `'^6Да купил уже, купил'` → `'^6Барыги дали тебе денег...'` |
+| `0xB320`–`0xB322` | `01 72` | `r` | `'^0Ветеренар\'` → `'^0Ого! да тебя не иначе...'` |
+| `0xB392`–`0xB394` | `01 68` | `h` | `'^4Блин халявщик...'` → `'^0Щас гайки подтянем...'` |
+| `0xB43E`–`0xB440` | `01 65` | `e` | `'^2Здоровья #/#'` → `'^6Сначала найди...'` |
+| `0xB5BD`–`0xB5C0` | `02 70 72` | `pr` | `'^6Пережитки прошлого...'` → `'Ты пришел в притон - '` |
+| `0xB5D6`–`0xB5E2` | `0B 5E 30 AE A1 E9 A0 A3 E3 20 FC 23` | `^0общагу №#` | `'Ты пришел в притон - '` → `'^0общагу ВКИ'` |
+| `0xB791`–`0xB793` | `01 70` | `p` | `'^0Притон\'` → `'^2Ты угостил пацанов пивом...'` |
+| `0xB852`–`0xB857` | `02 68 70 01 73` | `hp` \| `s` | `'^6Ты уже всю мелочь выгреб!'` → `'^4Твоя понтовость сейчас = #.'` |
+| `0xB899`–`0xB89B` | `01 61` | `a` | `'^0Да если чё мы за тебя...'` → `'^0Тут у нас есть пара мест...'` |
+| `0xB906`–`0xB908` | `01 64` | `d` | `'^2Ты узнал где находится...'` → `'^0Давай быстрее..'` |
+| `0xB9BA`–`0xB9BD` | `02 6B 6C` | `kl` | `'^4Тебя мудака такого...'` → `'^6Тебе не стоит пока туда соваться'` |
+| `0xBFDE`–`0xBFE0` | `01 69` | `i` | `'^6Ты неможешь схавать...'` → `'Напиши: ^6w^7 чтобы шататься...'` |
+| `0xC31C`–`0xC31E` | `01 66` | `f` | `'Напиши: ^6e^7 если захочешь выйти'` → `'^6Ты чё псих?...'` |
+| `0xC341`–`0xC343` | `01 6B` | `k` | `'^6Ты чё псих?...'` → `'^6Чё машешь копытами?...'` |
+
+These are consistent with a scattered table of one- and two-character
+command tokens and digit selectors (the `'1'`–`'9'` runs sit right after
+each numbered stat/location entry; the letters overlap known command verbs
+like `run`, `save_r`, and the already-recovered `'Напиши: <cmd> чтобы
+...'` help lines) — real content, just not reachable by literal-operand or
+`base + i*256` recovery, most likely addressed through some other
+indexing scheme not yet reverse-engineered. Recovering them is out of
+scope for this task (`data/strings.json` and `extract_strings.py` are not
+to be touched here); they are logged as a lead for a future pointer/index
+recovery pass.
+
+**The remaining 2 of the 39 do not tile as valid strings at all**
+(`0x1105D`–`0x11067`, raw `13 E8 A0 00 8B C4 05 13 00 B1`; and
+`0x11070`–`0x11075`, raw `36 A3 4C 36 03`). Both sit between entries
+already flagged `suspect: True` (`'x63эш>'`, `'╙шМ╥'`, `'┬гJ'`,
+`'D6гN6г'` — the four entries bracketing these two gaps are all
+`suspect`), in the tail of the string-pointer range past `0x11000` where
+content stops looking like game text at all. This is ordinary non-string
+binary data that happens to contain bytes in the alphanumeric ranges by
+coincidence, in a region the extraction already flags as unreliable —
+not evidence of a framing bug in any accepted entry.
+
+`tools/test_extract_strings.py` was not weakened to route around this: it
+keeps the exact tiling assertion and **fails** (`AssertionError` at the
+first violation, `0x23A0`) rather than silently passing or excluding the
+39 offsets. This is reported as a known, investigated, documented
+discrepancy — the 39 are real unindexed strings and 2 real non-string
+bytes, not a defect in the 749 entries `data/strings.json` already
+contains.
 
 ## Test results
 
@@ -264,10 +307,10 @@ $ python3 tools/verify_corpus.py
 OK 7 corpus files verified
 
 $ python3 tools/test_extract_strings.py
-wrote 749 strings to data/strings.json (695 pointer-anchored, 54 merged from string_tables.json)
+wrote 749 strings to /home/finkel/work_self/gopnik-rs/data/strings.json (695 pointer-anchored, 54 merged from string_tables.json)
 Traceback (most recent call last):
   ...
-AssertionError: 39 entries still cut mid-word: ['0x1ad0', '0x1b0e', '0x1fe5', '0x41e4', '0x4240', '0x4283', '0x4b13', '0x4c49', '0x4dcd', '0x528a']
+AssertionError: letter bytes stranded after 0x23A0: b'\x02\x91^\x02\x93^\x02\x8f^\x02\x85^'
 
 $ python3 tools/test_string_pointers.py
 OK 695 string pointers recovered, 0 blind-scan entries unaccounted for
