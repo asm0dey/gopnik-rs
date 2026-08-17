@@ -12,11 +12,48 @@ def test_extraction():
     subprocess.run([sys.executable, str(ROOT / "tools" / "extract_strings.py")], check=True)
     items = json.loads((ROOT / "data" / "strings.json").read_text(encoding="utf-8"))
 
-    # A coarse regression floor, not an equality: a silent bulk loss inside
-    # a suspect-bracketed region (where the tiling check below stays quiet)
-    # would otherwise pass unnoticed. Do not tighten this to the exact
-    # current count -- it exists to catch a big drop, not to pin a number.
-    assert len(items) >= 780, f"expected >=780 strings, got {len(items)}"
+    # Exact golden counts, deliberately not a floor.
+    #
+    # The gap check further down cannot catch a lost string: gap_tile() fills
+    # exactly the non-suspect sub-40-byte gaps that check inspects, so on the
+    # committed data 0 pairs ever reach its assertion. Worse, gap tiling
+    # *repairs* the damage -- drop a real offset from string_pointers.json and
+    # tiling silently re-emits the same string, so a coarse floor sees almost
+    # nothing: dropping 20 real pointers still lands at 781-791 entries.
+    #
+    # What the loss does move is the split between the two sources: each
+    # dropped pointer turns into one or more gap-tiled entries. Measured over
+    # random drops of 1/3/10/20 pointers, `tiled` rose to 48/48-50/52-56/52-62
+    # while `len(items)` barely moved. So pinning both numbers catches what
+    # neither catches alone.
+    #
+    # Extraction is deterministic from a fixed binary plus two committed
+    # artifacts, so these are invariants, not tuning. If a later task
+    # legitimately changes them, re-measure and update these numbers, the
+    # counts in docs/re/strings.md, and the plan together.
+    assert len(items) == 796, f"expected 796 strings, got {len(items)}"
+
+    pointers = json.loads(
+        (ROOT / "data" / "string_pointers.json").read_text(encoding="utf-8")
+    )["pointers"]
+    assert len(pointers) == 695, (
+        f"string_pointers.json holds {len(pointers)} offsets, expected 695 -- "
+        "gap tiling would mask the loss by re-emitting the missing strings"
+    )
+
+    tiled = [i for i in items if i["off"] not in set(pointers)]
+    table_offsets = {
+        e["off"]
+        for t in json.loads(
+            (ROOT / "data" / "string_tables.json").read_text(encoding="utf-8")
+        )["tables"]
+        for e in t["entries"]
+    }
+    tiled = [i for i in tiled if i["off"] not in table_offsets]
+    assert len(tiled) == 47, (
+        f"{len(tiled)} entries came from gap tiling, expected 47 -- a rise "
+        "means an anchor was lost and tiling silently covered for it"
+    )
 
     offs = [i["off"] for i in items]
     assert offs == sorted(offs), "strings must be sorted by offset"

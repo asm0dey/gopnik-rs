@@ -73,6 +73,8 @@ def is_suspect(plain: str) -> bool:
 
 def read_string(blob: bytes, off: int) -> dict:
     """Read one length-prefixed CP866 shortstring at a known-good offset."""
+    if off >= len(blob):
+        raise ValueError(f"{off:#x}: offset past EOF ({len(blob)} bytes)")
     n = blob[off]
     if off + 1 + n > len(blob):
         raise ValueError(
@@ -144,6 +146,14 @@ def gap_tile(blob: bytes, by_off: dict) -> int:
         cursor = end
         while cursor < b:
             n = blob[cursor]
+            if n == 0:
+                # A zero-length element consumes one byte and asserts nothing,
+                # so a run of 0x00 tiles at any length -- the one byte pattern
+                # this rule's own analysis (above) identifies as carrying no
+                # information. Reject the whole chain rather than mint empty
+                # strings from padding.
+                chain = None
+                break
             nxt = cursor + 1 + n
             if nxt > b:
                 chain = None

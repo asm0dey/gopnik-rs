@@ -344,11 +344,19 @@ independently established by Task 4b (pointer operands) or Task 4c (table
 strides). Gap tiling only fills the space *between* two already-verified
 points, and only when the fill is exact.
 
-**These recovered entries are the game's text-command parser tokens** —
-`s`/`sv`/`e`/`v`/`f`/`k`/`y`-style single-letter and two-letter commands,
-plus digit selectors `1`–`9` that follow numbered menu lines. They are
-input tokens the player types, not display text; Task 11 (command parsing)
-compares user input against them. They are not sentences and mostly fail
+**Most of these recovered entries are the game's text-command parser
+tokens** — `s`/`sv`/`e`/`v`/`f`/`k`-style single-letter and two-letter
+commands, plus digit selectors `1`–`9` that follow numbered menu lines.
+Those are input tokens the player types; Task 11 (command parsing) compares
+user input against them.
+
+Eight of the 47 are **not** input tokens and Task 11 must not treat them as
+such: the `С^`/`У^`/`П^`/`Е^` banner pieces (`0x23A4`–`0x23AD`, four
+fragments of a colour-split word), the two bare spaces (`0x712A`,
+`0xB1CA`), `'^0общагу №#'` (`0xB5D6`, a format string with a numeric
+placeholder), and `'^0'` (`0x7240`, a bare colour directive whose `plain`
+is empty). These are display text or markup, recovered by the same tiling
+rule because the rule is content-agnostic by design. They are not sentences and mostly fail
 the existing `is_suspect()` heuristic (no 3+ run of Cyrillic letters, no
 space), so nearly all of them are flagged `suspect: true` — expected and
 correct, not a defect: `is_suspect()` was not changed, and every one of
@@ -504,6 +512,37 @@ OK 54 table entries extracted
 
 **796 total, 47 recovered by gap tiling, 0 tiling violations** — matching
 the numbers measured for this task exactly.
+
+Tiling breakdown for the shipped 796-entry state (the 749-entry breakdown
+earlier in this document is Task 2b's intermediate state): **0 overlaps,
+721 exact abutments, 74 gaps** across 795 adjacent pairs.
+
+### What "0 tiling violations" does and does not prove
+
+It proves the **overlap** half: no entry's payload runs into the next
+entry's start. That half is live — injecting a ±1 offset shift at `0xBCDD`,
+`0xC032`, `0x4548`, or `0xA4E1` fires it.
+
+It proves nothing about the **gap** half, which on the shipped data
+evaluates **0 pairs**. That is structural rather than accidental:
+`gap_tile()` fills exactly the non-suspect sub-40-byte gaps the assertion
+inspects, so the extractor consumes the check's own input. Of the 795
+pairs, 721 abut exactly, 139 are skipped for a suspect neighbour, and 63
+have a gap of 40 bytes or more; none remain.
+
+Worse, gap tiling actively *masks* the failure it was meant to catch: drop a
+real offset from `data/string_pointers.json` and tiling silently re-emits
+the same string from the widened gap. Measured over random drops, removing
+20 real pointers still leaves 781–791 entries — a coarse count floor sees
+almost nothing.
+
+What the loss does move is the **split between sources**: each dropped
+anchor converts into one or more gap-tiled entries. Measured over random
+drops of 1/3/10/20 pointers, the gap-tiled count rose to 48 / 48–50 /
+52–56 / 52–62 while the total barely moved. `tools/test_extract_strings.py`
+therefore pins three exact counts — 796 total, 695 pointers, 47 gap-tiled —
+rather than a floor. Verified to fire: removing the single anchor `0x4E76`
+trips the total assertion at 791.
 
 Note on `test_string_pointers.py`: its coverage assertion compares
 `data/string_pointers.json` against `data/strings.json` as "the blind scan
