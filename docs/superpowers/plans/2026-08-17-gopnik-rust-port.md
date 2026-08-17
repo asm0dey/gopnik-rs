@@ -1193,14 +1193,33 @@ pairs of recovered offsets. For a gap between `a` and `b`:
   code bytes, not text.)
 - Skip if the gap is >= 40 bytes — those are inter-region spans, not stranded
   strings.
+- Skip if the gap contains no `alnum()` byte, using the same `alnum()` the
+  tiling check uses. **This condition is required** — see below.
 - Otherwise walk the gap as a chain of Pascal shortstrings: read a length byte,
   skip that many payload bytes, repeat. If the chain lands exactly on `b`, every
   element is a real string; emit each with the same `{"off","text","plain",
   "suspect"}` shape. If it overruns `b`, emit nothing for that gap.
 
+**Why the `alnum` condition is not optional.** Tiling by itself is weak
+evidence: measured against 20000 random windows in the string region, ~13% of
+arbitrary byte ranges tile as valid shortstring chains, and that rate is flat
+across gap lengths from 2 to 40 bytes. So "it tiles" is close to a coin flip
+and cannot justify an entry on its own. What justifies the recovered set is the
+*conjunction*: the gap sits between two independently verified anchors, the
+tiling check flags it as holding stranded letter bytes, it tiles exactly, and
+the resulting text is recognisable game content (the command verbs). Dropping
+the `alnum` condition adds 7 entries backed by tiling alone — `' - '`, `'^'`,
+`'#'`, `' '`, `':'`, `'.'` — which is exactly the kind of unfalsifiable guess
+the "unknown means unknown" constraint forbids. Those bytes stay in `g.exe` and
+can be recovered later if a pointer or cross-reference is ever found for them.
+
+The recovery rule must mirror the tiling check's trigger condition. Recovering
+anything the check does not demand means adding entries no test justifies.
+
 This rule guesses nothing: it only accepts bytes that tile exactly between two
-independently-verified anchors. Do **not** relax it into a scan — an unanchored
-forward scan is the original defect this whole sequence exists to fix.
+independently-verified anchors *and* that the framing check independently
+flagged. Do **not** relax it into a scan — an unanchored forward scan is the
+original defect this whole sequence exists to fix.
 
 - [ ] **Step 2: Skip suspect neighbours in the tiling check**
 
