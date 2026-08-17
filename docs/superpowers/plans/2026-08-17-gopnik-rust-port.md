@@ -185,11 +185,25 @@ git commit -m "chore: init gopnik-rs with verified reference corpus"
 **Interfaces:**
 - Consumes: `orig/g.exe`.
 - Produces: `data/strings.json` — a JSON array of objects
-  `{"off": <int file offset>, "text": <UTF-8 string>, "plain": <UTF-8 string>}`,
-  sorted ascending by `off`. `text` is the raw string including `^N` markup;
-  `plain` is the same string with markup removed. Consumers that match or
-  display content use `plain`; only the renderer uses `text`. Tasks 10 and 11
-  read this file.
+  `{"off": <int file offset>, "text": <UTF-8 string>, "plain": <UTF-8 string>,
+  "suspect": <bool>}`, sorted ascending by `off`. `text` is the raw string
+  including `^N` markup; `plain` is the same string with markup removed.
+  Consumers that match or display content use `plain`; only the renderer uses
+  `text`. Tasks 10 and 11 read this file.
+
+**On `suspect`.** The length-prefix scan is a heuristic, so a small number of
+machine-code byte sequences satisfy it and appear as entries — e.g.
+`'к8бЮ8Щ'`, `'D6гN6г'`, `'X9ыUЛ>'`. These are flagged, never deleted: removing
+them would change the entry count and destabilise offsets that other tasks
+reference. Consumers that iterate the table for display MUST filter on
+`suspect == false`; consumers that select by known offset may ignore it.
+
+The rule is: `suspect = (longest run of consecutive Cyrillic letters < 3) and
+(no space character in plain)`. Measured against this binary it flags 39 of
+696 entries, of which 37 are genuine noise. It has exactly two known false
+positives, both real game text: `0x2F87` `'Сл:^'` and `0x92D1` `'Ну..'`. The
+flag is a hint for filtering, not a correctness claim — do not "fix" those two
+by special-casing them.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -245,7 +259,23 @@ def test_extraction():
         "no markup found in any raw text -- the extractor or the test is wrong"
     )
 
-    print(f"OK {len(items)} strings extracted and validated")
+    # `suspect` flags probable machine-code noise. Entries are flagged, never
+    # dropped, so the total stays 696 and offsets stay stable.
+    suspects = [i for i in items if i["suspect"]]
+    assert len(suspects) == 39, f"expected 39 suspect entries, got {len(suspects)}"
+
+    suspect_offs = {i["off"] for i in suspects}
+    for off in (0x285E, 0x3F50, 0x654D, 0x11075, 0x11C34):
+        assert off in suspect_offs, f"known-noise entry {off:#x} not flagged"
+    for off in (0x2B44, 0x3173, 0x4548, 0x2FB2):
+        assert off not in suspect_offs, f"real game text {off:#x} wrongly flagged"
+
+    # Two known false positives -- documented, deliberately not special-cased.
+    assert 0x2F87 in suspect_offs and 0x92D1 in suspect_offs, (
+        "the two known false positives changed; re-check the heuristic"
+    )
+
+    print(f"OK {len(items)} strings extracted, {len(suspects)} flagged suspect")
 
 
 if __name__ == "__main__":
@@ -293,11 +323,34 @@ def is_printable(b: int) -> bool:
 
 
 MARKUP_RE = re.compile(r"\^[0-7]")
+CYRILLIC_RE = re.compile(r"[А-Яа-яЁё]")
 
 
 def strip_markup(s: str) -> str:
     """Remove the original's ^N colour directives, leaving displayable text."""
     return MARKUP_RE.sub("", s)
+
+
+def longest_cyrillic_run(s: str) -> int:
+    best = cur = 0
+    for ch in s:
+        if CYRILLIC_RE.match(ch):
+            cur += 1
+            best = max(best, cur)
+        else:
+            cur = 0
+    return best
+
+
+def is_suspect(plain: str) -> bool:
+    """Heuristic flag for entries that are probably machine code, not text.
+
+    Real game text either contains a space or has a run of three or more
+    consecutive Cyrillic letters. Byte sequences that merely satisfy the
+    length-prefix scan tend to alternate letters with digits and symbols.
+    Flagged entries are kept, never deleted -- see the plan for why.
+    """
+    return longest_cyrillic_run(plain) < 3 and " " not in plain
 
 
 def extract(blob: bytes) -> list[dict]:
@@ -312,7 +365,15 @@ def extract(blob: bytes) -> list[dict]:
                 is_cyrillic(c) for c in payload
             ) >= MIN_CYRILLIC:
                 text = payload.decode("cp866")
-                out.append({"off": i, "text": text, "plain": strip_markup(text)})
+                plain = strip_markup(text)
+                out.append(
+                    {
+                        "off": i,
+                        "text": text,
+                        "plain": plain,
+                        "suspect": is_suspect(plain),
+                    }
+                )
                 i += 1 + n
                 continue
         i += 1
