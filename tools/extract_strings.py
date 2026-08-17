@@ -20,7 +20,12 @@ were independently verified, not guessed:
   arithmetic and so invisible to pointer recovery; recovered separately by
   walking each table's fixed stride.
 
-See docs/re/strings.md for the merge and the before/after comparison against
+A third pass (Task 2c) then walks the gaps between adjacent recovered
+offsets and accepts a gap's bytes only when they tile *exactly* as a chain
+of complete shortstrings between two non-suspect anchors -- never a blind
+forward scan, just verification that the space between two independently
+confirmed offsets is itself fully accounted for. See docs/re/strings.md for
+the merge, the gap-tiling rule, and the before/after comparison against
 Task 2's blind scan.
 """
 import json
@@ -75,12 +80,56 @@ def read_string(blob: bytes, off: int) -> dict:
     return {"off": off, "text": text, "plain": plain, "suspect": is_suspect(plain)}
 
 
-def extract(blob: bytes) -> tuple[list[dict], int]:
-    """Build the merged entry list: every recovered pointer, plus every
-    indexed-table entry whose offset a pointer didn't already cover.
+def gap_tile(blob: bytes, by_off: dict) -> int:
+    """Recover short strings stranded in the gap between two adjacent,
+    already-verified anchors (Task 2c).
+
+    Walks consecutive pairs of currently-recovered offsets `(a, b)`. A
+    `suspect` entry is not a known-good anchor, so a gap next to one proves
+    nothing about the bytes between them -- skipped. Gaps >= 40 bytes are
+    inter-region spans, not stranded strings -- skipped. Otherwise the gap
+    (from `a`'s payload end up to `b`) is walked as a chain of Pascal
+    shortstrings: read a length byte, skip that many payload bytes, repeat.
+    Only if the chain lands *exactly* on `b` is every element in it accepted
+    as real; if it overruns `b`, nothing is emitted for that gap. This adds
+    no guessing: it only accepts bytes that tile exactly between two
+    independently-verified anchors, never an unanchored forward scan.
+
+    Mutates `by_off` in place with any newly recovered entries and returns
+    how many were added.
+    """
+    offs = sorted(by_off)
+    added = 0
+    for a, b in zip(offs, offs[1:]):
+        if by_off[a]["suspect"] or by_off[b]["suspect"]:
+            continue
+        end = a + 1 + blob[a]
+        if end >= b or b - end >= 40:
+            continue
+        chain = []
+        cursor = end
+        while cursor < b:
+            n = blob[cursor]
+            nxt = cursor + 1 + n
+            if nxt > b:
+                chain = None
+                break
+            chain.append(cursor)
+            cursor = nxt
+        if chain is not None and cursor == b:
+            for off in chain:
+                by_off[off] = read_string(blob, off)
+                added += 1
+    return added
+
+
+def extract(blob: bytes) -> tuple[list[dict], int, int]:
+    """Build the merged entry list: every recovered pointer, every indexed-
+    table entry whose offset a pointer didn't already cover, plus every
+    string recovered by tiling the gaps between those anchors.
 
     Returns (entries sorted by offset, count of entries merged in from the
-    tables).
+    tables, count of entries recovered by gap tiling).
     """
     pointers = json.loads(POINTERS.read_text(encoding="utf-8"))["pointers"]
     by_off = {off: read_string(blob, off) for off in pointers}
@@ -101,19 +150,23 @@ def extract(blob: bytes) -> tuple[list[dict], int]:
             }
             merged += 1
 
-    return [by_off[off] for off in sorted(by_off)], merged
+    tiled = gap_tile(blob, by_off)
+
+    return [by_off[off] for off in sorted(by_off)], merged, tiled
 
 
 def main() -> None:
     blob = EXE.read_bytes()
-    items, merged = extract(blob)
+    items, merged, tiled = extract(blob)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(
         json.dumps(items, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
     )
     print(
         f"wrote {len(items)} strings to {OUT} "
-        f"({len(items) - merged} pointer-anchored, {merged} merged from string_tables.json)"
+        f"({len(items) - merged - tiled} pointer-anchored, "
+        f"{merged} merged from string_tables.json, "
+        f"{tiled} recovered by gap tiling)"
     )
 
 

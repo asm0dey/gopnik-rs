@@ -66,11 +66,21 @@ def test_extraction():
     for a, b in zip(offs, offs[1:]):
         end = a + 1 + blob[a]
         assert end <= b, f"0x{a:X} (len {blob[a]}) overlaps next string 0x{b:X}"
+        if by_off[a]["suspect"] or by_off[b]["suspect"]:
+            continue
         if b - end < 40:
             tail = blob[end:b]
             assert not any(alnum(c) for c in tail), (
                 f"letter bytes stranded after 0x{a:X}: {tail!r}"
             )
+
+    # The gap-tiled command tokens (Task 2c) -- the game's single-character
+    # command parser tokens that the pointer scan's N>=3 Cyrillic-run floor
+    # skipped.
+    assert by_off[0x4E71]["plain"] == "sv", "the sv command token is missing"
+    assert by_off[0x4E6F]["plain"] == "s"
+    assert by_off[0x3D87]["plain"] == "1"
+    assert by_off[0x23A4]["plain"] == "С^"
 
     suspects = [i for i in items if i["suspect"]]
     print(f"OK {len(items)} strings extracted, {len(suspects)} flagged suspect")

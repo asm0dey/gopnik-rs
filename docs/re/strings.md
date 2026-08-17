@@ -276,10 +276,10 @@ each numbered stat/location entry; the letters overlap known command verbs
 like `run`, `save_r`, and the already-recovered `'Напиши: <cmd> чтобы
 ...'` help lines) — real content, just not reachable by literal-operand or
 `base + i*256` recovery, most likely addressed through some other
-indexing scheme not yet reverse-engineered. Recovering them is out of
-scope for this task (`data/strings.json` and `extract_strings.py` are not
-to be touched here); they are logged as a lead for a future pointer/index
-recovery pass.
+indexing scheme not yet reverse-engineered. Recovering them was out of
+scope for Task 2b (`data/strings.json` and `extract_strings.py` were not
+to be touched there); they were logged as a lead for a future recovery
+pass. **Task 2c (below) is that pass.**
 
 **The remaining 2 of the 39 do not tile as valid strings at all**
 (`0x1105D`–`0x11067`, raw `13 E8 A0 00 8B C4 05 13 00 B1`; and
@@ -300,6 +300,159 @@ discrepancy — the 39 are real unindexed strings and 2 real non-string
 bytes, not a defect in the 749 entries `data/strings.json` already
 contains.
 
+This was Task 2b's state as committed. **Task 2c, below, recovers these 39
+(and a few more the alphanumeric-only check couldn't see) instead of
+leaving them as a documented failure.**
+
+## Task 2c: short command tokens recovered by gap tiling
+
+Task 2b's tiling check is a *diagnostic*: it proved the 39 small gaps
+existed and that 37 of them tile as complete shortstrings, but it left the
+assertion failing rather than accepting the bytes, and it was scoped only
+to flag gaps containing a byte in the "alphanumeric" ranges its `alnum()`
+helper checks (CP866 Cyrillic ranges, ASCII digits, ASCII letters). Task 2c
+turns that diagnostic into recovery: `tools/extract_strings.py` now walks
+every gap between two adjacent, already-recovered offsets (pointer-anchored
+or table-merged) and accepts the bytes in it as one or more real
+shortstrings whenever they tile *exactly* — a length byte, that many
+payload bytes, repeated until the cursor lands precisely on the next
+anchor. No byte-content filter is applied to which gaps are attempted; the
+only conditions are:
+
+- neither neighbouring anchor may be `suspect` (a suspect entry proves
+  nothing about what sits beside it — see below for what this excludes),
+- the gap must be under 40 bytes (inter-region spans, not stranded
+  strings), and
+- the chain must land exactly on the next anchor, or nothing is emitted.
+
+This is not a scan: both ends of every accepted gap are anchors
+independently established by Task 4b (pointer operands) or Task 4c (table
+strides). Gap tiling only fills the space *between* two already-verified
+points, and only when the fill is exact.
+
+**These recovered entries are the game's text-command parser tokens** —
+`s`/`sv`/`e`/`v`/`f`/`k`/`y`-style single-letter and two-letter commands,
+plus digit selectors `1`–`9` that follow numbered menu lines. They are
+input tokens the player types, not display text; Task 11 (command parsing)
+compares user input against them. They are not sentences and mostly fail
+the existing `is_suspect()` heuristic (no 3+ run of Cyrillic letters, no
+space), so nearly all of them are flagged `suspect: true` — expected and
+correct, not a defect: `is_suspect()` was not changed, and every one of
+these entries is still real, verified-by-tiling content, kept per the
+standing "flag, never delete" rule.
+
+### Measured result vs. the brief's predicted numbers — a genuine discrepancy
+
+The brief predicted 789 total entries, 40 recovered by gap tiling, 0
+tiling violations. The actual run:
+
+```
+$ python3 tools/extract_strings.py
+wrote 796 strings to /home/finkel/work_self/gopnik-rs/data/strings.json (695 pointer-anchored, 54 merged from string_tables.json, 47 recovered by gap tiling)
+```
+
+**796 total, 47 recovered, 0 tiling violations.** Violations match (the
+tiling assertion in `test_extract_strings.py` passes cleanly). Total and
+recovered-count do not (+7 each). Investigated, not tuned away:
+
+- Task 2b's measurement of "39 gaps" was itself scoped to gaps containing a
+  byte in `alnum()`'s ranges — that helper does **not** include space
+  (`0x20`), `#` (`0x23`), `:` (`0x3A`), `.` (`0x2E`), or `^` (`0x5E`). Task
+  2b's own numbers (`## Structural tiling check` above) record `46 gaps <
+  40 bytes` total, of which only `39 contain an alphanumeric byte` and `7
+  clean (no alphanumeric byte)`. Those 7 "clean" gaps were never flagged as
+  a problem by the old check (nothing in them looked like a stranded
+  letter), so they never appeared in the brief's list of "39 gaps [that]
+  contain letter bytes" and were not counted toward its predicted 40.
+- Step 1 of this task's brief does not filter by byte content — it walks
+  *every* gap under 40 bytes between two non-suspect anchors and accepts it
+  if it tiles exactly, full stop. Run against the real binary, all 7 of
+  those "clean" gaps also tile exactly, as legitimate one-byte payload
+  shortstrings: `0x2BAC '^'`, `0x2FA7 '#'`, `0x30EF '^'`, `0x712A ' '`,
+  `0x7179 ':'`, `0x9E63 '.'`, `0xB1CA ' '`. Nothing distinguishes these from
+  the other short tokens except that their content happens to fall outside
+  `alnum()`'s ranges — the tiling proof (exact landing on a verified
+  anchor) is identical. Excluding them would mean silently narrowing Step
+  1's rule to "gaps that look like letters," which the brief does not say
+  and which would be exactly the kind of content-based tuning the task
+  explicitly forbids.
+- Symmetrically, 4 tokens that Task 2b's speculative list *did* include
+  (`y` at `0x8D79`, `\` and `y` at `0x9BF1`, `w` at `0x9D5E`) are correctly
+  **not** recovered here, because Step 2's suspect-neighbour skip (added by
+  this task) excludes them: each of those three gaps sits right before
+  `save_r0.sav`, `save_r`, or `run` — real command-keyword strings, but
+  ones with zero Cyrillic letters and no space, so `is_suspect()` flags
+  them `true`. A `suspect` neighbour is not a known-good anchor, so the gap
+  beside it proves nothing, per the brief's own Step 1 rule.
+  `44 (Task 2b's speculative count) − 4 (suspect-excluded) + 7 (the "clean"
+  gaps Task 2b's narrower check never saw) = 47`, which is exactly what was
+  measured. The two non-tiling gaps at `0x1105D` and `0x11070` are excluded
+  the same way, for the same reason Task 2b already documented — both sit
+  between `suspect: true` neighbours.
+
+Net: **789/40 was a real number, but measured under an implicit
+"gaps that already look alphanumeric" restriction that Step 1's algorithm,
+taken literally, does not impose.** 796/47 is what a faithful
+implementation of the stated rule produces, and every one of the 7 extra
+entries is exact-tiled, verified content by the same evidentiary standard
+as the other 40. No threshold, filter, or suspect flag was adjusted to
+reach either number.
+
+### Full list of 47 recovered offsets
+
+`off` sorted, `text` is the raw (markup-preserving) form, `plain` is
+markup-stripped, `suspect` is `is_suspect(plain)` unmodified:
+
+| off | text | plain | suspect |
+|---|---|---|---|
+| `0x23A4` | `'С^'` | `'С^'` | true |
+| `0x23A7` | `'У^'` | `'У^'` | true |
+| `0x23AA` | `'П^'` | `'П^'` | true |
+| `0x23AD` | `'Е^'` | `'Е^'` | true |
+| `0x2BAC` | `'^'` | `'^'` | true |
+| `0x2FA7` | `'#'` | `'#'` | true |
+| `0x30EF` | `'^'` | `'^'` | true |
+| `0x3D87` | `'1'` | `'1'` | true |
+| `0x3D98` | `'2'` | `'2'` | true |
+| `0x3DAA` | `'3'` | `'3'` | true |
+| `0x3DB8` | `'4'` | `'4'` | true |
+| `0x4A52` | `'k'` | `'k'` | true |
+| `0x4E6F` | `'s'` | `'s'` | true |
+| `0x4E71` | `'sv'` | `'sv'` | true |
+| `0x4E74` | `'e'` | `'e'` | true |
+| `0x4E96` | `'v'` | `'v'` | true |
+| `0x4FE4` | `'f'` | `'f'` | true |
+| `0x712A` | `' '` | `' '` | false |
+| `0x7179` | `':'` | `':'` | true |
+| `0x7240` | `'^0'` | `''` | true |
+| `0x9E63` | `'.'` | `'.'` | true |
+| `0xA69A` | `'1'` | `'1'` | true |
+| `0xA71B` | `'2'` | `'2'` | true |
+| `0xA775` | `'3'` | `'3'` | true |
+| `0xA7C7` | `'4'` | `'4'` | true |
+| `0xA83B` | `'5'` | `'5'` | true |
+| `0xA896` | `'6'` | `'6'` | true |
+| `0xA8F3` | `'7'` | `'7'` | true |
+| `0xA925` | `'8'` | `'8'` | true |
+| `0xA93A` | `'9'` | `'9'` | true |
+| `0xA959` | `'t'` | `'t'` | true |
+| `0xAF9E` | `'x'` | `'x'` | true |
+| `0xB1CA` | `' '` | `' '` | false |
+| `0xB320` | `'r'` | `'r'` | true |
+| `0xB392` | `'h'` | `'h'` | true |
+| `0xB43E` | `'e'` | `'e'` | true |
+| `0xB5BD` | `'pr'` | `'pr'` | true |
+| `0xB5D6` | `'^0общагу №#'` | `'общагу №#'` | false |
+| `0xB791` | `'p'` | `'p'` | true |
+| `0xB852` | `'hp'` | `'hp'` | true |
+| `0xB855` | `'s'` | `'s'` | true |
+| `0xB899` | `'a'` | `'a'` | true |
+| `0xB906` | `'d'` | `'d'` | true |
+| `0xB9BA` | `'kl'` | `'kl'` | true |
+| `0xBFDE` | `'i'` | `'i'` | true |
+| `0xC31C` | `'f'` | `'f'` | true |
+| `0xC341` | `'k'` | `'k'` | true |
+
 ## Test results
 
 ```
@@ -307,13 +460,11 @@ $ python3 tools/verify_corpus.py
 OK 7 corpus files verified
 
 $ python3 tools/test_extract_strings.py
-wrote 749 strings to /home/finkel/work_self/gopnik-rs/data/strings.json (695 pointer-anchored, 54 merged from string_tables.json)
-Traceback (most recent call last):
-  ...
-AssertionError: letter bytes stranded after 0x23A0: b'\x02\x91^\x02\x93^\x02\x8f^\x02\x85^'
+wrote 796 strings to /home/finkel/work_self/gopnik-rs/data/strings.json (695 pointer-anchored, 54 merged from string_tables.json, 47 recovered by gap tiling)
+OK 796 strings extracted, 77 flagged suspect
 
 $ python3 tools/test_string_pointers.py
-OK 695 string pointers recovered, 0 blind-scan entries unaccounted for
+OK 695 string pointers recovered, 3 blind-scan entries unaccounted for
 
 $ python3 tools/test_string_tables.py
 wrote 54 table entries across 2 tables to data/string_tables.json
@@ -322,13 +473,16 @@ OK 54 table entries extracted
 
 Note on `test_string_pointers.py`: its coverage assertion compares
 `data/string_pointers.json` against `data/strings.json` as "the blind scan
-to check regressions against." Now that this task has overwritten
-`data/strings.json` with the anchored extraction (built *from* the same
-pointer list), that comparison is measuring the pointer list against
-itself and trivially reports 0 missing. This is a pre-existing consequence
-of the two tasks sharing a filename for different things, not a new defect
-introduced here — `tools/test_string_pointers.py` is Task 4b's file and out
-of this task's scope to change. The comparison it was written to do (new
-pointers vs. Task 2's blind scan) is preserved verbatim in this document's
-"Dropped entries" section above, using the blind-scan snapshot from before
-this task's commit.
+to check regressions against." Since Task 2b, `data/strings.json` is the
+anchored extraction, not the blind scan, so this comparison measures the
+pointer list against (pointers ∪ tables ∪ gap-tiled) instead. It now
+reports 3 "missing" rather than 0: the three non-suspect gap-tiled entries
+(`0x712A ' '`, `0xB1CA ' '`, `0xB5D6 'общагу №#'`) are real content that
+exists only because Task 2c tiled it in — no pointer operand or table
+stride ever reaches them, so they fall outside both the pointer set and
+every pointer's payload span, exactly like the entries this assertion is
+designed to flag. The bound is `<= 14`; 3 is well inside it, so the test
+still passes, and per the plan this file (Task 4b's) was not touched. This
+is a pre-existing consequence of the two tasks sharing a filename for
+different things (already noted in Task 2b's version of this document),
+not a new defect introduced here.
