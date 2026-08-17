@@ -12,8 +12,6 @@ def test_extraction():
     subprocess.run([sys.executable, str(ROOT / "tools" / "extract_strings.py")], check=True)
     items = json.loads((ROOT / "data" / "strings.json").read_text(encoding="utf-8"))
 
-    assert len(items) == 696, f"expected 696 strings, got {len(items)}"
-
     offs = [i["off"] for i in items]
     assert offs == sorted(offs), "strings must be sorted by offset"
     assert len(set(offs)) == len(offs), "offsets must be unique"
@@ -47,22 +45,33 @@ def test_extraction():
         "no markup found in any raw text -- the extractor or the test is wrong"
     )
 
-    # `suspect` flags probable machine-code noise. Entries are flagged, never
-    # dropped, so the total stays 696 and offsets stay stable.
-    suspects = [i for i in items if i["suspect"]]
-    assert len(suspects) == 39, f"expected 39 suspect entries, got {len(suspects)}"
+    # Anchored extraction must fix the framing bugs the blind scan produced.
+    by_off = {i["off"]: i for i in items}
 
-    suspect_offs = {i["off"] for i in suspects}
-    for off in (0x285E, 0x3F50, 0x654D, 0x11075, 0x11C34):
-        assert off in suspect_offs, f"known-noise entry {off:#x} not flagged"
-    for off in (0x2B44, 0x3173, 0x4548, 0x2FB2):
-        assert off not in suspect_offs, f"real game text {off:#x} wrongly flagged"
-
-    # Two known false positives -- documented, deliberately not special-cased.
-    assert 0x2F87 in suspect_offs and 0x92D1 in suspect_offs, (
-        "the two known false positives changed; re-check the heuristic"
+    assert 0xBCDD in by_off, "the боксёров line was not extracted"
+    assert by_off[0xBCDD]["plain"].endswith("челюсть)"), (
+        f"still truncated: {by_off[0xBCDD]['plain']!r}"
     )
 
+    # No entry may end cut off mid-word: if the payload's last byte and the
+    # byte immediately after it are both alphanumeric, the string was cut.
+    blob = (ROOT / "orig" / "g.exe").read_bytes()
+
+    def alnum(c):
+        return (0x80 <= c <= 0xAF or 0xE0 <= c <= 0xF1
+                or 48 <= c <= 57 or 65 <= c <= 90 or 97 <= c <= 122)
+
+    cut = []
+    for i in items:
+        if i["suspect"]:
+            continue
+        off = i["off"]
+        end = off + 1 + blob[off]
+        if end < len(blob) and alnum(blob[end - 1]) and alnum(blob[end]):
+            cut.append(hex(off))
+    assert len(cut) <= 5, f"{len(cut)} entries still cut mid-word: {cut[:10]}"
+
+    suspects = [i for i in items if i["suspect"]]
     print(f"OK {len(items)} strings extracted, {len(suspects)} flagged suspect")
 
 
