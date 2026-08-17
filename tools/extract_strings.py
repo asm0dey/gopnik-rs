@@ -29,11 +29,34 @@ def is_printable(b: int) -> bool:
 
 
 MARKUP_RE = re.compile(r"\^[0-7]")
+CYRILLIC_RE = re.compile(r"[А-Яа-яЁё]")
 
 
 def strip_markup(s: str) -> str:
     """Remove the original's ^N colour directives, leaving displayable text."""
     return MARKUP_RE.sub("", s)
+
+
+def longest_cyrillic_run(s: str) -> int:
+    best = cur = 0
+    for ch in s:
+        if CYRILLIC_RE.match(ch):
+            cur += 1
+            best = max(best, cur)
+        else:
+            cur = 0
+    return best
+
+
+def is_suspect(plain: str) -> bool:
+    """Heuristic flag for entries that are probably machine code, not text.
+
+    Real game text either contains a space or has a run of three or more
+    consecutive Cyrillic letters. Byte sequences that merely satisfy the
+    length-prefix scan tend to alternate letters with digits and symbols.
+    Flagged entries are kept, never deleted -- see the plan for why.
+    """
+    return longest_cyrillic_run(plain) < 3 and " " not in plain
 
 
 def extract(blob: bytes) -> list[dict]:
@@ -48,7 +71,15 @@ def extract(blob: bytes) -> list[dict]:
                 is_cyrillic(c) for c in payload
             ) >= MIN_CYRILLIC:
                 text = payload.decode("cp866")
-                out.append({"off": i, "text": text, "plain": strip_markup(text)})
+                plain = strip_markup(text)
+                out.append(
+                    {
+                        "off": i,
+                        "text": text,
+                        "plain": plain,
+                        "suspect": is_suspect(plain),
+                    }
+                )
                 i += 1 + n
                 continue
         i += 1

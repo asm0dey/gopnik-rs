@@ -47,7 +47,23 @@ def test_extraction():
         "no markup found in any raw text -- the extractor or the test is wrong"
     )
 
-    print(f"OK {len(items)} strings extracted and validated")
+    # `suspect` flags probable machine-code noise. Entries are flagged, never
+    # dropped, so the total stays 696 and offsets stay stable.
+    suspects = [i for i in items if i["suspect"]]
+    assert len(suspects) == 39, f"expected 39 suspect entries, got {len(suspects)}"
+
+    suspect_offs = {i["off"] for i in suspects}
+    for off in (0x285E, 0x3F50, 0x654D, 0x11075, 0x11C34):
+        assert off in suspect_offs, f"known-noise entry {off:#x} not flagged"
+    for off in (0x2B44, 0x3173, 0x4548, 0x2FB2):
+        assert off not in suspect_offs, f"real game text {off:#x} wrongly flagged"
+
+    # Two known false positives -- documented, deliberately not special-cased.
+    assert 0x2F87 in suspect_offs and 0x92D1 in suspect_offs, (
+        "the two known false positives changed; re-check the heuristic"
+    )
+
+    print(f"OK {len(items)} strings extracted, {len(suspects)} flagged suspect")
 
 
 if __name__ == "__main__":
