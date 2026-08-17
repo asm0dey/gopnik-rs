@@ -1193,33 +1193,48 @@ pairs of recovered offsets. For a gap between `a` and `b`:
   code bytes, not text.)
 - Skip if the gap is >= 40 bytes — those are inter-region spans, not stranded
   strings.
-- Skip if the gap contains no `alnum()` byte, using the same `alnum()` the
-  tiling check uses. **This condition is required** — see below.
-- Otherwise walk the gap as a chain of Pascal shortstrings: read a length byte,
-  skip that many payload bytes, repeat. If the chain lands exactly on `b`, every
-  element is a real string; emit each with the same `{"off","text","plain",
-  "suspect"}` shape. If it overruns `b`, emit nothing for that gap.
+- Do **not** filter on byte content. Every gap meeting the conditions above is
+  walked, whatever it holds — see below.
+- Walk the gap as a chain of Pascal shortstrings: read a length byte, skip that
+  many payload bytes, repeat. If the chain lands exactly on `b`, every element
+  is a real string; emit each with the same `{"off","text","plain","suspect"}`
+  shape. If it overruns `b`, emit nothing for that gap.
 
-**Why the `alnum` condition is not optional.** Tiling by itself is weak
-evidence: measured against 20000 random windows in the string region, ~13% of
-arbitrary byte ranges tile as valid shortstring chains, and that rate is flat
-across gap lengths from 2 to 40 bytes. So "it tiles" is close to a coin flip
-and cannot justify an entry on its own. What justifies the recovered set is the
-*conjunction*: the gap sits between two independently verified anchors, the
-tiling check flags it as holding stranded letter bytes, it tiles exactly, and
-the resulting text is recognisable game content (the command verbs). Dropping
-the `alnum` condition adds 7 entries backed by tiling alone — `' - '`, `'^'`,
-`'#'`, `' '`, `':'`, `'.'` — which is exactly the kind of unfalsifiable guess
-the "unknown means unknown" constraint forbids. Those bytes stay in `g.exe` and
-can be recovered later if a pointer or cross-reference is ever found for them.
+**Do not add a letter-byte condition.** An earlier revision of this plan
+required the gap to contain a byte in `alnum()`'s ranges, on the grounds that
+tiling alone was weak evidence — "~13% of random windows tile, flat across gap
+lengths 2–40." **That measurement was a sampling artifact and the requirement
+was wrong.** The sample spanned `0x18D0`–`0x158F2`, which includes the
+`0x11000`+ tail; that tail is 69.0% NUL bytes, and a run of `0x00` is a chain
+of zero-length strings that tiles at *any* length. The flatness across gap
+lengths was the artifact announcing itself.
 
-The recovery rule must mirror the tiling check's trigger condition. Recovering
-anything the check does not demand means adding entries no test justifies.
+Measured per region, 20000 random windows each:
 
-This rule guesses nothing: it only accepts bytes that tile exactly between two
-independently-verified anchors *and* that the framing check independently
-flagged. Do **not** relax it into a scan — an unanchored forward scan is the
-original defect this whole sequence exists to fix.
+| region | NUL | 2 B | 3 B | 7 B | 20 B | 40 B |
+|---|---|---|---|---|---|---|
+| `0x18D0`–`0x11000` (holds all 40 recovered) | 2.1% | 1.7% | 0.6% | 1.1% | 0.1% | 0.2% |
+| `0x11000`–`0x158F2` (tail) | 69.0% | 67.2% | 67.5% | 66.4% | 64.4% | 64.7% |
+| union (the misleading sample) | 17.4% | 17.1% | 15.8% | 15.7% | 14.8% | 14.1% |
+
+In the region where the recovered strings actually live, an arbitrary window
+tiles exactly ~0.1–1.7% of the time. For a 2-byte gap that rate is just
+`P(byte == 0x01)` = 1.64%. **Tiling between two verified anchors is strong
+evidence, not a coin flip**, and it is equally strong for a one-character
+string as for a longer one. A Pascal program emitting `write(' ')` produces
+exactly such a length-1 literal, so single punctuation strings are expected
+content, not noise.
+
+The seven entries the letter-byte condition excluded — `'^'` (`0x2BAC`,
+`0x30EF`), `'#'` (`0x2FA7`), `' '` (`0x712A`, `0xB1CA`), `':'` (`0x7179`),
+`'.'` (`0x9E63`) — therefore stay in. Five are flagged `suspect` by the
+existing heuristic, which is the correct place to express low confidence;
+excluding them outright was not. Note also that dropping `0xB1CA` is what left
+`0xB1CB` uncovered among Task 4b's residual offsets.
+
+This rule guesses nothing: it accepts only bytes that tile exactly between two
+independently-verified anchors. Do **not** relax it into a scan — an unanchored
+forward scan is the original defect this whole sequence exists to fix.
 
 - [ ] **Step 2: Skip suspect neighbours in the tiling check**
 
@@ -1254,7 +1269,7 @@ These are the entries this task exists to recover. Add:
 
 - [ ] **Step 4: Run and document**
 
-Run `python3 tools/test_extract_strings.py`. Expected: 789 entries total, 40
+Run `python3 tools/test_extract_strings.py`. Expected: 796 entries total, 47
 recovered by gap-tiling, 0 tiling violations. These numbers were measured before
 this task was written — if yours differ, that is a finding to report, not a
 number to adjust the code toward.
@@ -1262,6 +1277,17 @@ number to adjust the code toward.
 In `docs/re/strings.md`, record the recovery rule, the count, and the full list
 of recovered offsets with their text. Note explicitly that these are input
 tokens rather than display text, since Task 11 will need them.
+
+Also record, as a known gap to be cited in Task 11's brief: the
+suspect-neighbour skip correctly excludes five small gaps, three of which tile
+as real tokens — `0x8D79 'y'` (after `'Ты хочешь сохраниться?'`), `0x9BF1 '\'`
+and `'y'` (after `'^0Хочешь сохранить...'`), and `0x9D5E 'w'` (before `'run'`).
+Their anchors are `suspect` only because `is_suspect()` flags pure-ASCII
+keywords like `save_r0.sav` and `run`. The rule is right — a suspect neighbour
+is not a known-good anchor — but the consequence is that the yes/no
+confirmation token for the save and quit prompts is **not** in
+`data/strings.json`. Task 11 must recover it from the disassembly rather than
+assume it is present.
 
 - [ ] **Step 5: Commit**
 
