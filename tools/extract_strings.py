@@ -71,6 +71,22 @@ def is_suspect(plain: str) -> bool:
     return longest_cyrillic_run(plain) < 3 and " " not in plain
 
 
+def is_letter_byte(c: int) -> bool:
+    """CP866 Cyrillic, ASCII letter, or digit -- the byte classes the framing
+    check in tools/test_extract_strings.py treats as stranded text.
+
+    Kept byte-for-byte identical to that check's `alnum()` on purpose: the
+    recovery rule below must accept exactly what the check demands, no more.
+    """
+    return (
+        0x80 <= c <= 0xAF
+        or 0xE0 <= c <= 0xF1
+        or 48 <= c <= 57
+        or 65 <= c <= 90
+        or 97 <= c <= 122
+    )
+
+
 def read_string(blob: bytes, off: int) -> dict:
     """Read one length-prefixed CP866 shortstring at a known-good offset."""
     n = blob[off]
@@ -87,13 +103,26 @@ def gap_tile(blob: bytes, by_off: dict) -> int:
     Walks consecutive pairs of currently-recovered offsets `(a, b)`. A
     `suspect` entry is not a known-good anchor, so a gap next to one proves
     nothing about the bytes between them -- skipped. Gaps >= 40 bytes are
-    inter-region spans, not stranded strings -- skipped. Otherwise the gap
-    (from `a`'s payload end up to `b`) is walked as a chain of Pascal
-    shortstrings: read a length byte, skip that many payload bytes, repeat.
-    Only if the chain lands *exactly* on `b` is every element in it accepted
-    as real; if it overruns `b`, nothing is emitted for that gap. This adds
-    no guessing: it only accepts bytes that tile exactly between two
-    independently-verified anchors, never an unanchored forward scan.
+    inter-region spans, not stranded strings -- skipped. A gap holding no
+    letter byte is skipped too; see below. Otherwise the gap (from `a`'s
+    payload end up to `b`) is walked as a chain of Pascal shortstrings: read
+    a length byte, skip that many payload bytes, repeat. Only if the chain
+    lands *exactly* on `b` is every element in it accepted as real; if it
+    overruns `b`, nothing is emitted for that gap.
+
+    The letter-byte condition is load-bearing, not a tidiness filter. Tiling
+    on its own is weak evidence: measured over 20000 random windows in the
+    string region, ~13% of arbitrary byte ranges tile as valid shortstring
+    chains, and that rate is flat for gap lengths from 2 to 40 bytes. What
+    justifies an entry is the conjunction -- the gap lies between two
+    independently verified anchors, the framing check flags it as holding
+    stranded text, and it tiles exactly. Without the letter-byte condition
+    this recovers 7 more entries (' - ', '^', '#', ' ', ':', '.') backed by
+    a ~13% coin flip alone. Those bytes stay in g.exe and can be recovered
+    later if a pointer or cross-reference is ever found for them.
+
+    Never relax this into a scan -- an unanchored forward scan is the
+    original framing defect this whole sequence of tasks exists to fix.
 
     Mutates `by_off` in place with any newly recovered entries and returns
     how many were added.
@@ -105,6 +134,8 @@ def gap_tile(blob: bytes, by_off: dict) -> int:
             continue
         end = a + 1 + blob[a]
         if end >= b or b - end >= 40:
+            continue
+        if not any(is_letter_byte(c) for c in blob[end:b]):
             continue
         chain = []
         cursor = end

@@ -222,12 +222,6 @@
   "suspect": false
  },
  {
-  "off": 11180,
-  "text": "^",
-  "plain": "^",
-  "suspect": true
- },
- {
   "off": 11182,
   "text": "Здоровье #/#  ",
   "plain": "Здоровье #/#  ",
@@ -318,12 +312,6 @@
   "suspect": false
  },
  {
-  "off": 12199,
-  "text": "#",
-  "plain": "#",
-  "suspect": true
- },
- {
   "off": 12201,
   "text": "Феньки: ",
   "plain": "Феньки: ",
@@ -412,12 +400,6 @@
   "text": "^1.^4 Правда без патронов",
   "plain": ". Правда без патронов",
   "suspect": false
- },
- {
-  "off": 12527,
-  "text": "^",
-  "plain": "^",
-  "suspect": true
  },
  {
   "off": 12529,
@@ -1524,12 +1506,6 @@
   "suspect": false
  },
  {
-  "off": 28970,
-  "text": " ",
-  "plain": " ",
-  "suspect": false
- },
- {
   "off": 28972,
   "text": " ^0,в чем тут батва",
   "plain": " ,в чем тут батва",
@@ -1546,12 +1522,6 @@
   "text": "^0 Например ",
   "plain": " Например ",
   "suspect": false
- },
- {
-  "off": 29049,
-  "text": ":",
-  "plain": ":",
-  "suspect": true
  },
  {
   "off": 29051,
@@ -2458,12 +2428,6 @@
   "text": "^2Нет это ",
   "plain": "Нет это ",
   "suspect": false
- },
- {
-  "off": 40547,
-  "text": ".",
-  "plain": ".",
-  "suspect": true
  },
  {
   "off": 40549,
@@ -3465,12 +3429,6 @@
   "off": 45486,
   "text": "^6У тебя нет неужных вещей.",
   "plain": "У тебя нет неужных вещей.",
-  "suspect": false
- },
- {
-  "off": 45514,
-  "text": " ",
-  "plain": " ",
   "suspect": false
  },
  {
