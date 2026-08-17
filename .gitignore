@@ -2,3 +2,4 @@
 /ghidra_proj
 /build
 *.log
+__pycache__/
