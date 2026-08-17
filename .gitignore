@@ -1,0 +1,4 @@
+/target
+/ghidra_proj
+/build
+*.log
