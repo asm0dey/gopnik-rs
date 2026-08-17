@@ -1160,6 +1160,99 @@ git commit -m "fix: anchor string extraction on recovered pointers, fixing trunc
 
 ---
 
+### Task 2c: Recover the short strings the pointer scan missed
+
+**Why this task exists:** Task 2b's tiling check did its job and found a real
+coverage gap. 39 gaps between anchored strings contain letter bytes, and 37 of
+them tile exactly as complete Pascal shortstrings. They are the game's
+single-character command tokens — `s`, `sv`, `e`, `v`, `f`, `k`, `y`, `\`,
+`1`–`4` — plus a `С^ У^ П^ Е^` banner split across four strings. Task 4b's
+pointer scan skipped them because of its `N>=3` Cyrillic-run floor, and Task 4c
+only covered indexed arrays. Task 11 compares user input against these tokens,
+so leaving them out would break the game loop.
+
+**Files:**
+- Modify: `tools/extract_strings.py`
+- Modify: `tools/test_extract_strings.py`
+- Regenerate: `data/strings.json`
+- Modify: `docs/re/strings.md`
+
+**Interfaces:**
+- Consumes: `data/strings.json` from Task 2b (same record shape).
+- Produces: `data/strings.json` with the gap-tiled strings merged in, sorted by
+  `off`. No shape change.
+
+- [ ] **Step 1: Add gap-tiling recovery**
+
+After the pointer-anchored and table entries are collected, walk consecutive
+pairs of recovered offsets. For a gap between `a` and `b`:
+
+- Skip if either `a` or `b` is `suspect`. A suspect entry is not a known-good
+  anchor, so a gap beside one proves nothing. (Measured: the only 2 gaps that
+  fail to tile sit between suspect entries at `0x1105D` and `0x11070`, and are
+  code bytes, not text.)
+- Skip if the gap is >= 40 bytes — those are inter-region spans, not stranded
+  strings.
+- Otherwise walk the gap as a chain of Pascal shortstrings: read a length byte,
+  skip that many payload bytes, repeat. If the chain lands exactly on `b`, every
+  element is a real string; emit each with the same `{"off","text","plain",
+  "suspect"}` shape. If it overruns `b`, emit nothing for that gap.
+
+This rule guesses nothing: it only accepts bytes that tile exactly between two
+independently-verified anchors. Do **not** relax it into a scan — an unanchored
+forward scan is the original defect this whole sequence exists to fix.
+
+- [ ] **Step 2: Skip suspect neighbours in the tiling check**
+
+In `tools/test_extract_strings.py`, the gap half of the tiling check must skip
+pairs where either neighbour is `suspect`. Keep the overlap assertion applying
+to **all** pairs — an overlap is a framing error regardless of suspect status.
+
+```python
+    offs = sorted(by_off)
+    for a, b in zip(offs, offs[1:]):
+        end = a + 1 + blob[a]
+        assert end <= b, f"0x{a:X} (len {blob[a]}) overlaps next string 0x{b:X}"
+        if by_off[a]["suspect"] or by_off[b]["suspect"]:
+            continue
+        if b - end < 40:
+            tail = blob[end:b]
+            assert not any(alnum(c) for c in tail), (
+                f"letter bytes stranded after 0x{a:X}: {tail!r}"
+            )
+```
+
+- [ ] **Step 3: Assert the command tokens are present**
+
+These are the entries this task exists to recover. Add:
+
+```python
+    assert by_off[0x4E71]["plain"] == "sv", "the sv command token is missing"
+    assert by_off[0x4E6F]["plain"] == "s"
+    assert by_off[0x3D87]["plain"] == "1"
+    assert by_off[0x23A4]["plain"] == "С^"
+```
+
+- [ ] **Step 4: Run and document**
+
+Run `python3 tools/test_extract_strings.py`. Expected: 789 entries total, 40
+recovered by gap-tiling, 0 tiling violations. These numbers were measured before
+this task was written — if yours differ, that is a finding to report, not a
+number to adjust the code toward.
+
+In `docs/re/strings.md`, record the recovery rule, the count, and the full list
+of recovered offsets with their text. Note explicitly that these are input
+tokens rather than display text, since Task 11 will need them.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tools/extract_strings.py tools/test_extract_strings.py data/strings.json docs/re/strings.md
+git commit -m "feat: recover short command-token strings by gap tiling"
+```
+
+---
+
 ### Task 5: Save format decoder validated against all five real saves
 
 **Files:**
