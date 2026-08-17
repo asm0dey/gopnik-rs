@@ -193,12 +193,24 @@ def run(
     out_dir: pathlib.Path,
     timeout: int = 120,
     settle: float = 3.0,
+    expect_frames: int | None = None,
 ) -> list[str]:
     """Run the original with `keys` and return one screen of text per frame.
 
     Writes into out_dir: work/ (the scratch game directory, including the raw
     work/SCREEN.BIN), screens.txt (every captured frame) and screen.txt (the
     last one). Raises OracleError if no usable capture came back.
+
+    `expect_frames` pins how many frames the script must produce. Pass it for
+    anything an oracle result depends on. The guest side of this harness is
+    inherently deterministic -- frames are pinned to key requests and the Nth
+    request always gets the Nth scripted key -- but the host side stops the
+    run once SCREEN.BIN has been quiet for `settle` seconds, and that is a
+    wall-clock judgement. If the emulator ever stalls longer than that
+    mid-script, the capture ends early and every later frame is missing.
+    Without this check a short capture looks exactly like a complete one: the
+    caller just gets a shorter list. A frame count is cheap and turns that
+    silent truncation into a failure.
     """
     out_dir = pathlib.Path(out_dir)
     work = _prepare(out_dir, keys)
@@ -233,6 +245,12 @@ def run(
             f"scrhook.com produced no SCREEN.BIN; see {log} for the emulator log"
         )
     frames = decode_frames(screen.read_bytes())
+    if expect_frames is not None and len(frames) != expect_frames:
+        raise OracleError(
+            f"captured {len(frames)} frames, expected {expect_frames}: the run "
+            "was cut short (or the script changed). A short capture is not a "
+            f"usable oracle result; see {log} for the emulator log"
+        )
     (out_dir / "screens.txt").write_text(
         "".join(f"=== frame {i} ===\n{f}\n" for i, f in enumerate(frames)),
         encoding="utf-8",
@@ -250,9 +268,19 @@ def main() -> int:
     )
     ap.add_argument("--out", required=True, type=pathlib.Path)
     ap.add_argument("--timeout", type=int, default=120)
+    ap.add_argument(
+        "--expect-frames",
+        type=int,
+        help="fail unless the run captures exactly this many frames",
+    )
     args = ap.parse_args()
 
-    frames = run(unescape(args.keys), args.out)
+    frames = run(
+        unescape(args.keys),
+        args.out,
+        timeout=args.timeout,
+        expect_frames=args.expect_frames,
+    )
     print(f"{len(frames)} frames -> {args.out / 'screens.txt'}", file=sys.stderr)
     print(frames[-1])
     return 0
