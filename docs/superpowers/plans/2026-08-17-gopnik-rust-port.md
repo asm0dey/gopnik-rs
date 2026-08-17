@@ -763,10 +763,26 @@ The fix is to stop guessing where strings start. Borland Pascal passes a string
 constant's address to the RTL as a 16-bit immediate, so the true starts are
 exactly the immediate operands the code actually uses as pointers. A naive byte
 scan for opcode `BA`/`B8`/`BF`/`BE`/`68` is NOT sufficient — it produced 218
-false starts including a consecutive run at `0x18D0`–`0x18DA`, which is the
-signature of random byte pairs being read as immediates. You must work from
-Ghidra's real disassembly so that only genuine instruction operands are
-considered.
+false starts. You must work from Ghidra's real disassembly so that only genuine
+instruction operands are considered.
+
+**On the run of offsets at `0x18D0`–`0x18DA`:** these are legitimate, not
+artefacts. They decode to the title banner with a progressively increasing
+number of leading spaces — the game references successive offsets into one
+buffer to scroll it. Do NOT add a filter to suppress them. An earlier revision
+of this plan wrongly asserted they must be absent; that assertion has been
+removed.
+
+**Do not add a reuse-count or reference-frequency filter.** How many times the
+code references a string is not evidence about whether it is a string. Common
+UI messages like `'Не хватает'` are printed from many call sites precisely
+because they are generic. An earlier attempt used a reuse threshold and
+discarded real game text (`0xA71D` `'Не хватает'`, `0xB00C` `'Продать вещи'`).
+
+**Extraction breadth:** do not restrict to `MOV`/`PUSH`. String addresses also
+reach the RTL via `LES`/`LDS` far-pointer loads and other forms. Consider every
+instruction's scalar operands, and let the content filter and the coverage
+assertion decide what qualifies.
 
 **Verified viability (do not re-derive):** the immediate-operand approach
 recovers `0xBCDD` → `'30^7  купить зубную защиту боксёров(-75% что сломают
@@ -842,12 +858,28 @@ def test_pointers():
     text = blob[0xBCDE : 0xBCDE + n].decode("cp866")
     assert text.endswith("челюсть)"), f"still truncated: {text!r}"
 
-    # The consecutive run at 0x18D0-0x18DA is the signature of naive byte
-    # scanning. Real instruction operands do not produce it.
-    run = [o for o in ptrs if 0x18D0 <= o <= 0x18DA]
-    assert len(run) <= 2, f"byte-scan false positives leaked in: {[hex(o) for o in run]}"
+    # Coverage must not regress against the blind scan. Every non-suspect
+    # entry the old scanner found must either appear as a pointer or fall
+    # inside some pointer's payload span (i.e. be superseded by a correctly
+    # framed, longer string). Anything else is real game text we lost.
+    old = json.loads((ROOT / "data" / "strings.json").read_text(encoding="utf-8"))
+    ptr_set = set(ptrs)
+    missing = []
+    for entry in old:
+        if entry["suspect"]:
+            continue
+        off = entry["off"]
+        if off in ptr_set:
+            continue
+        if any(q <= off < q + 1 + blob[q] for q in ptrs):
+            continue
+        missing.append(entry)
+    assert len(missing) <= 10, (
+        f"{len(missing)} real strings lost vs the blind scan, e.g. "
+        f"{[(hex(m['off']), m['plain'][:40]) for m in missing[:5]]}"
+    )
 
-    print(f"OK {len(ptrs)} string pointers recovered and validated")
+    print(f"OK {len(ptrs)} string pointers recovered, {len(missing)} blind-scan entries unaccounted for")
 
 
 if __name__ == "__main__":
