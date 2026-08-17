@@ -40,12 +40,19 @@ extraction path around as dead code was judged worse than deleting it.
 
 ## Result
 
+**This is Task 2b's intermediate output, before Task 2c's gap tiling (further
+down this document) added more entries.** It is kept here because the rest of
+this section — the canary case and the dropped/new entry accounting below —
+was measured against exactly this 749-entry state. For the actual, currently
+committed numbers, see "## Test results" at the end of this document:
+**796 entries, 47 recovered by gap tiling, 0 tiling violations.**
+
 ```
 $ python3 tools/extract_strings.py
 wrote 749 strings to data/strings.json (695 pointer-anchored, 54 merged from string_tables.json)
 ```
 
-| | Task 2 (blind scan) | Task 2b (anchored) |
+| | Task 2 (blind scan) | Task 2b (anchored, pre-gap-tiling) |
 |---|---|---|
 | Total entries | 696 | **749** |
 | Pointer-anchored | — | 695 |
@@ -106,11 +113,18 @@ disappeared. Checking each against the new list:
   | `0xC049` | `'идти на рынок%Напиши: bmar ч'` | `0xC032` → `'Напиши: mar  чтобы идти на рынок'` |
   | `0xC27F` | `'пиво (если не охото к ветеринару'` | `0xC261` → `'Напиши: h    чтобы выпить пиво (если не охото к ветеринару...'` |
 
-  Full list of the 31 recovered offsets: `0x1ACA, 0x4F14, 0x717A(=0x71BB
-  case), 0x71E5, 0x7209, 0x72F9, 0x80C3, 0x8D8E, 0xA4E3, 0xA51D, 0xA56B,
-  0xA59B, 0xA5EB, 0xA639, 0xA666, 0xA6D2, 0xAA25, 0xB1F5, 0xB238, 0xBA49,
-  0xBA7E, 0xBC24, 0xBCD6, 0xBCF8, 0xC049, 0xC06B, 0xC11A, 0xC179, 0xC21C,
-  0xC27F, 0xC2A0`.
+  Full list of the 31 recovered offsets: `0x1ACA, 0x4F14, 0x71BB, 0x71E5,
+  0x7209, 0x72F9, 0x80C3, 0x8D8E, 0xA4E3, 0xA51D, 0xA56B, 0xA59B, 0xA5EB,
+  0xA639, 0xA666, 0xA6D2, 0xAA25, 0xB1F5, 0xB238, 0xBA49, 0xBA7E, 0xBC24,
+  0xBCD6, 0xBCF8, 0xC049, 0xC06B, 0xC11A, 0xC179, 0xC21C, 0xC27F, 0xC2A0`
+  (verified: each falls strictly inside the payload span of the entry it's
+  paired with above, using only the 749 pointer/table-derived entries, not
+  the gap-tiled ones added later). `0x717A` is **not** in this list — it was
+  a typo for `0x71BB` in an earlier revision of this document. `0x717A`
+  belongs solely to the 14-offset residual list below; it is not covered by
+  any Task 2b entry's span (restoring `0x7179`'s `':'` entry in Task 2c does
+  cover it — see "Note on `test_string_pointers.py`" under "## Test results"
+  for the current, post-Task-2c coverage of the residual offsets).
 
 - **The remaining 14 are not covered by any new entry.** These are exactly
   the 14 offsets already diagnosed individually in
@@ -341,102 +355,81 @@ correct, not a defect: `is_suspect()` was not changed, and every one of
 these entries is still real, verified-by-tiling content, kept per the
 standing "flag, never delete" rule.
 
-### How the rule got its letter-byte condition
+### Why there is no letter-byte condition
 
-The first implementation of this task followed Step 1 of the brief exactly
-as written — walk every gap under 40 bytes between two non-suspect anchors
-and accept it if it tiles — and produced **796 total, 47 recovered, 0
-violations** against a predicted 789/40/0. That was a faithful reading; the
-brief's prose had omitted a condition the measurement behind "40" relied on.
-The +7 was reported rather than tuned away, and the investigation below is
-what resolved it.
+An earlier revision of this task followed Step 1 of the brief exactly as
+written, produced **796 total, 47 recovered, 0 violations**, and then added a
+`is_letter_byte()` condition requiring a gap to contain a CP866-Cyrillic,
+ASCII-letter, or digit byte before accepting it — on the theory that tiling
+alone was weak evidence, backed by a measurement of ~13% of random 2–40-byte
+windows tiling, flat across gap lengths, across offsets `0x18D0`–`0x158F2`.
+That condition dropped the count to 789/40/0 and was committed.
 
-**The resolution: 40 is correct, and the letter-byte condition is
-load-bearing.** Tiling on its own is weak evidence. Measured over 20000
-random windows in the string region:
+**The 13% measurement was a sampling artifact, and the condition it
+justified was wrong.** The sampled range silently included the `0x11000`+
+tail of the string region, which is 69.0% NUL bytes — and a run of `0x00` is
+a chain of zero-length shortstrings that tiles at *any* length, which is
+exactly what made the "13%, flat across all gap lengths" pattern appear.
+Measured per region instead of as a union, 20000 random windows each:
 
-| gap length | share of random windows that tile |
-|---|---|
-| 2 B | 15.0% |
-| 3 B | 13.6% |
-| 4 B | 13.4% |
-| 7 B | 13.4% |
-| 12 B | 13.5% |
-| 20 B | 12.8% |
-| 40 B | 11.9% |
+| region | NUL | 2 B | 3 B | 7 B | 20 B | 40 B |
+|---|---|---|---|---|---|---|
+| `0x18D0`–`0x11000` (holds all 47 recovered entries) | 2.1% | 1.7% | 0.6% | 1.1% | 0.1% | 0.2% |
+| `0x11000`–`0x158F2` (tail, mostly NUL padding) | 69.0% | 67.2% | 67.5% | 66.4% | 64.4% | 64.7% |
+| union (the misleading original sample) | 17.4% | 17.1% | 15.8% | 15.7% | 14.8% | 14.1% |
 
-So "it tiles exactly" is close to a coin flip, at every gap length — it
-cannot justify an entry by itself. What justifies the recovered 40 is the
-*conjunction*: the gap lies between two independently verified anchors, the
-framing check flags it as holding stranded letter bytes, it tiles exactly,
-and the resulting text is recognisable game content (the command verbs). The
-7 extras rest on tiling alone, so they are excluded — see "The 7 excluded by
-the letter-byte condition" below.
+In the region that actually holds the recovered strings, an arbitrary window
+tiles exactly only ~0.1–1.7% of the time — for a 2-byte gap that rate is just
+`P(byte == 0x01)` = 1.64%. **Tiling between two independently verified,
+non-suspect anchors is strong evidence, not a coin flip**, and it is equally
+strong for a one-character string as for a longer one: a Pascal `write(' ')`
+emits exactly a length-1 shortstring, so single-punctuation entries are
+expected content, not noise to be filtered out.
 
-The governing principle: **the recovery rule mirrors the framing check's
-trigger condition.** Recovering anything the check does not demand adds
-entries no test justifies, which is what the plan's "unknown means unknown"
-constraint forbids.
+The `is_letter_byte()` condition was removed. `tools/extract_strings.py` now
+accepts every gap that meets the two real conditions — neither neighbouring
+anchor `suspect`, gap under 40 bytes — and tiles exactly, with no filter on
+what the gap's bytes look like. This restored the 7 entries the condition had
+excluded: `'^'` (`0x2BAC`, `0x30EF`), `'#'` (`0x2FA7`), `' '` (`0x712A`,
+`0xB1CA`), `':'` (`0x7179`), `'.'` (`0x9E63`). Five of the seven are flagged
+`suspect` by the existing heuristic (no 3+ Cyrillic run, no space in
+`plain`) — that is the correct place to express low confidence in a
+single-punctuation token, not a reason to exclude it outright. `is_suspect()`
+was not changed.
 
-`tools/extract_strings.py` therefore skips any gap containing no
-`is_letter_byte()` byte, and that helper is kept byte-for-byte identical to
-the check's `alnum()` on purpose.
+This corrects the earlier, committed reasoning; it does not describe a
+speculative or discarded alternative. See `git log` on this file and on
+`tools/extract_strings.py` for the commit that added the condition and the
+one that removed it.
 
-### Why the two numbers differed
+### Known gap: the save/quit confirmation token is not recovered
 
-- Task 2b's measurement of "39 gaps" was itself scoped to gaps containing a
-  byte in `alnum()`'s ranges — that helper does **not** include space
-  (`0x20`), `#` (`0x23`), `:` (`0x3A`), `.` (`0x2E`), or `^` (`0x5E`). Task
-  2b's own numbers (`## Structural tiling check` above) record `46 gaps <
-  40 bytes` total, of which only `39 contain an alphanumeric byte` and `7
-  clean (no alphanumeric byte)`. Those 7 "clean" gaps were never flagged as
-  a problem by the old check (nothing in them looked like a stranded
-  letter), so they never appeared in the brief's list of "39 gaps [that]
-  contain letter bytes" and were not counted toward its predicted 40.
-- Step 1 of the brief, as originally worded, did not filter by byte content
-  — it walked *every* gap under 40 bytes between two non-suspect anchors and
-  accepted it if it tiled exactly, full stop. Run against the real binary,
-  all 7 of those "clean" gaps also tile exactly, as one-byte payload
-  shortstrings. But the tiling proof is precisely what the ~13% measurement
-  above shows to be weak, and unlike the other 40 these have no second line
-  of evidence: the framing check never flagged them, and their content
-  (`'^'`, `'#'`, `' '`, `':'`, `'.'`) is not recognisable as a command token
-  or as display text.
-- Symmetrically, 4 tokens that Task 2b's speculative list *did* include
-  (`y` at `0x8D79`, `\` and `y` at `0x9BF1`, `w` at `0x9D5E`) are correctly
-  **not** recovered here, because Step 2's suspect-neighbour skip (added by
-  this task) excludes them: each of those three gaps sits right before
-  `save_r0.sav`, `save_r`, or `run` — real command-keyword strings, but
-  ones with zero Cyrillic letters and no space, so `is_suspect()` flags
-  them `true`. A `suspect` neighbour is not a known-good anchor, so the gap
-  beside it proves nothing, per the brief's own Step 1 rule.
-  `44 (Task 2b's speculative count) − 4 (suspect-excluded) = 40`, which is
-  what the final rule produces. The two non-tiling gaps at `0x1105D` and
-  `0x11070` are excluded the same way, for the same reason Task 2b already
-  documented — both sit between `suspect: true` neighbours.
+The suspect-neighbour skip (a gap beside a `suspect` anchor proves nothing, so
+it is skipped) is correct, but it has a real cost worth flagging for Task 11.
+It excludes five small gaps, three of which tile as real, recognisable
+tokens:
 
-No threshold, filter, or suspect flag was adjusted to reach a number. The
-letter-byte condition was added for the evidentiary reason above, and the
-count followed from it.
-
-### The 7 excluded by the letter-byte condition
-
-These tile exactly between verified anchors but have nothing else behind
-them, so they are **not** in `data/strings.json`. Their bytes remain in
-`orig/g.exe` and can be recovered later if a pointer operand or
-cross-reference is ever found for any of them:
-
-| off | bytes | as text |
+| gap | tiles as | sits next to |
 |---|---|---|
-| `0x2BAC` | `5e` | `'^'` |
-| `0x2FA7` | `23` | `'#'` |
-| `0x30EF` | `5e` | `'^'` |
-| `0x712A` | `20` | `' '` |
-| `0x7179` | `3a` | `':'` |
-| `0x9E63` | `2e` | `'.'` |
-| `0xB1CA` | `20` | `' '` |
+| `0x8D79`–`0x8D7B` | `'y'` | after `'Ты хочешь сохраниться?'`, before `save_r0.sav` |
+| `0x9BF1`–`0x9BF5` | `'\'`, `'y'` | after `'^0Хочешь сохранить...'`, before `save_r` |
+| `0x9D5E`–`0x9D60` | `'w'` | before `run` |
 
-### Full list of 40 recovered offsets
+The other two excluded gaps (`0x1105D`–`0x11067`, `0x11070`–`0x11075`) sit
+between two `suspect` neighbours each and do not tile at all — ordinary
+non-string binary data, not a loss.
+
+The three tokens above are excluded only because their anchor on one side —
+`save_r0.sav` or `run` — is a real command keyword with zero Cyrillic letters
+and no space, so `is_suspect()` flags it `true`. **The rule is right**: a
+`suspect` anchor is not a known-good anchor, and relaxing it to recover these
+three would reopen exactly the kind of unverified guess this whole recovery
+approach exists to avoid. But the consequence is real: **the yes/no
+confirmation token for the save and quit prompts is not in
+`data/strings.json`.** Task 11 (command parsing) must recover it from the
+disassembly directly rather than assume gap tiling already put it there.
+
+### Full list of 47 recovered offsets
 
 `off` sorted, `text` is the raw (markup-preserving) form, `plain` is
 markup-stripped, `suspect` is `is_suspect(plain)` unmodified:
@@ -447,6 +440,9 @@ markup-stripped, `suspect` is `is_suspect(plain)` unmodified:
 | `0x23A7` | `'У^'` | `'У^'` | true |
 | `0x23AA` | `'П^'` | `'П^'` | true |
 | `0x23AD` | `'Е^'` | `'Е^'` | true |
+| `0x2BAC` | `'^'` | `'^'` | true |
+| `0x2FA7` | `'#'` | `'#'` | true |
+| `0x30EF` | `'^'` | `'^'` | true |
 | `0x3D87` | `'1'` | `'1'` | true |
 | `0x3D98` | `'2'` | `'2'` | true |
 | `0x3DAA` | `'3'` | `'3'` | true |
@@ -457,7 +453,10 @@ markup-stripped, `suspect` is `is_suspect(plain)` unmodified:
 | `0x4E74` | `'e'` | `'e'` | true |
 | `0x4E96` | `'v'` | `'v'` | true |
 | `0x4FE4` | `'f'` | `'f'` | true |
+| `0x712A` | `' '` | `' '` | false |
+| `0x7179` | `':'` | `':'` | true |
 | `0x7240` | `'^0'` | `''` | true |
+| `0x9E63` | `'.'` | `'.'` | true |
 | `0xA69A` | `'1'` | `'1'` | true |
 | `0xA71B` | `'2'` | `'2'` | true |
 | `0xA775` | `'3'` | `'3'` | true |
@@ -469,6 +468,7 @@ markup-stripped, `suspect` is `is_suspect(plain)` unmodified:
 | `0xA93A` | `'9'` | `'9'` | true |
 | `0xA959` | `'t'` | `'t'` | true |
 | `0xAF9E` | `'x'` | `'x'` | true |
+| `0xB1CA` | `' '` | `' '` | false |
 | `0xB320` | `'r'` | `'r'` | true |
 | `0xB392` | `'h'` | `'h'` | true |
 | `0xB43E` | `'e'` | `'e'` | true |
@@ -491,20 +491,19 @@ $ python3 tools/verify_corpus.py
 OK 7 corpus files verified
 
 $ python3 tools/test_extract_strings.py
-wrote 789 strings to /home/finkel/work_self/gopnik-rs/data/strings.json (695 pointer-anchored, 54 merged from string_tables.json, 40 recovered by gap tiling)
-OK 789 strings extracted, 72 flagged suspect
+wrote 796 strings to /home/finkel/work_self/gopnik-rs/data/strings.json (695 pointer-anchored, 54 merged from string_tables.json, 47 recovered by gap tiling)
+OK 796 strings extracted, 77 flagged suspect
 
 $ python3 tools/test_string_pointers.py
-OK 695 string pointers recovered, 1 blind-scan entries unaccounted for
+OK 695 string pointers recovered, 3 blind-scan entries unaccounted for
 
 $ python3 tools/test_string_tables.py
 wrote 54 table entries across 2 tables to data/string_tables.json
 OK 54 table entries extracted
 ```
 
-**789 total, 40 recovered by gap tiling, 0 tiling violations** — matching
-the brief's predicted numbers exactly once the letter-byte condition was in
-place.
+**796 total, 47 recovered by gap tiling, 0 tiling violations** — matching
+the numbers measured for this task exactly.
 
 Note on `test_string_pointers.py`: its coverage assertion compares
 `data/string_pointers.json` against `data/strings.json` as "the blind scan
@@ -512,13 +511,39 @@ to check regressions against." Since Task 2b, `data/strings.json` is the
 anchored extraction, not the blind scan, so this comparison measures the
 pointer list against (pointers ∪ tables ∪ gap-tiled) instead.
 
-Its "unaccounted for" count **dropped from 14 to 1** — the strongest
-independent evidence that this task recovered real content rather than
-noise. Task 4b itemised 14 offsets no pointer or table slot reaches, 11 of
-them explained as "a genuine, code-referenced length-1/2 shortstring sits
-immediately before the missing offset." Gap tiling recovered exactly those
-short strings, so 13 of the 14 are now accounted for by entries that exist
-in `data/strings.json`. The 1 remaining is `0xB5D6 'общагу №#'`, real
-content that only gap tiling reaches — no pointer operand or table stride
-targets it. The bound is `<= 14`, so the test passes, and per the plan Task
-4b's test file was not touched.
+**Its "unaccounted for" count is not independent evidence of anything, and
+should not be read as such.** The assertion's own guard
+(`if entry["suspect"] or in_table(off): continue`) skips every `suspect`
+entry in `data/strings.json` before comparing it to the pointer list. 44 of
+the 47 gap-tiled entries are `suspect` (only `0x712A`, `0xB1CA`, and
+`0xB5D6` are not), and since every pointer-anchored, non-suspect entry
+trivially satisfies the check (its own offset is a pointer), the only
+entries that can ever show up as "unaccounted" are non-suspect gap-tiled
+ones. **Measured directly: `missing` is exactly `{0x712A, 0xB1CA, 0xB5D6}`
+— all three, no more, no less.** Its count moved from **14 (before any gap
+tiling) to 1 (Task 2c's first, letter-byte-filtered pass, which added only
+`0xB5D6` as non-suspect) to 3 (now, after removing the letter-byte
+condition, which also un-suspected `0x712A` and `0xB1CA`)**. This is a
+self-comparison, not evidence: the metric is reporting the count of
+non-suspect entries gap tiling itself just added, checked against a pointer
+list that structurally cannot reach offsets between two pointers. It cannot
+confirm gap tiling recovered anything real, because it never checks a gap-
+tiled entry's content against any evidence gap tiling didn't already
+produce. The bound is `<= 14`, so the test still passes, and per the plan
+Task 4b's test file was not touched.
+
+Separately, and using a different, offset-level check (not this test's
+suspect-skipping metric): of Task 4b's 14 residual offsets (listed above,
+under "Dropped entries"), **11 now fall inside a current entry's span** in
+`data/strings.json` — `0x3DB9, 0x4E97, 0x4FE5, 0x717A, 0x7241, 0xA69B,
+0xB1CB, 0xB393, 0xB89A, 0xB9BB, 0xBFDF` — because Task 2c's gap tiling
+restored the length-1 anchor immediately before each of them (e.g. `0x7179`
+`':'` now covers `0x717A`, and `0xB1CA` `' '` now covers `0xB1CB`). **3
+remain uncovered: `0x42B0`, `0x11204`, `0x122EB`** — the three Task 4b
+already described as having no nearby code reference and unstructured
+content, consistent with blind-scan artifacts rather than missed text. This
+split (11/3) is narrower than the 9/5 split anticipated when this fix was
+planned, because restoring `0x7179` covers `0x717A` in addition to
+`0xB1CA` covering `0xB1CB` — both are one-byte-payload strings whose single
+payload byte is exactly the residual offset next to them. Measured directly
+against `data/strings.json`, not asserted by any test.
