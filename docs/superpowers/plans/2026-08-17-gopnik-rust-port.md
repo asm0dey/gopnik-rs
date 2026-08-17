@@ -1109,24 +1109,36 @@ blind scan. Replace them with:
         f"still truncated: {by_off[0xBCDD]['plain']!r}"
     )
 
-    # No entry may end cut off mid-word: if the payload's last byte and the
-    # byte immediately after it are both alphanumeric, the string was cut.
+    # Framing is checked structurally, by tiling. The string region is packed
+    # with no delimiter, so a truncated string strands its tail in the gap
+    # before the next string's start, and an over-long one runs into it.
     blob = (ROOT / "orig" / "g.exe").read_bytes()
 
     def alnum(c):
         return (0x80 <= c <= 0xAF or 0xE0 <= c <= 0xF1
                 or 48 <= c <= 57 or 65 <= c <= 90 or 97 <= c <= 122)
 
-    cut = []
-    for i in items:
-        if i["suspect"]:
-            continue
-        off = i["off"]
-        end = off + 1 + blob[off]
-        if end < len(blob) and alnum(blob[end - 1]) and alnum(blob[end]):
-            cut.append(hex(off))
-    assert len(cut) <= 5, f"{len(cut)} entries still cut mid-word: {cut[:10]}"
+    offs = sorted(by_off)
+    for a, b in zip(offs, offs[1:]):
+        end = a + 1 + blob[a]
+        assert end <= b, f"0x{a:X} (len {blob[a]}) overlaps next string 0x{b:X}"
+        if b - end < 40:
+            tail = blob[end:b]
+            assert not any(alnum(c) for c in tail), (
+                f"letter bytes stranded after 0x{a:X}: {tail!r}"
+            )
 ```
+
+**Do NOT use a next-byte heuristic here.** An earlier revision of this plan
+asserted a string was cut when its last payload byte and the byte after it
+were both alphanumeric. That check is structurally broken, and was measured
+producing 39 false positives on correct data: strings are packed back-to-back,
+so the byte after any string is the *next string's length byte*, and ordinary
+lengths (48–57, 65–90, 97–122) all land inside the alphanumeric ranges. A
+same-alphabet-class variant still produced 3 false positives from the same
+cause. No next-byte rule can distinguish a cut from a length byte. The tiling
+check above replaces it; it measured 0 overlaps and 633 exact abutments across
+749 entries.
 
 Record the actual measured totals in `docs/re/strings.md` rather than
 hardcoding a guessed count into the test.
@@ -1136,7 +1148,8 @@ hardcoding a guessed count into the test.
 Run `python3 tools/test_extract_strings.py`. In `docs/re/strings.md` record:
 the new entry count, how many entries the blind scan had that the anchored
 extraction dropped (and spot-check a sample of them), how many are new, and the
-residual mid-word-cut count with an explanation for each survivor.
+tiling result — overlap count, exact-abutment count, gap count — identifying
+the large gaps as inter-region rather than stranded text.
 
 - [ ] **Step 4: Commit**
 
