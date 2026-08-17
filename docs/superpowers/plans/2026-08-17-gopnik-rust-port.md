@@ -12,6 +12,14 @@
 
 - **Fidelity target is game logic, not terminal bytes.** Damage rolls, hit chance, XP thresholds, prices, RNG sequence, and save file bytes must match the original exactly. Screen layout/ANSI output need only be faithful in content and colour index, not in exact cursor positioning.
 - **Source text is CP866.** All extracted strings are converted to UTF-8 exactly once, at extraction time, and stored as UTF-8 in JSON. No CP866 handling anywhere in the Rust crate.
+- **`^0`–`^7` are markup, not content.** They are colour-change directives in
+  the original's own display language. Never treat them as literal characters:
+  never print them, never measure string width with them included, never let
+  them reach a comparison of user-visible text, and never concatenate them into
+  a name or label as if they were part of it. Parse them into structured spans
+  at the boundary and re-emit styling on output. The only place the raw
+  sigils are permitted is inside byte-exact save round-trips, where they are
+  part of the original file's bytes and must be preserved verbatim.
 - **All Russian game text is preserved verbatim.** No translation, no censoring, no rewording. The game contains deliberate crude slang; that is the content.
 - **Ghidra is driven by Java scripts only.** PyGhidra requires `jpype1`, which does not build on Python 3.14. Do not attempt `pip install pyghidra`.
 - **Python tooling uses the standard library only.** No pip installs, no venv.
@@ -176,7 +184,12 @@ git commit -m "chore: init gopnik-rs with verified reference corpus"
 
 **Interfaces:**
 - Consumes: `orig/g.exe`.
-- Produces: `data/strings.json` — a JSON array of objects `{"off": <int file offset>, "text": <UTF-8 string>}`, sorted ascending by `off`. Tasks 10 and 11 read this file.
+- Produces: `data/strings.json` — a JSON array of objects
+  `{"off": <int file offset>, "text": <UTF-8 string>, "plain": <UTF-8 string>}`,
+  sorted ascending by `off`. `text` is the raw string including `^N` markup;
+  `plain` is the same string with markup removed. Consumers that match or
+  display content use `plain`; only the renderer uses `text`. Tasks 10 and 11
+  read this file.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -186,6 +199,7 @@ Create `tools/test_extract_strings.py`:
 #!/usr/bin/env python3
 import json
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -215,6 +229,22 @@ def test_extraction():
     for i in items:
         assert "\x00" not in i["text"]
 
+    # ^N is markup, not content: it must survive in `text` and be absent
+    # from `plain`, and stripping must not disturb anything else.
+    plain = {i["off"]: i["plain"] for i in items}
+    assert plain[0x2B44] == "Не в этой жизни.", "plain equals text when no markup"
+    assert plain[0x3173] == "Тесак(Урон+9) "
+    assert plain[0x4548] == "Пацан ты из какого района?"
+
+    markup = re.compile(r"\^[0-7]")
+    for i in items:
+        assert not markup.search(i["plain"]), (
+            f"markup survived stripping at {i['off']:#x}: {i['plain']!r}"
+        )
+    assert any(markup.search(i["text"]) for i in items), (
+        "no markup found in any raw text -- the extractor or the test is wrong"
+    )
+
     print(f"OK {len(items)} strings extracted and validated")
 
 
@@ -242,6 +272,7 @@ text from machine code that happens to look string-shaped.
 """
 import json
 import pathlib
+import re
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 EXE = ROOT / "orig" / "g.exe"
@@ -261,6 +292,14 @@ def is_printable(b: int) -> bool:
     return 32 <= b < 127 or is_cyrillic(b) or b == 0xB0
 
 
+MARKUP_RE = re.compile(r"\^[0-7]")
+
+
+def strip_markup(s: str) -> str:
+    """Remove the original's ^N colour directives, leaving displayable text."""
+    return MARKUP_RE.sub("", s)
+
+
 def extract(blob: bytes) -> list[dict]:
     out = []
     i = 0
@@ -272,7 +311,8 @@ def extract(blob: bytes) -> list[dict]:
             if all(is_printable(c) for c in payload) and sum(
                 is_cyrillic(c) for c in payload
             ) >= MIN_CYRILLIC:
-                out.append({"off": i, "text": payload.decode("cp866")})
+                text = payload.decode("cp866")
+                out.append({"off": i, "text": text, "plain": strip_markup(text)})
                 i += 1 + n
                 continue
         i += 1
@@ -868,7 +908,13 @@ git commit -m "feat: byte-exact .SAV decoder validated on 5 reference saves"
 **Interfaces:**
 - Produces:
   - `pub enum Color { Black, Blue, Green, Cyan, Red, Magenta, Brown, White }` with `pub fn from_code(c: char) -> Option<Color>`
-  - `pub fn render(src: &str) -> String` — converts `^N` codes to ANSI SGR, leaves other text untouched, resets at end.
+  - `pub struct Span { pub color: Option<Color>, pub text: String }`
+  - `pub fn parse(src: &str) -> Vec<Span>` — splits source text into styled
+    spans. This is the primitive; `render` and `strip` are both defined in
+    terms of it, so the markup is understood in exactly one place.
+  - `pub fn render(src: &str) -> String` — spans to ANSI SGR, reset at end.
+  - `pub fn strip(src: &str) -> String` — spans to plain text, markup removed.
+    Use this for anything compared, measured, or stored as a name.
   - `pub fn fill(template: &str, values: &[i64]) -> String` — replaces each `#` in order with the next value; extra `#` beyond `values.len()` are left literal.
 
 - [ ] **Step 1: Write `Cargo.toml`**
@@ -907,11 +953,25 @@ pub enum Color {
     White,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Span {
+    pub color: Option<Color>,
+    pub text: String,
+}
+
 pub fn from_code(_c: char) -> Option<Color> {
     todo!()
 }
 
+pub fn parse(_src: &str) -> Vec<Span> {
+    todo!()
+}
+
 pub fn render(_src: &str) -> String {
+    todo!()
+}
+
+pub fn strip(_src: &str) -> String {
     todo!()
 }
 
@@ -929,6 +989,45 @@ mod tests {
         assert_eq!(from_code('4'), Some(Color::Red));
         assert_eq!(from_code('7'), Some(Color::White));
         assert_eq!(from_code('9'), None);
+    }
+
+    #[test]
+    fn parse_splits_into_styled_spans() {
+        let spans = parse("^4Ты сдох.");
+        assert_eq!(
+            spans,
+            vec![Span { color: Some(Color::Red), text: "Ты сдох.".to_string() }]
+        );
+    }
+
+    #[test]
+    fn parse_handles_leading_plain_text_and_multiple_colors() {
+        let spans = parse("Зрители:^6Мочи его!");
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0], Span { color: None, text: "Зрители:".to_string() });
+        assert_eq!(spans[1].color, Some(Color::Brown));
+        assert_eq!(spans[1].text, "Мочи его!");
+    }
+
+    #[test]
+    fn strip_removes_markup_entirely() {
+        assert_eq!(strip("^4Gopnik: ^7version 1.02"), "Gopnik: version 1.02");
+        assert_eq!(strip("^7 Mudila"), " Mudila");
+        assert_eq!(strip("Не в этой жизни."), "Не в этой жизни.");
+    }
+
+    #[test]
+    fn strip_output_contains_no_sigils() {
+        for s in ["^0a^1b^2c^3d^4e^5f^6g^7h", "^1Крестик(Удача +2) "] {
+            assert!(!strip(s).contains('^'), "sigil survived in {s:?}");
+        }
+    }
+
+    #[test]
+    fn caret_not_followed_by_digit_is_literal() {
+        assert_eq!(strip("2^3"), "2");
+        assert_eq!(strip("a^zb"), "a^zb");
+        assert_eq!(strip("trailing^"), "trailing^");
     }
 
     #[test]
@@ -975,7 +1074,7 @@ fn main() {
 - [ ] **Step 3: Run the tests to verify they fail**
 
 Run: `cargo test`
-Expected: FAIL — all six tests panic with `not yet implemented`.
+Expected: FAIL — all eleven tests panic with `not yet implemented`.
 
 - [ ] **Step 4: Implement the text layer**
 
@@ -1011,27 +1110,54 @@ impl Color {
     }
 }
 
-pub fn render(src: &str) -> String {
-    let mut out = String::with_capacity(src.len());
+/// Split source text into styled spans. This is the only place that
+/// understands the `^N` markup; `render` and `strip` are both built on it.
+pub fn parse(src: &str) -> Vec<Span> {
+    let mut spans: Vec<Span> = Vec::new();
+    let mut color: Option<Color> = None;
+    let mut buf = String::new();
     let mut chars = src.chars().peekable();
-    let mut colored = false;
+
     while let Some(c) = chars.next() {
         if c == '^' {
             if let Some(&next) = chars.peek() {
-                if let Some(color) = from_code(next) {
+                if let Some(new_color) = from_code(next) {
                     chars.next();
-                    out.push_str(color.sgr());
-                    colored = true;
+                    if !buf.is_empty() {
+                        spans.push(Span { color, text: std::mem::take(&mut buf) });
+                    }
+                    color = Some(new_color);
                     continue;
                 }
             }
         }
-        out.push(c);
+        buf.push(c);
     }
-    if colored {
+    if !buf.is_empty() {
+        spans.push(Span { color, text: buf });
+    }
+    spans
+}
+
+pub fn render(src: &str) -> String {
+    let spans = parse(src);
+    let mut out = String::with_capacity(src.len());
+    let mut styled = false;
+    for span in &spans {
+        if let Some(c) = span.color {
+            out.push_str(c.sgr());
+            styled = true;
+        }
+        out.push_str(&span.text);
+    }
+    if styled {
         out.push_str("\x1b[0m");
     }
     out
+}
+
+pub fn strip(src: &str) -> String {
+    parse(src).into_iter().map(|s| s.text).collect()
 }
 
 pub fn fill(template: &str, values: &[i64]) -> String {
@@ -1054,7 +1180,7 @@ pub fn fill(template: &str, values: &[i64]) -> String {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `cargo test`
-Expected: `test result: ok. 6 passed; 0 failed`
+Expected: `test result: ok. 11 passed; 0 failed`
 
 - [ ] **Step 6: Commit**
 
@@ -1088,6 +1214,11 @@ git commit -m "feat: rust crate skeleton with ^N colour and # placeholder render
   impl Save {
       pub fn parse(bytes: &[u8]) -> Result<Save, SaveError>;
       pub fn to_bytes(&self) -> Vec<u8>;
+      /// The player's name with `^N` markup removed -- e.g. the raw
+      /// `"^7 Mudila"` displays and compares as `" Mudila"`. Use this
+      /// anywhere a name is shown or matched; `self.name` keeps the raw
+      /// bytes solely so round-trip stays byte-exact.
+      pub fn display_name(&self) -> String;
   }
   pub enum SaveError { BadSize(usize), Encoding(u8) }
   ```
@@ -1152,6 +1283,14 @@ fn known_values_match_reference_saves() {
 #[test]
 fn rejects_wrong_size() {
     assert!(Save::parse(&[0u8; 10]).is_err());
+}
+
+#[test]
+fn display_name_strips_markup_but_raw_name_keeps_it() {
+    let save = Save::parse(&load("SAVE_R5.SAV")).unwrap();
+    assert_eq!(save.name, "^7 Mudila", "raw name must keep markup for round-trip");
+    assert_eq!(save.display_name(), " Mudila");
+    assert!(!save.display_name().contains('^'));
 }
 ```
 
@@ -1281,6 +1420,12 @@ fn put_pstring(buf: &mut [u8], off: usize, s: &str) -> Result<(), SaveError> {
 }
 
 impl Save {
+    /// `name` holds the original bytes, markup included, because round-trip
+    /// must be byte-exact. Everything user-facing goes through here.
+    pub fn display_name(&self) -> String {
+        crate::text::strip(&self.name)
+    }
+
     pub fn parse(bytes: &[u8]) -> Result<Save, SaveError> {
         if bytes.len() != SIZE {
             return Err(SaveError::BadSize(bytes.len()));
@@ -1318,7 +1463,7 @@ impl Save {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `cargo test --test save_roundtrip`
-Expected: `test result: ok. 3 passed; 0 failed`
+Expected: `test result: ok. 4 passed; 0 failed`
 
 - [ ] **Step 5: Commit**
 
@@ -1332,6 +1477,37 @@ git commit -m "feat: byte-exact .SAV parse/serialise in Rust"
 ### Task 8: Recover the RNG and port it
 
 The Borland `0x08088405` multiplier is **not present** in this binary. Do not assume the stock `Random`. Find the actual generator.
+
+**Fallback policy (decided by the project owner):** recovering the original
+generator is the goal, but it is not worth blocking on. Work in this order:
+
+1. **Recover it statically.** Read the routine in the decompilation and
+   transcribe the recurrence. This is the preferred outcome and needs no
+   emulator, no oracle, and no fixed seed.
+2. **If the routine is recovered but capturing a reference sequence is
+   impractical**, generate the vectors by executing the original routine's
+   own bytes — not our Rust port — under an emulator, and say so in
+   `docs/re/rng.md`.
+3. **If the generator cannot be recovered at all**, substitute a
+   self-contained PRNG of our own and move on. Do NOT add the `rand` crate;
+   a documented 5-line xorshift or LCG in `src/rng.rs` keeps the dependency
+   constraint intact and is sufficient.
+
+**If you take option 3, you must do all of the following**, because it
+downgrades the project's fidelity guarantee:
+- Write `docs/re/rng.md` stating plainly that the RNG is NOT bit-faithful,
+  what was tried, and why recovery failed.
+- Delete `tests/rng_vectors.rs`'s `raw_sequence_matches_original` and
+  `below_matches_original` tests rather than leaving them asserting against
+  self-generated numbers. A test that compares our implementation to vectors
+  produced by our implementation proves nothing and is worse than no test.
+- Keep `below_stays_in_range` and add a determinism test (same seed produces
+  the same sequence).
+- Report DONE_WITH_CONCERNS, not DONE.
+
+Never generate `data/rng_vectors.json` from the Rust implementation and
+present it as ground truth. That is circular and silently fakes the
+project's central guarantee.
 
 **Files:**
 - Create: `docs/re/rng.md`
@@ -1543,7 +1719,15 @@ git commit -m "feat: recover and port original RNG with captured vectors"
       pub dmg_max: u16,
       pub broken_jaw: bool,
       pub broken_leg: bool,
+      // Inventory/status fields. Not used by combat, but declared here so
+      // the struct is defined exactly once; Task 11's handlers rely on them.
+      pub joints: u16,
+      pub stoned: bool,
+      pub beer_dl: u16,
+      pub money: i32,
   }
+
+  impl Default for Fighter { /* zeroed, name empty */ }
 
   // src/combat.rs
   pub struct Blow { pub hit: bool, pub damage: u16 }
@@ -1650,6 +1834,7 @@ impl FighterSpec {
             dmg_max: self.dmg_max,
             broken_jaw: self.broken_jaw,
             broken_leg: self.broken_leg,
+            ..Default::default()
         }
     }
 }
@@ -2536,8 +2721,13 @@ impl Game {
             Command::Club => self.goto(Location::Club),
             Command::Gym => self.goto(Location::Gym),
             Command::Help => self.show_help(),
+            Command::Inventory => self.show_inventory(),
+            Command::Save => self.save_game(),
+            Command::Name => self.rename(),
+            Command::Joint => self.smoke(),
+            Command::Weapon => self.show_weapon(),
+            Command::Key(k) => self.handle_key(k),
             Command::Unknown(s) => println!("{}", text::render(&format!("^4? {s}"))),
-            other => println!("{}", text::render(&format!("^6TODO: {other:?}"))),
         }
     }
 
@@ -2579,7 +2769,80 @@ impl Game {
         self.show_health();
     }
 
-    fn show_help(&self) {
+    /// Picks an opponent for the current district from data/enemies.json.
+    /// Returns None only if no enemy is defined for this district, which is
+    /// a data error rather than a game state.
+    fn pick_enemy(&mut self) -> Option<Fighter> {
+        let pool = crate::data::enemies();
+        let eligible: Vec<_> = pool
+            .iter()
+            .filter(|e| e.district == self.district)
+            .collect();
+        if eligible.is_empty() {
+            return None;
+        }
+        let i = self.rng.below(eligible.len() as u16) as usize;
+        Some(eligible[i].to_fighter())
+    }
+
+    fn show_inventory(&self) {
+        for line in self.player.inventory_lines() {
+            println!("{}", text::render(&line));
+        }
+    }
+
+    fn save_game(&self) {
+        match self.write_save() {
+            Ok(path) => println!("{}", text::render(&format!("^2Сохранено: {path}"))),
+            Err(e) => println!("{}", text::render(&format!("^4Ошибка записи: {e}"))),
+        }
+    }
+
+    fn show_weapon(&self) {
+        println!(
+            "{}",
+            text::render(&text::fill(
+                "Урон #-#    ",
+                &[self.player.dmg_min as i64, self.player.dmg_max as i64],
+            ))
+        );
+    }
+
+    fn rename(&mut self) {
+        print!("^7 ");
+        let _ = io::stdout().flush();
+        let mut line = String::new();
+        if io::stdin().read_line(&mut line).is_ok() {
+            let n = line.trim();
+            if !n.is_empty() {
+                self.player.name = n.to_string();
+            }
+        }
+    }
+
+    /// Косяк: the joint. Effects are transcribed from the "Обдолбаный"
+    /// status strings; see docs/re/tables.md.
+    fn smoke(&mut self) {
+        if self.player.joints == 0 {
+            println!("{}", text::render("^4Косяков нет"));
+            return;
+        }
+        self.player.joints -= 1;
+        self.player.stoned = true;
+        println!("{}", text::render("^6Обдолбаный  "));
+    }
+
+    /// Single-key commands a/d/e/h/k/t. Each maps to a shop or menu action
+    /// whose meaning is established in Task 10; dispatch is exhaustive so a
+    /// key with no action is an explicit no-op, not a silent fallthrough.
+    fn handle_key(&mut self, k: char) {
+        match k {
+            'h' => self.show_health(),
+            'e' => self.drink_beer(),
+            'a' | 'd' | 'k' | 't' => self.shop_action(k),
+            _ => println!("{}", text::render(&format!("^4? {k}"))),
+        }
+    }
         for line in [
             "Напиши: ^6bmar^7 чтобы идти на рынок",
             "Напиши: ^6rep^7  чтобы идти к ветеринару",
@@ -2594,22 +2857,10 @@ impl Game {
     }
 
     fn fight(&mut self) {
-        // Enemy construction comes from data/enemies.json once Task 10
-        // establishes the table; until then this is a placeholder opponent.
-        let mut enemy = Fighter {
-            name: "гопник".to_string(),
-            level: self.player.level,
-            hp: 50,
-            hpmax: 50,
-            strength: 10,
-            agility: 10,
-            vitality: 10,
-            luck: 5,
-            armor: 0,
-            dmg_min: 2,
-            dmg_max: 5,
-            broken_jaw: false,
-            broken_leg: false,
+        // Opponents come from data/enemies.json, populated in Task 10.
+        let Some(mut enemy) = self.pick_enemy() else {
+            println!("{}", text::render("^6Тут никого нет"));
+            return;
         };
 
         while self.player.hp > 0 && enemy.hp > 0 {
@@ -2661,6 +2912,21 @@ fn main() -> std::io::Result<()> {
 Add `pub mod game;` to `src/lib.rs`. The `saturating_sub` calls matter: HP is
 `u16`, and a plain subtraction would wrap to 65535 on a killing blow.
 
+**Remaining handler contracts.** The dispatch above references these; implement
+each from the strings in `data/strings.json` and the tables from Task 10. Every
+one is small — none should exceed ~15 lines.
+
+| Signature | Behaviour | Source strings |
+|---|---|---|
+| `fn drink_beer(&mut self)` | Refuse if `broken_jaw`; else if `beer_dl == 0` print "Пива нету"; else consume 1 unit, add the healing amount, clamp at `hpmax` | `0x419C`, `0x41CD`, `0x41E4`, `0x4240`, `0x424C`, `0x4283` |
+| `fn shop_action(&mut self, k: char)` | Look up the entry for key `k` in `data/shops.json` for the current location; if affordable, deduct price and grant the item, else print the no-money line | `0x32B7`, `0x32BF` |
+| `fn write_save(&self) -> std::io::Result<String>` | Build a `Save` from current state, write `SAVE_R<district>.SAV` via `Save::to_bytes`, return the filename | — |
+| `fn inventory_lines(&self) -> Vec<String>` on `Fighter` | One line per owned item and status flag, in the original's display order | `0x2FA9`–`0x32CC` |
+
+**Additional `Fighter` fields** beyond Task 9's declaration, needed here — add
+them in Task 9 when you write `model.rs` so the struct is defined once:
+`pub joints: u16`, `pub stoned: bool`, `pub beer_dl: u16`, `pub money: i32`.
+
 - [ ] **Step 8: Manual smoke run**
 
 Run: `cargo run`
@@ -2678,6 +2944,21 @@ git commit -m "feat: command parser, locations and playable game loop"
 ### Task 12: Differential test against the original
 
 The final gate. Same seed plus same input script must produce the same numbers in both the original and the port.
+
+**Scope depends on Task 8's outcome.** Check `docs/re/rng.md` first:
+
+- **RNG was recovered bit-faithfully** — compare the full integer sequence, as
+  described below. Every number the game prints is in scope.
+- **RNG fell back to a substitute generator (Task 8 option 3)** — the two
+  implementations diverge on the first random draw, so a full-sequence
+  comparison is meaningless and must NOT be attempted. Restrict the
+  comparison to values that do not depend on the RNG: shop prices, XP
+  thresholds, level-up stat gains, starting stats per class, item bonuses,
+  and menu numbering. Implement this by having the port emit a
+  `--trace-deterministic` mode that prints only those quantities, and compare
+  that against the same values read from the original's screens. Say
+  explicitly in `docs/re/difftest.md` which quantities are covered and which
+  are out of scope, so the reduced guarantee is visible rather than implied.
 
 **Files:**
 - Create: `tools/difftest.py`
