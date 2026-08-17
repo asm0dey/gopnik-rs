@@ -10,53 +10,43 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.TreeSet;
 
 /**
  * Recovers string-constant file offsets from the 16-bit scalar operands that
- * Ghidra's real disassembly actually attaches to instructions (instr.getScalar),
- * as opposed to a naive byte-pattern scan for opcodes like BA/B8/68.
+ * Ghidra's real disassembly actually attaches to instructions, as opposed to
+ * a naive byte-pattern scan for opcodes like BA/B8/68.
  *
  * Address mapping (see docs/re/string-pointers.md): the program image begins
  * at file offset 0x18D0 and loads at segment 0x1000. Every memory block in
  * this import is part of one contiguous flat image, so for an instruction at
- * segment S, a 16-bit scalar operand imm used as a near offset within that
- * same segment maps to file_offset = 0x18D0 + (S - 0x1000) * 16 + imm. This
+ * segment S, a 16-bit value imm used as a near offset within that same
+ * segment maps to file_offset = 0x18D0 + (S - 0x1000) * 16 + imm. This
  * generalizes "file_offset = 0x18D0 + imm" (the rule for S == 0x1000, i.e.
  * CODE_0) to instructions living in any other code block, per the brief's
  * instruction to derive the base from the containing memory block rather
  * than assuming 0x1000 unconditionally.
+ *
+ * Every instruction's operands are considered, regardless of mnemonic
+ * (MOV/PUSH/LES/LDS/and everything else) — reference count is not used as
+ * evidence either way. For each operand this walks Instruction.getOpObjects
+ * rather than relying solely on Instruction.getScalar: Ghidra's own
+ * auto-analysis (run at import time, before this script runs with
+ * -noanalysis) frequently recognizes an immediate that looks like a pointer
+ * and rewrites the operand as an Address rather than leaving it a plain
+ * Scalar — this happens routinely for PUSH <addr> and for LES/LDS
+ * far-pointer loads. getScalar() returns null for those operands, so a
+ * scalar-only scan silently drops every string address Ghidra already
+ * recognized as an address. Both Scalar and Address operand objects are
+ * handled here so no addressing form is skipped. Only the content filter
+ * below (a well-formed Pascal shortstring at the candidate offset) decides
+ * what qualifies as a string pointer.
  */
 public class DumpImmediates extends GhidraScript {
 
     private static final long IMAGE_FILE_OFFSET = 0x18D0L;
     private static final int BASE_SEGMENT = 0x1000;
-
-    /**
-     * A genuine string-literal reference is emitted once per occurrence of the
-     * literal in the Pascal source, so it is loaded from a small, bounded
-     * number of distinct instruction addresses. Empirically, in this binary
-     * every file offset referenced by MORE than this many distinct
-     * instructions turns out (on manual inspection, see
-     * docs/re/string-pointers.md) to be a compiler-emitted shared constant
-     * (a reused workspace-buffer address or record-field offset: the exact
-     * same "MOV DI, imm16" recurring verbatim across many unrelated
-     * functions) rather than a unique string address, while offsets with
-     * <= REUSE_LIMIT references are consistent with real, occasionally
-     * duplicated, string literals. This is not tuned to the test's
-     * pass/fail outcome (the test passes at REUSE_LIMIT 3 or 4 alike); it
-     * is set from manual inspection of every rejected offset's decoded
-     * payload: at count 4 there are exactly two candidates, one of which
-     * ("Версия 1.0", file offset 0x1AD0) is unambiguously genuine text, so
-     * the limit is set to 4 to keep it. At count 5 and above, every
-     * candidate inspected decodes to the same ambiguous box-drawing/filler
-     * region as the rejected 0x18D0..0x19CF cluster, with no further
-     * genuine text recovered, so the limit stops at 4.
-     */
-    private static final int REUSE_LIMIT = 4;
 
     @Override
     public void run() throws Exception {
@@ -69,11 +59,10 @@ public class DumpImmediates extends GhidraScript {
         File dir = new File(outDir);
         dir.mkdirs();
 
-        // Pass 1: collect every content-valid candidate (offset, instruction).
         List<String> hitText = new ArrayList<>();
-        Map<Long, Integer> refCount = new HashMap<>();
-        TreeSet<Long> candidates = new TreeSet<>();
         List<String> rejectedLines = new ArrayList<>();
+        TreeSet<Long> accepted = new TreeSet<>();
+        int totalHits = 0;
 
         InstructionIterator it = currentProgram.getListing().getInstructions(true);
         while (it.hasNext()) {
@@ -85,54 +74,64 @@ public class DumpImmediates extends GhidraScript {
             }
 
             String mnemonic = instr.getMnemonicString();
-            boolean pointerLoad = mnemonic.equals("MOV") || mnemonic.equals("PUSH");
-            if (!pointerLoad) {
-                continue;
-            }
 
             int numOps = instr.getNumOperands();
             for (int opIndex = 0; opIndex < numOps; opIndex++) {
-                Scalar sc = instr.getScalar(opIndex);
-                if (sc == null) {
-                    continue;
-                }
-                if (sc.bitLength() != 16) {
-                    continue;
-                }
-                long imm = sc.getUnsignedValue();
-                if (imm < 0x0000L || imm > 0xFFFFL) {
-                    continue;
-                }
+                // Ghidra's own auto-analysis (run during the initial import,
+                // before this script runs with -noanalysis) frequently
+                // converts an immediate that looks like a pointer into an
+                // Address-typed operand rather than leaving it as a plain
+                // Scalar - this is common for PUSH <addr> and for LES/LDS
+                // far-pointer loads in particular. Instruction.getScalar()
+                // returns null for such operands, so relying on it alone
+                // silently drops every string address that Ghidra already
+                // recognized as an address. To see every candidate
+                // regardless of how Ghidra represented it, walk the
+                // operand's underlying objects (Instruction.getOpObjects)
+                // and handle both Scalar and Address forms.
+                for (Object obj : instr.getOpObjects(opIndex)) {
+                    Long imm = null;
+                    int objSegment = segment;
+                    if (obj instanceof Scalar) {
+                        Scalar sc = (Scalar) obj;
+                        if (sc.bitLength() != 16) {
+                            continue;
+                        }
+                        long v = sc.getUnsignedValue();
+                        if (v < 0x0000L || v > 0xFFFFL) {
+                            continue;
+                        }
+                        imm = v;
+                    } else if (obj instanceof Address) {
+                        Address a = (Address) obj;
+                        if (a instanceof SegmentedAddress) {
+                            objSegment = ((SegmentedAddress) a).getSegment();
+                        }
+                        imm = a.getOffset() & 0xFFFFL;
+                    } else {
+                        continue;
+                    }
 
-                long fileOffset = IMAGE_FILE_OFFSET + ((long) (segment - BASE_SEGMENT) * 16L) + imm;
-                boolean inBounds = fileOffset >= 0 && fileOffset < blob.length;
-                String text = String.format("%s\t%s\top%d\t0x%04X\t%s\t%s",
-                        addr.toString(), mnemonic, opIndex, imm,
-                        inBounds ? String.format("0x%X", fileOffset) : "-",
-                        instr.toString().replace("\t", " "));
+                    totalHits++;
+                    long fileOffset = IMAGE_FILE_OFFSET + ((long) (objSegment - BASE_SEGMENT) * 16L) + imm;
+                    boolean inBounds = fileOffset >= 0 && fileOffset < blob.length;
+                    String text = String.format("%s\t%s\top%d\t0x%04X\t%s\t%s",
+                            addr.toString(), mnemonic, opIndex, imm,
+                            inBounds ? String.format("0x%X", fileOffset) : "-",
+                            instr.toString().replace("\t", " "));
 
-                if (!inBounds) {
-                    rejectedLines.add(text + "\treject:out-of-bounds");
-                    continue;
+                    if (!inBounds) {
+                        rejectedLines.add(text + "\treject:out-of-bounds");
+                        continue;
+                    }
+                    if (!isGenuineStringStart(blob, (int) fileOffset)) {
+                        rejectedLines.add(text + "\treject:not-a-string");
+                        continue;
+                    }
+
+                    accepted.add(fileOffset);
+                    hitText.add(text + "\tKEEP");
                 }
-                if (!isGenuineStringStart(blob, (int) fileOffset)) {
-                    rejectedLines.add(text + "\treject:not-a-string");
-                    continue;
-                }
-
-                candidates.add(fileOffset);
-                refCount.merge(fileOffset, 1, Integer::sum);
-                hitText.add(text);
-            }
-        }
-
-        // Pass 2: keep only offsets whose distinct-instruction reference count
-        // is small enough to be a plausible unique (or lightly duplicated)
-        // string literal, not a reused shared-constant idiom.
-        TreeSet<Long> accepted = new TreeSet<>();
-        for (long off : candidates) {
-            if (refCount.get(off) <= REUSE_LIMIT) {
-                accepted.add(off);
             }
         }
 
@@ -140,13 +139,7 @@ public class DumpImmediates extends GhidraScript {
         try (PrintWriter pw = new PrintWriter(auditFile, "UTF-8")) {
             pw.println("address\tmnemonic\toperand\timmediate\tfile_offset\tinstruction\tstatus");
             for (String line : hitText) {
-                // field 4 (0-indexed) of `text` is the file_offset column
-                String[] parts = line.split("\t", 6);
-                long off = Long.decode(parts[4]);
-                String status = refCount.get(off) <= REUSE_LIMIT
-                        ? "KEEP"
-                        : "reject:reused-constant(count=" + refCount.get(off) + ")";
-                pw.println(line + "\t" + status);
+                pw.println(line);
             }
             for (String line : rejectedLines) {
                 pw.println(line);
@@ -156,14 +149,13 @@ public class DumpImmediates extends GhidraScript {
         File jf = new File(dir, "string_pointers.json");
         try (PrintWriter pw = new PrintWriter(jf, "UTF-8")) {
             pw.println("{");
-            pw.println("  \"note\": \"File offsets into orig/g.exe recovered from 16-bit scalar "
-                    + "operands of MOV/PUSH instructions in Ghidra's real disassembly "
-                    + "(Instruction.getScalar), mapped via file_offset = 0x18D0 + (segment - "
-                    + "0x1000) * 16 + imm, filtered to offsets whose byte is a well-formed "
-                    + "Pascal shortstring length (3..250) with an in-bounds, "
-                    + "CP866/ASCII/0x07/0x0A/0x0D-only payload, and referenced by at most " + REUSE_LIMIT
-                    + " distinct instructions (excludes reused shared-constant addresses). See "
-                    + "docs/re/string-pointers.md.\",");
+            pw.println("  \"note\": \"File offsets into orig/g.exe recovered from the 16-bit "
+                    + "scalar and address operand objects of every instruction in Ghidra's "
+                    + "real disassembly (Instruction.getOpObjects), mapped via file_offset = "
+                    + "0x18D0 + (segment - 0x1000) * 16 + imm, filtered to offsets whose byte "
+                    + "is a well-formed Pascal shortstring length (3..250) with an in-bounds, "
+                    + "CP866/ASCII/0x07/0x0A/0x0D-only payload. No mnemonic restriction and no "
+                    + "reuse/reference-count filter is applied - see docs/re/string-pointers.md.\",");
             StringBuilder sb = new StringBuilder();
             sb.append("  \"pointers\": [");
             boolean first = true;
@@ -180,7 +172,7 @@ public class DumpImmediates extends GhidraScript {
         }
 
         println("DumpImmediates: instructions=" + currentProgram.getListing().getNumInstructions()
-                + " content-valid-offsets=" + candidates.size()
+                + " scalar-hits=" + totalHits
                 + " accepted=" + accepted.size());
     }
 

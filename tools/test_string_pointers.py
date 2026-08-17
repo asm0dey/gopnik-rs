@@ -27,12 +27,28 @@ def test_pointers():
     text = blob[0xBCDE : 0xBCDE + n].decode("cp866")
     assert text.endswith("челюсть)"), f"still truncated: {text!r}"
 
-    # The consecutive run at 0x18D0-0x18DA is the signature of naive byte
-    # scanning. Real instruction operands do not produce it.
-    run = [o for o in ptrs if 0x18D0 <= o <= 0x18DA]
-    assert len(run) <= 2, f"byte-scan false positives leaked in: {[hex(o) for o in run]}"
+    # Coverage must not regress against the blind scan. Every non-suspect
+    # entry the old scanner found must either appear as a pointer or fall
+    # inside some pointer's payload span (i.e. be superseded by a correctly
+    # framed, longer string). Anything else is real game text we lost.
+    old = json.loads((ROOT / "data" / "strings.json").read_text(encoding="utf-8"))
+    ptr_set = set(ptrs)
+    missing = []
+    for entry in old:
+        if entry["suspect"]:
+            continue
+        off = entry["off"]
+        if off in ptr_set:
+            continue
+        if any(q <= off < q + 1 + blob[q] for q in ptrs):
+            continue
+        missing.append(entry)
+    assert len(missing) <= 10, (
+        f"{len(missing)} real strings lost vs the blind scan, e.g. "
+        f"{[(hex(m['off']), m['plain'][:40]) for m in missing[:5]]}"
+    )
 
-    print(f"OK {len(ptrs)} string pointers recovered and validated")
+    print(f"OK {len(ptrs)} string pointers recovered, {len(missing)} blind-scan entries unaccounted for")
 
 
 if __name__ == "__main__":

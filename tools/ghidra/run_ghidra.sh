@@ -18,4 +18,5 @@ fi
 
 cp "$OUT/functions.json" "$ROOT/data/functions.json"
 cp "$OUT/string_pointers.json" "$ROOT/data/string_pointers.json"
+cp "$OUT/string_pointers_audit.tsv" "$ROOT/data/string_pointers_audit.tsv"
 echo "decomp files: $(ls "$OUT/decomp" | wc -l)"
