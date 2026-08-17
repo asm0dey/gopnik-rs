@@ -766,12 +766,31 @@ scan for opcode `BA`/`B8`/`BF`/`BE`/`68` is NOT sufficient — it produced 218
 false starts. You must work from Ghidra's real disassembly so that only genuine
 instruction operands are considered.
 
-**On the run of offsets at `0x18D0`–`0x18DA`:** these are legitimate, not
-artefacts. They decode to the title banner with a progressively increasing
-number of leading spaces — the game references successive offsets into one
-buffer to scroll it. Do NOT add a filter to suppress them. An earlier revision
-of this plan wrongly asserted they must be absent; that assertion has been
-removed.
+**On the run of offsets at `0x18D0`–`0x18DA`:** this plan has now been wrong
+about these twice; here is the established truth. They are **artefacts of
+operand mis-extraction**, but not of byte scanning. They arise when a memory
+operand's *displacement* is treated as a string offset — e.g. the audit trail
+records `LDS SI,[BP + 0x4]` yielding candidate `0x18D0 + 4 = 0x18D4`. A stack
+frame displacement is not a string address. The small displacements 0, 2, 4, 6…
+collide with the image base and produce that consecutive run.
+
+The correct handling is neither to assert they are absent (revision 1's error)
+nor to declare them legitimate scrolling references (revision 2's error), but to
+extract only genuine immediate operands so they never become candidates.
+
+**Operand extraction rule.** Use `instruction.getScalar(opIndex)`, which yields
+the scalar of an *immediate* operand. Do NOT walk `instruction.getOpObjects()`
+and treat every scalar found inside a memory expression as a candidate — that
+decomposes `[BP + 0x4]`, `word ptr [0x38C5]`, and branch targets into false
+candidates. Apply `getScalar` across **all** mnemonics: the breadth requirement
+is about not restricting to `MOV`/`PUSH`, not about accepting address arithmetic.
+
+**Reject candidates that fall inside an already-accepted string's payload.**
+An offset interior to another string is a framing collision, not a distinct
+string — this is the same space-as-length-byte pathology the task exists to
+eliminate. For example `0x5195` is byte 8 of `'^1После этого сразу началась
+анархия и полный беспредел.'` at `0x518D`, and must not be emitted as its own
+pointer.
 
 **Do not add a reuse-count or reference-frequency filter.** How many times the
 code references a string is not evidence about whether it is a string. Common
