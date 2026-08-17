@@ -205,26 +205,25 @@ accepted 64-byte payload span, not because of any special-case filter.
 
 **`0x18D0` itself is still present** — this was not verified false by either
 review finding, and it is not eliminated by this revision's fix, because it
-is not a decomposed memory-expression artefact in the first place. Every one
-of the 357 audit rows landing on it (checked exhaustively — `awk -F'\t'
-'$5=="0x18D0" && $7=="KEEP"' data/string_pointers_audit.tsv | wc -l`) comes
-from a genuine bare immediate `0x0` in an ordinary `CMP reg/mem, 0` or
-`MOV reg, 0` instruction — the single most common immediate value in any
+is not a decomposed memory-expression artefact in the first place. Of the
+357 audit rows landing on it (checked exhaustively — `awk -F'\t'
+'$5=="0x18D0" && $7=="KEEP"' data/string_pointers_audit.tsv | wc -l`), the
+vast majority comes from genuine bare immediate `0x0` in ordinary `CMP reg/mem, 0`
+or `MOV reg, 0` instructions — the single most common immediate value in any
 x86 binary — which trivially maps to the image base under
-`file_offset = 0x18D0 + imm`. None of them are `MOV DI, <addr>`-style
-string-pointer loads. This is disclosed, not hidden, and it is **not**
-special-cased away: doing so would mean filtering by mnemonic or by the
-specific value `0x0`/offset `0x18D0`, which the brief and the task
-constraints both forbid. It is a residual, structurally-inherent false
-positive of a value-collision kind that per-instruction operand scanning
-cannot distinguish from a real reference without additional signal (e.g.
-data-flow tracing into the RTL string-print call), which is out of scope
-here. Its content (`'                  ^0┌──── ┌────┐ ┌────┐  │    │  │  ...'`,
-box-drawing characters at the very start of the code segment) is at least
-plausible as genuine embedded UI-banner data rather than pure garbage, but
-that is not verified and is not required either way — the point is that the
-false-positive-risk is disclosed, not asserted as a fact in either
-direction.
+`file_offset = 0x18D0 + imm`. However, **one row is a genuine `MOV DI,0x0`
+instruction at `1000:0317`**, part of a coherent, evenly-spaced splash-screen
+sequence: `1000:0317 MOV DI,0x0` → `0x18D0`, `1000:0330 MOV DI,0x40` → `0x1910`,
+`1000:0349 MOV DI,0x80` → `0x1950`, continuing through `1000:03ee MOV DI,0x200`
+→ `0x1AD0`. Their targets (offsets spaced `0x40` bytes apart) decode to box-art
+lines of a splash screen, followed by recognized game text at `0x1AD0`
+(`'Версия 1.02'`). This makes `0x18D0` most likely a **true positive** — the
+first line of the splash screen — not a false positive of collision origin.
+The remaining 356 rows are indeed residual collisions from CMP/MOV reg,0
+instructions that trivially happen to land on this address. This mixed composition
+is disclosed rather than hidden, and the address is **not** special-cased away:
+doing so would mean filtering by mnemonic or by the specific value `0x0`/offset
+`0x18D0`, which the brief and the task constraints both forbid.
 
 ## Coverage, both directions
 
