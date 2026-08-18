@@ -30,7 +30,7 @@
 - **All Russian game text is preserved verbatim.** No translation, no censoring, no rewording. The game contains deliberate crude slang; that is the content.
 - **Ghidra is driven by Java scripts only.** PyGhidra requires `jpype1`, which does not build on Python 3.14. Do not attempt `pip install pyghidra`.
 - **Python tooling uses the standard library only.** No pip installs, no venv.
-- **Rust dependencies limited to `serde` + `serde_json` + `encoding_rs`.**
+- **Rust dependencies limited to `serde` + `serde_json` + `encoding_rs` + `anstream`.**
   Anything else requires explicit sign-off. `encoding_rs` was signed off by the
   owner for Task 7: the owner prefers a crate to a hand-written codepage table.
   The encoding is `encoding_rs::IBM866` — there is no `CP866` constant; IBM866
@@ -43,6 +43,13 @@
   `new_encoder()` + `encode_from_utf8_without_replacement`, which returns
   `EncoderResult::Unmappable(char)` naming the offending character, and
   `decode_without_bom_handling_and_without_replacement` on the way in.
+
+  `anstream` was signed off by the owner for Task 10b (cross-platform colour).
+  `text::render` emits ANSI unconditionally; `anstream::stdout()` enables Windows
+  VT processing, strips ANSI where it cannot be displayed, and honours
+  `NO_COLOR`/`CLICOLOR_FORCE`. Windows needs a `SetConsoleMode` FFI call that
+  Rust's `std` cannot make, which is why a crate is unavoidable there. No second
+  terminal crate: the game is line-based and needs no cursor control or raw mode.
 - **Never modify files under `orig/`.** They are the reference corpus and are checked in read-only.
 - **Every RE finding lands in two places:** a human-readable note under `docs/re/` citing the Ghidra address, and a machine-readable artifact under `data/`. A finding that exists only in a commit message does not count.
 - **Unknown means unknown.** If a field's meaning is not established, name it `unk_<hex_offset>` and preserve its bytes. Never guess a semantic name to make a table look finished.
@@ -3005,6 +3012,123 @@ Expected: `test result: ok. 1 passed; 0 failed`
 ```bash
 git add tools/extract_tables.py tools/test_extract_tables.py data/items.json data/shops.json data/enemies.json src/data.rs tests/data_load.rs docs/re/tables.md
 git commit -m "feat: extract item/shop/enemy tables from g.exe"
+```
+
+---
+
+### Task 10b: Cross-platform colour output
+
+**Files:**
+- Create: `src/term.rs`
+- Modify: `Cargo.toml` (add `anstream`), `src/main.rs` (add `mod term;`)
+- Test: `src/term.rs` (inline `#[cfg(test)] mod tests`), `tests/term_output.rs`
+
+**Interfaces:**
+- Produces:
+  ```rust
+  /// Render `^N` markup and write one line to stdout, adapting to what the
+  /// destination can actually display. This is the ONLY way the game writes
+  /// user-visible text; `println!` on a rendered string is a bug after this task.
+  pub fn println(src: &str);
+  /// Same, without the trailing newline (for prompts). Flushes.
+  pub fn print(src: &str);
+  ```
+- Consumes: `text::render` (Task 6), unchanged.
+- Task 11's game loop calls `term::println`/`term::print` everywhere it would
+  otherwise have called `println!("{}", text::render(...))`.
+
+**Why this task exists:** `text::render` emits raw ANSI SGR escapes
+unconditionally. That is correct on Unix terminals and wrong everywhere else:
+
+- **Windows.** `conhost.exe` does not interpret ANSI escapes unless the process
+  calls `SetConsoleMode` with `ENABLE_VIRTUAL_TERMINAL_PROCESSING`. Without it
+  the player sees literal `←[31m` garbage interleaved with the text. Windows
+  Terminal enables VT by default; `cmd.exe` on older Windows 10 builds does not,
+  and there is no way to enable it from Rust's `std` — it requires a Win32 FFI
+  call. This is the specific reason a crate is unavoidable here.
+- **Redirected output.** `gopnik > log.txt` currently embeds escape bytes in the
+  file.
+- **`NO_COLOR`.** The convention (https://no-color.org) says an app must not emit
+  colour when `NO_COLOR` is set to any non-empty value.
+- **Dumb terminals.** `TERM=dumb` cannot render SGR.
+
+**Dependency sign-off:** `anstream` is approved for this task (owner asked for a
+crate rather than hand-rolled colour handling). It is the purpose-built solution:
+it enables Windows VT when possible, strips ANSI when the destination cannot
+display it, and honours `NO_COLOR`/`CLICOLOR_FORCE`/tty detection. Do NOT
+hand-roll any of this, and do NOT add a second terminal crate (`crossterm`,
+`termion`, `colored`) — the game needs no cursor control, no raw mode, and no
+keypress handling; it is line-based (`stdin().read_line()`).
+
+**Design constraint — keep the decision out of our code.** Do not write
+`if should_colour() { render(s) } else { strip(s) }`. `text::render` always emits
+ANSI; `anstream::stdout()` decides what survives. One code path, no conditional
+rendering, and the strip logic stays the crate's problem, not ours.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/term_output.rs`. The tests must drive the real binary as a
+subprocess with a piped (non-tty) stdout, and assert on the raw bytes:
+
+- With no colour-related env vars set and stdout piped: output contains **no**
+  `\x1b[` bytes, and the plain text survives intact (compare against
+  `text::strip` of the same source).
+- With `CLICOLOR_FORCE=1`: output **does** contain the expected SGR sequence.
+  This case matters beyond politeness — Task 12's differential harness pipes our
+  stdout, so without a force switch the port's colour output can never be
+  compared against the DOSBox oracle at all.
+- With `NO_COLOR=1` **and** `CLICOLOR_FORCE=1` both set: assert whichever
+  precedence `anstream` actually implements, having first read its source or
+  docs to establish which wins. Do not guess, and do not write the assertion by
+  running the binary and pasting what came out — determine the intended
+  precedence first, then assert it. If `anstream`'s behaviour contradicts the
+  `NO_COLOR` spec, report that rather than silently encoding it.
+
+Inline unit tests in `src/term.rs` cover whatever pure decision logic remains
+(there should be very little — see the design constraint above).
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `cargo test --test term_output`
+Expected: FAIL — `src/term.rs` does not exist.
+
+- [ ] **Step 3: Implement `src/term.rs`**
+
+Thin wrapper over `anstream::stdout()` and `text::render`. Expect this file to
+be well under 50 lines; if it is growing past that, the decision logic that
+belongs to `anstream` is leaking into it.
+
+Errors: a write failure to stdout (closed pipe, e.g. `gopnik | head`) must not
+panic or abort — `Cargo.toml` sets `panic = "abort"` for release, so a panic
+kills the process. Decide deliberately whether a broken pipe should exit quietly
+or propagate, and state the reasoning in `docs/re/`-adjacent comments.
+
+- [ ] **Step 4: Route Task 11's output through it**
+
+If Task 11 already exists when this runs, replace every
+`println!("{}", text::render(...))` with `term::println(...)`. If this task runs
+first (the intended order), Task 11 is written against `term::` from the start.
+
+- [ ] **Step 5: Verify on Windows — or state plainly that it was not**
+
+The Windows VT path is the entire reason for this task and **cannot be verified
+on this Linux host.** Either:
+
+- verify it for real (the `superpowers-lab:windows-vm` skill can provision a
+  headless Windows 11 VM with SSH; build and run the binary in `cmd.exe` and in
+  Windows Terminal, and record what was observed), **or**
+- state explicitly in the report and in `docs/re/` that Windows behaviour is
+  **delegated to `anstream` and untested here**, naming it as a known gap.
+
+Do NOT claim cross-platform correctness on the strength of `anstream`'s
+documentation alone. An untested claim of Windows support is worse than an
+acknowledged gap, because it stops anyone else from checking.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add Cargo.toml Cargo.lock src/term.rs src/main.rs tests/term_output.rs
+git commit -m "feat: cross-platform colour output via anstream"
 ```
 
 ---
