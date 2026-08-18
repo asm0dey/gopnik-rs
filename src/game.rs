@@ -293,9 +293,14 @@ impl Game {
     /// A refused entry only prints. It does **not** discover the place: the
     /// original's flags are set elsewhere, never by a failed entry.
     ///
-    /// Two of those setters are implemented here, both established from
-    /// flow and both re-derived from `orig/g.exe`:
+    /// A scan of `orig/g.exe` for `c6 06 [94-9a] 36 imm8` finds 31 stores to
+    /// these seven bytes: 14 clears and **17** set-to-1. Four of the
+    /// seventeen are implemented here, all established from flow and all
+    /// re-derived from `orig/g.exe`:
     ///
+    /// * `1000:6dc3` `c6 06 98 36 01` and `1000:6dc8` `c6 06 94 36 01` --
+    ///   the **vet's** and the **market's** flags, written by the
+    ///   new-character block at `1000:6dbe` ([`Game::new`]).
     /// * `1000:d751` `c6 06 99 36 01` -- `mov byte [0x3699],1`, the
     ///   **club's** flag, set by `girl` ([`Game::visit_girl`]).
     /// * `1000:b570` `c6 06 97 36 01` -- `mov byte [0x3697],1`, the
@@ -306,9 +311,13 @@ impl Game {
     ///   `0x3697` (gate `1000:d6f7`). An earlier revision of this comment
     ///   got both wrong.
     ///
-    /// So `w` -> girl -> club is a real, reachable chain. The remaining five
-    /// flags are set by wander events this port does not model; they are
-    /// listed with their addresses in `docs/re/gaps.md`.
+    /// So the market and the vet are open from turn one, and `w` -> girl ->
+    /// club is a real, reachable chain. BigMarket, Den and Gym stay
+    /// unreachable: their setters live in the wander preamble, the
+    /// `[0x389c]` progression reveals (`1000:73bb`..`1000:73e0`), the `a`
+    /// token (`1000:dce5`) and the combat unit. The complete 17-row
+    /// inventory, with a trigger and an evidence tier per row, is in
+    /// `docs/re/gaps.md`, "Discovery flags: the complete store inventory".
     fn enter_shop(&mut self, loc: Location) {
         if !self.places.is_found(loc) {
             term::println(Self::undiscovered_line(loc));
