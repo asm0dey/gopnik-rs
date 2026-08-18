@@ -296,11 +296,73 @@ but only while the player knows `bmar` and owns a pistol, and it stops at 25
 
 ### Other price sources, not extracted
 
-`mar` and `bmar` are not the only places the binary charges the player.
-`sub word [20ae:38c7],imm8` -- price baked straight into the instruction,
-rather than read from the `20ae:0b2e` array -- occurs 11 times (found by
-scanning `orig/g.exe` for byte pattern `83 2E C7 38 ib`; recorded in
-`data/other_price_sites.json`):
+`mar` and `bmar` are not the only places the binary charges the player. The
+player's money is the word at `20ae:38c7`, and exactly two instruction
+encodings subtract from it:
+
+| encoding | disassembly | occurrences in `orig/g.exe` |
+|---|---|---|
+| `29 06 C7 38` | `sub word [20ae:38c7],ax` | 21 |
+| `83 2E C7 38 ib` | `sub word [20ae:38c7],imm8` | 11 |
+
+`tools/extract_tables.py` scans **both bare `sub` encodings** over the whole
+file and writes every match to `data/other_price_sites.json`, so that file is
+complete by construction rather than by inspection. The `ax` sites are then
+classified by the idiom that produced `ax`; `ax_debit_sites.count` equals both
+the number of `29 06 C7 38` occurrences in the binary and the sum of its
+category counts, and `tools/test_extract_tables.py` re-scans `orig/g.exe`
+itself to assert it.
+
+**This was got wrong once and is worth stating plainly.** An earlier revision
+scanned only the *composite* idiom `A0 addr / 30 E4 / 29 06 C7 38` and emitted
+each category independently, on the reasoning that the remaining forms "have
+no fixed byte idiom to scan for". They do -- `29 06 C7 38` is a fixed idiom,
+and it is the same four bytes in every one of the 21 sites. What resists
+scanning is the *meaning* of a site (which service is paid for, which string
+is printed), never the site itself. Scanning the longer idiom hid the debit at
+`1000:5014` (file `0x68e4`) from every array in the artifact while its `note`
+claimed to record every place the game debits money.
+
+#### The 21 `sub [money],ax` sites
+
+| category | count | where the amount comes from | recorded in |
+|---|---|---|---|
+| `shop_row` | 18 | `A0 addr / 30 E4` -- a byte of the `20ae:0b2e` price array | `data/shops.json` |
+| `variable` | 1 | `A0 addr / 30 E4` -- a byte *variable*, `20ae:3c82` | `var_sites` |
+| `computed` | 1 | `A0 addr / 30 E4 / BA imm16 / F7 E2` -- byte times a constant | `computed_sites` |
+| `other` | 1 | `9A off seg` -- a far call's return value | `other_ax_sites` |
+
+The 18 `shop_row` sites are the `mar`/`bmar` rows above; they appear in
+`ax_debit_sites` only as a cross-reference, each naming its `"<shop>:<key>"`
+row. The other three:
+
+| addr | file off | amount | what |
+|---|---|---|---|
+| `1000:5014` | `0x68e4` | return value of `call 0f78:1131` | **unidentified** |
+| `1000:761d` | `0x8eed` | `byte[20ae:3692] * 50` (district*50) | Рушель Блаво save-game service |
+| `1000:e0a8` | `0xf978` | `byte[20ae:3c82]` | **unidentified** (see below) |
+
+`1000:5014` is preceded by `mov di,0x4000 / call 0f78:1111 / call 0f78:1131`,
+so the debited amount is whatever that call returns; nothing else about it is
+established, and its `what` is `null`. It sits 24 bytes before the `imm8` site
+at `1000:502c`, so it is a genuinely separate debit, not a second reading of
+that one.
+
+The `computed` site's own bytes are scanned like every other: the multiplied
+address (`20ae:3692`, the district counter -- "Availability gates" above) and
+the multiplier (`0x32` = 50) both come out of `MUL_CHARGE_RE`, and so does the
+`formula` string. Only the service name and the string cross-reference are
+hand-verified with `ndisasm -b16`: the printed string `За # рублей он может
+сделать сохранение прямо здесь.` is at file `0x8d2d`, the `mov di,0x745d` that
+loads it is at `1000:7583` (file `0x8e53`), and the affordability guard
+(`cmp ax,[0x38c7] / jng`) is at `1000:760a` -- a reminder that a string's own
+byte address and the address of the instruction that references it are two
+different numbers.
+
+#### The 11 `sub [money],imm8` sites
+
+Price baked straight into the instruction, rather than read from the
+`20ae:0b2e` array (found by scanning `83 2E C7 38 ib`):
 
 | addr | file off | imm | what |
 |---|---|---|---|
@@ -322,41 +384,55 @@ of the row text itself -- `15^7 ...`, `22^7 ...` -- rather than through the
 them and why the `^1` restriction in section 1 has to exclude the second of
 these two (`0xBA85`) from the item scan by name, not by this table.
 
-There is also at least one **computed** charge: `district*50`, debited at
-`1000:761d` (file `0x8eed`, `sub [0x38c7],ax` guarded by
-`cmp ax,[0x38c7] / jng` at `1000:760a`) for the Рушель Блаво save-game
-service. The string it prints, `За # рублей он может сделать сохранение
-прямо здесь.`, is at file `0x8d2d`; the code that loads it (`mov
-di,0x745d`) is at `1000:7583` (file `0x8e53`) -- a reminder that a string's
-own byte address and the address of the instruction that references it are
-two different numbers, worth keeping straight given the boss-derivation
-citation error above. Unlike the `imm8` and `mar`/`bmar` forms, this one has
-no fixed byte idiom to scan for (the amount is computed by a multiply, not
-read from anywhere), so `data/other_price_sites.json`'s `computed_sites`
-entry for it is hand-verified rather than pattern-scanned by
-`tools/extract_tables.py` -- the one row in that file that is not.
+#### `20ae:3c82`, the one debited byte variable
 
-There is a third debit form besides the `imm8` and `mar`/`bmar`-array ones:
-`mov al,[var] / xor ah,ah / sub [money],ax`, where the amount is read from a
-byte **variable** rather than an array or an immediate. `CHARGE_RE` (which
-also finds the 18 `mar`/`bmar` price bytes -- "The row idiom" above) matches
-this form too; the one address it finds that is not a `mar`/`bmar` price
-byte is `20ae:3c82`, debited at `1000:e0a3` (file `0xf973`). It is a BSS
-variable -- `20ae:3c82` maps past the end of the file image, so it has no
-byte to read out of `orig/g.exe` directly -- initialised to `5` by `mov byte
-[0x3c82],5` at `1000:e020` and `1000:e145` (file `0xf8f0`/`0xfa15`), and read
-at eight further sites in file `0xf949`..`0xfb2d`, immediately around the
-two Клуб rows above. What it prices is not established; `what` stays `null`
-in `data/other_price_sites.json`'s `var_sites` entry for it, same as the
-still-unidentified `imm8` sites.
+`20ae:3c82` is a BSS byte -- it maps past the end of the file image, so it has
+no value to read out of `orig/g.exe` directly -- and it is the amount the
+`variable`-form debit at `1000:e0a8` (file `0xf978`) subtracts. **It is not a
+constant.** Its two address bytes occur 14 times in the file, and all 14 are
+instruction operands, accounted for by four scanned idioms:
 
-None of these are named or linked to a row: doing that (finding what each of
-the nine `unidentified` `imm8` sites and the one `var` site actually are,
-and which item or service takes each price) is Task 11's job, not this
-task's. `data/other_price_sites.json` is generated by
-`tools/extract_tables.py` (except `computed_sites`, above) and records only
-what was verified here -- the address and the immediate, the variable and
-its init/read sites, or the formula -- and nothing invented beyond it.
+| idiom | field | count | sites |
+|---|---|---|---|
+| `C6 06 82 3C ib` (`mov byte`) | `write_sites` | 2 | `1000:e020` = 5, `1000:e145` = 5 |
+| `80 06 82 3C ib` (`add byte`) | `write_sites` | 1 | `1000:e0f7` += 2 |
+| `A0 82 3C` (`mov al`) | `read_sites` | 8 | `1000:e079`, `e08c`, `e0a3`, `e0d0`, `e0e0`, `e12e`, `e15d`, `e25d` |
+| `80 3E 82 3C ib` (`cmp byte`) | `compare_sites` | 3 | `1000:e14a` vs 17, `1000:e151` vs 5, `1000:e174` vs 17 |
+
+`data/other_price_sites.json` records `ref_count` (14) alongside
+`recorded_sites` (2 + 1 + 8 + 3 = 14); if some further idiom touched the
+variable the two would disagree, which is the guard that replaced the earlier
+account. That earlier account said the variable was "initialised to 5 and read
+at eight *further* sites" -- wrong twice over: it missed the `add` and the
+three compares entirely, and the eight `A0` reads are not *further* than the
+debit, they **include** it (`1000:e0a3` is both). `charge_sites` is a subset of
+`read_sites` for exactly that reason and is not added into `recorded_sites`.
+
+What the byte actually prices is still **not established**, so its `what` stays
+`null`. What the bytes do show, from `ndisasm -b16` over file
+`0xf940`..`0xfa50`, is the shape of a stake that grows: the value is read,
+compared against the player's money, printed, subtracted from the money at
+`1000:e0a8`, and then on one branch doubled back into the money
+(`shl ax,1 / add [0x38c7],ax` at `1000:e0d5`/`1000:e0d7`) before `1000:e0f7`
+raises it by 2; elsewhere it is reset to 5 and bounded against 17. Naming the
+mechanic is Task 11's job -- this section records the instructions, not a
+story about them.
+
+#### What is derived and what is hand-annotated
+
+`data/other_price_sites.json` is generated by `tools/extract_tables.py`.
+**Derived from `orig/g.exe`:** every address, file offset, immediate,
+multiplier, call target, formula, and the category each debit site falls into
+-- including the `computed` row, which is now scanned rather than hand-listed.
+**Hand-annotated:** only the `what` text and its supporting cross-references --
+the two Клуб strings (`SUB_IMM8_WHAT`) and the save-game service's name,
+guard address and string fields (`COMPUTED_WHAT`). Both tables are keyed by
+file offset and were verified by reading the shortstrings at those offsets
+straight out of `orig/g.exe`.
+
+Nine of the eleven `imm8` sites, the call-result site, and `20ae:3c82` carry
+`what: null` and are named nowhere: working out what each one charges for, and
+which item or service takes each price, is Task 11's job, not this task's.
 
 ---
 
