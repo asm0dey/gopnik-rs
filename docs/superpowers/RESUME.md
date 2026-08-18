@@ -4,7 +4,12 @@
 **Repo:** `/home/finkel/work_self/gopnik-rs`
 **Branch:** `port/gopnik-rust`
 
-**Task order (revised three times):** 1, 2, 4, 4b, 4c, 2b, **2c**, 3, 5, 6, 7, 8, 9, 9b, 10, 11, 12
+**Task order (revised four times):** 1, 2, 4, 4b, 4c, 2b, 2c, 3, 5, 6, 7, 8, 9,
+9b, 10, **10b**, 11, 12
+
+Task 10b (cross-platform colour output) was added at the owner's request after
+Task 7. It sits before Task 11 so the game loop is written against `term::` from
+the start instead of having ~20 `println!` sites rewritten afterwards.
 
 ## Completed
 
@@ -20,8 +25,46 @@
 | 3 — DOSBox-X oracle harness | complete, approved (3 fix waves) | `3f372a0..f44b6f7` |
 | 5 — .SAV decoder + layout artifact | complete, approved (first pass) | `8973100` |
 | 6 — Rust crate skeleton + text layer | complete, approved (1 fix wave) | `85c38b3`, `2533d35` |
+| 7 — Rust save load/store, byte-exact | complete, approved (1 fix wave) | `5b066ad`, `a7b1152` |
 
-**NEXT: Task 7.**
+**NEXT: Task 8** (RNG recovery).
+
+### Task 7 outcome
+
+`src/save.rs` parses and re-serialises the 694-byte `.SAV` byte-exactly.
+`to_bytes` returns `Result` and cannot panic. `display_name()` strips `^N`
+markup via `text::strip`; `self.name` keeps the raw sigils for round-trip.
+
+**CP866 in Rust — the constraint was amended.** The original global constraint
+said "no CP866 handling anywhere in the Rust crate", which `Save::parse` /
+`to_bytes` cannot satisfy: a `.SAV` holds a player-typed name as live CP866
+bytes produced at runtime, so no extraction-time conversion can cover it. Owner
+narrowed the constraint to game *text*, and signed off `encoding_rs` (owner
+prefers a crate to a hand-written table). **Use only the strict APIs:**
+`decode_without_bom_handling_and_without_replacement` in, and `new_encoder()` +
+`encode_from_utf8_without_replacement` out. `IBM866.encode()` is lossy by
+WHATWG mandate — an unmappable char becomes an HTML numeric reference
+(verified: `漢` -> the bytes `&#28450;`), which would write a corrupt save that
+still round-trips.
+
+**Two claims the reviewer checked rather than accepted, both of which held:**
+- `BadCp866Bytes` really is dead code. IBM866's high-byte table has 128 entries,
+  none of them 0, and `Malformed` is only returned when `mapped == 0`, so the
+  strict decoder cannot return `None` for this encoding. Kept for API honesty.
+- The drift guard genuinely compares Rust constants against
+  `data/save_layout.json` at runtime, not the JSON against itself.
+
+**Still weak, by design:** the byte round-trip does NOT validate `unk_stat*` or
+`tail` offsets — `to_bytes` writes identical values back to the same
+self-computed offsets, so it passes whatever those offsets are. Only the drift
+guard covers them, and only for Python/Rust *agreement*, not correctness.
+Task 9 pins the real semantics.
+
+The fix wave closed a panic: `put_pstring` asserted the 255-byte shortstring
+cap, so an over-long name aborted the process (release sets `panic = "abort"`).
+Now `SaveError::TooLong(n)`. The cap is on **CP866 bytes**, not `str::len()`
+(UTF-8) or char count — a Cyrillic char is 2 UTF-8 bytes but 1 CP866 byte, so
+200 Cyrillic chars fit and 256 do not. Both covered.
 
 ### Task 6 outcome
 
@@ -155,7 +198,8 @@ python3 tools/test_string_pointers.py  -> OK 695 string pointers recovered, 3 un
 python3 tools/test_string_tables.py    -> OK 54 table entries extracted
 python3 tools/oracle/test_oracle_smoke.py -> OK 8 checks, ~1.75s, 2 dosbox-x launches
 python3 tools/test_decode_save.py       -> OK 5 saves decoded and round-tripped
-cargo test                             -> ok. 16 passed; 0 failed; 0 warnings
+cargo test                             -> ok. 16 unit + 8 integration; 0 failed; 0 warnings
+cargo clippy --all-targets             -> clean
 ```
 
 - `data/strings.json` — 796 entries (695 pointer-anchored + 54 table + 47 gap-tiled). Trustworthy; rebuilds byte-identically from the two input artifacts.
