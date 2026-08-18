@@ -330,8 +330,11 @@ impl Game {
     /// * `1000:d701` -- needs 12 rubles (`cmp word [0x38c7],0xc`); otherwise
     ///   file `0xB53D` and nothing else happens.
     /// * `1000:d70b` -- file `0xB46F`.
-    /// * `1000:d724` -- `Random(2)`; on `0`, and only if the club is still
-    ///   undiscovered (`cmp byte [0x3699],0`), prints file `0xB48C` and sets
+    /// * `1000:d728` -- `Random(2)` (`1000:d724` is the `mov ax,2`,
+    ///   `1000:d727` the `push`); on `0` (`1000:d72d` `or ax,ax` /
+    ///   `1000:d72f` `jnz 0xd756`), and only if the club is still
+    ///   undiscovered (`1000:d731` `cmp byte [0x3699],0`), prints file
+    ///   `0xB48C` (`1000:d738` `mov di,0x9bbc`) and sets
     ///   the club's discovery flag at `1000:d751`. This is one of the two
     ///   discovery paths in the game.
     /// * `1000:d756`/`1000:d76f` -- files `0xB4CD`, `0xB4F6`.
@@ -657,8 +660,10 @@ impl Game {
     ///   events (phone calls, finding the market's own sign, the silencer's
     ///   25-wander counter `docs/re/tables.md` already documents at
     ///   `20ae:3e32`), each gated by its own `Random()` roll and a
-    ///   never-repeat flag. **Not reproduced** -- there are too many to
-    ///   catalogue in this task's remaining budget; see
+    ///   never-repeat flag. **Not reproduced** -- nine `Random` sites
+    ///   between `1000:af04` and `1000:b2a0` plus `1000:b2fa` and
+    ///   `1000:b321`, only four of which are traced (the four discovery
+    ///   rolls). Cataloguing the whole run is a separate RE pass; see
     ///   `docs/re/gaps.md`, "Wander preamble".
     /// * **The four-way bucket roll -- established from flow.** Earlier
     ///   revisions of this doc called the roll an assumption ("the specific
@@ -678,6 +683,36 @@ impl Game {
     ///   `[0x389c]` switch converges on it (`1000:b2e1` and `1000:b2e8`
     ///   `jmp 0xb34d`, `1000:b2ed` `jnz 0xb34d`, and the `== 6` arm falls
     ///   through it at `1000:b34b`).
+    /// * **Two more unconditional draws sit between the bucket roll and the
+    ///   bucket dispatch, and this port spends neither.** Established from
+    ///   flow at `1000:b39a`:
+    ///
+    ///   ```text
+    ///   b39a  b8 c8 00        mov ax,0xc8       ; 200
+    ///   b39d  50              push ax
+    ///   b39e  9a 4b 11 78 0f  call Random
+    ///   b3a3  09 c0           or ax,ax
+    ///   b3a5  75 03           jnz 0xb3aa
+    ///   b3a7  e8 bd c8        call 0x7c67
+    ///   b3aa  b8 64 00        mov ax,0x64       ; 100
+    ///   b3ad  50              push ax
+    ///   b3ae  9a 4b 11 78 0f  call Random
+    ///   b3b3  09 c0           or ax,ax
+    ///   b3b5  75 03           jnz 0xb3ba
+    ///   b3b7  e8 7e c1        call 0x7538
+    ///   ```
+    ///
+    ///   Both calls happen on every walk regardless of the roll; only the
+    ///   `call 0x7c67` / `call 0x7538` payloads are gated on a `0`. Neither
+    ///   callee has been disassembled. **Consequence for draw-sequence
+    ///   fidelity:** in the original the bucket roll is followed by two more
+    ///   draws before bucket 2 reaches `wander_girl`'s own `Random(2)`, so
+    ///   that draw is the original's *fourth* since the bucket roll and this
+    ///   port's *first*. Wiring them here would leave the eleven preamble
+    ///   draws at `1000:af04`..`1000:b34d` still missing, so the sequence
+    ///   would move without arriving; they are catalogued with the rest of
+    ///   the preamble in `docs/re/gaps.md`, "Wander preamble", and belong to
+    ///   the same follow-up pass.
     /// * **Bucket 1** (`1000:b3c4`) toggles `[0x3693]` and writes one
     ///   district-keyed flavour line from either of two sets
     ///   (`1000:b3db`.. and `1000:b465`..). Sets no discovery flag; not
