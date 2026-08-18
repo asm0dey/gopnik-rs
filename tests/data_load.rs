@@ -45,7 +45,7 @@ fn items_load_and_contain_known_entries() {
     assert!(adidas.sold, "Костюм Adidas should be sold");
 
     // No item name may carry the `^N` markup into user-visible text.
-    for i in &items {
+    for i in items {
         assert!(!i.name.contains('^'), "markup leaked into {:?}", i.name);
     }
 }
@@ -65,8 +65,8 @@ fn loot_only_items_are_never_sold() {
     .into_iter()
     .collect();
 
-    for item in &items {
-        let expect_sold = !loot_only.contains(item.name.as_str());
+    for item in items {
+        let expect_sold = !loot_only.contains(item.name);
         assert_eq!(
             item.sold, expect_sold,
             "{}: sold should be {expect_sold}",
@@ -76,6 +76,23 @@ fn loot_only_items_are_never_sold() {
             assert!(item.price.is_none(), "{}: loot-only but priced", item.name);
         }
     }
+}
+
+#[test]
+fn tables_are_static_and_complete() {
+    // Borrowing into a `'static` binding does not compile against a `Vec`
+    // returned by value -- this is the compile-time half of the assertion.
+    let items: &'static [gopnik::data::Item] = gopnik::data::items();
+    let shops: &'static [gopnik::data::ShopEntry] = gopnik::data::shops();
+    let enemies: &'static [gopnik::data::Enemy] = gopnik::data::enemies();
+
+    // Row counts are pinned to what tools/extract_tables.py extracts.
+    assert_eq!(items.len(), 15, "item row count");
+    assert_eq!(shops.len(), 18, "shop row count");
+    assert_eq!(enemies.len(), 13, "enemy row count");
+
+    // Two calls hand back the same memory: no per-call parse, no allocation.
+    assert!(std::ptr::eq(gopnik::data::items(), gopnik::data::items()));
 }
 
 #[test]
@@ -91,7 +108,7 @@ fn class_weights_agree_with_progress_table() {
             .find(|e| e.class as usize == class)
             .unwrap_or_else(|| panic!("no data/enemies.json row for class {class}"));
         assert_eq!(
-            row.growth_weights.as_slice(),
+            row.growth_weights,
             want.as_slice(),
             "class {class}: data/enemies.json vs progress::CLASS_WEIGHTS"
         );
