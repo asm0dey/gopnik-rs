@@ -504,6 +504,20 @@ game needs the text, not the `suspect` flag or the RE offsets.
   earn the save fee, save, extract both files, commit as a `data/` artifact,
   and have `Save::new_game(...)` start from those real bytes.
 
+- **Saving is CHECKPOINT-ONLY — there is no `sv` command (owner).** Saving
+  happens at specific locations, not by typing a verb. Consistent with what was
+  observed: `sv` drew no response in a live oracle run, and both save strings
+  are location-bound (`0x8d62` the Рушель Блаво service / `district*50` charge
+  at `1000:761d`; `0x9bcd` a second checkpoint path).
+
+  **The plan's "Reference facts" command-verb list includes `sv` and is
+  therefore suspect.** That same table asserted the RNG multiplier was absent,
+  which Task 8 proved was a false conclusion drawn from true observations.
+  **Task 11 must derive the command table from the disassembly, not from that
+  list**, and treat every verb in it as unverified until checked.
+  Reaching a save checkpoint is what the new-character template capture above
+  requires — plan for a location, not a command.
+
 ## Carried forward — Task 11 (rendering / print orchestration) must decide this
 
 **Trailing colour codes are irrecoverably dropped by `parse()`.** In the
