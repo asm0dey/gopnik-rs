@@ -1,5 +1,6 @@
-use gopnik::text;
+use gopnik::term;
 
 fn main() {
-    println!("{}", text::render("^4Gopnik: ^7version 1.02 june,sept 2003"));
+    term::init();
+    term::println("^4Gopnik: ^7version 1.02 june,sept 2003");
 }
