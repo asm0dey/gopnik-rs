@@ -40,17 +40,31 @@ finding to record.
 playing and counting — that measures one seed's luck, and the sample needed for
 a stable estimate is enormous. It is answered by reading flow:
 
-- Walking rolls `Random(25)+1` at `1000:b358`, then buckets the result
-  (`cmp byte[0x3971],0x0a`, …). The bucket boundaries ARE the probabilities.
-- The bucket-2 branch (`1000:b4e8`–`1000:b575`) ends in `mov byte [0x3697],1`
-  after its own further roll — that is a discovery flag being set.
-- `mar`'s gate reads `cmp byte [0x3694],1` at `1000:b94f` — that is the flag
-  being consumed.
+- Walking calls `Random` at `1000:b353` (`9a 4b 11 78 0f`); `1000:b358` is the
+  `inc ax` / `mov [0x3971],al` that stores the result. It is then bucketed by
+  `cmp byte [0x3971],0x0a`, then `09`, then `05`. **The bucket boundaries ARE
+  the probabilities.**
+- Bucket 2 (`1000:b4e8` = `cmp al,2`) runs its own further `Random(2)` and, on
+  zero, reaches `1000:b570` = `c6 06 97 36 01` — `mov byte [0x3697],1`, the
+  GIRL's discovery flag. (`1000:b575` is the `jmp` after it, not the setter.)
+- `mar`'s gate reads `cmp byte [0x3694],1` at `1000:b954`; `1000:b94f` is the
+  `jz` that precedes it. That is a flag being consumed.
+- Each location has its own flag, contiguous at `20ae:3694..369a` — the den is
+  `0x3696` (gate `1000:d80c`), the girl `0x3697` (gate `1000:d6f7`). Naming the
+  wrong flag is as wrong as naming the wrong address.
 
 Read those constants and the probability table falls out exactly, per location.
 No sampling, no inference. A live trace complements this by enumerating which
 `Random` sites actually execute and with what `n`, but the *distribution* comes
 from the comparison constants, not from counting outcomes.
+
+## This document has already broken its own rule
+
+The first version of the worked example above cited `1000:b358` for a `Random`
+call that is five bytes earlier, and `1000:b94f` for a `cmp` that is five bytes
+later; a reviewer re-derived both from `orig/g.exe` and caught them. Citing an
+address is not the same as citing the RIGHT address, and a near-miss reads as
+authoritative to everyone downstream. Re-derive before you write it down.
 
 ## What this rules out
 

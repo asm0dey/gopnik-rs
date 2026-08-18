@@ -29,10 +29,17 @@ the version banner in guest RAM:
 
     find /b 0x1000, 0xfffff, 0x5e,0x34,0x47,0x6f,0x70,...    ("^4Gopnik: ^7version")
 
-It appears twice, at file offsets `0x7d59` and `0xc3c1` (delta `0x4668`); a
-matching delta in RAM confirms it is the image. Then:
+It appears twice, at FILE offsets `0x7d59` and `0xc3c1` (delta `0x4668`); a
+matching delta in RAM confirms it is the image. **Convert to an image offset
+before subtracting** — the load image starts at file `0x18d0`, which is Ghidra
+`1000:0000`:
 
+    image_off  = file_off - 0x18d0                  (0x7d59 -> 0x6489)
+    image_base = found_linear - image_off
     linear(1000:XXXX) = image_base + XXXX
+
+Skipping the `- 0x18d0` puts the base out by exactly that much and every
+breakpoint lands on unrelated memory.
 
 Testing saw base `0x224B0`, cross-checked against a live `CS=0x224e`. Do NOT
 hardcode it — DOS picks the load segment.
