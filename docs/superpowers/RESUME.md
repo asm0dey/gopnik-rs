@@ -29,22 +29,44 @@ the start instead of having ~20 `println!` sites rewritten afterwards.
 | 8 — RNG recovered and ported | complete, approved (1 fix wave) | `74adfdc`, `8fe47cc` |
 | 9 — combat math recovered + ported | complete, approved (2 fix waves) | `ab6b8d3`, `11eeea8`, `002c674` |
 | 9b — XP thresholds + stat growth | complete, approved (2 fix waves) | `e699366`, `faf55fe`, `c90e73b` |
-| 10 — item/shop/enemy tables | implemented + approved; 2 fix waves AWAITING RE-REVIEW | `17a23a0`, `0f83d5d`, `1b2b797` |
+| 10 — item/shop/enemy tables | complete, approved (4 fix waves) | `17a23a0` .. `7bf943d` |
+| 10b — cross-platform colour | IN FLIGHT | — |
+| 10c — compile-time table codegen | queued (plan `fbd7040`) | — |
 
-**NEXT: re-review Task 10's two fix waves, then Task 10b, then Task 11.**
+**NEXT: Task 10b (in flight), then Task 10c, then Task 11.**
 
 ### RESUME HERE — exact state
 
-Task 10 is IMPLEMENTED and was APPROVED on first review, then had two fix waves
-applied which have NOT yet been re-reviewed:
-- `17a23a0` implementation (approved: no Critical/Important; every price, gate,
-  boss immediate and class weight re-derived from the binary by the reviewer,
-  and the artifacts regenerate byte-identically in a tree containing no Rust)
-- `0f83d5d` fix wave 1 — 2 Important + 6 Minor doc/consistency findings
-- `1b2b797` fix wave 2 — owner-directed runtime/provenance split
+Task 10 is COMPLETE and APPROVED (`16b8171`..`7bf943d`). It took four fix waves
+and three review rounds; the final review found zero Critical and zero
+Important. What the last reviewer established, so no one re-derives it:
 
-**To resume:** `scripts/review-package 16b8171 HEAD` and dispatch a task
-reviewer over the whole range, or `0f83d5d^..HEAD` for just the two waves.
+- The money variable is the word at `20ae:38c7`, with 107 references. Debit
+  forms are `29 06 C7 38` (`sub [money],ax`, 21 sites) and `83 2E C7 38 ib`
+  (`sub [money],imm8`, 11 sites). `data/other_price_sites.json` now records all
+  32 classified, with a residual `unrecognised` bucket asserted empty — so an
+  unclassified debit site is structurally impossible, not merely absent today.
+- The completeness assertion in `tools/test_extract_tables.py` re-scans
+  `orig/g.exe` with its own literal regex rather than trusting the extractor's
+  output. The reviewer mutation-tested it six ways, including dropping a row
+  with `count` and `counts_by_category` "corrected" to match; every mutation
+  failed the test.
+- Regeneration is byte-identical, verified in a scratch tree.
+
+**Task 10b is IN FLIGHT** — an implementer is working on `src/term.rs`,
+`Cargo.toml`, `src/main.rs`, `src/lib.rs` and `tests/term_output.rs`. If you are
+resuming after a crash, check `git log` and `.superpowers/sdd/task-10b-report.md`
+before re-dispatching it.
+
+**Task 10c is queued** and specified in full in the plan (added by `fbd7040`):
+`build.rs` parses the extracted JSON at compile time into `static` tables,
+`serde`/`serde_json` move to `[build-dependencies]`, `data::items()`/`shops()`/
+`enemies()` return `&'static [T]` instead of `Vec<T>`, and the release profile
+gains `strip`/`lto`/`opt-level = "z"`/`codegen-units = 1`. Owner-requested after
+asking why the Rust binary is 5x the size of `g.exe`. Measured baseline to
+compare against: `orig/g.exe` 88,656 bytes; `target/release/gopnik` 453,608
+(357,216 stripped, `.text` 267,560); all embedded runtime JSON 8,500 bytes,
+i.e. 1.9% — the data was never what made the binary large.
 
 ### Task 10 outcome
 
@@ -527,26 +549,11 @@ them from byte noise.
 - **Task 9** blow-index coverage is thin above index 1: 40 cases reach index >= 1,
   8 reach >= 2, 2 reach index 4.
 
-## QUEUED — dispatch as soon as the Task 10 fix wave lands
+## DONE — the provenance split landed in `1b2b797`
 
-**Split RE provenance out of the runtime data artifacts (owner-directed).**
-
-The provenance addresses are currently fields on the RUNTIME structs in
-`src/data.rs`, so Task 11's gameplay code would see them:
-`Item.src_off`, `Item.price_src`, `ShopEntry.price_addr`,
-`ShopEntry.displayed_price_addr`, `ShopEntry.code_addr`, `Enemy.source`.
-The `String`s also allocate on every parse.
-
-Fix: `data/{items,shops,enemies}.json` keep only what the game needs; a sibling
-`data/*.provenance.json` keyed by `id` carries the addresses. Only the runtime
-files get `include_str!`'d in `src/data.rs`. The "two places" rule is still met
-— provenance stays a machine-readable `data/` artifact, just not one compiled
-into the game binary. `tools/extract_tables.py` emits both; artifacts must
-still regenerate byte-identically.
-
-Do it BEFORE Task 11 consumes the API — same reasoning as the `class` move.
-Apply the same principle when Task 11 embeds `data/strings.json` (133K): the
-game needs the text, not the `suspect` flag or the RE offsets.
+The RE addresses that used to sit on the runtime structs in `src/data.rs` now
+live in sibling `data/*.provenance.json` files that the crate never embeds.
+Verified lossless field-by-field across all 46 rows.
 
 ## Carried forward — Task 11 must handle
 
