@@ -301,8 +301,8 @@ discovery flags one byte at a time into `places.sav` (file `0x8D87`,
 while `docs/re/progression.md` already had it as the class/rank index. The
 progression reading is the right one, and every use lines up.
 
-Three other places in the repo already read `[0x389c]` as the class and are
-consistent with this: `docs/re/combat.md` (the class-indexed growth-weight and
+Two other places in the repo, besides `progression.md` above, already read
+`[0x389c]` as the class and are consistent with this: `docs/re/combat.md` (the class-indexed growth-weight and
 rank-name tables, and the enemy's mirror field `[0x3952]`), and
 `tools/capture_xp_cases.py`'s `CLASS_OF_ANSWER_ADD` (the `answer + 3` mapping
 that `1000:71b8` implements). This section confirms them from the write side;

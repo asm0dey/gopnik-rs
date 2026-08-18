@@ -377,7 +377,7 @@ are the questions that pass left open, and the ones it created.
 * **The whole sequence is static-only.** Every one of the eighteen draws is
   **established from flow** from the disassembly; **none** has been corroborated
   by a live breakpoint. A `tools/qemu` run on a pinned seed that logs the
-  fourteen in-range sites in order — and the church's two when it fires — would
+  fourteen in-range sites in order — and the church's four when it fires — would
   raise the whole catalogue a tier, and is the natural first step of Task 12.
 * **`unk_38b2`.** `1000:81e9` increments this byte under
   `^1Накладываю на тебя защиту!` (file `0x9476`). No consumer was located.
