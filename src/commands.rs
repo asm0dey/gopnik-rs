@@ -59,21 +59,37 @@
 //! | `i` | `1000:ea94` | `0xBFDE` | prints the 13-line command list (`docs/re/oracle-captures/...`'s capture); **not inventory** -- the brief's guess is wrong |
 //! | `s` | `1000:ec82` | `0xB855` | stats |
 //! | `f` | `1000:ec96` | `0xC31C` | handler not traced past its `jz`; corroborated as "shoot" by the adjacent refusal string `^6Ты чё псих? мигом менты накроют!` at file `0xC31E`, printed immediately after this token in the code layout |
-//! | `k` | `1000:ecc7` | `0xC341` | handler not traced past its `jz`; corroborated as "fight" the same way, via `^4Чё машешь копытами? Ищи мудака которого будешь пинать!` at `0xC343` |
+//! | `k` | `1000:ecc7` | `0xC341` | handler not traced past its `jz`; corroborated as "fight" the same way, via `^6Чё машешь копытами? Ищи мудака которого будешь пинать!` at `0xC343` (the colour code is `^6`, not `^4`) |
 //! | `name` | `1000:ecf1` | `0xC37C` | rename |
 //! | `version` | `1000:edab` | `0xC3B9` | **not in the help text at all** -- prints the version banner (its own text is at `0xC3C1`, the same `^4Gopnik: ^7version 1.02 june,sept 2003` the game opens with) |
 //! | `help` | `1000:edd5` | `0xC3E9` | dispatched, content not traced (see [`Command::Help`]) |
 //! | `exit` | `1000:ede9` | `0xC3EE` | **not in the help text** -- a second spelling of quit |
 //! | `e` | `1000:edfa` | `0xB43E` | quit (help text: `"если захочешь выйти"`) |
 //!
-//! `sv`, `v`, `h`, `mh`, `x`, `wes` are **not** in this `DS:3972` list --
-//! this task did not find their compare instructions. They are kept as
-//! parsed commands on corroborating evidence only, documented individually
-//! below; **this is the single biggest gap this task did not close.** A
-//! follow-up should grep for their token file offsets (`sv`=`0xC195`,
-//! `v`=`0xC210`/`0x4E96`, `h`=`0xC261`/`0xB392`, `mh`=`0xC2A1`, `x`=`0xAF9E`,
-//! `wes`=`0xAFDA`) in `data/string_pointers_audit.tsv` and disassemble each
-//! referencing instruction the way this table's rows were.
+//! ## `h` and `mh` are dispatched by a subroutine, not by an inline compare
+//!
+//! They are missing from the table above because `entry` does not compare
+//! them itself. At `1000:e966` it pushes the just-read `DS:3972` and calls
+//! `FUN_1000_29c4` (`E8 5B 40`, which wraps around 16 bits to `1000:29c4`);
+//! that routine compares its own argument against the token `"h"` (file
+//! `0x4197`, a length-prefixed `01 68`) at `1000:29f0` and `"mh"` (file
+//! `0x4199`, `02 6D 68`) at `1000:2a02`, and returns immediately when the
+//! line is neither. Six further `"h"` compares (`1000:2a6a`, `2aa0`, `2af2`,
+//! `2b40`, `2b89`) and one further `"mh"` compare (`1000:2bb0`) choose which
+//! messages it writes. So both **are** top-level verbs; the earlier revision
+//! of this file was right to keep them, and the reviewer's lead that they
+//! are not top-level verbs at all does not hold -- `FUN_1000_3d11`'s call at
+//! `1000:4b00` is a *second* call site, not the only one.
+//!
+//! `sv`, `v`, `x`, `wes` are still **not** in this `DS:3972` list -- this
+//! task did not find their compare instructions. They are kept as parsed
+//! commands on corroborating evidence only, documented individually below.
+//! A follow-up should grep for their token file offsets (`sv`=`0xC195`,
+//! `v`=`0xC210`/`0x4E96`, `x`=`0xAF9E`, `wes`=`0xAFDA`) in
+//! `data/string_pointers_audit.tsv` and disassemble each referencing
+//! instruction the way this table's rows were. `x` and `wes` are the
+//! dealers' own submenu keys, read at `^0Барыги\\` rather than at the
+//! top-level prompt, so they may well have no `DS:3972` compare at all.
 //!
 //! ## Corrections this makes to the brief
 //!
@@ -128,12 +144,12 @@ pub enum Command {
     CommandList,
     /// `kos`. Confirmed at `1000:e973`.
     Joint,
-    /// `h`. Not found in the dispatch chain; corroborated by
-    /// `FUN_1000_29c4` (the beer-healing routine `crate::game::Game::drink_beer`
-    /// documents) being callable from both `entry` and `FUN_1000_3d11`, and
-    /// by the help text.
+    /// `h`, drink one half-litre. **Confirmed**: `entry` passes the typed
+    /// line to `FUN_1000_29c4` at `1000:e966`, which compares it against the
+    /// token at file `0x4197` at `1000:29f0`. See the module doc.
     Drink,
-    /// `mh`. Not found in the dispatch chain; help-text corroboration only.
+    /// `mh`, drink until full. **Confirmed** the same way: token file
+    /// `0x4199`, compared at `1000:2a02`.
     BingeDrink,
     /// `name`. Confirmed at `1000:ecf1`.
     Name,

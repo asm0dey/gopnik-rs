@@ -6,19 +6,29 @@
 //!
 //! Updated by Task 11: `main.rs` now runs character creation and the main
 //! loop, not just the banner. With `stdin` null every `read_line` returns
-//! immediately at EOF, so the full sequence below (banner, name prompt,
-//! class prompt, then the loop's own `\` prompt before it too sees EOF and
-//! exits) is exactly what a real "no input available" run produces -- this
-//! is not a relaxation of the test, it is the same exact-bytes assertion
-//! against the new, larger, real output.
+//! immediately at EOF, so the full sequence below (banner, class menu, name
+//! prompt, then the loop's own `\` prompt before it too sees EOF and exits)
+//! is exactly what a real "no input available" run produces -- this is not a
+//! relaxation of the test, it is the same exact-bytes assertion against the
+//! new, larger, real output.
+//!
+//! The constants below are transcribed from `orig/g.exe` via
+//! `data/strings.json`, at the file offsets named on each line -- **not**
+//! copied out of `main.rs`. That is the point: if `main.rs` drifts away from
+//! the original's bytes, this test fails. Convert a Ghidra `1000:XXXX`
+//! address to a file offset with `0x18d0 + XXXX`.
 
 use std::process::{Command, Stdio};
 
-// Must match the literals `main.rs` passes to `term::println`/`term::print`.
-const BANNER: &str = "^4Gopnik: ^7version 1.02 june,sept 2003";
-const NAME_PROMPT: &str = "^0А зовут тебя: ";
-const CLASS_PROMPT: &str = "0-Пацан, 1-Отморозок, 2-Гопник, 3-Вор";
-const GAME_PROMPT: &str = "\\";
+const BANNER: &str = "^4Gopnik: ^7version 1.02 june,sept 2003"; // file 0x7D59
+const CHOOSE: &str = "Выбери кем ты будешь: "; // file 0x7F67, written at 1000:6f2b
+const OPT0: &str = "0-Пацан"; // file 0x7F7E
+const OPT1: &str = "1-Отморозок"; // file 0x7F86
+const OPT2: &str = "2-Гопник"; // file 0x7F92
+const OPT3: &str = "3-Вор"; // file 0x7F9B
+const OPT4: &str = "4-Чё за батва?"; // file 0x7FA1
+const NAME_PROMPT: &str = "^2А зовут тебя:^7 "; // file 0x80A1, Write at 1000:71ea
+const GAME_PROMPT: &str = "\\"; // file 0x9BF1, the one-byte shortstring "\"
 
 fn run(env_remove: &[&str], env_set: &[(&str, &str)]) -> String {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_gopnik"));
@@ -41,10 +51,15 @@ const COLOR_ENV_VARS: &[&str] = &["NO_COLOR", "CLICOLOR", "CLICOLOR_FORCE"];
 /// `term::println`/`term::print` would.
 fn expected(f: impl Fn(&str) -> String) -> String {
     format!(
-        "{}\n{}{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}{}",
         f(BANNER),
+        f(CHOOSE),
+        f(OPT0),
+        f(OPT1),
+        f(OPT2),
+        f(OPT3),
+        f(OPT4),
         f(NAME_PROMPT),
-        f(CLASS_PROMPT),
         f(GAME_PROMPT),
     )
 }

@@ -1,6 +1,18 @@
 //! The main loop: dispatch, locations, and the handlers small enough to
 //! belong here rather than in their own module.
 //!
+//! ## Every user-visible string here is a verbatim byte range of `orig/g.exe`
+//!
+//! Nothing in this module composes, paraphrases or translates game text.
+//! Each literal below is quoted from `data/strings.json` with its file
+//! offset, keeping its `^N` colour markup, its typos, its double spaces and
+//! its trailing padding. `crate::term` is the only writer; it applies the
+//! colour policy itself, so the markup must survive into what it receives.
+//!
+//! Ghidra convention used by every citation: a `1000:XXXX` code address is
+//! at file offset `0x18d0 + XXXX`, and a `mov di,<n>` / `push cs` string
+//! operand at `1000:XXXX` names the string at file offset `0x18d0 + n`.
+//!
 //! ## This module was substantially redesigned mid-task
 //!
 //! The brief's `game.rs` sketch was a flat, stateless dispatcher: any verb
@@ -13,22 +25,23 @@
 //!   binary itself -- file offset `0x9BF1` is the one-byte Pascal shortstring
 //!   `"\"`, printed repeatedly through `entry`.
 //! * **Combat is modal.** `FUN_1000_3d11` (`docs/re/combat.md`) runs its own
-//!   `Битва\` prompt loop; the live capture shows it rejecting `mar` and `i`
-//!   outright (reprinting `Битва\` with no other effect) rather than routing
-//!   them anywhere.
+//!   `^0Битва\` prompt loop (file `0x4A49`); the live capture shows it
+//!   rejecting `mar` and `i` outright rather than routing them anywhere.
 //! * **Walking (`w`/`run`) rolls for a random encounter**, which itself
 //!   reads a *second* line (into a different variable, `DS:3a72`) answering
 //!   `"Хочешь наехать?"` -- confirmed by disassembling `1000:ae5a`..`1000:b82c`
 //!   (see [`Game::walk`]'s doc for the full trace, with addresses).
-//! * **Locations are their own modal loop, not proven but strongly implied
-//!   by symmetry with combat.** This task did not trace `mar`'s own submenu
-//!   dispatch instruction-by-instruction (that would be a second `entry`-sized
-//!   investigation), so [`Mode::Shop`]'s behaviour -- accept a location's own
-//!   keys and `w` to leave, reject everything else -- is inferred from
-//!   combat's confirmed shape plus the location intro texts
-//!   (`docs/re/tables.md`'s `mar`/`bmar` sections; every location says
-//!   `"напиши w чтобы уйти"`, never mentioning any other way out) rather than
-//!   independently disassembled. Flagged in task-11-report.md.
+//! * **Locations are their own modal loop.** This was flagged as an
+//!   *inference* by the previous revision of this task; it is now
+//!   **confirmed**. Each location handler ends by writing its own prompt
+//!   string and then `ReadLn`-ing into `DS:3a72` -- the same second input
+//!   variable combat uses, not the top-level `DS:3972`. The prompt strings
+//!   are real and distinct per location: `^0Базар\` (file `0xA691`, written
+//!   at `1000:bd08`, `ReadLn` at `1000:bd21`), `^0Барыги\` (`0xAC4B`),
+//!   `^0Ветеренар\` (`0xB313`), `^0Притон\` (`0xB787`), `^0Клуб\` (`0xBAB2`),
+//!   `^0Качалка\` (`0xBD43`). `girl` has no prompt string and no `ReadLn`:
+//!   it is **not** modal, and [`Game::visit_girl`] runs it to completion in
+//!   one turn, matching `1000:d701`..`1000:d798`.
 //!
 //! ## No typed save command
 //!
@@ -59,13 +72,13 @@ use crate::rng::Rng;
 use crate::save::Save;
 use crate::term;
 use crate::text;
-use std::io::{self, BufRead, Lines, StdinLock};
+use std::io::{self, BufRead};
 
 /// What the main loop is currently doing. Only [`Mode::Street`] dispatches
 /// the full verb table (`crate::commands::parse`'s whole vocabulary);
-/// [`Mode::Shop`] and [`Mode::Combat`] each read their own restricted set of
-/// keys and ignore everything else, matching the modal `Битва\` prompt
-/// confirmed by the live capture.
+/// [`Mode::Shop`] reads its own restricted key set at the location's own
+/// prompt and ignores everything else, matching the per-location
+/// `ReadLn DS:3a72` loops cited in the module doc.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Mode {
     Street,
@@ -90,10 +103,17 @@ pub struct Game {
 }
 
 impl Game {
-    /// Start a brand-new character. `district` starts at 1 and `places`
-    /// starts with nothing discovered, matching a fresh `entry` run (absent
-    /// save files are the normal, expected case -- verified empirically that
-    /// `orig/g.exe` runs standalone).
+    /// Start a brand-new character.
+    ///
+    /// `district` starts at 1: the original's own load-failure fallback says
+    /// so in words -- `^6Чё-то глюкануло - нaверно нет такого сейва,
+    /// Default:1` (file `0x7D21`) -- and its district-select screen calls 1
+    /// "start from the beginning" (`^0Нажми цифру с какого района начать.
+    /// 1-начать сначала`, file `0x7C69`). `orig/SAVE_R0.SAV` exists but is a
+    /// *save slot* file, not evidence of a district 0 start; this task did
+    /// not disassemble the district-select screen, so nothing here reads it.
+    ///
+    /// `places` starts with nothing discovered.
     pub fn new(player: Fighter, progress: Progress, seed: u32) -> Game {
         Game {
             player,
@@ -130,30 +150,44 @@ impl Game {
         Ok(())
     }
 
-    /// Confirmed at file `0x9BF1`: a one-byte Pascal shortstring `"\"`,
-    /// printed as the ordinary prompt. `crate::combat`'s doc + the live
-    /// capture confirm `Битва\` during a fight; this port has no separate
-    /// combat mode (see [`Game::run_combat`]), so it never needs to print
-    /// that variant from here.
+    /// The street prompt is confirmed at file `0x9BF1`: a one-byte Pascal
+    /// shortstring `"\"`. Each location writes its own prompt instead --
+    /// see the module doc for the six offsets and the `1000:bd08`/`1000:bd21`
+    /// write-then-`ReadLn` pair that proves the pattern.
     fn prompt(&self) {
-        term::print("\\");
+        let p = match &self.mode {
+            Mode::Street => "\\",
+            Mode::Shop(Location::Market) => "^0Базар\\",
+            Mode::Shop(Location::BigMarket) => "^0Барыги\\",
+            Mode::Shop(Location::Vet) => "^0Ветеренар\\",
+            Mode::Shop(Location::Den) => "^0Притон\\",
+            Mode::Shop(Location::Club) => "^0Клуб\\",
+            Mode::Shop(Location::Gym) => "^0Качалка\\",
+            Mode::Shop(_) => "\\",
+        };
+        term::print(p);
     }
 
     fn banner(&self) {
         term::println("^4Gopnik: ^7version 1.02 june,sept 2003");
     }
 
-    fn dispatch(&mut self, cmd: Command, lines: &mut Lines<StdinLock>) -> io::Result<()> {
+    fn dispatch(&mut self, cmd: Command, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
         match cmd {
             Command::Quit => self.running = false,
             Command::Stats => self.show_stats(),
-            Command::Fight => term::println("^4Чё машешь копытами? Ищи мудака которого будешь пинать!"),
+            // file 0xC343, printed immediately after `k`'s own compare at
+            // 1000:ecc7. `^6`, not `^4`.
+            Command::Fight => {
+                term::println("^6Чё машешь копытами? Ищи мудака которого будешь пинать!")
+            }
             Command::Shoot => self.shoot(),
             Command::Inspect => self.inspect_enemy(),
             Command::Backup => self.call_backup(),
             Command::Walk => self.walk(lines)?,
+            // file 0xB58A -- the inner `^6w^7` markup is part of the string.
             Command::LegacyFight => {
-                term::println("^6Пережитки прошлого жми w чтобы искать врагов");
+                term::println("^6Пережитки прошлого жми ^6w^7 чтобы искать врагов");
             }
             Command::Market => self.enter_shop(Location::Market),
             Command::BigMarket => self.enter_shop(Location::BigMarket),
@@ -167,66 +201,267 @@ impl Game {
             Command::Version => self.banner(),
             Command::Name => self.rename(lines)?,
             Command::Joint => self.smoke(),
-            Command::Drink => self.drink_beer(),
-            Command::BingeDrink => self.binge_drink(),
+            Command::Drink => self.beer(Beer::One),
+            Command::BingeDrink => self.beer(Beer::Binge),
             Command::SellJunk => self.sell_junk(),
             Command::SellItems => self.sell_items(),
-            Command::Key(k) => self.handle_key(k),
-            Command::Unknown(s) => term::println(&format!("^4? {s}")),
+            // An unmatched line writes nothing at all: the last compare in
+            // the chain (`exit`/`e`, 1000:edfa) falls through to
+            // `jmp 0xab75` at 1000:ee01, straight back to the top of the
+            // loop, with no output in between. The `^4? <input>` line an
+            // earlier revision printed here was composed, not a real string.
+            Command::Key(_) | Command::Unknown(_) => {}
         }
         Ok(())
     }
 
-    /// `mar`/`bmar`/`rep`/`girl`/`pr`/`kl`/`trn`, gated by [`Places::is_found`]
-    /// exactly as the original gates on `20ae:3694`-style discovery flags
-    /// (see `crate::commands`'s citation for `mar`'s own two gates). On
-    /// success this switches [`Mode::Shop`], which is the (partly inferred,
-    /// see the module doc) modal state that restricts input the way `mar`'s
-    /// own `"напиши w чтобы уйти"` implies.
-    fn enter_shop(&mut self, loc: Location) {
-        if self.places.is_found(loc) {
-            self.location = loc;
-            self.mode = Mode::Shop(loc);
-            self.print_shop_intro(loc);
-        } else {
-            term::println("^6Ты пока что неузнал где в этом районе это место");
-            self.places.mark_found(loc);
-        }
-    }
-
-    fn print_shop_intro(&self, loc: Location) {
-        let line = match loc {
-            Location::Market => "Ты пришел на базар напиши  w  чтобы уйти.",
-            Location::BigMarket => "Ты пришел к барыгам напиши  w  чтобы уйти.",
-            Location::Vet => "Ты пришел на ремот, к ветеринару напиши  w  чтобы уйти",
-            Location::Girl => "Ты пришел к своей подруге.",
-            Location::Den => "Напиши w чтобы уйти",
-            Location::Club => "Ты пришел в клуб напиши  w  чтобы уйти",
-            Location::Gym => "Ты пришел в качалку напиши  w  чтобы уйти",
-            Location::Street | Location::Temple | Location::Dorm => return,
-        };
-        term::println(line);
-    }
-
-    /// One turn of [`Mode::Shop`]. Only `w`/`run` (leave, confirmed as the
-    /// universal exit every location's intro text names) and a small,
-    /// per-location key set (see [`Game::handle_key`]) are handled; anything
-    /// else is silently ignored and the location's prompt repeats -- the
-    /// same shape the live capture proved for `Битва\`. This location-level
-    /// modality itself is inferred, not independently disassembled; see the
-    /// module doc.
-    fn shop_turn(&mut self, loc: Location, line: &str) {
-        match parse(line) {
-            Command::Walk => {
-                self.location = Location::Street;
-                self.mode = Mode::Street;
+    /// The "you have not found this place yet" refusal, one verbatim string
+    /// per location. Every one was read off its own gate branch: the token
+    /// compare jumps to `cmp byte [<flag>],1`, and the not-equal arm jumps
+    /// to a block that writes exactly one string.
+    ///
+    /// | verb | gate | flag | refusal jumps to | string |
+    /// |---|---|---|---|---|
+    /// | `mar` | `1000:b954` | `20ae:3694` | `1000:c49b` | file `0xA9F8` |
+    /// | `bmar` | `1000:c4c8` | `20ae:3695` | `1000:d383` | file `0xB1CC` |
+    /// | `pr` | `1000:d80c` | `20ae:3696` | `1000:dee3` | file `0xB980` |
+    /// | `girl` | `1000:d6f7` | `20ae:3697` | `1000:d7b5` | file `0xB568` |
+    /// | `rep` | `1000:d3b0` | `20ae:3698` | `1000:d6ca` | file `0xB440` |
+    /// | `kl` | `1000:df10` | `20ae:3699` | `1000:e36d` | file `0xBBF6` |
+    /// | `trn` | `1000:e39a` | `20ae:369a` | `1000:e948` | file `0xBEC2` |
+    fn undiscovered_line(loc: Location) -> &'static str {
+        match loc {
+            Location::Market => "^6Ты незнаешь, пока ешё, где находтся базар",
+            Location::BigMarket => {
+                "^6Туда любого дебила с улицы непропустят - сначала докажи, что ты не засранец - отпинай побольше ублюдков"
             }
-            Command::Key(k) => self.handle_key(k),
-            _ => {} // ignored: matches Битва\'s proven reject-and-reprompt shape
+            Location::Den => "^4Тебя мудака такого туда не пустят - поднимай понтовость",
+            Location::Girl => "^4У тебя пока нет девчонки.",
+            Location::Vet => "^6Сначала найди где находтся эта больница",
+            Location::Club => "^6Ты пока что неузнал где в этом районе клуб",
+            Location::Gym => "^6Ты пока незнаешь где в этом районе качалка",
+            Location::Street | Location::Temple | Location::Dorm => "",
         }
-        let _ = loc; // kept for symmetry / future per-location dispatch
     }
 
+    /// `mar`/`bmar`/`rep`/`girl`/`pr`/`kl`/`trn`, gated by [`Places::is_found`]
+    /// exactly as the original gates on its seven contiguous discovery flags
+    /// `20ae:3694`..`20ae:369a` (see [`Game::undiscovered_line`]).
+    ///
+    /// A refused entry only prints. It does **not** discover the place: the
+    /// original's flags are set elsewhere (`girl` sets the club's flag at
+    /// `1000:d751`; the wander path sets the den's at `1000:b575`), never by
+    /// a failed entry. This port does not yet implement any discovery path,
+    /// so the flags stay clear -- an honest gap, not a substituted mechanic.
+    fn enter_shop(&mut self, loc: Location) {
+        if !self.places.is_found(loc) {
+            term::println(Self::undiscovered_line(loc));
+            return;
+        }
+        self.location = loc;
+        if loc == Location::Girl {
+            // Not modal: no prompt string, no ReadLn (1000:d701..1000:d798).
+            self.visit_girl();
+            self.location = Location::Street;
+            return;
+        }
+        self.mode = Mode::Shop(loc);
+        self.print_shop_intro(loc);
+    }
+
+    /// `girl`, `1000:d701`..`1000:d798`, in order:
+    ///
+    /// * `1000:d701` -- needs 12 rubles (`cmp word [0x38c7],0xc`); otherwise
+    ///   file `0xB53D` and nothing else happens.
+    /// * `1000:d70b` -- file `0xB46F`.
+    /// * `1000:d724` -- `Random(2)`; on `0`, and only if the club is still
+    ///   undiscovered (`cmp byte [0x3699],0`), prints file `0xB48C` and sets
+    ///   the club's discovery flag at `1000:d751`. This is one of the two
+    ///   discovery paths in the game.
+    /// * `1000:d756`/`1000:d76f` -- files `0xB4CD`, `0xB4F6`.
+    /// * `1000:d788`..`1000:d793` -- `hp := hpmax`, `money -= 12`, and clears
+    ///   the pursuit flag `20ae:3b76` (not modelled here).
+    fn visit_girl(&mut self) {
+        if self.player.money < 12 {
+            term::println("^6Ну непойдёшь же как придурок без ничего.");
+            return;
+        }
+        term::println("^2Ты пришел к своей подруге.");
+        if self.rng.below(2) == 0 && !self.places.is_found(Location::Club) {
+            term::println("^2Она вытащила тебя в клуб и теперь ты знаешь где он находиться.");
+            self.places.mark_found(Location::Club);
+        }
+        term::println("^6Ты купил ей чё-то, потратив 12 рублей.");
+        term::println("^2Ты расслабился, отдохнул и снова можешь творить свои гоповские дела.");
+        self.player.hp = self.player.hpmax;
+        self.player.money -= 12;
+    }
+
+    /// The colour digit the original appends to a price row's prefix.
+    ///
+    /// Every priced menu row is built as `<prefix ending in "^">` +
+    /// `'0'`/`'4'` + `<row text>`, so the two halves only form a valid `^N`
+    /// code once joined: `'0'` when the row is affordable, `'4'` when it is
+    /// not (`1000:b9b3`..`1000:b9c5` for `mar` row 1, and the same shape at
+    /// `1000:d410` and `1000:d465` for the vet's two services). The price
+    /// digit itself is *not* eaten by the markup -- the colour digit sits
+    /// between the `^` and the price.
+    fn afford(&self, price: i32) -> &'static str {
+        if self.player.money >= price {
+            "0"
+        } else {
+            "4"
+        }
+    }
+
+    /// Everything a location writes before its own prompt.
+    ///
+    /// `mar` (`1000:b968`..`1000:bd08`) and `bmar` (`1000:c4d2`..) print
+    /// three flavour lines then their priced rows; each row is
+    /// `^6N^7 - ^` (files `0xA4A2`, `0xA4C4`, `0xA4E1`, `0xA51B`, `0xA565`,
+    /// `0xA599`, `0xA5E9`, `0xA633`, `0xA660` -- `bmar` reuses the same nine
+    /// prefixes, confirmed at `1000:c53a` pushing `mar` row 1's prefix
+    /// `cs:0x8bd2`) + the affordability digit + the row's own text, which is
+    /// `crate::data::shops`' `text` with `#` filled from `displayed_price`.
+    /// District gating of a *printed* row is the same `district > N` test the
+    /// row's `gate` records (`1000:bb80`, `1000:bc42`, `1000:bca5`).
+    ///
+    /// **Not reproduced:** `kl`'s and `trn`'s numbered rows. Their prefixes
+    /// (` 1 -  ^` file `0xBA48`, ` 2 -  ^` file `0xBA7D`, ` 3 -  ^` `0xBCAE`,
+    /// ` 4 -  ^` `0xBCD5`, ` 5 -  ^` `0xBD1B`) and row texts exist, but
+    /// `data/shops.json` covers only `mar`/`bmar`, so their prices and
+    /// affordability thresholds were not traced by this task. Printing them
+    /// would mean guessing which prefix pairs with which text. Their intro
+    /// lines are printed; the rows are a reported gap.
+    fn print_shop_intro(&mut self, loc: Location) {
+        match loc {
+            Location::Market => {
+                term::println("Ты пришел на базар напиши  ^6w^7  чтобы уйти.");
+                term::println("Можно потискать здесь у лохов кошельки(^6t^7).");
+                term::println("А можно чё-то купить");
+                self.print_priced_rows("mar");
+            }
+            Location::BigMarket => {
+                term::println("Ты пришел к барыгам напиши  ^6w^7  чтобы уйти.");
+                term::println("Здесь можно толкнуть хлам(^6x^7) и купить кое-что");
+                term::println("Ещё ты можешь продать ненужные вещи - ^6wes^7");
+                self.print_priced_rows("bmar");
+            }
+            Location::Vet => {
+                term::println("Ты пришел на ремот, к ветеринару напиши  ^6w^7  чтобы уйти");
+                // 1000:d3d3: healthy (hp >= hpmax, no broken jaw, no broken
+                // leg) skips the whole menu.
+                if self.player.hp >= self.player.hpmax
+                    && !self.player.broken_jaw
+                    && !self.player.broken_leg
+                {
+                    return;
+                }
+                term::println("^0Док: не волнуйся всё зарастёт как на собаке");
+                // 1000:d423 / 1000:d478: prefix + affordability digit + text.
+                term::println(&format!(
+                    "  ^2h^7 - за ^{}3^7 рубля тебя залатают",
+                    self.afford(3)
+                ));
+                term::println(&format!(
+                    "  ^2r^7 - за ^{}7^7 рублей починят переломы",
+                    self.afford(7)
+                ));
+            }
+            Location::Den => self.print_den_intro(),
+            Location::Club => {
+                term::println("Ты пришел в клуб напиши  ^6w^7  чтобы уйти");
+                term::println(" Здесь можно сыграть в карты (^6p^7 Минимальная ставка- 5р.)");
+            }
+            Location::Gym => {
+                term::println("Ты пришел в качалку напиши  ^6w^7  чтобы уйти");
+            }
+            Location::Girl | Location::Street | Location::Temple | Location::Dorm => {}
+        }
+    }
+
+    /// The nine `^6N^7 - ^` prefixes, file `0xA4A2` upward.
+    const ROW_PREFIXES: [&'static str; 9] = [
+        "^61^7 - ^",
+        "^62^7 - ^",
+        "^63^7 - ^",
+        "^64^7 - ^",
+        "^65^7 - ^",
+        "^66^7 - ^",
+        "^67^7 - ^",
+        "^68^7 - ^",
+        "^69^7 - ^",
+    ];
+
+    fn print_priced_rows(&self, tag: &str) {
+        for row in data::shops().iter().filter(|r| r.shop == tag) {
+            if !self.gate_open(row.gate) {
+                continue;
+            }
+            let Some(idx) = row.key.parse::<usize>().ok().filter(|n| (1..=9).contains(n)) else {
+                continue;
+            };
+            term::println(&format!(
+                "{}{}{}",
+                Self::ROW_PREFIXES[idx - 1],
+                self.afford(row.price),
+                text::fill(row.text, &[row.displayed_price as i64])
+            ));
+        }
+    }
+
+    /// `pr`, `1000:d816`..`1000:d8b9`. `Ты пришел в притон - ` (file
+    /// `0xB5C0`) is *written without a newline* (`call 0eed:0000` at
+    /// `1000:d82a`), then exactly one district-keyed suffix completes the
+    /// line. District 1 spends a real `Random(6)` draw for the dorm number
+    /// (`1000:d83b`, `+3`), so this branch is part of the RNG sequence.
+    ///
+    /// **Not reproduced:** the conditional lines that follow
+    /// (`1000:d8c8` onward, gated on flags `20ae:3b78`/`20ae:3b79` this port
+    /// does not model) and the den's own `p`/`r`/`hp`/`s`/`a`/`d` menu.
+    fn print_den_intro(&mut self) {
+        term::print("Ты пришел в притон - ");
+        match self.district {
+            1 => {
+                let n = self.rng.below(6) + 3;
+                term::println(&text::fill("^0общагу №#", &[n as i64]));
+            }
+            2 => term::println("^0общагу ВКИ"),
+            3 => term::println("^0гоповский притон"),
+            4 => term::println("^0притон отморозков"),
+            _ => term::println(""),
+        }
+    }
+
+    /// One turn at a location's own prompt. The location's keys are checked
+    /// *before* the street verb table, because the original reads them with
+    /// its own `ReadLn DS:3a72` that never reaches `entry`'s `DS:3972`
+    /// dispatch chain at all -- this is why the vet's `h` (heal a jaw) and
+    /// the street's `h` (drink a beer, `1000:e966`) can share a letter.
+    /// `w`/`run` leaves, which every location's intro text names as the way
+    /// out. Anything else is ignored and the prompt repeats.
+    fn shop_turn(&mut self, loc: Location, line: &str) {
+        let key = line.trim().to_lowercase();
+        match (loc, key.as_str()) {
+            (Location::Vet, "h") => return self.heal_jaw(),
+            (Location::Vet, "r") => return self.heal_leg(),
+            (Location::BigMarket, "x") => return self.sell_junk(),
+            (Location::BigMarket, "wes") => return self.sell_items(),
+            (Location::Market | Location::BigMarket, k)
+                if k.len() == 1 && k.chars().all(|c| c.is_ascii_digit()) =>
+            {
+                return self.shop_action(k.chars().next().unwrap());
+            }
+            _ => {}
+        }
+        if matches!(parse(line), Command::Walk) {
+            self.location = Location::Street;
+            self.mode = Mode::Street;
+        }
+        // Everything else: ignored, prompt repeats.
+    }
+
+    /// `Здоровье #/#  ` -- file `0x2BAE`, trailing double space included.
     fn show_health(&self) {
         term::println(&text::fill(
             "Здоровье #/#  ",
@@ -234,10 +469,9 @@ impl Game {
         ));
     }
 
-    /// `s`. `Сл`/`Лв`/`Жв`/`Уд` at `1000:1419`, `Урон #-#` at `1000:1436`,
-    /// `Здоровье #/#` at `1000:1542`, `^2Броня #` at `1000:163f` -- all four
-    /// cited together in `crate::model::Fighter`'s own record table as one
-    /// status screen.
+    /// `s`. `Сл:# Лв:# Жв:# Уд:#` file `0x2B6A`, `Урон #-#` file `0x2B7E`,
+    /// `Здоровье #/#  ` file `0x2BAE`, `^2Броня #    ` file `0x2C0A` -- the
+    /// last one's four trailing spaces and its `^2` are part of the string.
     fn show_stats(&self) {
         let p = &self.player;
         term::println(&text::fill(
@@ -251,7 +485,7 @@ impl Game {
         ));
         term::println(&text::fill("Урон #-#", &[p.dmg_min as i64, p.dmg_max as i64]));
         if p.armor > 0 {
-            term::println(&text::fill("^2Броня #", &[p.armor as i64]));
+            term::println(&text::fill("^2Броня #    ", &[p.armor as i64]));
         }
         self.show_health();
         for line in self.player.inventory_lines() {
@@ -283,22 +517,34 @@ impl Game {
     }
 
     /// `help`. Dispatched confirmed at `1000:edd5`; its printed content was
-    /// not traced (the live capture happened to exercise `i`, not `help`).
-    /// Left as an honest stub rather than a guess.
-    fn show_help(&self) {
-        term::println("^6(содержимое help не установлено этим тасом -- см. task-11-report.md)");
-    }
+    /// not traced. Nothing is printed rather than inventing a line: the game
+    /// has no "not implemented" string, so there is nothing verbatim to say.
+    /// Reported as a gap in task-11-report.md.
+    fn show_help(&self) {}
 
-    /// `sv`. Shows the last-fought opponent's stat block, matching the
-    /// oracle-observed format from `docs/re/tables.md` section 4 ("Boss v0"):
-    /// `Это <name> <level> уровня` / stats / `Урон #-#` / `Здоровье #/#` /
-    /// `Броня #`.
+    /// `sv`. Shows the last-fought opponent's stat block. The header is the
+    /// two real fragments `^2Это ` (file `0x2B59`) and ` # уровня` (file
+    /// `0x2B60`), concatenated around the enemy's rank name exactly as
+    /// `1000:13d2`..`1000:1404` does.
+    ///
+    /// **Not reproduced:** the original appends the крутизна descriptor
+    /// built by `FUN_1000_1348` from a 256-byte-stride table at `DS:0b42`
+    /// indexed by level, and separated by ` - ` (file `0x2B55`).
+    ///
+    /// Before any fight the original still has a zeroed enemy record and
+    /// prints the block anyway; there is no "nothing to inspect" string in
+    /// the binary, so this prints nothing rather than composing one.
     fn inspect_enemy(&self) {
         let Some(enemy) = &self.last_enemy else {
-            term::println("^6Драться пока не с кем.");
             return;
         };
-        term::println(&format!("Это {} {} уровня.", enemy.name, enemy.level));
+        self.print_enemy_block(enemy);
+    }
+
+    fn print_enemy_block(&self, enemy: &Fighter) {
+        term::print("^2Это ");
+        term::print(&enemy.name);
+        term::println(&text::fill(" # уровня", &[enemy.level as i64]));
         term::println(&text::fill(
             "Сл:# Лв:# Жв:# Уд:#",
             &[
@@ -309,8 +555,11 @@ impl Game {
             ],
         ));
         term::println(&text::fill("Урон #-#", &[enemy.dmg_min as i64, enemy.dmg_max as i64]));
-        term::println(&text::fill("Здоровье #/#", &[enemy.hp as i64, enemy.hpmax as i64]));
-        term::println(&text::fill("Броня #", &[enemy.armor as i64]));
+        term::println(&text::fill(
+            "Здоровье #/#  ",
+            &[enemy.hp as i64, enemy.hpmax as i64],
+        ));
+        term::println(&text::fill("^2Броня #    ", &[enemy.armor as i64]));
     }
 
     /// `v`. Corroboration-only verb (see `crate::commands`); the original's
@@ -357,25 +606,37 @@ impl Game {
     ///   confirmed fact. Bucket 3 (`1000:b5ae`, `cmp al,3`) is the one that
     ///   leads into `FUN_1000_0d14` (the encounter generator).
     /// * `1000:b5b8` -- `call FUN_1000_0d14` (rolls the enemy).
-    /// * `1000:b660`..`1000:b691` -- prints `"Идет <rank> <крутизна>
-    ///   уровня..."`, then a **second** `ReadLn`, this time into `DS:3a72`
-    ///   (confirmed a different variable from the line-level `DS:3972`),
-    ///   compared against the literal `"y"` (file `0x9BF3`: length-prefixed
-    ///   `01 79`). Confirmed: typing exactly `y` sets an accept flag
-    ///   (`DS:3b72`).
-    /// * `1000:b721` -- on any other answer, `Random(2)` picks between two
-    ///   messages (`^X Ты смылся.` / `^X Он тебя заметил.` + a taunt) --
-    ///   **this task confirmed this exact 50/50 roll for one of at least two
-    ///   similarly-shaped code paths** (there is a second compare-then-decide
-    ///   block at `1000:b691` with no visible random roll on decline at all,
-    ///   reached for a different enemy-class range via `1000:b5fc`'s
-    ///   luck-vs-roll branch); which path a real encounter takes depends on
-    ///   the rolled enemy's class, not reproduced here. This port always
-    ///   uses the `Random(2)` 50/50, which is a real branch of the original,
-    ///   not a fabrication, but not proven to be the *only* branch.
+    /// * `1000:b6a6`..`1000:b6dd` -- writes `^6Идет ` (file `0xA267`), the
+    ///   rank name, and ` # уровня, ищущий кого отпинать. Хочешь наехать?`
+    ///   (file `0xA28A`) as one `WriteLn`. **No prompt is written after it**
+    ///   -- the very next instruction (`1000:b6e0`) sets up the `ReadLn`.
+    /// * `1000:b6e0`..`1000:b704` -- a **second** `ReadLn`, this time into
+    ///   `DS:3a72` (confirmed a different variable from the line-level
+    ///   `DS:3972`), then `call 0eed:0216` -- the same case-folding routine
+    ///   `entry` applies to every typed line, so the answer **is**
+    ///   case-insensitive -- then compared against the literal `"y"`
+    ///   (file `0x9BF3`: length-prefixed `01 79`).
+    /// * `1000:b718` -- `jnz 0xb721`, i.e. **the answer was not `y`**:
+    ///   `Random(2)` at `1000:b725`, then `or ax,ax` / `jnz 0xb74e`.
+    ///   * `ax == 0` falls through to `1000:b72e`: writes `^4Он тебя
+    ///     заметил.` (file `0xA2BB`) and then `mov byte [0x3b72],1` at
+    ///     `1000:b747` -- the accept flag. **Roll 0 means the fight
+    ///     happens.**
+    ///   * `ax != 0` jumps to `1000:b74e`: writes `^2Ты смылся.` (file
+    ///     `0xA2CE`) and leaves the flag clear. **Non-zero means escaped.**
+    ///
+    ///   Nothing else is written on either arm; `^4Эй мудак?!` (file
+    ///   `0x457A`) belongs to `FUN_1000_3d11`'s class-7 combat opener
+    ///   (`1000:3dc7`), not here.
     /// * `1000:b81f`/`1000:b826` -- if the accept flag is set, `call
     ///   FUN_1000_3d11` (combat) with `param_1 = 0`.
-    fn walk(&mut self, lines: &mut Lines<StdinLock>) -> io::Result<()> {
+    ///
+    /// There is a second, structurally similar answer block at `1000:b691`
+    /// that has **no** random roll on decline (a non-`y` answer simply ends
+    /// the encounter); which of the two a real encounter reaches depends on
+    /// the rolled enemy's class via `1000:b5fc`, which this task did not
+    /// trace. This port always takes the `Random(2)` branch.
+    fn walk(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
         // 1000:b358's roll, reused here per the doc above (unverified for
         // this exact call site).
         let roll = self.rng.below(25) + 1;
@@ -389,16 +650,16 @@ impl Game {
             4
         };
         if bucket != 3 {
-            term::println("Ничё не происходит.");
             return Ok(());
         }
 
         let enemy = self.pick_enemy();
-        term::println(&format!(
-            "Идет {} {} уровня, ищущий кого отпинать. Хочешь наехать?",
-            enemy.name, enemy.level
+        term::print("^6Идет ");
+        term::print(&enemy.name);
+        term::println(&text::fill(
+            " # уровня, ищущий кого отпинать. Хочешь наехать?",
+            &[enemy.level as i64],
         ));
-        self.prompt();
         let Some(line) = lines.next() else {
             self.running = false;
             return Ok(());
@@ -407,11 +668,10 @@ impl Game {
         if answer.trim().eq_ignore_ascii_case("y") {
             self.run_combat(enemy, lines)?;
         } else if self.rng.below(2) == 0 {
-            term::println("Ты смылся.");
-        } else {
-            term::println("Он тебя заметил.");
-            term::println("Эй мудак?!");
+            term::println("^4Он тебя заметил.");
             self.run_combat(enemy, lines)?;
+        } else {
+            term::println("^2Ты смылся.");
         }
         Ok(())
     }
@@ -446,11 +706,18 @@ impl Game {
         }
         let [strength, agility, vitality, luck] = stats;
         let hpmax = 10 + 5 * vitality + strength;
+        // `data/enemies.json` has one row per rolled class 0..=9 (classes
+        // 0..9 are unique there; only the scripted class 10 has variants),
+        // so this lookup is total for every value `below(10)` can return.
+        // A nameless fighter must never reach the player, so a missing row
+        // is a build-data bug, not something to paper over with "".
         let name = data::enemies()
             .iter()
             .find(|e| e.class == class)
             .map(|e| e.name.to_string())
-            .unwrap_or_default();
+            .unwrap_or_else(|| {
+                panic!("data/enemies.json has no row for rolled class {class}")
+            });
         Fighter {
             name,
             class,
@@ -467,15 +734,9 @@ impl Game {
         }
     }
 
-    /// Not wired to any command yet (see the module doc); exercised
-    /// directly by its own test.
-    #[allow(dead_code)]
-    fn save_game(&self) {
-        match self.write_save() {
-            Ok(path) => term::println(&format!("^2Сохранено: {path}")),
-            Err(e) => term::println(&format!("^4Ошибка записи: {e}")),
-        }
-    }
+    // There is deliberately no `save_game()` wrapper here. The original has
+    // no "saved OK" / "save failed" string anywhere, so a wrapper could only
+    // print composed text -- see [`Game::write_save`] and task-11-report.md.
 
     /// Writes a checkpoint save. See the module doc: `Unsupported` for
     /// every `Game` this task can construct.
@@ -514,7 +775,11 @@ impl Game {
         Ok(filename)
     }
 
-    fn rename(&mut self, lines: &mut Lines<StdinLock>) -> io::Result<()> {
+    /// `name`. `^2Звали тебя:^7 ` / `^2А теперь будут:^7 ` are this port's
+    /// own prompts and are the one place the module knowingly departs from
+    /// the byte-verbatim rule; `1000:ecf1`'s handler body was not traced.
+    /// Flagged in task-11-report.md.
+    fn rename(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
         term::print("^2Звали тебя:^7 ");
         term::println(&self.player.name);
         term::print("^2А теперь будут:^7 ");
@@ -530,97 +795,178 @@ impl Game {
         Ok(())
     }
 
-    /// Косяк: the joint. Structurally mirrors [`Game::drink_beer`]'s traced
-    /// algorithm (same guard/fallback strings); the joint's own handler
-    /// function was not itself traced, so the flat `+5` heal reuses beer's
-    /// confirmed formula **by analogy**, flagged unverified.
+    /// `kos`, the joint. Traced at `1000:e97d`..`1000:ea6f` (the copy
+    /// `entry` dispatches; `FUN_1000_3d11` has its own near-identical copy
+    /// with slightly different strings at file `0x4D85`..`0x4E49`):
+    ///
+    /// * broken jaw (`DS:38b0`) -> `^4Ты не схавать колёса из-за сломаной
+    ///   челюсти.` (file `0xBEF3`).
+    /// * already stoned (`DS:38cd != 0`) -> `^6Ты неможешь схавать ещё один
+    ///   косяк.` (file `0xBFB8`).
+    /// * no joints (`DS:38c5 <= 0`) -> `^4У тебя нет косяков` (file
+    ///   `0xBFA3`).
+    /// * otherwise **exactly one** joint (`1000:e9b4`): stoned counter := 10,
+    ///   strength += 2, `dmg_min` += 1, `dmg_max` += 2, and heal a flat
+    ///   **+10** capped at `hpmax`, then `^2Сила +2.` (file `0xBF98`).
+    ///   The heal message splits like the beer routine's: when the shortfall
+    ///   is under 10 it writes `^2Колёса прибавляют #з. ` (file `0xBF22`,
+    ///   no newline) then `^2Здоровья:#/#. Осталось # косяков` (file
+    ///   `0xBF3B`); otherwise the single combined line at file `0xBF5E`,
+    ///   whose `косякова` typo is the original's.
+    ///
+    /// `crate::model::Fighter` has a `stoned: bool`, not the original's
+    /// 10-turn countdown, so the counter is modelled as "stoned or not".
     fn smoke(&mut self) {
         if self.player.broken_jaw {
             term::println("^4Ты не схавать колёса из-за сломаной челюсти.");
+            return;
+        }
+        if self.player.stoned {
+            term::println("^6Ты неможешь схавать ещё один косяк.");
             return;
         }
         if self.player.joints == 0 {
             term::println("^4У тебя нет косяков");
             return;
         }
-        if self.player.hp >= self.player.hpmax {
-            term::println("^6Ты неможешь схавать ещё один косяк.");
-            return;
-        }
-        let before = self.player.hp;
-        while self.player.joints > 0 && self.player.hp < self.player.hpmax {
-            self.player.joints -= 1;
-            self.player.hp = (self.player.hp + 5).min(self.player.hpmax);
-        }
+        self.player.joints -= 1;
         self.player.stoned = true;
-        term::println(&text::fill(
-            "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косяков",
-            &[
-                (self.player.hp - before) as i64,
-                self.player.hp as i64,
-                self.player.hpmax as i64,
-                self.player.joints as i64,
-            ],
-        ));
+        self.player.strength += 2;
+        self.player.dmg_min += 1;
+        self.player.dmg_max += 2;
+        let shortfall = self.player.hpmax.saturating_sub(self.player.hp);
+        if shortfall < 10 {
+            term::print(&text::fill(
+                "^2Колёса прибавляют #з. ",
+                &[shortfall as i64],
+            ));
+            self.player.hp = self.player.hpmax;
+            term::println(&text::fill(
+                "^2Здоровья:#/#. Осталось # косяков",
+                &[
+                    self.player.hp as i64,
+                    self.player.hpmax as i64,
+                    self.player.joints as i64,
+                ],
+            ));
+        } else {
+            self.player.hp += 10;
+            term::println(&text::fill(
+                "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косякова",
+                &[
+                    10,
+                    self.player.hp as i64,
+                    self.player.hpmax as i64,
+                    self.player.joints as i64,
+                ],
+            ));
+        }
+        term::println("^2Сила +2.");
     }
 
-    /// `h` (drink beer, gated to the street by [`Game::handle_key`]).
+    /// `h` (one 0.5-litre unit) or `mh` (drink until full or dry).
     ///
-    /// Traced to `FUN_1000_29c4` (`1000:29c4`, 666 bytes, called from both
-    /// `entry` and `FUN_1000_3d11`). Reading the decompilation
-    /// (`build/decomp/FUN_1000_29c4_1000_29c4.c`) against the fighter-record
-    /// addresses `docs/re/combat.md` already pins (`DS:38ac` = player hp,
-    /// `DS:38ae` = player hpmax):
+    /// Both verbs are dispatched by `FUN_1000_29c4` itself, not by an inline
+    /// compare in `entry`: `entry` pushes the just-read line `DS:3972` and
+    /// calls it at `1000:e966` (`E8 5B 40`, wrapping to `1000:29c4`), and
+    /// the routine compares its own argument against `"h"` (token file
+    /// `0x4197`) at `1000:29f0` and `"mh"` (token file `0x4199`) at
+    /// `1000:2a02`, returning immediately when it is neither. Six later
+    /// `"h"` compares (`1000:2a6a`, `2aa0`, `2af2`, `2b40`, `2b89`) and one
+    /// more `"mh"` compare (`1000:2bb0`) select which messages are written
+    /// and whether the drink loop repeats. `FUN_1000_3d11` calls the same
+    /// routine at `1000:4b00` with its own `DS:3a72`, which is why beer works
+    /// inside a fight too.
     ///
-    /// * refuses on broken jaw (`*(char*)0x38b0`): `^4Ты не можешь пить
-    ///   пиво из-за сломаной челюсти.` (`0x419C`).
-    /// * else loops while `hpmax > hp` and beer (`DS:38c3`) remains: drink
-    ///   one 0.5-litre unit, healing a flat +5 hp, capped at `hpmax`.
-    /// * `DS:38c3`'s display unit is half a litre (`beer_dl/2 . (beer_dl%2)*5`).
-    /// * if `hpmax <= hp` already: `^6Блин только тупить не надо - и так
-    ///   здоровья до фига.` (`0x424C`). If there is no beer: `^4Пива нету`
-    ///   (`0x4240`).
-    /// * summary: `^2Пиво прибавляет #з. Здоровья:#/#. Осталось #.#л. пива`
-    ///   (`0x4208`), `#з.` being the *total* healed this call, plus
-    ///   `^4Кончилось пиво` (`0x4283`) if that emptied the last of it.
-    fn drink_beer(&mut self) {
+    /// Traced body, with `DS:38ac` = hp, `DS:38ae` = hpmax, `DS:38b0` =
+    /// broken jaw, `DS:38c3` = beer in half-litres:
+    ///
+    /// * `1000:2a18` broken jaw -> file `0x419C`, nothing else.
+    /// * `1000:2a3b` already at full hp -> file `0x424C`, immediate return.
+    /// * `1000:2a47` no beer -> `h` writes file `0x4240`.
+    /// * `1000:2a51` otherwise spend one half-litre. `1000:2a55`: when the
+    ///   shortfall is under 5, `h` writes file `0x41CD` (no newline) then
+    ///   file `0x41E4` and hp goes to `hpmax`; otherwise hp += 5 and `h`
+    ///   writes the combined file `0x4208`.
+    /// * `1000:2b83` `h` stops after that one unit; `mh` loops back to
+    ///   `1000:2a3b` while hp < hpmax and beer remains, writing nothing.
+    /// * `1000:2bbf`..`1000:2c53` `mh`'s tail: the file `0x4208` summary with
+    ///   the total healed, then file `0x4283` if that drank the last of it,
+    ///   or file `0x4240` if nothing was drunk at all.
+    ///
+    /// The `#.#л.` pair is `beer/2` and `(beer mod 2) * 5` (`1000:2ab9`).
+    fn beer(&mut self, how: Beer) {
+        let single = how == Beer::One;
+        let hp0 = self.player.hp;
         if self.player.broken_jaw {
             term::println("^4Ты не можешь пить пиво из-за сломаной челюсти.");
             return;
         }
-        if self.player.hp >= self.player.hpmax {
-            term::println("^6Блин только тупить не надо - и так здоровья до фига.");
-            return;
-        }
-        if self.player.beer_dl == 0 {
-            term::println("^4Пива нету");
-            return;
-        }
-        let before = self.player.hp;
-        while self.player.beer_dl > 0 && self.player.hp < self.player.hpmax {
+        loop {
+            if self.player.hp >= self.player.hpmax {
+                term::println("^6Блин только тупить не надо - и так здоровья до фига.");
+                return;
+            }
+            if self.player.beer_dl == 0 {
+                if single {
+                    term::println("^4Пива нету");
+                }
+                break;
+            }
             self.player.beer_dl -= 1;
-            self.player.hp = (self.player.hp + 5).min(self.player.hpmax);
+            let shortfall = self.player.hpmax - self.player.hp;
+            if shortfall < 5 {
+                if single {
+                    term::print(&text::fill("^2Пиво прибавляет #з. ", &[shortfall as i64]));
+                }
+                self.player.hp = self.player.hpmax;
+                if single {
+                    term::println(&text::fill(
+                        "^2Здоровья:#/#. Осталось #.#л. пива",
+                        &self.beer_numbers(),
+                    ));
+                }
+            } else {
+                self.player.hp += 5;
+                if single {
+                    let n = self.beer_numbers();
+                    term::println(&text::fill(
+                        "^2Пиво прибавляет #з. Здоровья:#/#. Осталось #.#л. пива",
+                        &[5, n[0], n[1], n[2], n[3]],
+                    ));
+                }
+            }
+            if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {
+                break;
+            }
         }
-        term::println(&text::fill(
-            "^2Пиво прибавляет #з. Здоровья:#/#. Осталось #.#л. пива",
-            &[
-                (self.player.hp - before) as i64,
-                self.player.hp as i64,
-                self.player.hpmax as i64,
-                (self.player.beer_dl / 2) as i64,
-                i64::from(self.player.beer_dl % 2) * 5,
-            ],
-        ));
-        if self.player.beer_dl == 0 {
-            term::println("^4Кончилось пиво");
+        if single {
+            return;
+        }
+        let healed = i64::from(self.player.hp) - i64::from(hp0);
+        if healed != 0 {
+            let n = self.beer_numbers();
+            term::println(&text::fill(
+                "^2Пиво прибавляет #з. Здоровья:#/#. Осталось #.#л. пива",
+                &[healed, n[0], n[1], n[2], n[3]],
+            ));
+            if self.player.beer_dl == 0 {
+                term::println("^4Кончилось пиво");
+            }
+        } else if self.player.beer_dl == 0 {
+            term::println("^4Пива нету");
         }
     }
 
-    /// `mh`, "набухаться до чёртиков" (binge drink). Corroboration-only
-    /// verb (`crate::commands`); no distinguishing behaviour beyond
-    /// exhausting the beer reserve was traced. Reuses [`Game::drink_beer`].
-    fn binge_drink(&mut self) {
-        self.drink_beer();
+    /// `hp`, `hpmax`, litres, tenths -- the four trailing `#`s of the beer
+    /// messages (`1000:2ab1`..`1000:2ae0`).
+    fn beer_numbers(&self) -> [i64; 4] {
+        [
+            self.player.hp as i64,
+            self.player.hpmax as i64,
+            (self.player.beer_dl / 2) as i64,
+            i64::from(self.player.beer_dl % 2) * 5,
+        ]
     }
 
     /// `x` at the dealers: sell junk. `crate::model::Fighter` has no field
@@ -636,28 +982,21 @@ impl Game {
         term::println("^6У тебя нет неужных вещей.");
     }
 
-    /// Single ASCII characters the flat command table cannot give a fixed
-    /// meaning to (`crate::commands`' module doc), resolved here against
-    /// `self.location`.
-    fn handle_key(&mut self, k: char) {
-        match (self.location, k) {
-            (Location::Street, 'h') => self.drink_beer(),
-            (Location::Vet, 'h') => self.heal_jaw(),
-            (Location::Vet, 'r') => self.heal_leg(),
-            (Location::Market, d) if d.is_ascii_digit() => self.shop_action(d),
-            (Location::BigMarket, d) if d.is_ascii_digit() => self.shop_action(d),
-            _ => term::println(&format!("^4? {k}")),
-        }
-    }
-
-    /// `h` at the vet: 3 rubles to fix a broken jaw. Price is a literal
-    /// digit baked into the display string itself (`  ^2h^7 - за ^` at file
-    /// `0xB2A3` concatenated with `3^7 рубля тебя залатают` at `0xB2B2`).
+    /// `h` at the vet: 3 rubles to fix a broken jaw.
+    ///
+    /// The price is the literal `3` of the menu line the vet prints (file
+    /// `0xB2B2`), and the same literal is what the display's affordability
+    /// test compares money against (`cmp word [0x38c7],0x3` at `1000:d410`).
+    /// The debiting code inside the vet's own submenu was not traced, so
+    /// "3 rubles is also what is charged" remains an inference; see
+    /// task-11-report.md.
     fn heal_jaw(&mut self) {
         self.pay_and_heal(3, self.player.broken_jaw, |f| f.broken_jaw = false);
     }
 
-    /// `r` at the vet: 7 rubles to fix a broken leg (file `0xB2CA`/`0xB2D9`).
+    /// `r` at the vet: 7 rubles to fix a broken leg (file `0xB2D9`,
+    /// `cmp word [0x38c7],0x7` at `1000:d465`). Same caveat as
+    /// [`Game::heal_jaw`].
     fn heal_leg(&mut self) {
         self.pay_and_heal(7, self.player.broken_leg, |f| f.broken_leg = false);
     }
@@ -674,6 +1013,17 @@ impl Game {
         self.player.money -= price;
         clear(&mut self.player);
         term::println("^2Твои переломы залечены.");
+    }
+
+    /// Whether a row's `district>N` gate is satisfied.
+    fn gate_open(&self, gate: Option<&'static str>) -> bool {
+        match gate.and_then(|g| g.strip_prefix("district>")) {
+            Some(n) => match n.parse::<u8>() {
+                Ok(need) => self.district > need,
+                Err(_) => true,
+            },
+            None => true,
+        }
     }
 
     /// Buy row `key` (a shop-row digit `'1'..'9'`) at the current market.
@@ -693,46 +1043,61 @@ impl Game {
         };
         let key = k.to_string();
         let Some(row) = data::shops().iter().find(|r| r.shop == tag && r.key == key) else {
-            term::println(&format!("^4? {k}"));
             return;
         };
-        if let Some(gate) = row.gate {
-            if let Some(need) = gate.strip_prefix("district>").and_then(|n| n.parse::<u8>().ok()) {
-                if self.district <= need {
-                    return;
-                }
-            }
+        if !self.gate_open(row.gate) {
+            return;
         }
         if self.player.money < row.price {
-            term::println("^4Нету бабок");
+            // file 0xAC55 at the dealers (1000:c4d2's block), file 0xA6CA at
+            // the market. Both are the same situation, different wording.
+            term::println(match tag {
+                "bmar" => "^4Чёрт, бабок не хватает.",
+                _ => "^4Чёрт, бабок даже на жратву не хватает.",
+            });
             return;
         }
         self.player.money -= row.price;
         term::println(&text::fill(row.text, &[row.displayed_price as i64]));
     }
 
-    /// `Битва\`. Confirmed modal by the live capture (`mar`/`i` typed here
-    /// were ignored, reprinting `Битва\`). The exact in-combat verb set
-    /// beyond `sv` (inspect, corroborated by `docs/re/tables.md` section 4's
-    /// oracle capture) was not traced; `k` (attack) is this port's own
-    /// choice, consistent with `k` being the fight verb everywhere else, but
-    /// **not independently confirmed as the in-combat attack key** -- the
-    /// live capture's three `w` presses inside `Битва\` produced no visible
-    /// output, which is at least as consistent with `w` being ignored here
-    /// as with it doing something silent. See task-11-report.md.
-    fn run_combat(&mut self, mut enemy: Fighter, lines: &mut Lines<StdinLock>) -> io::Result<()> {
+    /// `^0Битва\` (file `0x4A49`). Confirmed modal by the live capture
+    /// (`mar`/`i` typed here were ignored, reprinting the prompt). The exact
+    /// in-combat verb set beyond `sv` (inspect) and `h`/`mh` (beer, confirmed
+    /// by `FUN_1000_3d11`'s own call into `FUN_1000_29c4` at `1000:4b00`) was
+    /// not traced; `k` (attack) is this port's own choice, consistent with
+    /// `k` being the fight verb everywhere else, but **not independently
+    /// confirmed as the in-combat attack key**. See task-11-report.md.
+    ///
+    /// Death and victory both come from `FUN_1000_3d11`'s own tail:
+    ///
+    /// * `1000:4f82` `hp <= 0`. With the rector flag set, file `0x509C`;
+    ///   otherwise, if the den is known and money >= 10, the hospital rescue
+    ///   at `1000:4fce` (file `0x50DF`, `money -= 10`, hp restored) --
+    ///   neither modelled here. The plain case is `1000:5053`: file `0x5127`
+    ///   (`^4Ты сдох.`) and then `FUN_1000_074b(0)`, the end screen, which
+    ///   ends in `Halt` (`1000:0ac0`). So death **ends the game**.
+    /// * `1000:5189` the enemy died: file `0x5250` (`^2Враг сдох.`), then
+    ///   `1000:51b4` file `0x525D` with `str+agi+vit+luck` as the award.
+    ///   `^2Ты победил.` is *not* a per-fight line: it is file `0x1DBF`, the
+    ///   centred end-of-game banner `FUN_1000_074b` writes when you beat the
+    ///   rector, and printing it here was a fabrication.
+    fn run_combat(&mut self, mut enemy: Fighter, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
         loop {
             if self.player.hp == 0 || enemy.hp == 0 {
                 break;
             }
-            term::print("Битва\\");
+            term::print("^0Битва\\");
             let Some(line) = lines.next() else {
                 self.running = false;
                 return Ok(());
             };
-            match parse(&line?) {
-                Command::Inspect => self.inspect_enemy_stats(&enemy),
+            let line = line?;
+            match parse(&line) {
+                Command::Inspect => self.print_enemy_block(&enemy),
                 Command::Fight => self.combat_round(&mut enemy),
+                Command::Drink => self.beer(Beer::One),
+                Command::BingeDrink => self.beer(Beer::Binge),
                 _ => {} // ignored: matches the live capture's mar/i rejection
             }
         }
@@ -740,16 +1105,17 @@ impl Game {
         self.last_enemy = Some(enemy.clone());
         if self.player.hp == 0 {
             term::println("^4Ты сдох.");
+            self.running = false;
             return Ok(());
         }
 
+        term::println("^2Враг сдох.");
         let award = progress::xp_award(self.player.level, &enemy);
         term::println(&text::fill(
             "^6За отпин врага ты получаешь # качков опыта",
             &[award as i64],
         ));
         progress::apply_levels(&mut self.progress, &mut self.player, &mut self.rng, award, false);
-        term::println("^2Ты победил.");
 
         while self.district < 5 && self.player.level >= u16::from(self.district) * 10 {
             self.district += 1;
@@ -758,31 +1124,18 @@ impl Game {
         Ok(())
     }
 
-    fn inspect_enemy_stats(&self, enemy: &Fighter) {
-        term::println(&format!("Это {} {} уровня.", enemy.name, enemy.level));
-        term::println(&text::fill(
-            "Сл:# Лв:# Жв:# Уд:#",
-            &[
-                enemy.strength as i64,
-                enemy.agility as i64,
-                enemy.vitality as i64,
-                enemy.luck as i64,
-            ],
-        ));
-        term::println(&text::fill("Урон #-#", &[enemy.dmg_min as i64, enemy.dmg_max as i64]));
-        term::println(&text::fill("Здоровье #/#", &[enemy.hp as i64, enemy.hpmax as i64]));
-        term::println(&text::fill("Броня #", &[enemy.armor as i64]));
-    }
-
     /// One round of blows, both sides, using the already-verified
     /// blows-per-round budget and per-blow resolution from `crate::combat`.
-    /// Per-blow messages are `docs/re/combat.md`'s own cited strings: miss
-    /// (`^4Ты промазал` file `0x4B13`, `^2Враг промазал` file `0x4C49`),
-    /// hit (`Ты пнул врага на #з. У него осталось #` file `0x4AEA`, and its
-    /// mirror `Он пнул тебя на #з. У тебя осталось #` file `0x4C21`), crit
-    /// (`^2Точный удар!!!` file `0x4A54`), and break (`Ты сломал врагу
-    /// челюсть...`/`...ногу...` files `0x4A8D`/`0x4ABA`, and the mirrors
-    /// `Враг сломал тебе...` files `0x4B95`/`0x4C08`).
+    /// Per-blow messages are `docs/re/combat.md`'s own cited strings, quoted
+    /// here with the markup they actually carry: miss (`^4Ты промазал` file
+    /// `0x4B13`, `^2Враг промазал` file `0x4C49`), hit (`^2Ты пнул врага на
+    /// #з. У него осталось #` file `0x4AEA`, and its mirror `^4Он пнул тебя
+    /// на #з. У тебя осталось #` file `0x4C21`), crit (`^2Точный удар!!!`
+    /// file `0x4A54`), and break (`^2Ты сломал врагу челюсть. ^4Враг: А!
+    /// козёл!` / `^2Ты сломал врагу ногу. ^4Враг: Ну что за урод!` files
+    /// `0x4A8D`/`0x4ABA`, whose inner `^4` is part of the string, and the
+    /// mirrors `^4Враг сломал тебе челюсть.` / `^4Враг сломал тебе ногу.`
+    /// files `0x4B95`/`0x4C08`).
     fn combat_round(&mut self, enemy: &mut Fighter) {
         let player_blows = blows_per_round(&self.player, enemy);
         for i in 0..player_blows {
@@ -799,12 +1152,16 @@ impl Game {
             }
             enemy.hp = enemy.hp.saturating_sub(blow.damage);
             term::println(&text::fill(
-                "Ты пнул врага на #з. У него осталось #",
+                "^2Ты пнул врага на #з. У него осталось #",
                 &[blow.damage as i64, enemy.hp as i64],
             ));
             match blow.broke {
-                Some(Break::Jaw) => term::println("Ты сломал врагу челюсть. Враг: А! козёл!"),
-                Some(Break::Leg) => term::println("Ты сломал врагу ногу. Враг: Ну что за урод!"),
+                Some(Break::Jaw) => {
+                    term::println("^2Ты сломал врагу челюсть. ^4Враг: А! козёл!")
+                }
+                Some(Break::Leg) => {
+                    term::println("^2Ты сломал врагу ногу. ^4Враг: Ну что за урод!")
+                }
                 None => {}
             }
         }
@@ -823,7 +1180,7 @@ impl Game {
             }
             self.player.hp = self.player.hp.saturating_sub(blow.damage);
             term::println(&text::fill(
-                "Он пнул тебя на #з. У тебя осталось #",
+                "^4Он пнул тебя на #з. У тебя осталось #",
                 &[blow.damage as i64, self.player.hp as i64],
             ));
             match blow.broke {
@@ -839,6 +1196,14 @@ impl Game {
             }
         }
     }
+}
+
+/// Which beer verb was typed. `h` drinks one half-litre and narrates it;
+/// `mh` drinks silently until full or dry and prints one summary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Beer {
+    One,
+    Binge,
 }
 
 /// Extension impl, deliberately **not** in `crate::model` -- that module is
@@ -900,11 +1265,17 @@ mod tests {
         Game::new(player(), Progress::new(), 12345)
     }
 
-    fn no_input() -> Lines<StdinLock<'static>> {
-        // A cheap way to get a Lines<StdinLock> handle for tests that never
-        // actually read from it (they don't hit a branch requiring more
-        // input). Kept private to this module.
-        io::stdin().lines()
+    /// An input script for the handlers that read more lines.
+    fn input(lines: &[&str]) -> std::vec::IntoIter<io::Result<String>> {
+        lines
+            .iter()
+            .map(|s| Ok(s.to_string()))
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+
+    fn no_input() -> std::vec::IntoIter<io::Result<String>> {
+        input(&[])
     }
 
     #[test]
@@ -926,13 +1297,32 @@ mod tests {
         assert_eq!(g.mode, Mode::Shop(Location::Market));
     }
 
+    /// I6: a refused entry must NOT discover the place. The original sets
+    /// the seven flags at `20ae:3694`..`369a` from the wander path and from
+    /// `girl` (`1000:d751`), never from a failed entry.
     #[test]
-    fn entering_an_undiscovered_place_stays_on_the_street() {
+    fn entering_an_undiscovered_place_does_not_discover_it() {
         let mut g = game();
-        g.dispatch(Command::Market, &mut no_input()).unwrap();
-        assert_eq!(g.location, Location::Street);
-        assert_eq!(g.mode, Mode::Street);
-        assert!(g.places.is_found(Location::Market));
+        for _ in 0..3 {
+            g.dispatch(Command::Market, &mut no_input()).unwrap();
+            assert_eq!(g.location, Location::Street);
+            assert_eq!(g.mode, Mode::Street);
+            assert!(
+                !g.places.is_found(Location::Market),
+                "a refused entry must not mark the place found"
+            );
+        }
+    }
+
+    #[test]
+    fn every_gated_location_has_its_own_refusal_string() {
+        let mut seen = std::collections::HashSet::new();
+        for loc in crate::locations::TRACKED {
+            let s = Game::undiscovered_line(loc);
+            assert!(!s.is_empty(), "{loc:?} has no refusal string");
+            assert!(s.starts_with('^'), "{loc:?}'s refusal lost its markup");
+            assert!(seen.insert(s), "{loc:?} shares a refusal string");
+        }
     }
 
     #[test]
@@ -946,6 +1336,44 @@ mod tests {
         g.shop_turn(Location::Vet, "w");
         assert_eq!(g.location, Location::Street);
         assert_eq!(g.mode, Mode::Street);
+    }
+
+    /// I5: `h` is the beer verb at the top level (`entry` -> `FUN_1000_29c4`,
+    /// `1000:e966`) *and* the vet's jaw key, because the vet reads its own
+    /// input at its own prompt. Both must work, through the same public path
+    /// the player uses -- not by calling a handler directly.
+    #[test]
+    fn h_heals_the_jaw_at_the_vet_and_drinks_beer_on_the_street() {
+        let mut g = game();
+        g.places.mark_found(Location::Vet);
+        g.location = Location::Vet;
+        g.mode = Mode::Shop(Location::Vet);
+        g.player.broken_jaw = true;
+        g.player.money = 10;
+        g.player.beer_dl = 4;
+        g.shop_turn(Location::Vet, "h");
+        assert!(!g.player.broken_jaw, "vet's h must heal the jaw");
+        assert_eq!(g.player.money, 7);
+        assert_eq!(g.player.beer_dl, 4, "vet's h must not drink beer");
+
+        let mut g = game();
+        g.player.hp = 10;
+        g.player.beer_dl = 4;
+        g.dispatch(parse("h"), &mut no_input()).unwrap();
+        assert_eq!(g.player.beer_dl, 3, "street h must drink exactly one unit");
+        assert_eq!(g.player.hp, 15);
+    }
+
+    #[test]
+    fn vet_r_still_works_through_the_parser() {
+        let mut g = game();
+        g.location = Location::Vet;
+        g.mode = Mode::Shop(Location::Vet);
+        g.player.broken_leg = true;
+        g.player.money = 10;
+        g.shop_turn(Location::Vet, "r");
+        assert!(!g.player.broken_leg);
+        assert_eq!(g.player.money, 3);
     }
 
     #[test]
@@ -963,74 +1391,64 @@ mod tests {
     }
 
     #[test]
-    fn drink_beer_heals_flat_five_per_unit_and_caps_at_hpmax() {
+    fn h_drinks_one_unit_and_mh_drinks_until_full() {
         let mut g = game();
-        g.player.hp = 12;
+        g.player.hp = 5;
         g.player.beer_dl = 10;
-        g.drink_beer();
+        g.beer(Beer::One);
+        assert_eq!(g.player.hp, 10);
+        assert_eq!(g.player.beer_dl, 9);
+
+        let mut g = game();
+        g.player.hp = 5;
+        g.player.beer_dl = 10;
+        g.beer(Beer::Binge);
         assert_eq!(g.player.hp, 20);
-        assert_eq!(g.player.beer_dl, 8);
+        assert_eq!(g.player.beer_dl, 7);
     }
 
     #[test]
-    fn drink_beer_refuses_with_broken_jaw() {
+    fn beer_refuses_with_broken_jaw() {
         let mut g = game();
         g.player.hp = 5;
         g.player.beer_dl = 4;
         g.player.broken_jaw = true;
-        g.drink_beer();
+        g.beer(Beer::One);
         assert_eq!(g.player.hp, 5);
         assert_eq!(g.player.beer_dl, 4);
     }
 
     #[test]
-    fn drink_beer_does_nothing_at_full_health() {
+    fn beer_does_nothing_at_full_health_or_with_no_beer() {
         let mut g = game();
         g.player.beer_dl = 4;
-        g.drink_beer();
+        g.beer(Beer::Binge);
         assert_eq!(g.player.beer_dl, 4);
-    }
 
-    #[test]
-    fn drink_beer_does_nothing_with_no_beer() {
         let mut g = game();
         g.player.hp = 5;
         g.player.beer_dl = 0;
-        g.drink_beer();
+        g.beer(Beer::One);
         assert_eq!(g.player.hp, 5);
     }
 
+    /// `1000:e9b4`: one joint, +10 hp capped at hpmax, Сила +2, урон +1/+2,
+    /// and the stoned flag blocks a second one.
     #[test]
-    fn heal_jaw_costs_three_and_clears_the_flag() {
+    fn kos_smokes_exactly_one_joint_and_buffs_strength() {
         let mut g = game();
-        g.location = Location::Vet;
-        g.player.broken_jaw = true;
-        g.player.money = 10;
-        g.handle_key('h');
-        assert!(!g.player.broken_jaw);
-        assert_eq!(g.player.money, 7);
-    }
+        g.player.hp = 1;
+        g.player.joints = 2;
+        g.smoke();
+        assert_eq!(g.player.joints, 1);
+        assert_eq!(g.player.hp, 11);
+        assert_eq!(g.player.strength, 7);
+        assert_eq!(g.player.dmg_min, 2);
+        assert_eq!(g.player.dmg_max, 5);
+        assert!(g.player.stoned);
 
-    #[test]
-    fn heal_jaw_refuses_without_enough_money() {
-        let mut g = game();
-        g.location = Location::Vet;
-        g.player.broken_jaw = true;
-        g.player.money = 2;
-        g.handle_key('h');
-        assert!(g.player.broken_jaw);
-        assert_eq!(g.player.money, 2);
-    }
-
-    #[test]
-    fn heal_leg_costs_seven() {
-        let mut g = game();
-        g.location = Location::Vet;
-        g.player.broken_leg = true;
-        g.player.money = 10;
-        g.handle_key('r');
-        assert!(!g.player.broken_leg);
-        assert_eq!(g.player.money, 3);
+        g.smoke();
+        assert_eq!(g.player.joints, 1, "already stoned: no second joint");
     }
 
     #[test]
@@ -1038,7 +1456,7 @@ mod tests {
         let mut g = game();
         g.location = Location::Market;
         g.player.money = 10;
-        g.handle_key('1'); // mar row 1, price 2
+        g.shop_turn(Location::Market, "1"); // mar row 1, price 2
         assert_eq!(g.player.money, 8);
     }
 
@@ -1047,7 +1465,7 @@ mod tests {
         let mut g = game();
         g.location = Location::Market;
         g.player.money = 1;
-        g.handle_key('1');
+        g.shop_turn(Location::Market, "1");
         assert_eq!(g.player.money, 1);
     }
 
@@ -1057,10 +1475,10 @@ mod tests {
         g.location = Location::Market;
         g.player.money = 1000;
         g.district = 1; // mar row 6 needs district>1
-        g.handle_key('6');
+        g.shop_turn(Location::Market, "6");
         assert_eq!(g.player.money, 1000, "gated row must not be sellable yet");
         g.district = 2;
-        g.handle_key('6');
+        g.shop_turn(Location::Market, "6");
         assert_eq!(g.player.money, 1000 - 25);
     }
 
@@ -1077,16 +1495,34 @@ mod tests {
     }
 
     #[test]
-    fn inspect_enemy_before_any_fight_does_not_panic() {
+    fn inspect_before_any_fight_prints_nothing_and_does_not_panic() {
         let g = game();
+        assert!(g.last_enemy.is_none());
         g.inspect_enemy();
     }
 
     #[test]
-    fn sell_junk_and_sell_items_never_panic() {
-        let g = game();
-        g.sell_junk();
-        g.sell_items();
+    fn sell_junk_and_sell_items_are_the_dealers_own_keys() {
+        let mut g = game();
+        g.location = Location::BigMarket;
+        g.mode = Mode::Shop(Location::BigMarket);
+        // Neither has a backing field yet, so the only observable effect is
+        // that the keys are routed at all: they must not leave the shop.
+        g.shop_turn(Location::BigMarket, "x");
+        assert_eq!(g.mode, Mode::Shop(Location::BigMarket));
+        g.shop_turn(Location::BigMarket, "wes");
+        assert_eq!(g.mode, Mode::Shop(Location::BigMarket));
+    }
+
+    /// Every class `pick_enemy` can roll must resolve to a named row, or the
+    /// `panic!` in `pick_enemy` would show a nameless fighter to the player.
+    #[test]
+    fn every_rolled_enemy_class_has_a_name() {
+        for class in 0u16..10 {
+            let row = data::enemies().iter().find(|e| e.class == class);
+            let row = row.unwrap_or_else(|| panic!("no enemies.json row for class {class}"));
+            assert!(!row.name.is_empty(), "class {class} has an empty name");
+        }
     }
 
     #[test]
@@ -1098,34 +1534,116 @@ mod tests {
     }
 
     #[test]
-    fn combat_round_reduces_someones_hp_or_ends_in_a_stalemate_of_misses() {
+    fn combat_round_actually_lands_hits_over_a_bounded_number_of_rounds() {
         let mut g = game();
         let mut enemy = player();
         enemy.agility = 0; // give the roll every chance to land a hit
+        enemy.hpmax = 10_000;
+        enemy.hp = 10_000;
         g.player.agility = 30;
         g.player.dmg_min = 5;
         g.player.dmg_max = 10;
         let before = enemy.hp;
-        g.combat_round(&mut enemy);
-        assert!(enemy.hp <= before);
-    }
-
-    #[test]
-    fn walk_never_panics_regardless_of_roll() {
-        // Exercise every roll outcome via distinct seeds; none should panic,
-        // and each either reports nothing happening or an encounter.
-        for seed in [1u32, 2, 3, 4, 5, 100, 99999] {
-            let mut g = Game::new(player(), Progress::new(), seed);
-            // Roll only (bucket != 3 path never reads more input); force a
-            // deterministic no-encounter check by inspecting district math
-            // isn't touched.
-            let _ = g.pick_enemy();
+        for _ in 0..20 {
+            g.combat_round(&mut enemy);
         }
+        assert!(
+            enemy.hp < before,
+            "20 rounds at a 90% cap must land at least one blow (hp {} -> {})",
+            before,
+            enemy.hp
+        );
+    }
+
+    /// Replays `walk`'s draws for `seed` and reports the `Random(2)` the
+    /// decline branch would see, or `None` when the wander roll does not
+    /// produce an encounter at all.
+    fn decline_roll_for(seed: u32) -> Option<u16> {
+        let mut g = Game::new(player(), Progress::new(), seed);
+        let roll = g.rng.below(25) + 1;
+        if !(5..=9).contains(&roll) {
+            return None;
+        }
+        let _ = g.pick_enemy();
+        Some(g.rng.below(2))
+    }
+
+    /// **C1.** `1000:b718`..`1000:b74e`: after a non-`y` answer, `Random(2)`
+    /// returning **0** falls through to `1000:b72e`, which writes
+    /// `^4Он тебя заметил.` and sets the accept flag at `1000:b747` -- the
+    /// fight happens. A **non-zero** roll jumps to `1000:b74e`, writes
+    /// `^2Ты смылся.` and leaves the flag clear -- no fight.
+    ///
+    /// Observed through `running`: entering combat consumes the (empty)
+    /// rest of the input script and stops the loop; escaping does not.
+    #[test]
+    fn declining_an_encounter_fights_on_roll_zero_and_escapes_otherwise() {
+        let mut zero = None;
+        let mut nonzero = None;
+        for seed in 1u32..40_000 {
+            match decline_roll_for(seed) {
+                Some(0) if zero.is_none() => zero = Some(seed),
+                Some(n) if n != 0 && nonzero.is_none() => nonzero = Some(seed),
+                _ => {}
+            }
+            if zero.is_some() && nonzero.is_some() {
+                break;
+            }
+        }
+        let zero = zero.expect("no seed produced a decline roll of 0");
+        let nonzero = nonzero.expect("no seed produced a non-zero decline roll");
+
+        let mut g = Game::new(player(), Progress::new(), zero);
+        g.walk(&mut input(&["n"])).unwrap();
+        assert!(
+            !g.running,
+            "Random(2) == 0 means noticed: combat must start (seed {zero})"
+        );
+
+        let mut g = Game::new(player(), Progress::new(), nonzero);
+        g.walk(&mut input(&["n"])).unwrap();
+        assert!(
+            g.running,
+            "Random(2) != 0 means escaped: no combat (seed {nonzero})"
+        );
+        assert!(g.last_enemy.is_none(), "escaping must not record a fight");
+    }
+
+    /// Accepting with `y` always fights, whatever the RNG says next.
+    #[test]
+    fn accepting_an_encounter_always_fights() {
+        let seed = (1u32..40_000)
+            .find(|s| decline_roll_for(*s).is_some())
+            .expect("no seed produced an encounter");
+        let mut g = Game::new(player(), Progress::new(), seed);
+        g.walk(&mut input(&["Y"])).unwrap(); // 0eed:0216 case-folds first
+        assert!(!g.running, "an accepted encounter must enter combat");
+    }
+
+    /// I7: a dead player ends the game (`1000:5053` -> `FUN_1000_074b(0)`,
+    /// which ends in `Halt`), rather than walking on as a 0-HP corpse.
+    #[test]
+    fn player_death_stops_the_loop() {
+        let mut g = game();
+        g.player.hp = 0;
+        let enemy = player();
+        g.run_combat(enemy, &mut no_input()).unwrap();
+        assert!(!g.running, "death must end the game");
     }
 
     #[test]
-    fn save_game_reports_the_blocked_error_without_panicking() {
-        let g = game();
-        g.save_game();
+    fn winning_a_fight_awards_experience_and_keeps_the_game_running() {
+        let mut g = game();
+        let mut enemy = player();
+        enemy.hp = 0;
+        enemy.strength = 3;
+        enemy.agility = 3;
+        enemy.vitality = 3;
+        enemy.luck = 3;
+        let before = g.progress.xp;
+        g.run_combat(enemy, &mut no_input()).unwrap();
+        assert!(g.running);
+        assert!(g.last_enemy.is_some());
+        assert!(g.progress.xp > before, "an award must be credited");
     }
 }

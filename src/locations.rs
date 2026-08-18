@@ -39,6 +39,29 @@ pub enum Location {
 /// `data/strings.json` (`docs/re/tables.md`'s cited offsets) -- but that is
 /// evidence about the *command table*, not about `PLACES.SAV`'s own byte
 /// layout, so it is not being asserted as confirmed.
+///
+/// **New evidence, still not proof.** Task 11's review pass disassembled all
+/// seven discovery gates and found the flags to be seven *contiguous* bytes
+/// in this order (`docs/re/command-dispatch.md`, "Discovery gates"):
+///
+/// | byte | `20ae:` | verb | location |
+/// |---|---|---|---|
+/// | 0 | `3694` | `mar` | Market |
+/// | 1 | `3695` | `bmar` | BigMarket |
+/// | 2 | `3696` | `pr` | Den |
+/// | 3 | `3697` | `girl` | Girl |
+/// | 4 | `3698` | `rep` | Vet |
+/// | 5 | `3699` | `kl` | Club |
+/// | 6 | `369a` | `trn` | Gym |
+///
+/// That is the *in-memory* order, and it differs from the array below at
+/// slots 2 and 4 (Den and Vet are swapped). A seven-byte contiguous block is
+/// exactly what a `BlockRead` of a seven-byte `PLACES.SAV` would fill, but
+/// the read itself was still not located, so this array is deliberately left
+/// as it was rather than reordered on a strong hunch. Reordering it changes
+/// nothing observable today (`orig/PLACES.SAV` is `01` in every slot and
+/// `mark_found`/`is_found` are symmetric), and the round-trip test below
+/// still passes under any permutation.
 pub const TRACKED: [Location; 7] = [
     Location::Market,
     Location::BigMarket,
