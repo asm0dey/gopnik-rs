@@ -18,9 +18,40 @@
 
 | 2b + 2c — pointer-anchored re-extraction + gap tiling | complete, approved (2 review rounds) | `01de56b..4fd2fda` |
 | 3 — DOSBox-X oracle harness | complete, approved (3 fix waves) | `3f372a0..f44b6f7` |
+| 5 — .SAV decoder + layout artifact | complete, approved (first pass) | `8973100` |
+| 6 — Rust crate skeleton + text layer | complete, approved (1 fix wave) | `85c38b3`, `2533d35` |
 
-**NEXT: Task 5** — save format decoder. Apply the owner-approved option-2
-amendment recorded under "Decisions made".
+**NEXT: Task 7.**
+
+### Task 6 outcome
+
+Crate is live: `cargo 1.97.1`, deps `serde` + `serde_json` only, `Cargo.lock`
+committed. `src/text.rs` is the markup boundary — `parse()` is the single
+primitive, `render()` and `strip()` are both built on it. 16 tests, no warnings.
+
+Owner approved amending the plan's own test code: one test's name contradicted
+its assertion (`caret_not_followed_by_digit_is_literal` asserted
+`strip("2^3") == "2"`, where `^3` IS a valid code), and four edge cases were
+untested. Split and covered. Reviewer independently re-derived all four
+expected values from `parse`'s control flow — none was fitted to run output.
+
+### Task 5 outcome
+
+`data/save_layout.json` (694 B, schema `{"size", "fields":[{"name","off","kind","len"}]}`)
+and `tools/decode_save.py` are in. Task 7 generates the Rust `save.rs` against
+that exact schema. `hp` @ `0x210` and `hpmax` @ `0x212` are the only
+semantically confirmed words; the eight stat words at `0x200` and the tail
+from `0x214` stay `unk_*` until Task 9 pins them from disassembly.
+
+The owner-approved amendment landed correctly: `_check_offsets()` rebuilds the
+named regions from decoded values only, never touching `_raw`, and hardcodes
+its own `CHK_OFF_*` literals rather than importing them from `decode_save` —
+so a wrong offset cannot be self-consistent. The implementer caught that exact
+tautology in its own first draft. Reviewer traced per-field that the check
+fails for a wrong `magic`, `name`, `stats`, `hp` or `hpmax` offset, not just
+the perturbed one. The stats-block slice check is the only thing in the suite
+that would catch a wrong `OFF_STATE` at all, since `EXPECT` has no ground
+truth for `stats`.
 
 ### Task 3 outcome — the oracle works, and how
 
@@ -116,13 +147,15 @@ the implementer's.
 
 ## Current verified state
 
-All five suites pass:
+All seven suites pass:
 ```
 python3 tools/verify_corpus.py         -> OK 7 corpus files verified
 python3 tools/test_extract_strings.py  -> OK 796 strings extracted, 77 flagged suspect
 python3 tools/test_string_pointers.py  -> OK 695 string pointers recovered, 3 unaccounted
 python3 tools/test_string_tables.py    -> OK 54 table entries extracted
 python3 tools/oracle/test_oracle_smoke.py -> OK 8 checks, ~1.75s, 2 dosbox-x launches
+python3 tools/test_decode_save.py       -> OK 5 saves decoded and round-tripped
+cargo test                             -> ok. 16 passed; 0 failed; 0 warnings
 ```
 
 - `data/strings.json` — 796 entries (695 pointer-anchored + 54 table + 47 gap-tiled). Trustworthy; rebuilds byte-identically from the two input artifacts.
@@ -155,6 +188,41 @@ them from byte noise.
   decoded fields WITHOUT `_raw` and asserts those bytes match the original.
   The tail stays declared opaque. Reason: Task 7's Rust `save.rs` is generated
   from these offsets; a silently wrong offset propagates into the port.
+
+## Carried forward — Task 11 (rendering / print orchestration) must decide this
+
+**Trailing colour codes are irrecoverably dropped by `parse()`.** In the
+original, a Borland Crt colour directive sets terminal state that persists into
+whatever is printed *next*. Our `Span` model cannot represent "colour is now
+active, no text yet": the post-loop flush in `src/text.rs` is gated on
+`!buf.is_empty()`, so `parse("abc^4")` returns exactly `[Span{None,"abc"}]` —
+the `^4` leaves no trace at all — and `parse("^4^7abc")` returns a single
+White span, silently discarding the Red. `render()` also emits `\x1b[0m` at the
+end of every string.
+
+Not a Task 6 bug: the brief specified a per-string primitive and that is what
+was built. But the information is gone by the time `parse` returns, so this
+CANNOT be patched downstream from a `Vec<Span>` — fixing it means changing
+`parse`'s output shape (e.g. an explicit trailing-colour field).
+
+Task 11 must check the disassembly for whether a game string ever ends in a
+colour code intended to tint the following output. If yes, `Span`/`parse` grow
+a slot for it. The plan's fidelity constraint covers colour index, so this is
+in scope for fidelity, not cosmetics.
+
+## Minor findings deferred to the final whole-branch review
+
+Triage these before merge; none blocked their task.
+
+- **Task 5** `tools/test_decode_save.py` — no test exercises `decode()`'s
+  wrong-length `ValueError` guard. The guard is correct; nothing calls it with
+  a non-694-byte blob.
+- **Task 5** `tools/decode_save.py` `encode()` — `buf[OFF_TAIL:] = rec["tail"]`
+  and the `stats` loop have no length assertions. `bytearray` slice assignment
+  silently resizes, so a caller building a `rec` with a wrong-length `tail` or
+  `stats` of length != 8 gets a silently corrupted file instead of an error.
+  Latent (tail/stats currently always come from a same-length `decode()`), but
+  Task 7 generates Rust from this path.
 
 ## Known open items
 
