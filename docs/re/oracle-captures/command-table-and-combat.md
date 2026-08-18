@@ -1,5 +1,13 @@
 # Live oracle captures: command table and combat modality
 
+> **These captures are EVIDENCE, not specification.** The command list below is
+> a string the game prints; it is not the code that parses input. A printed help
+> text can be stale or incomplete relative to its dispatcher, and this binary
+> already ships typos and inconsistencies. The authority for the command table
+> is the input-dispatch chain in the disassembly. Use these screens to
+> corroborate a branch you found in code, never to stand in for finding it.
+> Where a capture and the dispatcher disagree, that disagreement is a finding.
+
 Captured from `orig/g.exe` under DOSBox-X via `tools/oracle/capture.py`,
 seed pinned to 12345. These are screens the ORIGINAL printed, not the port.
 
