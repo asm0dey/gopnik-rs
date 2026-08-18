@@ -47,9 +47,13 @@ inventory are now stated together.
 | `1000:73e0` | `0x3695` | BigMarket | `[0x389c] == 6` at `1000:73bb` | flow | no |
 | `1000:dcf6` | `0x3695` | BigMarket | the `a` token at `1000:dcef` | flow | no |
 | `1000:dcfb` | `0x369a` | Gym | the `a` token at `1000:dcef` | flow | no |
-| `1000:ae1f` | `0x3696` | Den | immediately after `1000:ae13` sets a `[0x3c83]` sentinel | unverified | no |
-| `1000:4aa5` | `0x3696` | Den | inside the combat unit | unverified | no |
-| `1000:52b3` | `0x3696` | Den | inside the combat unit | unverified | no |
+| `1000:ae1f` | `0x3696` | Den | the chapter-5 endgame arm at `1000:adbf` | flow | no |
+| `1000:4aa5` | `0x3696` | Den | the de-level (flee) penalty, `1000:4a87`/`1000:4aa0` | flow | no |
+| `1000:52b3` | `0x3696` | Den | the post-kill block, `1000:5295`/`1000:52b1` | flow | no |
+
+All three Den triggers were **closed by Task 11b** — see `docs/re/wander.md`,
+"The three Den setters". `1000:4aa5`'s store and the line it prints contradict
+each other in the original; that is recorded there, not resolved.
 
 Four of the seven flags are reachable in this port: Market and Vet from
 character creation, Girl from the wander bucket, Club from `girl`. BigMarket,
@@ -82,8 +86,14 @@ The `places.sav` reader's own failure arm (`1000:6d3b`) does **not** reach
 73e5  mov byte [0x3e35],5
 ```
 
-What `[0x389c]` *means*, and what reaches `1000:73bb`, remain **unverified**;
-the store-to-trigger link inside this routine does not.
+**Closed by Task 11b.** `[0x389c]` is the character class, written only at
+`1000:6fed`, `1000:6ffc`, `1000:712a`, `1000:713d` and `1000:71b8` (plus the
+694-byte record `BlockRead` at `1000:6c01`), and these four stores are the
+class bonuses the creation menu advertises. `1000:73bb` is reached on **every**
+entry into the game — new character and loaded save alike, both converging on
+`1000:7262` — so the bonuses are re-applied each time. Full derivation and the
+complete write inventory: `docs/re/wander.md`, "`[20ae:389c]` is the character
+class".
 
 ### The `a` token — `1000:dce5`..`1000:dcfb`
 
@@ -102,8 +112,12 @@ dcfb  [0x369a] := 1                ; Gym
 ```
 
 `DS:3a72` is the same submenu input buffer `mar` reads into (`1000:bd21`).
-**Unverified**: which prompt's read leaves the token there, and what `[0x38cb]`
-is. Not implemented here.
+**Closed by Task 11b**: the read that leaves the token there is the den's own
+`ReadLn` at `1000:db00`..`1000:db09` — the only `0f78:06c6` call between
+`1000:d802` and `1000:dd48` — so `a` is typed at the `^0Притон\` prompt, not at
+the top level. `[0x38cb]` is a street-cred counter distinct from the level
+(`1000:5291` grows it per kill, `1000:db9b` spends it, `1000:dc79` prints it).
+See `docs/re/wander.md`. Still not implemented here.
 
 ### Wander preamble (`1000:af04`..`1000:b34d`) — not reproduced
 
@@ -138,11 +152,17 @@ other draws" and no reading yields eight:
 
 Each fires when its roll returns `0` and its flag is still clear.
 
+**The preamble is now catalogued.** Task 11b recovered all fourteen draws in
+`1000:ae5a`..`1000:b3ba` as one ordered sequence, plus the two the church
+spends inside `1000:7c67` — `docs/re/wander.md` and `data/wander.json`. The
+site list is byte-scan complete. What follows is why the *port* still does not
+spend them.
+
 **Why they are not implemented.** This is a **scope** call, not a fidelity
 blocker. They are four unconditional draws inside a preamble whose other seven
-draws have not been catalogued (no `n`, no gate, no effect), so adding these
-four alone would move the port's RNG sequence without bringing it closer to the
-original's. The port's sequence is *already* wrong relative to the original —
+draws had not been catalogued when Task 11 shipped (no `n`, no gate, no
+effect), so adding these four alone would move the port's RNG sequence without
+bringing it closer to the original's. The port's sequence is *already* wrong relative to the original —
 see the next section — and stays wrong either way; implementing these belongs
 with a pass that catalogues the whole preamble, so the sequence is wired at
 once rather than in fragments. Nothing about the deferral says the events
@@ -176,8 +196,13 @@ b3b7  e8 7e c1        call 0x7538
 They sit between the last bucket store (`1000:b395`, reached from the `== 1`
 compare at `1000:b38e`) and the bucket dispatch (`1000:b3ba` `mov al,[0x3970]`), on the
 fall-through path, so **every** walk executes both calls; only the
-`call 0x7c67` / `call 0x7538` payloads are gated on a `0`. Neither callee has
-been disassembled. An earlier revision enumerated `b34d → b359 → b35c..b393 →
+`call 0x7c67` / `call 0x7538` payloads are gated on a `0`. **Both callees were
+disassembled by Task 11b.** `1000:7c67` is the church: it spends a further
+`Random(5)` unconditionally and a `Random(4)` when that returns `1`, and it
+ends by clearing `[0x3970]` at `1000:8282`, so a church turn produces no
+encounter at all. `1000:7538` is the wandering mage's paid save: no draws, but
+a blocking `ReadLn` into a stack local, and it charges `chapter*50` while
+printing `chapter*25`. An earlier revision enumerated `b34d → b359 → b35c..b393 →
 b3ba` and walked straight past this block.
 
 **Consequence for draw-sequence fidelity.** In the original, bucket 2 reaches
@@ -244,8 +269,9 @@ BigMarket (`6d62`) and Den (`6d6e`), except that `1000:6d45`
 (`cmp word [0x389c],5` / `jz 0x6d73`) skips the Den clear — one flag each,
 not pairs. It then writes `^6Чё-то глюкануло - немогу прoгрузить Places:Ресет ту Default` (file `0x7CE3`) and
 leaves via `1000:6d8c`/`1000:6da0`, never reaching `1000:6dbe`.
-**Unverified**: what `[0x389c]` is. Out of scope here; the port has no `.SAV`
-load path at all.
+`[0x389c]` is the character class (Task 11b) — the skips keep the class
+bonuses and clear only what was discovered. The port has no `.SAV` load path at
+all, so none of this is reproduced.
 
 ## No `.SAV` load path
 
@@ -333,3 +359,50 @@ input loop was not disassembled.
   the rest" shape is **established from flow** only as far as each location
   writing its own prompt and `ReadLn`-ing into `DS:3a72` (`1000:bd08` /
   `1000:bd21` for `mar`); the submenu dispatch chain itself was not traced.
+
+---
+
+## Opened by Task 11b (the wander catalogue)
+
+*Cited from `docs/re/wander.md` and `data/wander.json`.*
+
+The wander preamble is now fully catalogued as one ordered sequence, so the
+port's divergence there is a known quantity rather than an unknown one. These
+are the questions that pass left open, and the ones it created.
+
+* **The whole sequence is static-only.** Every one of the sixteen draws is
+  **established from flow** from the disassembly; **none** has been corroborated
+  by a live breakpoint. A `tools/qemu` run on a pinned seed that logs the
+  fourteen in-range sites in order — and the church's two when it fires — would
+  raise the whole catalogue a tier, and is the natural first step of Task 12.
+* **`unk_38b2`.** `1000:81e9` increments this byte under
+  `^1Накладываю на тебя защиту!` (file `0x9476`). No consumer was located.
+  The name in `data/wander.json` stays `unk_38b2`.
+* **The item at `DS:394d`.** Bought from the dealers for 150 roubles at
+  `1000:cd05` (price byte `DS:0b3e`), and it arms the 25-walk delivery counter
+  `DS:3e32` that `1000:af1d` drives. `docs/re/tables.md` calls that counter
+  "the silencer"; the purchase's own name string was not traced, so
+  `data/wander.json` keeps the neutral `dealer_order_placed`.
+* **`1000:4aa5` sets the Den flag while printing a refusal.** The byte is
+  `c6 06 96 36 01` (verified) and the line is
+  `^4Такого конявого непустят в местный притон!` (file `0x4D42`); the den gate
+  at `1000:d80c` reads nothing but that flag. Whether a clear was intended is
+  **unverified** and cannot be settled from the binary.
+* **Does the chapter-5 block re-run every turn?** `1000:ae18` is at the top of
+  every iteration (back-edge `1000:ee01` `jmp 0xab75`) and nothing clears
+  `[0x3c83]` — its only writes are `1000:7364` and `1000:ae13`. So on the face
+  of the flow, once chapter 5 is reached the rector fight and the endgame fight
+  run every turn. Whether `FUN_1000_3d11(4)` returns at all was not traced.
+* **The mage's printed price disagrees with the charged price.**
+  `1000:758d` prints `chapter*25`; `1000:7605`/`1000:7618` check and charge
+  `chapter*50`. Both are in the binary. `docs/re/tables.md`'s "Other price
+  sources" records only the charged half.
+* **`data/command_dispatch.json` still records the three Den setters as
+  trigger-UNVERIFIED.** All three are now established from flow
+  (`docs/re/wander.md`, "The three Den setters"), but Task 11b was scoped out of
+  editing that artifact. Re-syncing it is a follow-up.
+* **`docs/re/command-dispatch.md` step 5 is wrong** and is corrected in
+  `docs/re/wander.md`: `1000:b353` is not "within the district-transition
+  preamble", it is the regular-turn bucket roll, and there is only one wander
+  path. The correction has not been folded back into
+  `docs/re/command-dispatch.md` itself.

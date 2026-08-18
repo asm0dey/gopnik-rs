@@ -1,0 +1,332 @@
+{
+  "schema_version": 1,
+  "task": "11b",
+  "source": "orig/g.exe",
+  "address_convention": {
+    "image_base": "0x18d0",
+    "rule": "file_off = 0x18d0 + (seg - 0x1000) * 16 + off; a 1000:XXXX code address is file offset 0x18d0 + XXXX",
+    "data_segment": "20ae; DS:0000 is file offset 0x123b0",
+    "note": "every `at` and `bytes` pair below was dumped from orig/g.exe and re-disassembled; `bytes` is the literal opcode encoding at `at`"
+  },
+  "random": {
+    "callee": "0f78:114b",
+    "call_encoding": "9a 4b 11 78 0f",
+    "convention": "mov ax,<n> / push ax / call far -> result in ax, 0 <= result < n",
+    "semantics": "RandSeed := RandSeed * $08088405 + 1; Random(n) = (RandSeed * n) >> 32 (high-take, NOT a modulo). Already established, see docs/re/rng.md and data/rng_vectors.json.",
+    "site_scan": {
+      "method": "byte scan for `9a 4b 11 78 0f` over the whole image",
+      "total_sites_in_image": 86,
+      "sites_between_1000_ae5a_and_1000_b3ba": ["af68","afc7","b030","b0dc","b186","b1b8","b1ea","b21c","b272","b2fa","b321","b353","b39e","b3ae"],
+      "completeness": "established from flow -- the encoding is fixed-length and the scan is byte-exact, so no call of this form in the range can be missed"
+    }
+  },
+
+  "entry": {
+    "verbs": ["w", "run"],
+    "compare_sites": ["1000:ae86", "1000:ae97"],
+    "target": "1000:aea1",
+    "tier": "flow",
+    "note": "both verbs jump to the same target; `run` additionally prints file 0x9D7D at 1000:aeeb (no draw)"
+  },
+
+  "globals": [
+    { "addr": "20ae:389c", "name": "class", "width": 2, "sav_offset": "0x200", "tier": "flow+corroborated", "meaning": "character class index. Player values 3..6 = Подтсан/Отморозок/Гопник/Вор; 0..10 index the weight table at DS:0002 and the rank names at DS:002e.", "writes": ["1000:6fed", "1000:6ffc", "1000:712a", "1000:713d", "1000:71b8"] },
+    { "addr": "20ae:389e", "name": "strength", "width": 2, "tier": "flow" },
+    { "addr": "20ae:38a0", "name": "agility", "width": 2, "tier": "flow" },
+    { "addr": "20ae:38a2", "name": "vitality", "width": 2, "tier": "flow" },
+    { "addr": "20ae:38a4", "name": "luck", "width": 2, "tier": "flow", "evidence": "1000:715a stores 1 here for Отморозок, whose luck weight is 1" },
+    { "addr": "20ae:38a6", "name": "level", "width": 2, "tier": "flow", "evidence": "docs/re/progression.md" },
+    { "addr": "20ae:38a8", "name": "dmg_min", "width": 2, "tier": "flow" },
+    { "addr": "20ae:38aa", "name": "dmg_max", "width": 2, "tier": "flow" },
+    { "addr": "20ae:38ac", "name": "hp", "width": 2, "tier": "flow", "evidence": "1000:71d2..1000:71d5 copies hpmax into it at creation" },
+    { "addr": "20ae:38ae", "name": "hpmax", "width": 2, "tier": "flow", "evidence": "1000:71c8..1000:71cf computes vit*5 + 10 + str into it" },
+    { "addr": "20ae:38b0", "name": "injury_jaw", "width": 1, "tier": "flow+corroborated", "evidence": "cleared at 1000:b2ae, whose message (file 0xA06B) names the jaw" },
+    { "addr": "20ae:38b1", "name": "injury_leg", "width": 1, "tier": "flow+corroborated", "evidence": "cleared at 1000:b289, whose message (file 0xA043) names the leg" },
+    { "addr": "20ae:38b2", "name": "unk_38b2", "width": 1, "tier": "unverified", "note": "incremented at 1000:81e9 under the church message '^1Накладываю на тебя защиту!' (file 0x9476); no consumer traced" },
+    { "addr": "20ae:38bb", "name": "has_mobile", "width": 1, "tier": "flow+corroborated", "meaning": "the player owns a mobile phone; every phone-call event in the preamble is gated on it", "writes": ["1000:550d", "1000:566d", "1000:c969"], "evidence": "1000:550d/1000:566d print CS:0x3b9c = file 0x546C '^1Ты нашёл мобилу'; 1000:c969 is the dealers' purchase for 48 rubles (price byte DS:0b39), printing file 0xAC8D" },
+    { "addr": "20ae:38bf", "name": "oneshot_gift_1", "width": 1, "sav_offset": "0x223", "tier": "flow" },
+    { "addr": "20ae:38c0", "name": "oneshot_gift_2", "width": 1, "sav_offset": "0x224", "tier": "flow" },
+    { "addr": "20ae:38c1", "name": "ring_gospodi_pomilui", "width": 1, "sav_offset": "0x225", "tier": "flow+corroborated", "meaning": "the ring 'Gospodi pomilui'; gates the per-walk +3 HP regen and the 5% fracture self-heal", "writes": ["1000:53f2", "1000:81c4"], "evidence": "the granting text at CS:0x3b0d = file 0x53DD reads '^1Восст. жизни - 3, 5% - самозарост переломов', which is exactly what 1000:b24a..1000:b2cb does" },
+    { "addr": "20ae:38c7", "name": "money", "width": 2, "tier": "flow" },
+    { "addr": "20ae:38cb", "name": "pontovost_street", "width": 2, "sav_offset": "0x22f", "tier": "flow+corroborated", "meaning": "a street-cred counter, distinct from the level at DS:38a6 despite both being called 'pontovost' in text", "evidence": "grown per kill at 1000:5291 by (enemy.level div 3) + enemy.class + 1; spent 2 at 1000:db9b when borrowing beer money in the den; printed at 1000:dc79 under file 0xB857 '^4Твоя понтовость сейчас = #.'; granted chapter*50 + 50 at 1000:821a by the church" },
+    { "addr": "20ae:38cd", "name": "buff_countdown", "width": 1, "sav_offset": "0x231", "tier": "flow", "evidence": "docs/re/progression.md" },
+    { "addr": "20ae:3692", "name": "chapter", "width": 1, "tier": "flow", "meaning": "district / chapter, 1..5" },
+    { "addr": "20ae:3693", "name": "flavour_toggle", "width": 1, "tier": "flow", "meaning": "toggled at 1000:b3c4..1000:b3ce, selects which of two district-keyed flavour sets bucket 1 prints" },
+    { "addr": "20ae:3694", "name": "flag_market", "width": 1, "tier": "flow" },
+    { "addr": "20ae:3695", "name": "flag_bigmarket", "width": 1, "tier": "flow" },
+    { "addr": "20ae:3696", "name": "flag_den", "width": 1, "tier": "flow" },
+    { "addr": "20ae:3697", "name": "flag_girl", "width": 1, "tier": "flow" },
+    { "addr": "20ae:3698", "name": "flag_vet", "width": 1, "tier": "flow" },
+    { "addr": "20ae:3699", "name": "flag_club", "width": 1, "tier": "flow" },
+    { "addr": "20ae:369a", "name": "flag_gym", "width": 1, "tier": "flow" },
+    { "addr": "20ae:394d", "name": "dealer_order_placed", "width": 1, "tier": "flow", "meaning": "set at 1000:cd05 by a 150-rouble purchase from the dealers (price byte DS:0b3e); arms the 25-walk delivery counter at DS:3e32", "note": "docs/re/tables.md calls the DS:3e32 counter 'the silencer'; the item name itself is not established here" },
+    { "addr": "20ae:3951", "name": "church_visits", "width": 1, "tier": "flow", "meaning": "church sermon stage; incremented at 1000:7dc7 and 1000:7f5b" },
+    { "addr": "20ae:3970", "name": "wander_bucket", "width": 1, "tier": "flow", "meaning": "1..4, the outcome the bucket roll selects; 0 means no arm matches and the turn ends with no encounter" },
+    { "addr": "20ae:3971", "name": "wander_roll", "width": 1, "tier": "flow", "meaning": "Random(25) + 1, i.e. 1..25" },
+    { "addr": "20ae:3b74", "name": "theft_amount", "width": 2, "tier": "flow" },
+    { "addr": "20ae:3b76", "name": "market_ban_countdown", "width": 1, "tier": "flow", "meaning": "set to 5 at 1000:c465, decremented once per walk at 1000:b173, blocks `mar` (gate 1000:b95e)" },
+    { "addr": "20ae:3b77", "name": "club_ban_countdown", "width": 1, "tier": "flow", "meaning": "set to 5 at 1000:e23e, decremented once per walk at 1000:b17e, blocks `kl` (gate 1000:df1a)" },
+    { "addr": "20ae:3b78", "name": "den_errand_1_pending", "width": 1, "tier": "flow", "meaning": "one-shot phone errand; set at 1000:af71, consumed in the den at 1000:dc5e" },
+    { "addr": "20ae:3b79", "name": "den_errand_2_pending", "width": 1, "tier": "flow", "meaning": "one-shot phone errand; set at 1000:afd0, consumed in the den at 1000:dec8" },
+    { "addr": "20ae:3c83", "name": "endgame_armed", "width": 1, "tier": "flow", "meaning": "set at 1000:7364 when a loaded character is already at chapter 5, and at 1000:ae13 on the chapter-5 district-intro arm; read every turn at 1000:ae18" },
+    { "addr": "20ae:3e32", "name": "dealer_delivery_counter", "width": 1, "tier": "flow", "meaning": "counts walks 0..25 once DS:394d is set; at exactly 25 the phone call fires" },
+    { "addr": "20ae:3e35", "name": "den_loan_credit", "width": 1, "tier": "flow", "meaning": "initialised to 5 at 1000:73e5, incremented once per walk while below chapter*10 (1000:af19), spent one per den beer loan at 1000:dba0" }
+  ],
+
+  "steps": [
+    { "seq": 1, "kind": "state", "at": "1000:aea1", "bytes": "80 3e cd 38 00", "what": "if buff_countdown > 0 then decrement it (1000:aea8); on reaching 0, undo the joint buff: strength -2 (1000:aeb3), dmg_min -1 (1000:aeb8), dmg_max -2 (1000:aebc) and print file 0x9D64", "tier": "flow" },
+    { "seq": 2, "kind": "message", "at": "1000:aeda", "bytes": "bf 72 39 1e 57", "what": "if the typed line was `run` (compare at 1000:aee4) print file 0x9D7D", "tier": "flow" },
+    { "seq": 3, "kind": "state", "at": "1000:af04", "bytes": "a0 92 36", "what": "if den_loan_credit < chapter*10 then increment it (1000:af19)", "tier": "flow" },
+    { "seq": 4, "kind": "state", "at": "1000:af1d", "bytes": "80 3e 95 36 00", "what": "if flag_bigmarket and dealer_order_placed and dealer_delivery_counter < 25: increment it (1000:af32); when it becomes exactly 25 (1000:af36) and has_mobile (1000:af3d), print file 0x9D8E", "tier": "flow" },
+
+    { "seq": 5, "kind": "draw", "draw_ordinal": 1, "at": "1000:af68", "bytes": "9a 4b 11 78 0f", "n": 20, "n_at": "1000:af64", "n_bytes": "b8 14 00 50",
+      "gate": { "at": "1000:af5d", "bytes": "80 3e 78 3b 00", "cond": "den_errand_1_pending == 0", "skip_target": "1000:afbc" },
+      "test": { "at": "1000:af6d", "bytes": "09 c0 75 4b", "cond": "result == 0", "skip_target": "1000:afbc" },
+      "buckets": [
+        { "range": "0", "p": "1/20", "effect": "set den_errand_1_pending := 1 (1000:af71) UNCONDITIONALLY, then print the phone call (files 0x9DDB + player name + 0x9DEA) only if flag_den (1000:af76) and has_mobile (1000:af7d)" },
+        { "range": "1..19", "p": "19/20", "effect": "nothing" }
+      ],
+      "tier": "flow",
+      "note": "the one-shot flag is set before the flag_den/has_mobile checks, so the errand slot is burned even when nothing is printed"
+    },
+
+    { "seq": 6, "kind": "draw", "draw_ordinal": 2, "at": "1000:afc7", "bytes": "9a 4b 11 78 0f", "n": 20, "n_at": "1000:afc3", "n_bytes": "b8 14 00 50",
+      "gate": { "at": "1000:afbc", "bytes": "80 3e 79 3b 00", "cond": "den_errand_2_pending == 0", "skip_target": "1000:b022" },
+      "test": { "at": "1000:afcc", "bytes": "09 c0 75 52", "cond": "result == 0", "skip_target": "1000:b022" },
+      "buckets": [
+        { "range": "0", "p": "1/20", "effect": "set den_errand_2_pending := 1 (1000:afd0) UNCONDITIONALLY, then print the phone call (files 0x9DDB + player name + 0x9E1A) only if flag_den (1000:afd5) and pontovost_street >= 100 (1000:afdc) and has_mobile (1000:afe3)" },
+        { "range": "1..19", "p": "19/20", "effect": "nothing" }
+      ],
+      "tier": "flow"
+    },
+
+    { "seq": 7, "kind": "draw", "draw_ordinal": 3, "at": "1000:b030", "bytes": "9a 4b 11 78 0f", "n": 200, "n_at": "1000:b02c", "n_bytes": "b8 c8 00 50",
+      "gate": { "at": "1000:b022", "bytes": "80 3e bb 38 01", "cond": "has_mobile == 1", "skip_target": "1000:b0ce" },
+      "test": { "at": "1000:b035", "bytes": "09 c0 74 03", "cond": "result == 0", "skip_target": "1000:b0ce" },
+      "buckets": [
+        { "range": "0", "p": "1/200", "effect": "the wrong-number gag: prints files 0x9E44, 0x9E58 + name + 0x9E63, 0x9E65, 0x9E7D with a delay (0f16:031a) between them. No state change." },
+        { "range": "1..199", "p": "199/200", "effect": "nothing" }
+      ],
+      "tier": "flow"
+    },
+
+    { "seq": 8, "kind": "draw", "draw_ordinal": 4, "at": "1000:b0dc", "bytes": "9a 4b 11 78 0f", "n": 100, "n_at": "1000:b0d8", "n_bytes": "b8 64 00 50",
+      "gate": { "at": "1000:b0ce", "bytes": "80 3e bb 38 01", "cond": "has_mobile == 1", "skip_target": "1000:b16c" },
+      "test": { "at": "1000:b0e1", "bytes": "09 c0 75 39", "cond": "result == 0", "skip_target": "1000:b11e" },
+      "buckets": [
+        { "range": "0", "p": "1/100", "effect": "if flag_girl (1000:b0e5) print files 0x9EAE and 0x9EEC. No state change." },
+        { "range": "1..99", "p": "99/100", "effect": "nothing" }
+      ],
+      "tier": "flow"
+    },
+
+    { "seq": 9, "kind": "message", "at": "1000:b11e", "bytes": "80 3e 76 3b 01", "what": "if market_ban_countdown == 1 and flag_den, print file 0x9F05 (the cops have left the market)", "tier": "flow", "note": "reached only on the has_mobile path" },
+    { "seq": 10, "kind": "message", "at": "1000:b145", "bytes": "80 3e 77 3b 01", "what": "if club_ban_countdown == 1 and flag_den, print file 0x9F50 (the club trouble has blown over)", "tier": "flow", "note": "reached only on the has_mobile path" },
+    { "seq": 11, "kind": "state", "at": "1000:b16c", "bytes": "80 3e 76 3b 00", "what": "if market_ban_countdown > 0 decrement it (1000:b173); if club_ban_countdown > 0 decrement it (1000:b17e)", "tier": "flow" },
+
+    { "seq": 12, "kind": "draw", "draw_ordinal": 5, "at": "1000:b186", "bytes": "9a 4b 11 78 0f", "n": 10, "n_at": "1000:b182", "n_bytes": "b8 0a 00 50",
+      "gate": null,
+      "test": { "at": "1000:b18b", "bytes": "09 c0 75 25", "cond": "result == 0", "skip_target": "1000:b1b4" },
+      "buckets": [
+        { "range": "0", "p": "1/10", "effect": "if flag_vet == 0 (1000:b18f) set flag_vet := 1 (1000:b196) and print file 0x9F8B" },
+        { "range": "1..9", "p": "9/10", "effect": "nothing" }
+      ],
+      "tier": "flow"
+    },
+    { "seq": 13, "kind": "draw", "draw_ordinal": 6, "at": "1000:b1b8", "bytes": "9a 4b 11 78 0f", "n": 10, "n_at": "1000:b1b4", "n_bytes": "b8 0a 00 50",
+      "gate": null,
+      "test": { "at": "1000:b1bd", "bytes": "09 c0 75 25", "cond": "result == 0", "skip_target": "1000:b1e6" },
+      "buckets": [
+        { "range": "0", "p": "1/10", "effect": "if flag_market == 0 (1000:b1c1) set flag_market := 1 (1000:b1c8) and print file 0x9FB2" },
+        { "range": "1..9", "p": "9/10", "effect": "nothing" }
+      ],
+      "tier": "flow"
+    },
+    { "seq": 14, "kind": "draw", "draw_ordinal": 7, "at": "1000:b1ea", "bytes": "9a 4b 11 78 0f", "n": 100, "n_at": "1000:b1e6", "n_bytes": "b8 64 00 50",
+      "gate": null,
+      "test": { "at": "1000:b1ef", "bytes": "09 c0 75 25", "cond": "result == 0", "skip_target": "1000:b218" },
+      "buckets": [
+        { "range": "0", "p": "1/100", "effect": "if flag_club == 0 (1000:b1f3) set flag_club := 1 (1000:b1fa) and print file 0x9FC4" },
+        { "range": "1..99", "p": "99/100", "effect": "nothing" }
+      ],
+      "tier": "flow"
+    },
+    { "seq": 15, "kind": "draw", "draw_ordinal": 8, "at": "1000:b21c", "bytes": "9a 4b 11 78 0f", "n": 100, "n_at": "1000:b218", "n_bytes": "b8 64 00 50",
+      "gate": null,
+      "test": { "at": "1000:b221", "bytes": "09 c0 75 25", "cond": "result == 0", "skip_target": "1000:b24a" },
+      "buckets": [
+        { "range": "0", "p": "1/100", "effect": "if flag_gym == 0 (1000:b225) set flag_gym := 1 (1000:b22c) and print file 0x9FFE" },
+        { "range": "1..99", "p": "99/100", "effect": "nothing" }
+      ],
+      "tier": "flow"
+    },
+
+    { "seq": 16, "kind": "state", "at": "1000:b251", "bytes": "a1 ac 38 3b 06 ae 38", "what": "the ring's regen: if hp < hpmax then hp += 3 (1000:b25a), clamped to hpmax (1000:b268)", "gate": { "at": "1000:b24a", "bytes": "80 3e c1 38 00", "cond": "ring_gospodi_pomilui != 0", "skip_target": "1000:b2cc" }, "tier": "flow" },
+
+    { "seq": 17, "kind": "draw", "draw_ordinal": 9, "at": "1000:b272", "bytes": "9a 4b 11 78 0f", "n": 20, "n_at": "1000:b26e", "n_bytes": "b8 14 00 50",
+      "gate": { "at": "1000:b24a", "bytes": "80 3e c1 38 00", "cond": "ring_gospodi_pomilui != 0", "skip_target": "1000:b2cc" },
+      "test": { "at": "1000:b277", "bytes": "09 c0 77 51", "cond": "result == 0", "skip_target": "1000:b2cc" },
+      "buckets": [
+        { "range": "0", "p": "1/20", "effect": "the ring's 5% fracture self-heal. If injury_jaw == 0 (1000:b27b) and injury_leg != 0 (1000:b282): clear injury_leg (1000:b289) and print file 0xA043. Then if injury_jaw != 0 (1000:b2a7): clear injury_jaw (1000:b2ae) and print file 0xA06B." },
+        { "range": "1..19", "p": "19/20", "effect": "nothing" }
+      ],
+      "tier": "flow",
+      "note": "1/20 = the 5% the ring's own description string (file 0x53DD) advertises"
+    },
+
+    { "seq": 18, "kind": "state", "at": "1000:b2cc", "bytes": "a1 9c 38", "what": "class-perk dispatch: ax := class", "tier": "flow" },
+    { "seq": 19, "kind": "state", "at": "1000:b2d4", "bytes": "a1 ac 38 3b 06 ae 38", "what": "class 4 (Отморозок) only (test at 1000:b2cf): if hp < hpmax then hp += 1 (1000:b2dd); then jmp 1000:b34d", "tier": "flow", "note": "this is the 'Бонус - Самолечение царапин' the creation menu advertises (file 0x7FE8)" },
+    { "seq": 20, "kind": "state", "at": "1000:b2e3", "bytes": "3d 05 00", "what": "class 5 (Гопник): jmp 1000:b34d, no perk in the wander", "tier": "flow" },
+
+    { "seq": 21, "kind": "draw", "draw_ordinal": 10, "at": "1000:b2fa", "bytes": "9a 4b 11 78 0f", "n_expr": "chapter * 20", "n_at": "1000:b2ef", "n_bytes": "a0 92 36 30 e4 ba 14 00 f7 e2",
+      "gate": { "at": "1000:b2ea", "bytes": "3d 06 00", "cond": "class == 6 (Вор)", "skip_target": "1000:b34d" },
+      "test": { "at": "1000:b308", "bytes": "99 3b d3 7f 06 7c 3c 3b c1", "cond": "luck (sign-extended to 32 bits, 1000:b305/1000:b308) >= result (zero-extended, 1000:b2ff..1000:b303)", "skip_target": "1000:b34b" },
+      "buckets": [
+        { "range": "0 .. luck", "effect": "theft succeeds -> draw 11" },
+        { "range": "luck+1 .. chapter*20-1", "effect": "theft fails, nothing printed" }
+      ],
+      "tier": "flow",
+      "note": "this is the 'Бонус - Воровство' the creation menu advertises (file 0x8059)"
+    },
+    { "seq": 22, "kind": "draw", "draw_ordinal": 11, "at": "1000:b321", "bytes": "9a 4b 11 78 0f", "n_expr": "chapter * 5", "n_at": "1000:b313", "n_bytes": "a0 92 36 30 e4 8b f0 d1 e0 d1 e0 01 f0",
+      "gate": { "at": "1000:b308", "cond": "class == 6 AND luck >= draw 10's result" },
+      "test": null,
+      "buckets": [
+        { "range": "0 .. chapter*5-1", "effect": "theft_amount := result + 1 (1000:b326); money += theft_amount (1000:b32a..1000:b32d); print file 0xA096 with theft_amount" }
+      ],
+      "tier": "flow"
+    },
+
+    { "seq": 23, "kind": "draw", "draw_ordinal": 12, "at": "1000:b353", "bytes": "9a 4b 11 78 0f", "n": 25, "n_at": "1000:b34d", "n_bytes": "b8 05 00 f7 e8",
+      "gate": null,
+      "test": null,
+      "store": { "at": "1000:b358", "bytes": "40 a2 71 39", "what": "wander_roll := result + 1, i.e. 1..25" },
+      "buckets": [
+        { "range": "1", "p": "1/25", "wander_bucket": 1, "at": "1000:b38e/1000:b395", "effect": "flavour only: toggles DS:3693 and writes one district-keyed line from one of two sets (1000:b3db.. / 1000:b465..)" },
+        { "range": "2..4", "p": "3/25", "wander_bucket": 2, "at": "1000:b382/1000:b389", "effect": "the girl encounter at 1000:b4ef.. (gated on flag_girl at 1000:b4ef); its own Random(2) is at 1000:b54e and setting flag_girl is 1000:b570" },
+        { "range": "5..9", "p": "5/25", "wander_bucket": 3, "at": "1000:b36f/1000:b376", "effect": "the fight encounter at 1000:b5ae..: FUN_1000_0d14 rolls the enemy, then the accept/decline flow" },
+        { "range": "10..25", "p": "16/25", "wander_bucket": 4, "at": "1000:b35c/1000:b363", "effect": "flavour only: branches on buff_countdown and writes name-keyed flavour (1000:b836..)" }
+      ],
+      "note": "the immediate is built as `mov ax,5 / imul ax`, i.e. AX*AX = 25 -- Random(25). The comparison chain runs highest boundary first; a value that matches no arm would leave wander_bucket unchanged, which the church routine exploits (see draw 13).",
+      "tier": "flow"
+    },
+
+    { "seq": 24, "kind": "draw", "draw_ordinal": 13, "at": "1000:b39e", "bytes": "9a 4b 11 78 0f", "n": 200, "n_at": "1000:b39a", "n_bytes": "b8 c8 00 50",
+      "gate": null,
+      "test": { "at": "1000:b3a3", "bytes": "09 c0 75 03", "cond": "result == 0", "skip_target": "1000:b3aa" },
+      "buckets": [
+        { "range": "0", "p": "1/200", "effect": "call 1000:7c67 -- the church event. See `nested_routines.church`. It spends 1 or 2 further draws and ALWAYS clears wander_bucket, so no encounter happens this turn." },
+        { "range": "1..199", "p": "199/200", "effect": "nothing" }
+      ],
+      "tier": "flow"
+    },
+    { "seq": 25, "kind": "draw", "draw_ordinal": 14, "at": "1000:b3ae", "bytes": "9a 4b 11 78 0f", "n": 100, "n_at": "1000:b3aa", "n_bytes": "b8 64 00",
+      "gate": null,
+      "test": { "at": "1000:b3b3", "bytes": "09 c0 75 03", "cond": "result == 0", "skip_target": "1000:b3ba" },
+      "buckets": [
+        { "range": "0", "p": "1/100", "effect": "call 1000:7538 -- the wandering mage's paid save. Spends NO draws, does not touch wander_bucket, but does block on a ReadLn. See `nested_routines.mage`." },
+        { "range": "1..99", "p": "99/100", "effect": "nothing" }
+      ],
+      "tier": "flow"
+    },
+
+    { "seq": 26, "kind": "dispatch", "at": "1000:b3ba", "bytes": "a0 70 39", "what": "al := wander_bucket, then the cmp chain 1 (1000:b3bd) -> 2 (1000:b4e8) -> 3 (1000:b5ae) -> otherwise bucket 4 (1000:b836)", "tier": "flow" }
+  ],
+
+  "nested_routines": {
+    "church": {
+      "at": "1000:7c67",
+      "extent": "1000:7c67..1000:82af (single prologue at 1000:7c67, single epilogue `89 ec 5d c3` at 1000:82af)",
+      "callers": ["1000:b3a7"],
+      "stage_dispatch": [
+        { "at": "1000:7c76", "cond": "church_visits == 2", "effect": "prints files 0x904C, 0x9083, 0x909F, 0x90B4; falls through" },
+        { "at": "1000:7ceb", "cond": "church_visits == 1", "effect": "the long sermon (files 0x904C, 0x9083, 0x7810.., 0x919A); then church_visits += 1 at 1000:7dc7" },
+        { "at": "1000:7dcb", "cond": "church_visits == 0", "effect": "the first-visit sermon; then church_visits += 1 at 1000:7f5b" }
+      ],
+      "draws": [
+        { "draw_ordinal": 15, "at": "1000:7f63", "bytes": "9a 4b 11 78 0f", "n": 5, "n_at": "1000:7f5f", "n_bytes": "b8 05 00 50",
+          "gate": null,
+          "note": "every stage path converges on 1000:7f5f, so this draw is unconditional once the church fires",
+          "buckets": [
+            { "range": "0", "p": "1/5", "effect": "prints file 0x930C only; no state change despite the text claiming a pontovost rise" },
+            { "range": "1", "p": "1/5", "effect": "-> draw 16, a stat blessing" },
+            { "range": "2", "p": "1/5", "effect": "the first unfired one-shot gift: oneshot_gift_1 (1000:8134, all four stats +1, hpmax/hp +6, dmg_max +1), else oneshot_gift_2 (1000:8184, all four +4, hpmax/hp +24, dmg_max +4, dmg_min +2), else ring_gospodi_pomilui (1000:81c4, text only here -- its effect is the wander regen)" },
+            { "range": "3", "p": "1/5", "effect": "unk_38b2 += 1 (1000:81e9), message file 0x9476" },
+            { "range": "4", "p": "1/5", "effect": "pontovost_street += chapter*50 + 50 (1000:820d..1000:821a), message files 0x9493 and 0x94CC" }
+          ],
+          "tier": "flow" },
+        { "draw_ordinal": 16, "at": "1000:7fff", "bytes": "9a 4b 11 78 0f", "n": 4, "n_at": "1000:7ffb", "n_bytes": "b8 04 00 50",
+          "gate": { "at": "1000:7f68", "bytes": "3d 00 00 74 03", "cond": "draw 15 returned exactly 1" },
+          "buckets": [
+            { "range": "0", "p": "1/4", "effect": "strength +1, hpmax +1, hp +1, dmg_max +1 (1000:8022..1000:802e)" },
+            { "range": "1", "p": "1/4", "effect": "agility +1 (1000:8067)" },
+            { "range": "2", "p": "1/4", "effect": "vitality +1, hpmax +5, hp +5 (1000:808b..1000:8094)" },
+            { "range": "3", "p": "1/4", "effect": "luck +1 (1000:80b9)" }
+          ],
+          "tier": "flow" }
+      ],
+      "tail": { "at": "1000:8282", "bytes": "c6 06 70 39 00", "what": "wander_bucket := 0, unconditionally -- no jump inside the routine targets an address above 1000:8282 and the routine has exactly one epilogue, so every path executes it", "consequence": "a church turn never produces an encounter", "tier": "flow" },
+      "blocking_read": { "at": "1000:828c", "what": "call 0f78:05dd on DS:3fcc -- waits for the player before returning" }
+    },
+    "mage": {
+      "at": "1000:7538",
+      "extent": "1000:7538..1000:7778",
+      "callers": ["1000:b3b7"],
+      "draws": [],
+      "what": "the wandering mage Рушель Блаво offers a paid save. Prints files 0x8CBE, 0x8CF5, 0x8D2D (with a price of chapter*25 from `mov dx,0x19` at 1000:758d) and 0x8D62, then ReadLn into a STACK LOCAL at [bp-0x100] (1000:75c7..1000:75d1) -- neither DS:3972 nor DS:3a72 -- and compares it against the token `y` (file 0x8D79) at 1000:75f6.",
+      "on_yes": "if money >= chapter*50 (`mov dx,0x32` at 1000:7605) then money -= chapter*50 (1000:7618..1000:761d) and write both save files: the 694-byte record from DS:369c into `save_r0.sav` (name at file 0x8D7B, Rewrite record size 0x2b6 at 1000:764e) and the seven discovery flags into `places.sav` (name at file 0x8D87, 1000:766f..)",
+      "divergence": "the price PRINTED at 1000:758d is chapter*25; the price CHECKED and CHARGED at 1000:7605 / 1000:7618 is chapter*50. Established from flow, byte-verified (`ba 19 00` vs `ba 32 00`).",
+      "tier": "flow"
+    }
+  },
+
+  "class_389c": {
+    "meaning": "the character class index",
+    "tier": "flow, corroborated by the creation menu's own bonus text",
+    "writes": [
+      { "at": "1000:6fed", "bytes": "a3 9c 38", "what": "Val() of the first creation prompt's answer (read at 1000:6fcf, converted at 1000:6fe8)" },
+      { "at": "1000:6ffc", "bytes": "a3 9c 38", "what": "reset to 0 when that answer was 4 (test at 1000:6ff0) -- answer 4 is `4-Чё за батва?` (file 0x7FA1), which prints the four class descriptions and re-prompts" },
+      { "at": "1000:712a", "bytes": "a3 9c 38", "what": "Val() of the re-prompt's answer (1000:710c / 1000:7125)" },
+      { "at": "1000:713d", "bytes": "a3 9c 38", "what": "reset to 0 when the answer is < 0 (1000:712d) or > 3 (1000:7134)" },
+      { "at": "1000:71b8", "bytes": "83 06 9c 38 03", "what": "add 3 -- the stored class is answer + 3" }
+    ],
+    "load_path": "restored as part of the 694-byte character record BlockRead at 1000:6c01 (`bf 9c 36 1e 57 9a 1e 08 78 0f`, 0f78:081e into DS:369c). DS:369c + 0x200 = DS:389c, which is why the class is .SAV offset 0x200. The two BlockWrite counterparts are 1000:7658 (the mage) and 1000:acc3 (the district-advance autosave). No other code writes DS:389c.",
+    "player_values": [
+      { "answer": 0, "class": 3, "rank": "Подтсан", "menu_text_file": "0x7FB0", "bonus": "flag_girl + flag_club, granted at 1000:73cf/1000:73d4" },
+      { "answer": 1, "class": 4, "rank": "Отморозок", "menu_text_file": "0x7FE8", "bonus": "+1 hp per walk, 1000:b2d4..1000:b2dd" },
+      { "answer": 2, "class": 5, "rank": "Гопник", "menu_text_file": "0x802A", "bonus": "flag_den, granted at 1000:73c3" },
+      { "answer": 3, "class": 6, "rank": "Вор", "menu_text_file": "0x8059", "bonus": "the wander theft (draws 10/11) + flag_bigmarket, granted at 1000:73e0" }
+    ],
+    "consumers": [
+      { "at": "1000:25aa", "what": "indexes the four-byte growth-weight table at DS:0002" },
+      { "at": "1000:13dc", "what": "indexes the 256-byte-stride rank-name table at DS:002e" },
+      { "at": "1000:73bb", "what": "the class-bonus grants; reached on EVERY entry into the game (both the new-character path through 1000:71ea.. and the loaded-save path via 1000:6da0 -> 1000:7262), because 1000:7369's `cmp byte [0x3692],1 / jnz 0x73bb` only skips the district-1 intro text, never the grants" },
+      { "at": "1000:6d45", "what": "places.sav read failure: `cmp word [0x389c],3` spares the club clear" },
+      { "at": "1000:6d56", "what": "same compare spares the girl clear" },
+      { "at": "1000:6d67", "what": "`cmp word [0x389c],5` spares the den clear" },
+      { "at": "1000:aba0", "what": "district advance: `cmp word [0x389c],3` spares the club clear" },
+      { "at": "1000:abb1", "what": "same compare spares the girl clear" },
+      { "at": "1000:abc2", "what": "`cmp word [0x389c],5` spares the den clear" },
+      { "at": "1000:b2cf", "what": "wander: class 4 hp regen" },
+      { "at": "1000:b2e3", "what": "wander: class 5, no-op arm" },
+      { "at": "1000:b2ea", "what": "wander: class 6 theft" },
+      { "at": "1000:4a87", "what": "the de-level penalty skips its den store when class == 5" }
+    ],
+    "asymmetry": "neither reset spares flag_bigmarket, so a Вор loses the dealers on district advance and on a places.sav read failure, while a Подтсан keeps girl+club and a Гопник keeps the den. 1000:73bb restores all of them, but only on game entry, not on district advance."
+  },
+
+  "den_setters": [
+    { "at": "1000:ae1f", "bytes": "c6 06 96 36 01", "trigger": "the chapter-5 arm of the district-intro block: 1000:adbf tests `chapter == 5`, the arm prints files 0x9CF2/0x9D16/0x9D4E and sets endgame_armed := 1 at 1000:ae13; 1000:ae18 then tests the byte it just wrote, so the branch is always taken on that arm. The block goes on to call FUN_1000_11c2(0), FUN_1000_3d11(3) (the rector), FUN_1000_11c2(1), FUN_1000_3d11(4) (the endgame).", "tier": "flow", "note": "1000:ae18 is tested at the TOP OF EVERY TURN (the main loop's back-edge is 1000:ee01 `jmp 0xab75`), and nothing clears endgame_armed, so once chapter 5 is reached this block runs every turn." },
+    { "at": "1000:4aa5", "bytes": "c6 06 96 36 01", "trigger": "inside the de-level (flee) penalty routine, 1000:4931..1000:4ad9. Guard: `class != 5` (1000:4a87, jz skips the whole block) AND `level - (chapter-1)*10 == 3` exactly (1000:4a9b..1000:4aa3, a `jnz`), evaluated BEFORE the level decrement at 1000:4ac3.", "tier": "flow", "contradiction": "the store SETS flag_den to 1, but the message it prints (CS:0x3472, file 0x4D42, `^4Такого конявого непустят в местный притон!`) says the player is refused entry. The den gate at 1000:d80c reads nothing but this flag, so the printed refusal has no mechanical effect. Whether a clear was intended is not established -- the byte at 1000:4aa5 is `c6 06 96 36 01`, verified." },
+    { "at": "1000:52b3", "bytes": "c6 06 96 36 01", "trigger": "the post-kill block in FUN_1000_3d11: if flag_den == 0 (1000:5295) and `level - (chapter-1)*10 >= 3` (1000:529c..1000:52b1, a `jl` skip), set it and print CS:0x3a41 (file 0x5311).", "tier": "flow" }
+  ],
+
+  "a_token_reveal": {
+    "site": "1000:dce5",
+    "buffer": "DS:3a72",
+    "read_at": "1000:db09",
+    "what": "the den (`pr`) handler prints its menu, then does a single ReadLn into DS:3a72 at 1000:db00..1000:db09 -- the only 0f78:06c6 call between 1000:d802 and 1000:dd48 -- and compares that buffer against a chain of tokens, one of which is the single character `a` (file 0xB899) at 1000:dcea/1000:dcef. So the hidden `a` reveal is typed at the den's `^0Притон\\` prompt, not at the top-level prompt.",
+    "gate": "1000:dcba/1000:dcc1 skip when flag_bigmarket and flag_gym are already set; 1000:dcc8..1000:dce0 requires (level - (chapter-1)*10)*2 + pontovost_street >= 40",
+    "tier": "flow"
+  }
+}
