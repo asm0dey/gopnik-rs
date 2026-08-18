@@ -30,43 +30,85 @@ the start instead of having ~20 `println!` sites rewritten afterwards.
 | 9 — combat math recovered + ported | complete, approved (2 fix waves) | `ab6b8d3`, `11eeea8`, `002c674` |
 | 9b — XP thresholds + stat growth | complete, approved (2 fix waves) | `e699366`, `faf55fe`, `c90e73b` |
 | 10 — item/shop/enemy tables | complete, approved (4 fix waves) | `17a23a0` .. `7bf943d` |
-| 10b — cross-platform colour | IN FLIGHT | — |
-| 10c — compile-time table codegen | queued (plan `fbd7040`) | — |
+| 10b — cross-platform colour | complete, approved (first pass) | `4df9a35`, `7e85bbf` |
+| 10c — compile-time table codegen | complete, approved (first pass) | `974179a`, `e3dbe65` |
+| 11 — locations, parser, game loop | complete, approved (4 review rounds) | `7779c23` .. `70a37ff` |
 
-**NEXT: Task 10b (in flight), then Task 10c, then Task 11.**
+**NEXT: the wander-preamble RE task, then Task 12 (differential test).**
 
 ### RESUME HERE — exact state
 
-Task 10 is COMPLETE and APPROVED (`16b8171`..`7bf943d`). It took four fix waves
-and three review rounds; the final review found zero Critical and zero
-Important. What the last reviewer established, so no one re-derives it:
+Tasks 1–11 are COMPLETE and APPROVED. The port runs: `cargo run` boots the
+game, character creation works, `w` walks and rolls encounters, combat is a
+modal `Битва\` loop, and shops are reachable.
 
-- The money variable is the word at `20ae:38c7`, with 107 references. Debit
-  forms are `29 06 C7 38` (`sub [money],ax`, 21 sites) and `83 2E C7 38 ib`
-  (`sub [money],imm8`, 11 sites). `data/other_price_sites.json` now records all
-  32 classified, with a residual `unrecognised` bucket asserted empty — so an
-  unclassified debit site is structurally impossible, not merely absent today.
-- The completeness assertion in `tools/test_extract_tables.py` re-scans
-  `orig/g.exe` with its own literal regex rather than trusting the extractor's
-  output. The reviewer mutation-tested it six ways, including dropping a row
-  with `count` and `counts_by_category` "corrected" to match; every mutation
-  failed the test.
-- Regeneration is byte-identical, verified in a scratch tree.
+**Release binary 293,952 bytes** (was 453,608 before Task 10c's compile-time
+codegen; `orig/g.exe` is 88,656 — the gap is `std`, not our data, which totals
+8,500 bytes). Windows cross-build verified under wine via
+`scripts/check-windows.sh`.
 
-**Task 10b is IN FLIGHT** — an implementer is working on `src/term.rs`,
-`Cargo.toml`, `src/main.rs`, `src/lib.rs` and `tests/term_output.rs`. If you are
-resuming after a crash, check `git log` and `.superpowers/sdd/task-10b-report.md`
-before re-dispatching it.
+#### The standing methodology — read `docs/re/METHODOLOGY.md` first
 
-**Task 10c is queued** and specified in full in the plan (added by `fbd7040`):
-`build.rs` parses the extracted JSON at compile time into `static` tables,
-`serde`/`serde_json` move to `[build-dependencies]`, `data::items()`/`shops()`/
-`enemies()` return `&'static [T]` instead of `Vec<T>`, and the release profile
-gains `strip`/`lto`/`opt-level = "z"`/`codegen-units = 1`. Owner-requested after
-asking why the Rust binary is 5x the size of `g.exe`. Measured baseline to
-compare against: `orig/g.exe` 88,656 bytes; `target/release/gopnik` 453,608
-(357,216 stripped, `.text` 267,560); all embedded runtime JSON 8,500 bytes,
-i.e. 1.9% — the data was never what made the binary large.
+**Recover program FLOW, not OUTPUT.** flow > state > output. Output can
+falsify a flow claim, never establish one. Every behavioural claim states its
+tier and cites an address: established from flow, corroborated, or unverified.
+`file_off = 0x18d0 + off` for a `1000:XXXX` citation. It is in the plan's
+Global Constraints, so it is copied into every dispatch and review.
+
+**Every miss caught in this project has been a five-byte drift** — near enough
+to read as authoritative. The controller's own methodology doc had two.
+
+#### NEXT TASK: catalogue the wander preamble (pure RE)
+
+Scoped by the round-4 reviewer; full detail in `.superpowers/sdd/progress.md`
+and `docs/re/gaps.md`:
+
+1. The eleven `Random` sites in `1000:af04`..`b34d` with `n`, gate and effect,
+   plus `1000:b39e` (`Random(200)` → `0x7c67`) and `1000:b3ae`
+   (`Random(100)` → `0x7538`) and their callees. **Wire as ONE sequence** —
+   the port currently skips these, so its draw order is already out of step,
+   and fragments make it worse, not better.
+2. **`[20ae:389c]`'s meaning — the highest-value unknown left.** It gates three
+   separate things: the `1000:73bb` progression reveals (Den at 5, Girl+Club
+   at 3, BigMarket at 6), the `1000:6d3b` save-load reset, and the
+   `1000:ab92` district-advance reset.
+3. `[20ae:38cb]`, and whatever read leaves a token in `DS:3a72` for the gated
+   `a` reveal at `1000:dce5`.
+4. The three Den setters `1000:ae1f`, `4aa5`, `52b3` — triggers unverified.
+5. Then: `kl`/`trn` priced rows, the class-keyed combat-opener table, the
+   rector/hospital death branches, `help` content, the `sv`/`v`/`x`/`wes`
+   token sites, `rename`'s prompts.
+
+#### Shipped divergences, disclosed not hidden
+
+- `reset_for_new_district` clears all seven flags; the original spares Club and
+  Girl when `[0x389c]==3` and Den when it is `5` (`1000:aba0`/`abb1`/`abc2`,
+  each `jz +5` sparing exactly one store). Needs item 2 above.
+- The wander preamble's draws are unspent, so the RNG sequence diverges from
+  the first walk onward. Task 12's differential test must expect this until
+  the preamble task lands.
+- `Save::write_save` returns `Unsupported`: no path constructs a `Game` from an
+  existing save, and the unknown `.SAV` regions at `0x214`/`0x2ae` must not be
+  fabricated. Reaching a real save checkpoint in the original and capturing
+  the file is the sanctioned way to learn those bytes.
+
+#### Tooling gained this session
+
+- `tools/qemu/` — PROTOTYPE qemu+gdb guest debugger. **gdb attaches to the
+  guest and breakpoints on the game's own 16-bit code fire.** Screen reads out
+  of guest RAM at `0xB8000` (no TSR needed), keys inject via the monitor.
+  Derive the load base every run (find the banner, subtract `file_off-0x18d0`);
+  never hardcode it. This is how the remaining probability tables should be
+  recovered — one breakpoint on the RTL `Random` logs every draw with its `n`
+  and call site, and gdb reports IP as the Ghidra offset.
+- `scripts/check-windows.sh` — cross-build + wine parity check.
+- Toolchain: rustup (1.97.1), targets `x86_64-unknown-linux-gnu` and
+  `x86_64-pc-windows-gnu`, mingw-w64, wine 11.15, qemu 11.1.0, gdb 17.2.
+
+#### Repo-wide chore
+
+`cargo fmt --check` is dirty at 24 pre-existing sites. Deliberately not fixed
+inside semantic waves — do it as its own commit.
 
 ### Task 10 outcome
 
