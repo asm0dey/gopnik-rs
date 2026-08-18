@@ -7,6 +7,11 @@ therefore on captured content -- text the original printed, cross-checked
 against the independently extracted data/strings.json -- plus the two
 properties later tasks lean on: the same script captures the same bytes, and
 running the game never touches the read-only corpus in orig/.
+
+These tests run in a fixed sequence via the `__main__` block at the bottom
+of this file, not through pytest autodiscovery: test_expect_frames_guard
+reads the SCREEN.BIN that test_capture writes, so running them out of order
+(or in isolation, e.g. under pytest) will misbehave.
 """
 import hashlib
 import json
@@ -123,6 +128,99 @@ def test_expect_frames_guard():
     print("OK expect_frames mismatch raises OracleError")
 
 
+def test_run_wires_frame_count_guard():
+    """run() must actually call _check_frame_count on the frames it decodes
+    before returning, not just parse expect_frames and let it fall on the
+    floor. test_expect_frames_guard above only tests the helper in
+    isolation -- it would stay green even if run() stopped calling it. This
+    exercises run() itself with Popen, the wait loop and decode_frames
+    stubbed out, so it never launches the emulator.
+    """
+    out = pathlib.Path("/tmp/gopnik_oracle_run_stub")
+    if out.exists():
+        shutil.rmtree(out)
+
+    class FakeProc:
+        def poll(self):
+            return 0
+
+        def kill(self):
+            pass
+
+        def wait(self, timeout=None):
+            pass
+
+    def fake_popen(cmd, cwd=None, env=None, stdout=None, stderr=None):
+        # run() only checks that SCREEN.BIN exists; its content is
+        # irrelevant because decode_frames is stubbed below.
+        (pathlib.Path(cwd) / "SCREEN.BIN").write_bytes(b"")
+        return FakeProc()
+
+    def fake_wait(proc, screen, deadline, settle):
+        return None
+
+    def fake_decode_frames(blob):
+        return ["frame 0", "frame 1"]
+
+    with unittest.mock.patch.object(capture.subprocess, "Popen", fake_popen), \
+         unittest.mock.patch.object(capture, "_wait", fake_wait), \
+         unittest.mock.patch.object(capture, "decode_frames", fake_decode_frames):
+        try:
+            capture.run(keys="\n", out_dir=out, expect_frames=3)
+        except capture.OracleError as e:
+            assert "expected 3" in str(e), f"unexpected message: {e}"
+        else:
+            raise AssertionError(
+                "run() did not raise OracleError on a frame-count mismatch"
+            )
+
+        # A matching expect_frames must not raise, and still returns the
+        # decoded frames.
+        frames = capture.run(keys="\n", out_dir=out, expect_frames=2)
+        assert frames == ["frame 0", "frame 1"]
+
+    print("OK run() propagates OracleError from the frame-count guard")
+
+
+def test_run_oracle_sh_forwards_extra_args():
+    """run_oracle.sh must forward flags past the two positionals (`"$@"` in
+    the exec line) to capture.py -- the fix from fix wave 2. Runs the real
+    shell script, copied into a scratch dir next to a stub capture.py that
+    just records sys.argv, so this never launches the emulator.
+
+    run_oracle.sh resolves capture.py as "$(dirname "$0")/capture.py", so
+    the stub has to live next to the *copy* of the script for this to
+    actually exercise that resolution, not just call the real capture.py.
+    """
+    work = pathlib.Path("/tmp/gopnik_oracle_sh_stub")
+    if work.exists():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
+
+    shutil.copy2(capture.HERE / "run_oracle.sh", work / "run_oracle.sh")
+    argv_dump = work / "argv.json"
+    (work / "capture.py").write_text(
+        "import json, sys, pathlib\n"
+        f"pathlib.Path({str(argv_dump)!r}).write_text(json.dumps(sys.argv))\n"
+    )
+
+    subprocess.run(
+        [
+            "sh", str(work / "run_oracle.sh"),
+            r"\n", "/tmp/gopnik_oracle_sh_stub_out",
+            "--timeout", "7", "--expect-frames", "3",
+        ],
+        check=True,
+    )
+
+    argv = json.loads(argv_dump.read_text())
+    assert "--timeout" in argv, f"--timeout not forwarded to capture.py: {argv}"
+    assert argv[argv.index("--timeout") + 1] == "7", argv
+    assert "--expect-frames" in argv, f"--expect-frames not forwarded: {argv}"
+    assert argv[argv.index("--expect-frames") + 1] == "3", argv
+    print("OK run_oracle.sh forwards extra args past keys/out_dir to capture.py")
+
+
 def test_cli_threads_timeout_and_expect_frames():
     """main() must forward --timeout and --expect-frames to run(), not just
     parse and discard them (that was the bug fixed in fix wave 1: --timeout
@@ -205,6 +303,8 @@ def test_scrhook_matches_source():
 if __name__ == "__main__":
     test_capture()
     test_expect_frames_guard()
+    test_run_wires_frame_count_guard()
+    test_run_oracle_sh_forwards_extra_args()
     test_cli_threads_timeout_and_expect_frames()
     test_cli_reports_oracle_error_cleanly()
     test_oracle_prompts_json_matches_source()

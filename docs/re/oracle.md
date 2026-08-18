@@ -143,6 +143,12 @@ them by `capture.write_re_findings()`, not hand-maintained. Commands whose
 semantics were not established (`girl`, `kos`, `h`, `mh`, `name`) are `null`
 in the JSON rather than guessed.
 
+The table above is prose copied by hand from those constants and is not
+checked by anything; `test_oracle_prompts_json_matches_source` in
+`tools/oracle/test_oracle_smoke.py` only checks the JSON against
+`capture.py`. If this table and `data/oracle_prompts.json` ever disagree,
+`data/oracle_prompts.json` is authoritative.
+
 ## The corpus stays read-only
 
 Every run copies `orig/` into `<out_dir>/work/` and mounts *that*; `orig/` is
