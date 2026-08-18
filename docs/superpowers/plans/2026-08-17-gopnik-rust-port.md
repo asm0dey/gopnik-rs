@@ -57,6 +57,19 @@
   terminal crate: the game is line-based and needs no cursor control or raw mode.
 - **Never modify files under `orig/`.** They are the reference corpus and are checked in read-only.
 - **Every RE finding lands in two places:** a human-readable note under `docs/re/` citing the Ghidra address, and a machine-readable artifact under `data/`. A finding that exists only in a commit message does not count.
+- **Recover program FLOW, not program OUTPUT.** The question is never "what did
+  the game print?" but "what does the code do, and under what conditions?"
+  Evidence ranks: (1) flow — instructions, branches and their conditions, from
+  the disassembly or a live breakpoint; (2) state — memory, save bytes,
+  extracted tables; (3) output — screens, printed strings, the in-game help
+  text, which is the weakest evidence there is because it is a claim the
+  program makes about itself. **Output can falsify a flow claim; it can never
+  establish one.** Absence of a visible response is not absence of dispatch.
+  Symmetry with another subsystem is a hypothesis to test, not a finding to
+  record. Probabilities come from the comparison constants that bucket a
+  `Random` result, never from counting observed outcomes. Every behavioural
+  claim must state its tier and cite an address: established from flow,
+  corroborated, or unverified. See `docs/re/METHODOLOGY.md`.
 - **Unknown means unknown.** If a field's meaning is not established, name it `unk_<hex_offset>` and preserve its bytes. Never guess a semantic name to make a table look finished.
 
 ## Reference facts (already verified — do not re-derive)
