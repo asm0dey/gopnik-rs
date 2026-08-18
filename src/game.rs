@@ -105,20 +105,62 @@ pub struct Game {
 impl Game {
     /// Start a brand-new character.
     ///
-    /// `district` starts at 1: the original's own load-failure fallback says
-    /// so in words -- `^6Чё-то глюкануло - нaверно нет такого сейва,
-    /// Default:1` (file `0x7D21`) -- and its district-select screen calls 1
-    /// "start from the beginning" (`^0Нажми цифру с какого района начать.
-    /// 1-начать сначала`, file `0x7C69`). `orig/SAVE_R0.SAV` exists but is a
-    /// *save slot* file, not evidence of a district 0 start; this task did
-    /// not disassemble the district-select screen, so nothing here reads it.
+    /// **Established from flow.** The original's new-character block is three
+    /// consecutive stores at `1000:6dbe`:
     ///
-    /// `places` starts with nothing discovered.
+    /// ```text
+    /// 6dbe  c6 06 92 36 01   mov byte [0x3692],1   ; district := 1
+    /// 6dc3  c6 06 98 36 01   mov byte [0x3698],1   ; Vet    discovered
+    /// 6dc8  c6 06 94 36 01   mov byte [0x3694],1   ; Market discovered
+    /// ```
+    ///
+    /// `0x3698` and `0x3694` are two of the seven contiguous discovery flags
+    /// at `20ae:3694..369a` (see [`Game::enter_shop`]), so **a brand-new
+    /// character already has the vet and the market**. An earlier revision of
+    /// this comment cited only the load-failure string and stopped one
+    /// instruction short of `6dc3`, which left both locations permanently
+    /// unreachable in this port.
+    ///
+    /// Three paths reach `1000:6dbe`, and all three write all three bytes:
+    ///
+    /// * `1000:6b3a` -- `1000:6b33` `cmp byte [0x3d04],0` / `ja 0x6b3d`
+    ///   falls through when the `save_r?.sav` scan (`1000:6a62` zeroes the
+    ///   counter, `1000:6a8a` `FindFirst`, `1000:6ab9` `inc byte [0x3d04]`)
+    ///   found no save file. **This is the path a fresh run with no `.SAV`
+    ///   files in the working directory takes**, and it prints nothing.
+    /// * `1000:6b81` -- the save-slot prompt `^0Нажми цифру с какого района
+    ///   начать. 1-начать сначала` (file `0x7C69`, written at `1000:6b51`)
+    ///   read a key into `[0x3d31]` that is none of `'0'`,`'2'`..`'5'`
+    ///   (`1000:6b5e`..`1000:6b7f`) -- i.e. the player pressed `1`,
+    ///   "начать сначала". This is the path when the shipped `SAVE_R?.SAV`
+    ///   files are present.
+    /// * `1000:6bdd` -- the slot file's `Reset` (`1000:6bcf`, record size
+    ///   `0x2b6`) left `IOResult` non-zero (`1000:6bd4` calls it,
+    ///   `1000:6bdb` `jz 0x6be0` is the success arm); jumps to `1000:6da5`,
+    ///   which writes
+    ///   `^6Чё-то глюкануло - нaверно нет такого сейва, Default:1`
+    ///   (file `0x7D21`) and falls straight through into `1000:6dbe`.
+    ///
+    /// That string is therefore evidence for *this block existing*, not for
+    /// which path a new game takes; `district := 1` and both flags are
+    /// common to all three. This port models the first path.
+    ///
+    /// Note that the `places.sav` load path (`1000:6c5a`, see
+    /// [`crate::locations::TRACKED`]) never reaches `1000:6dbe`: its own
+    /// failure block at `1000:6d3b` *clears* the flags and leaves via
+    /// `1000:6da0` `jmp 0x7262`.
+    ///
+    /// The three stores cost no `Random` draw, so wiring them does not
+    /// perturb the RNG sequence.
     pub fn new(player: Fighter, progress: Progress, seed: u32) -> Game {
+        // 1000:6dc3 then 1000:6dc8, in that order.
+        let mut places = Places::from_bytes(&[0u8; 7]);
+        places.mark_found(Location::Vet);
+        places.mark_found(Location::Market);
         Game {
             player,
             progress,
-            places: Places::from_bytes(&[0u8; 7]),
+            places,
             district: 1,
             rng: Rng::new(seed),
             location: Location::Street,
@@ -1393,13 +1435,41 @@ mod tests {
     }
 
     #[test]
-    fn new_game_starts_on_the_street_with_nothing_discovered() {
+    fn new_game_starts_on_the_street_with_only_the_vet_and_market() {
         let g = game();
         assert_eq!(g.location, Location::Street);
         assert_eq!(g.mode, Mode::Street);
         assert_eq!(g.district, 1);
-        assert!(!g.places.is_found(Location::Market));
         assert!(g.places.is_found(Location::Street));
+        // 1000:6dc3 and 1000:6dc8.
+        assert!(g.places.is_found(Location::Vet));
+        assert!(g.places.is_found(Location::Market));
+        // Nothing else: 1000:6dbe writes exactly those two flags.
+        for loc in crate::locations::TRACKED {
+            if matches!(loc, Location::Vet | Location::Market) {
+                continue;
+            }
+            assert!(
+                !g.places.is_found(loc),
+                "{loc:?} must not be discovered at character creation"
+            );
+        }
+    }
+
+    /// The two flags a fresh character gets are exactly the ones
+    /// `1000:6dbe`'s block writes, and reaching them needs no `Random` draw:
+    /// a brand-new game can walk straight into `mar` and `rep`.
+    #[test]
+    fn new_game_can_enter_the_market_and_the_vet_without_discovering_them() {
+        let mut g = game();
+        g.dispatch(Command::Market, &mut no_input()).unwrap();
+        assert_eq!(g.location, Location::Market);
+        assert_eq!(g.mode, Mode::Shop(Location::Market));
+
+        let mut g = game();
+        g.dispatch(Command::Vet, &mut no_input()).unwrap();
+        assert_eq!(g.location, Location::Vet);
+        assert_eq!(g.mode, Mode::Shop(Location::Vet));
     }
 
     #[test]
@@ -1412,17 +1482,20 @@ mod tests {
     }
 
     /// I6: a refused entry must NOT discover the place. The original sets
-    /// the seven flags at `20ae:3694`..`369a` from the wander path and from
-    /// `girl` (`1000:d751`), never from a failed entry.
+    /// the seven flags at `20ae:3694`..`369a` from character creation
+    /// (`1000:6dc3`/`1000:6dc8`), the wander path, `girl` (`1000:d751`) and
+    /// the progression reveals (`1000:73c3`..`1000:73e0`) -- never from a
+    /// failed entry. The gym is used here because it is one of the five
+    /// flags `1000:6dbe` leaves clear.
     #[test]
     fn entering_an_undiscovered_place_does_not_discover_it() {
         let mut g = game();
         for _ in 0..3 {
-            g.dispatch(Command::Market, &mut no_input()).unwrap();
+            g.dispatch(Command::Gym, &mut no_input()).unwrap();
             assert_eq!(g.location, Location::Street);
             assert_eq!(g.mode, Mode::Street);
             assert!(
-                !g.places.is_found(Location::Market),
+                !g.places.is_found(Location::Gym),
                 "a refused entry must not mark the place found"
             );
         }
