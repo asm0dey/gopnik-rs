@@ -41,15 +41,22 @@ fn rendered(src: &str) -> String {
     }
 }
 
-/// A write failure to stdout (most commonly a broken pipe, e.g.
-/// `gopnik | head`) is not a bug — it's a normal way for output to stop
-/// being consumed. `Cargo.toml` sets `panic = "abort"` for release builds,
-/// so panicking here would hard-kill the process instead of letting it exit
-/// normally; we choose to swallow the error and return quietly instead of
-/// propagating it, since a line-based game has no retry story for a broken
-/// stdout anyway.
+/// A broken pipe (e.g. `gopnik | head`) is not a bug — it's a normal way for
+/// output to stop being consumed, so it is swallowed. `Cargo.toml` sets
+/// `panic = "abort"` for release builds, so panicking here would hard-kill the
+/// process instead of letting it exit normally, and a line-based game has no
+/// retry story for a broken stdout anyway.
+///
+/// Any OTHER write failure — a full disk on redirected output, say — is a real
+/// problem the player should hear about, so it goes to stderr rather than
+/// vanishing with the broken-pipe case. Output continues either way: one failed
+/// line is not a reason to take the game down.
 fn write_out(s: &str) {
-    let _ = io::stdout().write_all(s.as_bytes());
+    if let Err(e) = io::stdout().write_all(s.as_bytes()) {
+        if e.kind() != io::ErrorKind::BrokenPipe {
+            let _ = writeln!(io::stderr(), "gopnik: cannot write to stdout: {e}");
+        }
+    }
 }
 
 /// Write one line of game text to stdout, with `^N` markup rendered as
