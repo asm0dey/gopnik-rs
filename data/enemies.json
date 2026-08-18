@@ -162,7 +162,7 @@
    0
   ],
   "generated": false,
-  "source": "1000:0d14 rolls stats from the weights at 20ae:002a; name from the `ranks` string table at 20ae:002e."
+  "source": "1000:0d9a clamps the rolled class to 9, so 1000:0d14 never produces this class and never reads the weights at 20ae:002a; name from the `ranks` string table at 20ae:002e, stats from the two scripted `_v0`/`_v1` rows below."
  },
  {
   "id": "rektor_ngu_v0",

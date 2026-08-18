@@ -4,6 +4,7 @@
 //! "Oracle cross-checks" section of `docs/re/tables.md` for the runs.
 
 use gopnik::data;
+use gopnik::progress::CLASS_WEIGHTS;
 
 #[test]
 fn items_load_and_contain_known_entries() {
@@ -19,6 +20,10 @@ fn items_load_and_contain_known_entries() {
         .expect("Тесак missing");
     assert_eq!(tesak.kind, "weapon");
     assert_eq!(tesak.bonus, 9);
+    // Тесак is only ever found, never sold (docs/re/tables.md,
+    // "Prices are deliberately null...").
+    assert!(!tesak.sold, "Тесак should not be sold");
+    assert!(tesak.price.is_none());
 
     // The original's own status screen prints these two side by side as
     // "Костюм Adidas(+2) Крутая кожанка(+4)".
@@ -28,10 +33,61 @@ fn items_load_and_contain_known_entries() {
         .expect("Костюм Adidas missing");
     assert_eq!(adidas.kind, "suit");
     assert_eq!(adidas.bonus, 2);
+    // Adidas has a null price, but it *is* sold under a paraphrased shop
+    // name -- a different unknown than Тесак's "never sold".
+    assert!(adidas.sold, "Костюм Adidas should be sold");
 
     // No item name may carry the `^N` markup into user-visible text.
     for i in &items {
         assert!(!i.name.contains('^'), "markup leaked into {:?}", i.name);
+    }
+}
+
+#[test]
+fn loot_only_items_are_never_sold() {
+    let items = data::items();
+    let loot_only: std::collections::BTreeSet<&str> = [
+        "Крестик",
+        "Кольцо \"Гс\"",
+        "Кольцо \"Пг\"",
+        "Мега Кольцо",
+        "Кольцо \"Гп\"",
+        "Нож",
+        "Тесак",
+    ]
+    .into_iter()
+    .collect();
+
+    for item in &items {
+        let expect_sold = !loot_only.contains(item.name.as_str());
+        assert_eq!(
+            item.sold, expect_sold,
+            "{}: sold should be {expect_sold}",
+            item.name
+        );
+        if !item.sold {
+            assert!(item.price.is_none(), "{}: loot-only but priced", item.name);
+        }
+    }
+}
+
+#[test]
+fn class_weights_agree_with_progress_table() {
+    // progress::CLASS_WEIGHTS and data/enemies.json's growth_weights are two
+    // copies of the same 44 bytes at 20ae:0002 -- tests/progression.rs
+    // checks CLASS_WEIGHTS against data/xp.json, an independent artifact;
+    // this checks it against the Task 10 table too.
+    let enemies = data::enemies();
+    for (class, want) in CLASS_WEIGHTS.iter().enumerate() {
+        let row = enemies
+            .iter()
+            .find(|e| e.class as usize == class)
+            .unwrap_or_else(|| panic!("no data/enemies.json row for class {class}"));
+        assert_eq!(
+            row.growth_weights.as_slice(),
+            want.as_slice(),
+            "class {class}: data/enemies.json vs progress::CLASS_WEIGHTS"
+        );
     }
 }
 

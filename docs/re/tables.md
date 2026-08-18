@@ -16,7 +16,9 @@ Every address below is a Ghidra address in the load layout Task 4 used:
 ## 1. Items
 
 The equipment set is not a table in the binary at all -- it is fifteen
-display strings, each of which states its own bonus:
+bonus-carrying display strings, each of which states its own bonus (the same
+`^1`-prefixed status-screen block also has seven further possession/state
+strings that are not equipment; see the end of this section):
 
 | file off | text | kind | bonus | effect |
 |---|---|---|---|---|
@@ -49,24 +51,78 @@ name->slot map; a name not in it falls through to `misc` rather than being
 guessed. `effect` is only what the suffix literally names, so it is null for
 every bare `(+N)`.
 
-**Prices are deliberately null for thirteen of the fifteen.** The only price
-source in the binary is the shop rows (section 2), and their text is not the
-same string as the inventory text. Two rows name their item verbatim *and*
-agree on the bonus -- `#^7 руб. Кастет(урон+2)` and
-`#^7 руб. Дубинка(урон+4), заменяет кастет` -- and only those two get a
-price (25 and 50). Everything else is genuinely ambiguous. The worst case is
+**Prices are deliberately null for thirteen of the fifteen -- and those
+thirteen are not all the same kind of null.** `data/items.json` now carries
+`sold: bool` to separate them:
+
+**Seven are loot-only and will never have a price** (`sold: false`):
+Крестик, Кольцо "Гс", Кольцо "Пг", Мега Кольцо, Кольцо "Гп", Нож, Тесак. The
+evidence is a second, independent print of (most of) these names: file
+`0x5389`..`0x5555` (`1000:3ab9`..`1000:3c85`) is a wandering-encounter event
+table, one contiguous run of one-shot pickups, each shaped identically --
+`cmp byte [flag],0` / `mov byte [flag],1` / load the string / far call
+`0xeed:0x1c2`:
+
+| item | text at the find site | file off | print site | one-shot flag |
+|---|---|---|---|---|
+| Крестик | `Ты нашёл крестик: удача +2` | `0x5423` | `1000:5498` | `20ae:38bd` |
+| Кольцо "Гс" | `Ты нашёл кольцо "Господи спаси": удача +1` | `0x5440` | `1000:54c8` | `20ae:38be` |
+| Кольцо "Пг" | `Кольцо "Помоги Господи"` | `0x5389` | `1000:5316` | `20ae:38bf` |
+| Мега Кольцо | `"Мега Кольцо"! со своего, можно сказать, пальца` (2nd copy at `0x93ed`) | `0x53a3` | `1000:5371` | `20ae:38c0` |
+| Кольцо "Гп" | `Ваще полезное кольцо "Господи помилуй"` + `Восст. жизни - 3, 5% - самозарост переломов` | `0x53b4` / `0x53dd` | `1000:53c0` / `1000:53d9` | `20ae:38c1` |
+| Нож | `Ты нашел ножик(урон+6).` | `0x54fc` | `1000:569d` | `20ae:38c2` |
+| Тесак | `Ты нашел тесак(урон+9)!!! - ужасное оружие.` | `0x553b` | `1000:5743` | `20ae:394c` |
+
+Кольцо "Пг", Мега Кольцо and Кольцо "Гп" have no literal "нашёл" in their
+find text, so they are not classed loot-only on wording alone -- their find
+sites sit inside the same contiguous block, gated by the same one-shot-flag
+idiom, and printed by the same far call as the four rows that do say
+"нашёл". That structural identity, not the words, is the evidence.
+
+**The other eight null prices are genuinely pending, not loot-only**
+(`sold: true`, `price: null`). `Костюм Adidas`/`Abibas` and
+`Кожанка`/`Крутая кожанка` are sold under paraphrased names with matching
+bonuses -- `mar` rows 4, 6, 7 and 9 below -- but the extractor only links a
+price on a *verbatim* name match (see `link_item_prices`), which a
+paraphrase does not satisfy; deciding the link is Task 11's job, not a
+string-matching guess. `Бутсы`/`Понтовые бутсы` are the boots ambiguity,
+below.
+
+The only price source *for these fifteen equipment strings* is the shop rows
+(section 2), and their text is not the same string as the inventory text.
+Two rows name their item verbatim *and* agree on the bonus --
+`#^7 руб. Кастет(урон+2)` and `#^7 руб. Дубинка(урон+4), заменяет кастет` --
+and only those two get a price this way (25 and 50). The worst case is
 boots: the inventory has one line, `Понтовые бутсы(Урон+2)`, while the market
 sells `Понтовые бутсы(Увеличивают урон)` for 15 and `Понтовёйшие
 бутсы(Урон+2)` for 30. **UNVERIFIED: which market row produces the inventory
 line `Понтовые бутсы(Урон+2)`.** Deciding it needs the purchase handlers'
 effects read, which is Task 11's job; a guess here would be an invention.
 
+`data/strings.json` has seven further `^1`-prefixed status-screen lines in
+the same block as the fifteen item strings that the pattern scan correctly
+does not pick up, because none of them carries a `(+N)`-shaped bonus: `0x3198
+^1Зубная защита  `, `0x303a ^1У тебя есть мобильник`, `0x3052 ^1У тебя есть
+тёмные очки`, `0x306c ^1На тебе зоновская наколка`, `0x3088 ^1У тебя есть
+пистолет`, `0x309f ^1 с гушителем` and `0x30ae ^1! патронов - #`. These are
+inventory *state* (possessions and counters the status screen reports), not
+bonus-carrying equipment, so they correctly are not items -- but Task 11
+will want them for its own inventory model. `гушителем` is the original's
+own spelling, not a transcription slip; it stays as printed.
+
+The binary has price sources besides these fifteen strings and the shop
+rows below. See "Other price sources, not extracted" at the end of section 2.
+
 ---
 
 ## 2. Shops
 
-There are two shops, named by the original's own location tags: `mar`
-(`0xA42C`, "Базар") and `bmar` (`0xAA24`, "Барыги"). Nine rows each.
+There are two menus that the original itself calls out by a location tag --
+`mar` (`0xA42C`, "Базар") and `bmar` (`0xAA24`, "Барыги") -- and this section
+extracts both, nine rows each. That is not a claim that these are the only
+two places the game charges money: see "Other price sources, not extracted"
+below for what else debits `20ae:38c7` and was deliberately left out of
+`data/shops.json`.
 
 ### Where the prices live
 
@@ -117,9 +173,15 @@ A0 lo hi        mov al,[price]          ; the price that is PRINTED
 
 The debit site is a second, equally rigid idiom,
 `A0 lo hi / 30 E4 / 29 06 C7 38` (`sub [money],ax`). The extractor collects
-every such site and sets `charged: true` on a row when the address its
-affordability test reads is also debited somewhere. All 18 rows are
-`charged: true`.
+every address any such site debits into a single file-wide set, and sets
+`charged: true` on a row when the address its affordability test reads is a
+member of that set -- i.e. *some* debit site in the binary reads the same
+address, not that *this row's own* purchase handler is the one that debits
+it. That is sound for these 18 rows because every address in the set is
+debited exactly once (checked by hand against the disassembly), so
+membership and row-specific debit happen to coincide here; a row that shared
+its price address with another row's debit site would pass this check
+without actually being charged. All 18 rows are `charged: true`.
 
 Rows are attributed to a shop by the last short all-lowercase-ASCII string
 the code loads before the menu -- `mar` at file `0xD215`, `bmar` at
@@ -182,6 +244,50 @@ Row 9's extra gates: `20ae:394d` is the "owns a pistol" flag set at `0xE5D5`;
 but only while the player knows `bmar` and owns a pistol, and it stops at 25
 (`0xC7FB`). So the silencer appears 25 wanders after the pistol is bought.
 
+### Other price sources, not extracted
+
+`mar` and `bmar` are not the only places the binary charges the player.
+`sub word [20ae:38c7],imm8` -- price baked straight into the instruction,
+rather than read from the `20ae:0b2e` array -- occurs 11 times (found by
+scanning `orig/g.exe` for byte pattern `83 2E C7 38 ib`; recorded in
+`data/other_price_sites.json`):
+
+| addr | file off | imm | what |
+|---|---|---|---|
+| `1000:502c` | `0x68fc` | 7 | unidentified |
+| `1000:d553` | `0xee23` | 7 | unidentified |
+| `1000:d5d9` | `0xeea9` | 3 | unidentified |
+| `1000:d78e` | `0xf05e` | 12 | unidentified |
+| `1000:e2a7` | `0xfb77` | 15 | Клуб: `15^7  потусоваться на дискотеке(Ловкость +1)` (file `0xba50`) |
+| `1000:e31c` | `0xfbec` | 22 | Клуб: `22^7  разузнать приемы мухлёжников(Удача +1)` (file `0xba85`) |
+| `1000:e657` | `0xff27` | 20 | unidentified |
+| `1000:e6e3` | `0xffb3` | 20 | unidentified |
+| `1000:e796` | `0x10066` | 10 | unidentified |
+| `1000:e823` | `0x100f3` | 30 | unidentified |
+| `1000:e8b8` | `0x10188` | 20 | unidentified |
+
+The two Клуб (gambling) rows print their own price as the first characters
+of the row text itself -- `15^7 ...`, `22^7 ...` -- rather than through the
+`#` placeholder the shop rows use, which is why `SHOP_ROW_RE` does not match
+them and why the `^1` restriction in section 1 has to exclude the second of
+these two (`0xBA85`) from the item scan by name, not by this table.
+
+There is also at least one **computed** charge: `district*50`, debited at
+`1000:761d` (file `0x8eed`, `sub [0x38c7],ax` guarded by
+`cmp ax,[0x38c7] / jng` at `1000:760a`) for the Рушель Блаво save-game
+service. The string it prints, `За # рублей он может сделать сохранение
+прямо здесь.`, is at file `0x8d2d`; the code that loads it (`mov
+di,0x745d`) is at `1000:7583` (file `0x8e53`) -- a reminder that a string's
+own byte address and the address of the instruction that references it are
+two different numbers, worth keeping straight given the boss-derivation
+citation error above.
+
+None of these are named or linked to a row: doing that (finding what each of
+the nine `unidentified` sites actually is, and which item or service takes
+each price) is Task 11's job, not this task's. `data/other_price_sites.json`
+records only what was verified here -- the address and the immediate, or the
+formula -- and nothing invented beyond it.
+
 ---
 
 ## 3. Enemies
@@ -239,8 +345,24 @@ C7 06 5A 39 imm   mov word [20ae:395a],imm   ; luck
 C6 06 68 39 imm   mov byte [20ae:3968],imm   ; armor
 ```
 
-and `1000:2af8`..`1000:2b22` then derives the same three quantities the
-random path does.
+and `1000:1228`..`1000:124f` (file `0x2af8`..`0x2b1f`) then derives the same
+three quantities the random path does at `1000:0ff3`..`1000:1005` (file
+`0x28c3`..`0x28d5`) -- both read `strength`/`vitality` back out of
+`20ae:3954`/`20ae:3958` and compute the identical `dmg_min`/`dmg_max`/`hpmax`.
+
+**Corrected citation.** An earlier draft of this table cited `1000:2af8` for
+this derivation -- that is the *file offset* `0x2af8` wearing a `1000:`
+segment prefix it was never assigned to. The real segment address is
+`1000:1228` (`0x2af8 - 0x18d0 = 0x1228`); disassembling the literal address
+`1000:2af8` (file `0x43c8`) lands in unrelated code that reads
+`[20ae:38c3]` (the крутизна counter), not `[20ae:3954]`. Confirmed by
+disassembling both file regions directly (`ndisasm -b16`). Every other
+`seg:off`/file-offset pair cited in this document and in
+`tools/extract_tables.py` was re-checked against the
+`0x18D0 + (seg-0x1000)*16 + off` formula at the top of this file and against
+a direct disassembly where one was available; none of the others had this
+error. See `.superpowers/sdd/task-10-report.md`, "Fix wave 1" for the list
+of what was checked.
 
 | id | level | str | agi | vit | luck | dmg | hp/hpmax | armor |
 |---|---|---|---|---|---|---|---|---|

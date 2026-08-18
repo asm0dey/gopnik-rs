@@ -104,6 +104,26 @@ BARE_KIND = {
     "Крутая кожанка": "armor",
 }
 
+# These seven never appear in a shop row: they are printed a second time, as
+# a find rather than a possession, by the wandering-encounter event table at
+# file 0x5389..0x5555 (1000:3ab9..1000:3c85) -- a run of one-shot
+# `cmp byte [flag],0` / `mov byte [flag],1` / print-string pickups, all in
+# the identical shape. Four of the seven literally say "Ты нашёл"/"нашел"
+# ("you found"); the other three (rings) do not, but sit inside the same
+# contiguous block, gated by the same one-shot-flag idiom, and printed by
+# the same far call -- structural evidence, not a guess from wording. See
+# docs/re/tables.md, "Prices are deliberately null...".  `price` for these
+# stays null forever, not pending: nothing sells them, so `sold` is False.
+LOOT_ONLY = {
+    "Крестик",
+    "Кольцо \"Гс\"",
+    "Кольцо \"Пг\"",
+    "Мега Кольцо",
+    "Кольцо \"Гп\"",
+    "Нож",
+    "Тесак",
+}
+
 TRANSLIT = {
     "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
     "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
@@ -156,6 +176,7 @@ def parse_items(strings: list) -> list:
                     "effect": effect,
                     "price": None,
                     "price_src": None,
+                    "sold": name not in LOOT_ONLY,
                     "src_off": s["off"],
                 }
             break
@@ -250,17 +271,29 @@ TAG_RE = re.compile(r"^[a-z]{2,6}$")
 KEY_RE = re.compile(r"\^[0-7](?P<key>.)")
 
 # `mov al,[price]` / `xor ah,ah` / `sub [20ae:38c7],ax` -- the site that
-# actually debits the player.  Collected so each row can record whether the
-# address its affordability test reads is also the one that is charged.
+# actually debits the player.  Collected into a single file-wide set of
+# debited addresses; a row is `charged: true` when the address its
+# affordability test reads is a member.  That is membership in the set, not
+# a per-row check that *this row's own* handler is what debits it -- it is
+# sound here only because every address in the set turns out to be debited
+# exactly once (verified by hand), so the two coincide.  See
+# docs/re/tables.md, "The row idiom".
 CHARGE_RE = re.compile(rb"\xA0(?P<addr>..)\x30\xE4\x29\x06\xC7\x38", re.DOTALL)
 
 # `cmp byte [imm16],imm8` followed by a conditional jump: the availability
-# gates.  20ae:3692 is the district counter (1..5), raised at 1000:af35 once
-# крутизна reaches district*10.
+# gates.  20ae:3692 is the district counter (1..5), raised at file 0xC462
+# (1000:ab92, `inc byte [0x3692]`) once крутизна reaches district*10.
 CMP_GATE_RE = re.compile(rb"\x80\x3E(?P<addr>..)(?P<imm>.)", re.DOTALL)
 
-JCC = {0x74: "==", 0x75: "!=", 0x76: "<=", 0x77: ">", 0x7C: "<", 0x7D: ">=",
-       0x7E: "<=", 0x7F: ">"}
+# 0x72/0x73 (jb/jnb) are the unsigned counterparts of 0x7C/0x7D (jl/jge), and
+# at least one gate site outside the shop blocks uses them (1000:e912, a
+# district>=4 gate on an unrelated menu). Missing from this table, they used
+# to fail `if op not in JCC: continue` silently -- a gate using them inside
+# a shop block would have been dropped from the row without any error. None
+# of the 18 shop rows currently use this encoding, but the failure mode was
+# wrong regardless, so they are listed rather than left to raise.
+JCC = {0x72: "<", 0x73: ">=", 0x74: "==", 0x75: "!=", 0x76: "<=", 0x77: ">",
+       0x7C: "<", 0x7D: ">=", 0x7E: "<=", 0x7F: ">"}
 NEGATE = {"==": "!=", "!=": "==", "<=": ">", ">": "<=", "<": ">=", ">=": "<"}
 
 DISTRICT_ADDR = 0x3692
@@ -376,7 +409,9 @@ CLASS_WEIGHTS_ADDR = 0x0002
 CLASS_WEIGHT_STRIDE = 4
 
 # 1000:11c2 (file 0x2A92) is the only place a fixed enemy is written.  Both
-# calls sit in the endgame at 1000:aeb1/1000:aebd.  The store order is fixed:
+# calls sit in the endgame, back to back, at 1000:ae27/1000:ae33 (file
+# 0xC6F7/0xC703) -- each followed by a call to the combat routine
+# FUN_1000_3d11.  The store order is fixed:
 #   C7 06 5C 39 <level>   mov word [20ae:395c],imm   ; крутизна
 #   C7 06 54 39 <str>     mov word [20ae:3954],imm
 #   C7 06 56 39 <agi>     mov word [20ae:3956],imm
@@ -402,6 +437,23 @@ def parse_enemies(blob: bytes, ranks: list) -> list:
         idx = rank["index"]
         base = data_file_off(CLASS_WEIGHTS_ADDR + idx * CLASS_WEIGHT_STRIDE)
         weights = list(blob[base : base + CLASS_WEIGHT_STRIDE])
+        weights_addr = f"20ae:{CLASS_WEIGHTS_ADDR + idx * CLASS_WEIGHT_STRIDE:04x}"
+        if idx < BOSS_CLASS:
+            source = (
+                f"1000:0d14 rolls stats from the weights at {weights_addr}; "
+                "name from the `ranks` string table at 20ae:002e."
+            )
+        else:
+            # 1000:0d9a (`cmp word [0x3952],0x9` / `jng`) clamps the rolled
+            # class to 9, so 1000:0d14 never rolls class 10 and never reads
+            # this weight row -- unlike every row above, whose `generated`
+            # is True. Its stats are the two scripted rows below instead.
+            source = (
+                "1000:0d9a clamps the rolled class to 9, so 1000:0d14 never "
+                f"produces this class and never reads the weights at "
+                f"{weights_addr}; name from the `ranks` string table at "
+                "20ae:002e, stats from the two scripted `_v0`/`_v1` rows below."
+            )
         enemies.append(
             {
                 "id": slug(rank["plain"]),
@@ -410,13 +462,11 @@ def parse_enemies(blob: bytes, ranks: list) -> list:
                 "level": None,
                 "stats": None,
                 "growth_weights": weights,
-                # 1000:0d6a..1000:0d94 clamps the rolled class to 9, so index
-                # 10 is never a random encounter; its two stat blocks are the
+                # 1000:0d9a clamps the rolled class to 9, so index 10 is
+                # never a random encounter; its two stat blocks are the
                 # scripted `*_v0` / `*_v1` rows below.
                 "generated": idx < BOSS_CLASS,
-                "source": "1000:0d14 rolls stats from the weights at "
-                f"20ae:{CLASS_WEIGHTS_ADDR + idx * CLASS_WEIGHT_STRIDE:04x}; "
-                "name from the `ranks` string table at 20ae:002e.",
+                "source": source,
             }
         )
 
@@ -425,9 +475,15 @@ def parse_enemies(blob: bytes, ranks: list) -> list:
         level = u16(m.group("level"))
         strength = u16(m.group("strength"))
         vitality = u16(m.group("vitality"))
-        # 1000:2af8..1000:2b22, shared by both variants:
+        # 1000:1228..1000:124f (file 0x2af8..0x2b1f), shared with the random
+        # path at 1000:0ff3..1000:1005 (file 0x28c3..0x28d5):
         #   dmg_min = strength div 2, dmg_max = strength,
         #   hpmax = vitality*5 + strength + 10, hp = hpmax.
+        # (An earlier draft cited the *file offset* 0x2af8 with a `1000:`
+        # segment prefix it was never assigned to -- that literal address,
+        # 1000:2af8, disassembles to unrelated code reading [20ae:38c3].
+        # Verified with `ndisasm -b16` over both file regions directly; see
+        # docs/re/tables.md.)
         hpmax = vitality * 5 + strength + 10
         enemies.append(
             {

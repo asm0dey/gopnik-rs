@@ -7,6 +7,7 @@
   "effect": "luck",
   "price": null,
   "price_src": null,
+  "sold": false,
   "src_off": 12210
  },
  {
@@ -17,6 +18,7 @@
   "effect": "luck",
   "price": null,
   "price_src": null,
+  "sold": false,
   "src_off": 12231
  },
  {
@@ -27,6 +29,7 @@
   "effect": "all",
   "price": null,
   "price_src": null,
+  "sold": false,
   "src_off": 12272
  },
  {
@@ -37,6 +40,7 @@
   "effect": "all",
   "price": null,
   "price_src": null,
+  "sold": false,
   "src_off": 12295
  },
  {
@@ -47,6 +51,7 @@
   "effect": "regen",
   "price": null,
   "price_src": null,
+  "sold": false,
   "src_off": 12318
  },
  {
@@ -57,6 +62,7 @@
   "effect": null,
   "price": null,
   "price_src": null,
+  "sold": true,
   "src_off": 12542
  },
  {
@@ -67,6 +73,7 @@
   "effect": "damage",
   "price": null,
   "price_src": null,
+  "sold": true,
   "src_off": 12564
  },
  {
@@ -77,6 +84,7 @@
   "effect": null,
   "price": 25,
   "price_src": "bmar:5 20ae:0b3c",
+  "sold": true,
   "src_off": 12590
  },
  {
@@ -87,6 +95,7 @@
   "effect": null,
   "price": 50,
   "price_src": "bmar:6 20ae:0b3d",
+  "sold": true,
   "src_off": 12614
  },
  {
@@ -97,6 +106,7 @@
   "effect": null,
   "price": null,
   "price_src": null,
+  "sold": false,
   "src_off": 12641
  },
  {
@@ -107,6 +117,7 @@
   "effect": "damage",
   "price": null,
   "price_src": null,
+  "sold": false,
   "src_off": 12659
  },
  {
@@ -117,6 +128,7 @@
   "effect": null,
   "price": null,
   "price_src": null,
+  "sold": true,
   "src_off": 12862
  },
  {
@@ -127,6 +139,7 @@
   "effect": null,
   "price": null,
   "price_src": null,
+  "sold": true,
   "src_off": 12883
  },
  {
@@ -137,6 +150,7 @@
   "effect": null,
   "price": null,
   "price_src": null,
+  "sold": true,
   "src_off": 12915
  },
  {
@@ -147,6 +161,7 @@
   "effect": null,
   "price": null,
   "price_src": null,
+  "sold": true,
   "src_off": 12937
  }
 ]

@@ -49,6 +49,17 @@ def test_items():
     priced = {i["name"]: i["price"] for i in items if i["price"] is not None}
     assert priced == {"Кастет": 25, "Дубинка": 50}, priced
 
+    # `sold` splits the thirteen null prices: loot-only items never have a
+    # price to find (docs/re/tables.md, "Prices are deliberately null...").
+    not_sold = {i["name"] for i in items if not i["sold"]}
+    assert not_sold == {
+        "Крестик", 'Кольцо "Гс"', 'Кольцо "Пг"', "Мега Кольцо",
+        'Кольцо "Гп"', "Нож", "Тесак",
+    }, not_sold
+    for i in items:
+        if not i["sold"]:
+            assert i["price"] is None, i
+
     print(f"OK {len(items)} items extracted")
 
 

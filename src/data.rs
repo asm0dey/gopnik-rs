@@ -26,6 +26,8 @@ use crate::model::Fighter;
 /// the same bonus; see `link_item_prices` in `tools/extract_tables.py`. It is
 /// `None` for everything else, which is honest -- the original's shop text
 /// and its inventory text are not the same strings.
+///
+/// A `None` price is not always the same kind of unknown: see `sold`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Item {
     pub id: String,
@@ -36,6 +38,13 @@ pub struct Item {
     pub price: Option<i32>,
     /// Where the shop price came from, when there is one.
     pub price_src: Option<String>,
+    /// `false` for the seven items the original only ever hands out as loot
+    /// (a wandering-encounter find, not a purchase) -- these will never have
+    /// a `price`, because nothing sells them. `true` for everything else,
+    /// including the items whose `price` is still `None` because their shop
+    /// row uses a paraphrased name Task 10's verbatim match does not catch;
+    /// see `docs/re/tables.md`, "Prices are deliberately null...".
+    pub sold: bool,
     /// File offset of the item's display string in `orig/g.exe`.
     pub src_off: u32,
 }
