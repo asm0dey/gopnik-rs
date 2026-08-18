@@ -427,10 +427,10 @@ now recorded, not just the leading run at the opening accuracy.)
 | defender agility | 1, 2, 3, 4, 6, 7, 9, 10, 11, 13, 15, 19, 20, 27, 31, 50, 60 |
 | attacker armour | 0, 1, 2, 3, 4, 10, 26 |
 | defender armour | 0, 1, 2, 3, 4, 8, 12, 13, 31, 33, 60, 80 |
-| attacker luck | 1..8, 10, 17, 31, 49, 50, 52 |
+| attacker luck | 1, 2, 3, 4, 6, 7, 8, 10, 17, 31, 49, 50, 52 (5 never occurs) |
 | defender luck | 1..8, 10, 11, 13, 14, 16, 17, 19, 20, 32, 34, 36 |
 | attacker level | 0, 2, 10, 12, 15, 18, 20, 30, 40, 41 |
-| defender level | 0..25, 46, 62, 125, 160 |
+| defender level | 0, 2, 6, 10, 11, 12, 13, 15, 16, 18, 19, 20, 22, 25, 46, 62, 125, 160 |
 | opening accuracy | 25, 30, 35, 40, 50, 55, 85, 90 % |
 | blows in a round | 1, 2, 3, 4, 5 |
 | broken jaw / leg | all four combinations, on both attacker and defender |
@@ -467,8 +467,14 @@ That is ground truth for `resolve_blow_nth` at every index a capture reached
 `budget_at`'s index term (`PER_BLOW.wrapping_mul(blow_index as i16)` →
 `(PER_BLOW - 1).wrapping_mul(blow_index as i16)`) now fails
 `combat_matches_original` at case 273, blow 1 — a mutant the truncated data
-could never have caught, because no captured case reached `blow_index > 0`
-under the old truncation.
+could never have caught. Not because those cases were absent: the old,
+truncated `data/combat_vectors.json` did contain 9 cases with 2–5 blows per
+round, i.e. `blow_index > 0` did occur in the captured data. What was
+missing was any *assertion* at `blow_index > 0` — the old
+`tests/combat_vectors.rs` called `resolve_blow` (always index 0, ignoring
+the blow's real position in the loop) for every blow of every case — and
+those retained multi-blow cases all sat at the capped 90% opening accuracy,
+where `budget_at`'s per-index term makes no observable difference anyway.
 
 `blows_in_round` is kept as a separate field precisely equal to
 `expected_blows.len()`; it exists because it is read off the screen

@@ -46,11 +46,11 @@ purposes.
 
 | file | magic | name | rank_index | strength | agility | vitality | luck | level | dmg_min | dmg_max | hp | hpmax |
 |------|-------|------|-----------:|---------:|--------:|---------:|-----:|------:|--------:|--------:|---:|------:|
-| `SAVE_R0.SAV` | `^4Gopnik: ^7version 1.02 june,sept 2003` | `^7 adg` | 4 | 24 | 13 | 19 | 7 | 15 | 15 | 17 | 118 | 129 |
-| `SAVE_R2.SAV` | (same) | `^7 vor` | 6 | 16 | 15 | 15 | 17 | 10 | 10 | 11 | 84 | 99 |
-| `SAVE_R3.SAV` | (same) | `^7 vor` | 6 | 28 | 25 | 28 | 31 | 20 | 20 | 24 | 178 | 178 |
-| `SAVE_R4.SAV` | (same) | `^7 vor` | 6 | 42 | 45 | 44 | 52 | 30 | 30 | 32 | 251 | 270 |
-| `SAVE_R5.SAV` | (same) | `^7 Mudila` | 5 | 90 | 120 | 45 | 49 | 40 | 40 | 57 | 325 | 325 |
+| `SAVE_R0.SAV` | `^4Gopnik: ^7version 1.02 june,sept 2003` | `^7 adg` | 4 | 24 | 13 | 19 | 7 | 15 | 17 | 29 | 118 | 129 |
+| `SAVE_R2.SAV` | (same) | `^7 vor` | 6 | 16 | 15 | 15 | 17 | 10 | 11 | 19 | 84 | 99 |
+| `SAVE_R3.SAV` | (same) | `^7 vor` | 6 | 28 | 25 | 28 | 31 | 20 | 24 | 38 | 178 | 178 |
+| `SAVE_R4.SAV` | (same) | `^7 vor` | 6 | 42 | 45 | 44 | 52 | 30 | 32 | 53 | 251 | 270 |
+| `SAVE_R5.SAV` | (same) | `^7 Mudila` | 5 | 90 | 120 | 45 | 49 | 40 | 57 | 102 | 325 | 325 |
 
 `magic` is byte-identical across all five saves:
 `^4Gopnik: ^7version 1.02 june,sept 2003` — a constant version banner, not
@@ -80,8 +80,8 @@ files (not taken on the report's word):
   `1000:258a` increments the `+0x0a` word under
   `^1Понтовость увеличивается:`, capped at 40 (`1000:2580`).
 - **`hpmax == 10 + 5*vitality + strength` holds exactly for `SAVE_R0`,
-  `SAVE_R3`, `SAVE_R5`** (129, 178, 325 — all match). It is off by 2 and 4
-  on `SAVE_R2`/`SAVE_R4` (predicts 101 and 272 against actual 99 and 270),
+  `SAVE_R3`, `SAVE_R5`** (129, 178, 325 — all match). It is off by 2 on both
+  `SAVE_R2` and `SAVE_R4` (predicts 101 and 272 against actual 99 and 270),
   most plausibly equipment or a buff/debuff this record's base stats don't
   carry — not investigated further here, and not a reason to doubt the
   field identities, since three of five match exactly and the pattern
