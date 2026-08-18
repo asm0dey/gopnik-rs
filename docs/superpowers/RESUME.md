@@ -456,6 +456,20 @@ them from byte noise.
 
 ## Carried forward — Task 11 must handle
 
+- **No JSON ships as a file — the app is a single self-contained binary.**
+  `src/data.rs:127-129` embeds `items.json`, `shops.json`, `enemies.json` via
+  `include_str!`; there are no runtime file reads anywhere in `src/`.
+  `combat_vectors.json`, `xp.json`, `rng_vectors.json` and `save_layout.json`
+  are TEST-ONLY fixtures and must never be embedded — `combat_vectors.json`
+  alone is 264K.
+- **`data/strings.json` (133K) is not embedded yet** and Task 11 needs the game
+  text. It will be by far the largest thing compiled in. Embed it deliberately,
+  not by accident.
+- **`items()` re-parses its JSON on every call** and returns an owned `Vec`.
+  Call it ONCE at startup and hold the result; do not call it per turn. Do not
+  add a `OnceLock` speculatively — the plan says add one only if profiling
+  shows the parse matters.
+
 - **`Fighter::class` defaults to `0` via `#[derive(Default)]`, and
   `class_weights(0)` is a REAL non-zero weight row.** So a caller who forgets to
   set `class` silently gets a valid-looking class rather than an obviously-wrong
