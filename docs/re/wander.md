@@ -43,6 +43,21 @@ tier: **established from flow**, **corroborated**, or **unverified**.
 > `data/wander.json`'s `class_389c.consumers`, and recorded in
 > `.superpowers/sdd/task-11b-report.md`.
 
+## A naming note: `chapter` here is the corpus's `district`
+
+This document says `chapter` throughout — `chapter*20`, `chapter == 5`, the
+`chapter-5` endgame arm. That is the byte at `20ae:3692`, and the rest of the
+repo calls it **`district`**: `tools/extract_tables.py`'s `DISTRICT_ADDR`,
+`docs/re/tables.md`, `docs/re/gaps.md`, `data/other_price_sites.json` and
+`src/locations.rs` all use that name. One byte, one value, two labels.
+
+**`district` is canonical; use it in new code.** `data/wander.json`'s `globals`
+entry now carries `"name": "district", "aka": "chapter"`. The prose and the
+`n_expr` strings below are left reading `chapter` rather than rewritten,
+because they were reviewed and byte-verified in that form and a sweeping rename
+would put the citations at risk for no gain in meaning. Nothing about the flow
+findings changes either way — this is a label, not a claim.
+
 ## The shape of `data/wander.json`
 
 * `random` — the call encoding and the byte-scan that establishes the site list

@@ -60,7 +60,7 @@
     { "addr": "20ae:38c7", "name": "money", "width": 2, "tier": "flow" },
     { "addr": "20ae:38cb", "name": "pontovost_street", "width": 2, "sav_offset": "0x22f", "tier": "flow+corroborated", "meaning": "a street-cred counter, distinct from the level at DS:38a6 despite both being called 'pontovost' in text", "evidence": "grown per kill at 1000:5291 by (enemy.level div 3) + enemy.class + 1; spent 2 at 1000:db9b when borrowing beer money in the den; printed at 1000:dc79 under file 0xB857 '^4Твоя понтовость сейчас = #.'; granted chapter*50 + 50 at 1000:821a by the church" },
     { "addr": "20ae:38cd", "name": "buff_countdown", "width": 1, "sav_offset": "0x231", "tier": "flow", "evidence": "docs/re/progression.md" },
-    { "addr": "20ae:3692", "name": "chapter", "width": 1, "tier": "flow", "meaning": "district / chapter, 1..5" },
+    { "addr": "20ae:3692", "name": "district", "aka": "chapter", "width": 1, "tier": "flow", "meaning": "district counter, 1..5, raised at 1000:ab92 (`inc byte [0x3692]`) once понтовость reaches district*10. CANONICAL NAME IS `district` -- tools/extract_tables.py (DISTRICT_ADDR), docs/re/tables.md, docs/re/gaps.md, data/other_price_sites.json and src/locations.rs all call this byte that. This document first named it `chapter`, and the n_expr strings below still read `chapter * 20` / `chapter * 5`: same byte, same value, one variable. Use `district` in new code." },
     { "addr": "20ae:3693", "name": "flavour_toggle", "width": 1, "tier": "flow", "meaning": "toggled at 1000:b3c4..1000:b3ce, selects which of two district-keyed flavour sets bucket 1 prints" },
     { "addr": "20ae:3694", "name": "flag_market", "width": 1, "tier": "flow" },
     { "addr": "20ae:3695", "name": "flag_bigmarket", "width": 1, "tier": "flow" },
