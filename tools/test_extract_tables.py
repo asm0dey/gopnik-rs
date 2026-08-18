@@ -14,6 +14,7 @@ facts came from in orig/g.exe, keyed by the row's natural key).
 """
 import json
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -203,8 +204,169 @@ def test_enemies():
     print(f"OK {len(enemies)} enemy rows extracted ({len(prov)} provenance rows)")
 
 
+def test_other_price_sites():
+    """The completeness invariant on data/other_price_sites.json.
+
+    This one is not a second reading of the extractor's own output: it
+    re-scans `orig/g.exe` for both `sub [20ae:38c7],*` encodings itself and
+    demands that every single occurrence appear in the file, classified. That
+    is what stops a debit site going unrecorded again -- the previous version
+    of the artifact was missing the `sub [money],ax` at file 0x68e4 because
+    the extractor scanned a longer idiom that site does not match, and the
+    categories were emitted independently, so nothing noticed they no longer
+    summed to the number of debits in the binary.
+    """
+    blob = (ROOT / "orig" / "g.exe").read_bytes()
+    sites = json.loads(
+        (ROOT / "data" / "other_price_sites.json").read_text(encoding="utf-8")
+    )
+    shops_prov = json.loads(
+        (ROOT / "data" / "shops.provenance.json").read_text(encoding="utf-8")
+    )
+
+    # Ghidra's `1000:XXXX` and the file offset are two numbers for one place,
+    # and getting them out of step is this project's recurring defect. Every
+    # pair in the file must satisfy file_off == 0x18d0 + off, everywhere,
+    # whatever the key is called.
+    def check_addr_pairs(node, path="$"):
+        n = 0
+        if isinstance(node, dict):
+            for a_key, f_key in [
+                ("addr", "file_off"),
+                ("string_load_addr", "string_load_file_off"),
+            ]:
+                a, f = node.get(a_key), node.get(f_key)
+                if isinstance(a, str) and isinstance(f, str) and a.startswith("1000:"):
+                    off = int(a.split(":")[1], 16)
+                    assert int(f, 16) == 0x18D0 + off, (path, a_key, a, f)
+                    n += 1
+            for k, v in node.items():
+                n += check_addr_pairs(v, f"{path}.{k}")
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                n += check_addr_pairs(v, f"{path}[{i}]")
+        return n
+
+    pairs = check_addr_pairs(sites)
+    assert pairs >= 21, f"expected every 1000: citation checked, saw {pairs}"
+
+    # --- the `ax` form: 29 06 C7 38 --------------------------------------
+    raw_ax = [m.start() for m in re.finditer(rb"\x29\x06\xC7\x38", blob)]
+    ax = sites["ax_debit_sites"]
+    assert ax["count"] == len(ax["sites"])
+    assert ax["count"] == sum(ax["counts_by_category"].values()), ax["counts_by_category"]
+    # Total equals what is in the binary, not what the extractor felt like
+    # emitting: every `sub [money],ax` occurrence is present exactly once.
+    listed = [int(s["file_off"], 16) for s in ax["sites"]]
+    assert listed == sorted(listed), "sites must be in file order"
+    assert listed == raw_ax, (len(listed), len(raw_ax))
+    assert ax["count"] == 21, f"expected 21 sub [money],ax sites, got {ax['count']}"
+
+    # Nothing may fall through the classifier unnoticed.
+    for s in ax["sites"]:
+        assert s["amount_form"] != "unrecognised", s
+        assert s["category"] != "unrecognised", s
+        assert s["recorded_in"], s
+
+    assert ax["counts_by_category"] == {
+        "computed": 1, "other": 1, "shop_row": 18, "variable": 1,
+    }, ax["counts_by_category"]
+
+    # Each category's sites must actually appear in the section that claims
+    # them -- the sum is only meaningful if the detail is really there.
+    by_cat = {}
+    for s in ax["sites"]:
+        by_cat.setdefault(s["category"], []).append(s)
+
+    assert {s["shop_row"] for s in by_cat["shop_row"]} == set(shops_prov), (
+        "every shop_row debit must name a row that exists in data/shops.json"
+    )
+    for s in by_cat["shop_row"]:
+        assert s["recorded_in"] == "data/shops.json", s
+        assert shops_prov[s["shop_row"]]["price_addr"] == s["amount_addr"], s
+
+    assert {s["amount_addr"] for s in by_cat["variable"]} == {
+        v["addr"] for v in sites["var_sites"]
+    }
+    assert {s["file_off"] for s in by_cat["computed"]} == {
+        c["file_off"] for c in sites["computed_sites"]
+    }
+    assert {s["file_off"] for s in by_cat["other"]} == {
+        o["file_off"] for o in sites["other_ax_sites"]
+    }
+
+    # The one `other` site: amount is a far call's return value, purpose
+    # unknown. It is recorded *because* it debits money, not because anyone
+    # knows what it charges for -- `what` must stay null until someone does.
+    other = sites["other_ax_sites"]
+    assert len(other) == 1, other
+    assert other[0]["addr"] == "1000:5014" and other[0]["file_off"] == "0x68e4"
+    assert other[0]["amount_form"] == "call_result"
+    assert other[0]["call_target"] == "0f78:1131"
+    assert other[0]["what"] is None, "unknown means unknown"
+
+    # The computed site is scanned now, not hand-listed: both the multiplied
+    # address and the multiplier come out of the bytes.
+    computed = sites["computed_sites"]
+    assert len(computed) == 1, computed
+    assert computed[0]["file_off"] == "0x8eed"
+    assert computed[0]["amount_addr"] == "20ae:3692"  # the district counter
+    assert computed[0]["multiplier"] == 50
+    assert computed[0]["formula"] == "district*50"
+
+    # --- the `imm8` form: 83 2E C7 38 ib ---------------------------------
+    raw_imm8 = [
+        (m.start(), m.group(1)[0])
+        for m in re.finditer(rb"\x83\x2E\xC7\x38(.)", blob, re.DOTALL)
+    ]
+    imm8 = sites["sub_word_imm8_sites"]
+    assert len(imm8) == len(raw_imm8) == 11, (len(imm8), len(raw_imm8))
+    assert [(int(s["file_off"], 16), s["imm"]) for s in imm8] == raw_imm8
+
+    # Only the two Клуб rows are identified; the other nine stay null.
+    named = {s["file_off"]: s["what"] for s in imm8 if s["what"]}
+    assert set(named) == {"0xfb77", "0xfbec"}, named
+    for s in imm8:
+        assert isinstance(s["imm"], int)
+
+    # --- the debited byte variable: 20ae:3c82 -----------------------------
+    assert len(sites["var_sites"]) == 1
+    var = sites["var_sites"][0]
+    assert var["addr"] == "20ae:3c82"
+    assert var["what"] is None, "unknown means unknown"
+    # 14 references, and the four scanned idioms account for all 14 -- an
+    # unaccounted reference means some further idiom touches the variable and
+    # the account below is not the whole story.
+    assert var["ref_count"] == blob.count(b"\x82\x3c") == 14, var["ref_count"]
+    assert var["recorded_sites"] == var["ref_count"], var
+    assert var["recorded_sites"] == (
+        len(var["write_sites"]) + len(var["read_sites"]) + len(var["compare_sites"])
+    )
+    assert set(var["scanned_idioms"]) == {
+        "write_sites", "read_sites", "compare_sites", "charge_sites",
+    }
+    # Not a constant: written 5 twice, stepped by 2 once, compared against 17.
+    assert [(w["op"], w["imm"]) for w in var["write_sites"]] == [
+        ("mov", 5), ("add", 2), ("mov", 5),
+    ], var["write_sites"]
+    assert [c["imm"] for c in var["compare_sites"]] == [17, 5, 17]
+    assert len(var["read_sites"]) == 8
+    # charge_sites is the debit read, a subset of read_sites -- not added in.
+    assert len(var["charge_sites"]) == 1
+    assert var["charge_sites"][0]["file_off"] in {
+        r["file_off"] for r in var["read_sites"]
+    }
+
+    print(
+        f"OK {ax['count']} sub[money],ax sites classified "
+        f"({ax['counts_by_category']}), {len(imm8)} imm8 sites, "
+        f"{var['ref_count']}/{var['ref_count']} refs to {var['addr']} accounted for"
+    )
+
+
 if __name__ == "__main__":
     subprocess.run([sys.executable, str(ROOT / "tools" / "extract_tables.py")], check=True)
     test_items()
     test_shops()
     test_enemies()
+    test_other_price_sites()
