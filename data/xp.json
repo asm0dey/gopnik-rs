@@ -1,0 +1,2330 @@
+{
+  "note": "Task 9b. Two independent sources, neither of them the Rust port. (1) orig/g.exe itself: the class weight table, the rank names and the character-creation stat immediates are read out of the load image at fixed file offsets. (2) The Task 3 oracle: orig/g.exe run under DOSBox-X with RandSeed pinned in a scratch copy, with the award and the status line read off the 80x25 text screen and the fighter records, XP total and threshold read out of the guest's own data segment. Addresses and method: docs/re/progression.md. Regenerate: python3 tools/capture_xp_cases.py",
+  "max_level": 40,
+  "gains_per_level": 2,
+  "thresholds_is": "thresholds[i] is the XP needed to go from level i+1 to level i+2, i.e. xp_to_next(i+1). threshold_provenance[i] says where that entry was seen; entries marked UNVERIFIED were never reached by a scripted run or a shipped save and carry only what 1000:2550 and 1000:6de0 predict.",
+  "thresholds": [
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    90,
+    100,
+    110,
+    120,
+    130,
+    140,
+    150,
+    160,
+    170,
+    180,
+    190,
+    200,
+    210,
+    220,
+    230,
+    240,
+    250,
+    260,
+    270,
+    280,
+    290,
+    300,
+    310,
+    320,
+    330,
+    340,
+    350,
+    360,
+    370,
+    380,
+    390,
+    400,
+    410
+  ],
+  "threshold_provenance": [
+    "observed: oracle fresh_seed11 frame 241 (after); oracle fresh_seed11 frame 341 (after); oracle fresh_seed11 frame 341 (before); oracle fresh_seed11 frame 407 (before); oracle fresh_seed123 frame 207 (after)",
+    "observed: oracle fresh_seed11 frame 407 (after)",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "observed: oracle save_r2_seed3 frame 129 (before); oracle save_r2_seed3 frame 61 (after); oracle save_r2_seed3 frame 61 (before); orig/SAVE_R2.SAV",
+    "observed: oracle save_r2_seed3 frame 129 (after); oracle save_r2_seed3 frame 201 (after); oracle save_r2_seed3 frame 201 (before); oracle save_r2_seed3 frame 245 (after); oracle save_r2_seed3 frame 245 (before); oracle save_r2_seed3 frame 321 (after); oracle save_r2_seed3 frame 321 (before)",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "observed: oracle save_r0_seed3 frame 149 (after); oracle save_r0_seed3 frame 149 (before); oracle save_r0_seed3 frame 169 (after); oracle save_r0_seed3 frame 169 (before); oracle save_r0_seed3 frame 287 (before); orig/SAVE_R0.SAV",
+    "observed: oracle save_r0_seed3 frame 287 (after); oracle save_r0_seed3 frame 445 (after); oracle save_r0_seed3 frame 445 (before); oracle save_r0_seed3 frame 507 (after); oracle save_r0_seed3 frame 507 (before); oracle save_r0_seed3 frame 669 (after); oracle save_r0_seed3 frame 669 (before); oracle save_r0_seed3 frame 943 (after); oracle save_r0_seed3 frame 943 (before); oracle save_r0_seed3 frame 989 (before)",
+    "observed: oracle save_r0_seed3 frame 989 (after)",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "observed: oracle save_r3_seed3 frame 143 (after); oracle save_r3_seed3 frame 143 (before); oracle save_r3_seed3 frame 41 (after); oracle save_r3_seed3 frame 41 (before); oracle save_r3_seed3 frame 63 (after); oracle save_r3_seed3 frame 63 (before); oracle save_r3_seed3 frame 789 (before); orig/SAVE_R3.SAV",
+    "observed: oracle save_r3_seed3 frame 789 (after); oracle save_r3_seed3 frame 823 (after); oracle save_r3_seed3 frame 823 (before); oracle save_r3_seed3 frame 849 (after); oracle save_r3_seed3 frame 849 (before)",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "observed: oracle save_r4_seed4 frame 101 (after); oracle save_r4_seed4 frame 101 (before); oracle save_r4_seed4 frame 305 (before); oracle save_r4_seed4 frame 43 (after); oracle save_r4_seed4 frame 43 (before); orig/SAVE_R4.SAV",
+    "observed: oracle save_r4_seed4 frame 305 (after); oracle save_r4_seed4 frame 485 (after); oracle save_r4_seed4 frame 485 (before); oracle save_r4_seed4 frame 767 (before)",
+    "observed: oracle save_r4_seed4 frame 767 (after); oracle save_r4_seed4 frame 781 (after); oracle save_r4_seed4 frame 781 (before)",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "UNVERIFIED by observation -- no scripted run and no shipped save reaches this level. Value is what 1000:6de0 (threshold := 10 on a new character) and 1000:2550 (threshold += 10 per level) give; the same two instructions are confirmed at the levels that are observed.",
+    "observed: orig/SAVE_R5.SAV"
+  ],
+  "award_cases_is": "One per kill captured. `expected` is the number the game printed in `За отпин врага ты получаешь # качков опыта` (1000:51b4); `enemy` is that enemy's record, read out of the guest's data segment at DS:3952 at the key read immediately before. `player_level` is the player's level at the same moment -- the award does not depend on it, which these cases are what shows.",
+  "award_cases": [
+    {
+      "run": "fresh_seed5",
+      "frame": 81,
+      "player_level": 0,
+      "enemy": {
+        "strength": 1,
+        "agility": 5,
+        "vitality": 1,
+        "luck": 2,
+        "level": 0,
+        "dmg_min": 0,
+        "dmg_max": 1,
+        "hp": 3,
+        "hpmax": 16
+      },
+      "expected": 9
+    },
+    {
+      "run": "fresh_seed11",
+      "frame": 241,
+      "player_level": 0,
+      "enemy": {
+        "strength": 9,
+        "agility": 0,
+        "vitality": 4,
+        "luck": 1,
+        "level": 1,
+        "dmg_min": 4,
+        "dmg_max": 9,
+        "hp": 1,
+        "hpmax": 39
+      },
+      "expected": 14
+    },
+    {
+      "run": "fresh_seed11",
+      "frame": 341,
+      "player_level": 1,
+      "enemy": {
+        "strength": 1,
+        "agility": 2,
+        "vitality": 4,
+        "luck": 5,
+        "level": 0,
+        "dmg_min": 0,
+        "dmg_max": 1,
+        "hp": 7,
+        "hpmax": 31
+      },
+      "expected": 12
+    },
+    {
+      "run": "fresh_seed11",
+      "frame": 407,
+      "player_level": 1,
+      "enemy": {
+        "strength": 2,
+        "agility": 6,
+        "vitality": 0,
+        "luck": 4,
+        "level": 3,
+        "dmg_min": 1,
+        "dmg_max": 2,
+        "hp": 1,
+        "hpmax": 12
+      },
+      "expected": 12
+    },
+    {
+      "run": "fresh_seed123",
+      "frame": 207,
+      "player_level": 0,
+      "enemy": {
+        "strength": 4,
+        "agility": 4,
+        "vitality": 2,
+        "luck": 8,
+        "level": 3,
+        "dmg_min": 2,
+        "dmg_max": 4,
+        "hp": 1,
+        "hpmax": 24
+      },
+      "expected": 18
+    },
+    {
+      "run": "save_r0_seed3",
+      "frame": 149,
+      "player_level": 15,
+      "enemy": {
+        "strength": 23,
+        "agility": 9,
+        "vitality": 14,
+        "luck": 8,
+        "level": 21,
+        "dmg_min": 11,
+        "dmg_max": 23,
+        "hp": 10,
+        "hpmax": 103
+      },
+      "expected": 54
+    },
+    {
+      "run": "save_r0_seed3",
+      "frame": 169,
+      "player_level": 15,
+      "enemy": {
+        "strength": 10,
+        "agility": 5,
+        "vitality": 14,
+        "luck": 11,
+        "level": 16,
+        "dmg_min": 5,
+        "dmg_max": 10,
+        "hp": 39,
+        "hpmax": 90
+      },
+      "expected": 40
+    },
+    {
+      "run": "save_r0_seed3",
+      "frame": 287,
+      "player_level": 15,
+      "enemy": {
+        "strength": 21,
+        "agility": 4,
+        "vitality": 12,
+        "luck": 3,
+        "level": 14,
+        "dmg_min": 10,
+        "dmg_max": 21,
+        "hp": 17,
+        "hpmax": 91
+      },
+      "expected": 40
+    },
+    {
+      "run": "save_r0_seed3",
+      "frame": 445,
+      "player_level": 16,
+      "enemy": {
+        "strength": 6,
+        "agility": 6,
+        "vitality": 11,
+        "luck": 6,
+        "level": 10,
+        "dmg_min": 3,
+        "dmg_max": 6,
+        "hp": 23,
+        "hpmax": 71
+      },
+      "expected": 29
+    },
+    {
+      "run": "save_r0_seed3",
+      "frame": 507,
+      "player_level": 16,
+      "enemy": {
+        "strength": 9,
+        "agility": 17,
+        "vitality": 8,
+        "luck": 14,
+        "level": 18,
+        "dmg_min": 4,
+        "dmg_max": 9,
+        "hp": 26,
+        "hpmax": 59
+      },
+      "expected": 48
+    },
+    {
+      "run": "save_r0_seed3",
+      "frame": 669,
+      "player_level": 16,
+      "enemy": {
+        "strength": 8,
+        "agility": 6,
+        "vitality": 10,
+        "luck": 10,
+        "level": 13,
+        "dmg_min": 4,
+        "dmg_max": 8,
+        "hp": 5,
+        "hpmax": 68
+      },
+      "expected": 34
+    },
+    {
+      "run": "save_r0_seed3",
+      "frame": 943,
+      "player_level": 16,
+      "enemy": {
+        "strength": 9,
+        "agility": 6,
+        "vitality": 2,
+        "luck": 12,
+        "level": 10,
+        "dmg_min": 4,
+        "dmg_max": 9,
+        "hp": 2,
+        "hpmax": 29
+      },
+      "expected": 29
+    },
+    {
+      "run": "save_r0_seed3",
+      "frame": 989,
+      "player_level": 16,
+      "enemy": {
+        "strength": 26,
+        "agility": 8,
+        "vitality": 13,
+        "luck": 9,
+        "level": 22,
+        "dmg_min": 13,
+        "dmg_max": 26,
+        "hp": 50,
+        "hpmax": 101
+      },
+      "expected": 56
+    },
+    {
+      "run": "save_r2_seed3",
+      "frame": 61,
+      "player_level": 10,
+      "enemy": {
+        "strength": 14,
+        "agility": 12,
+        "vitality": 21,
+        "luck": 5,
+        "level": 15,
+        "dmg_min": 7,
+        "dmg_max": 14,
+        "hp": 24,
+        "hpmax": 129
+      },
+      "expected": 52
+    },
+    {
+      "run": "save_r2_seed3",
+      "frame": 129,
+      "player_level": 10,
+      "enemy": {
+        "strength": 9,
+        "agility": 18,
+        "vitality": 19,
+        "luck": 12,
+        "level": 23,
+        "dmg_min": 4,
+        "dmg_max": 9,
+        "hp": 20,
+        "hpmax": 114
+      },
+      "expected": 58
+    },
+    {
+      "run": "save_r2_seed3",
+      "frame": 201,
+      "player_level": 11,
+      "enemy": {
+        "strength": 7,
+        "agility": 6,
+        "vitality": 5,
+        "luck": 14,
+        "level": 10,
+        "dmg_min": 3,
+        "dmg_max": 7,
+        "hp": 42,
+        "hpmax": 42
+      },
+      "expected": 32
+    },
+    {
+      "run": "save_r2_seed3",
+      "frame": 245,
+      "player_level": 11,
+      "enemy": {
+        "strength": 8,
+        "agility": 6,
+        "vitality": 6,
+        "luck": 14,
+        "level": 13,
+        "dmg_min": 4,
+        "dmg_max": 8,
+        "hp": 17,
+        "hpmax": 48
+      },
+      "expected": 34
+    },
+    {
+      "run": "save_r2_seed3",
+      "frame": 321,
+      "player_level": 11,
+      "enemy": {
+        "strength": 7,
+        "agility": 6,
+        "vitality": 2,
+        "luck": 5,
+        "level": 4,
+        "dmg_min": 3,
+        "dmg_max": 7,
+        "hp": 27,
+        "hpmax": 27
+      },
+      "expected": 20
+    },
+    {
+      "run": "save_r3_seed3",
+      "frame": 41,
+      "player_level": 20,
+      "enemy": {
+        "strength": 8,
+        "agility": 11,
+        "vitality": 7,
+        "luck": 25,
+        "level": 21,
+        "dmg_min": 4,
+        "dmg_max": 8,
+        "hp": 53,
+        "hpmax": 53
+      },
+      "expected": 51
+    },
+    {
+      "run": "save_r3_seed3",
+      "frame": 63,
+      "player_level": 20,
+      "enemy": {
+        "strength": 19,
+        "agility": 12,
+        "vitality": 18,
+        "luck": 7,
+        "level": 22,
+        "dmg_min": 9,
+        "dmg_max": 19,
+        "hp": 96,
+        "hpmax": 119
+      },
+      "expected": 56
+    },
+    {
+      "run": "save_r3_seed3",
+      "frame": 143,
+      "player_level": 20,
+      "enemy": {
+        "strength": 26,
+        "agility": 13,
+        "vitality": 29,
+        "luck": 10,
+        "level": 33,
+        "dmg_min": 13,
+        "dmg_max": 26,
+        "hp": 66,
+        "hpmax": 181
+      },
+      "expected": 78
+    },
+    {
+      "run": "save_r3_seed3",
+      "frame": 789,
+      "player_level": 20,
+      "enemy": {
+        "strength": 16,
+        "agility": 21,
+        "vitality": 22,
+        "luck": 9,
+        "level": 23,
+        "dmg_min": 8,
+        "dmg_max": 16,
+        "hp": 12,
+        "hpmax": 136
+      },
+      "expected": 68
+    },
+    {
+      "run": "save_r3_seed3",
+      "frame": 823,
+      "player_level": 21,
+      "enemy": {
+        "strength": 36,
+        "agility": 10,
+        "vitality": 19,
+        "luck": 19,
+        "level": 35,
+        "dmg_min": 18,
+        "dmg_max": 36,
+        "hp": 23,
+        "hpmax": 141
+      },
+      "expected": 84
+    },
+    {
+      "run": "save_r3_seed3",
+      "frame": 849,
+      "player_level": 21,
+      "enemy": {
+        "strength": 15,
+        "agility": 19,
+        "vitality": 9,
+        "luck": 16,
+        "level": 25,
+        "dmg_min": 7,
+        "dmg_max": 15,
+        "hp": 15,
+        "hpmax": 70
+      },
+      "expected": 59
+    },
+    {
+      "run": "save_r4_seed4",
+      "frame": 43,
+      "player_level": 30,
+      "enemy": {
+        "strength": 35,
+        "agility": 31,
+        "vitality": 36,
+        "luck": 34,
+        "level": 62,
+        "dmg_min": 17,
+        "dmg_max": 35,
+        "hp": 114,
+        "hpmax": 225
+      },
+      "expected": 136
+    },
+    {
+      "run": "save_r4_seed4",
+      "frame": 101,
+      "player_level": 30,
+      "enemy": {
+        "strength": 25,
+        "agility": 32,
+        "vitality": 6,
+        "luck": 31,
+        "level": 41,
+        "dmg_min": 12,
+        "dmg_max": 25,
+        "hp": 65,
+        "hpmax": 65
+      },
+      "expected": 94
+    },
+    {
+      "run": "save_r4_seed4",
+      "frame": 305,
+      "player_level": 30,
+      "enemy": {
+        "strength": 27,
+        "agility": 45,
+        "vitality": 37,
+        "luck": 33,
+        "level": 65,
+        "dmg_min": 13,
+        "dmg_max": 27,
+        "hp": 24,
+        "hpmax": 222
+      },
+      "expected": 142
+    },
+    {
+      "run": "save_r4_seed4",
+      "frame": 485,
+      "player_level": 31,
+      "enemy": {
+        "strength": 31,
+        "agility": 34,
+        "vitality": 10,
+        "luck": 33,
+        "level": 48,
+        "dmg_min": 15,
+        "dmg_max": 31,
+        "hp": 26,
+        "hpmax": 91
+      },
+      "expected": 108
+    },
+    {
+      "run": "save_r4_seed4",
+      "frame": 767,
+      "player_level": 31,
+      "enemy": {
+        "strength": 47,
+        "agility": 40,
+        "vitality": 67,
+        "luck": 58,
+        "level": 102,
+        "dmg_min": 23,
+        "dmg_max": 47,
+        "hp": 39,
+        "hpmax": 392
+      },
+      "expected": 212
+    },
+    {
+      "run": "save_r4_seed4",
+      "frame": 781,
+      "player_level": 32,
+      "enemy": {
+        "strength": 13,
+        "agility": 18,
+        "vitality": 5,
+        "luck": 24,
+        "level": 27,
+        "dmg_min": 6,
+        "dmg_max": 13,
+        "hp": 48,
+        "hpmax": 48
+      },
+      "expected": 60
+    }
+  ],
+  "level_up_cases_is": "The same kills, with the XP bookkeeping either side: the XP total (DS:38ce), the next-level threshold (DS:38d0) and the level (DS:38a6) before and after, the two numbers the status line printed, how many `Понтовость увеличивается:` lines the screen showed and which stat each `+1` line named.",
+  "level_up_cases": [
+    {
+      "run": "fresh_seed5",
+      "seed": 5,
+      "frame": 81,
+      "enemy": {
+        "strength": 1,
+        "agility": 5,
+        "vitality": 1,
+        "luck": 2,
+        "level": 0,
+        "dmg_min": 0,
+        "dmg_max": 1,
+        "hp": 3,
+        "hpmax": 16
+      },
+      "player_before": {
+        "strength": 3,
+        "agility": 3,
+        "vitality": 3,
+        "luck": 3,
+        "level": 0,
+        "dmg_min": 1,
+        "dmg_max": 3,
+        "hp": 24,
+        "hpmax": 28
+      },
+      "player_after": {
+        "strength": 3,
+        "agility": 3,
+        "vitality": 3,
+        "luck": 3,
+        "level": 0,
+        "dmg_min": 1,
+        "dmg_max": 3,
+        "hp": 28,
+        "hpmax": 28
+      },
+      "xp_before": 0,
+      "threshold_before": 10,
+      "level_before": 0,
+      "award_printed": 9,
+      "xp_after": 9,
+      "threshold_after": 10,
+      "level_after": 0,
+      "status_line": {
+        "xp": 9,
+        "threshold": 10
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "fresh_seed11",
+      "seed": 11,
+      "frame": 241,
+      "enemy": {
+        "strength": 9,
+        "agility": 0,
+        "vitality": 4,
+        "luck": 1,
+        "level": 1,
+        "dmg_min": 4,
+        "dmg_max": 9,
+        "hp": 1,
+        "hpmax": 39
+      },
+      "player_before": {
+        "strength": 3,
+        "agility": 3,
+        "vitality": 3,
+        "luck": 3,
+        "level": 0,
+        "dmg_min": 1,
+        "dmg_max": 3,
+        "hp": 4,
+        "hpmax": 28
+      },
+      "player_after": {
+        "strength": 4,
+        "agility": 3,
+        "vitality": 3,
+        "luck": 4,
+        "level": 1,
+        "dmg_min": 2,
+        "dmg_max": 4,
+        "hp": 10,
+        "hpmax": 29
+      },
+      "xp_before": 0,
+      "threshold_before": 10,
+      "level_before": 0,
+      "award_printed": 14,
+      "xp_after": 4,
+      "threshold_after": 20,
+      "level_after": 1,
+      "status_line": {
+        "xp": 4,
+        "threshold": 20
+      },
+      "levels_announced": 1,
+      "gains_announced": [
+        "strength",
+        "luck"
+      ]
+    },
+    {
+      "run": "fresh_seed11",
+      "seed": 11,
+      "frame": 341,
+      "enemy": {
+        "strength": 1,
+        "agility": 2,
+        "vitality": 4,
+        "luck": 5,
+        "level": 0,
+        "dmg_min": 0,
+        "dmg_max": 1,
+        "hp": 7,
+        "hpmax": 31
+      },
+      "player_before": {
+        "strength": 4,
+        "agility": 3,
+        "vitality": 3,
+        "luck": 4,
+        "level": 1,
+        "dmg_min": 2,
+        "dmg_max": 4,
+        "hp": 5,
+        "hpmax": 29
+      },
+      "player_after": {
+        "strength": 4,
+        "agility": 3,
+        "vitality": 3,
+        "luck": 4,
+        "level": 1,
+        "dmg_min": 2,
+        "dmg_max": 4,
+        "hp": 10,
+        "hpmax": 29
+      },
+      "xp_before": 4,
+      "threshold_before": 20,
+      "level_before": 1,
+      "award_printed": 12,
+      "xp_after": 16,
+      "threshold_after": 20,
+      "level_after": 1,
+      "status_line": {
+        "xp": 16,
+        "threshold": 20
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "fresh_seed11",
+      "seed": 11,
+      "frame": 407,
+      "enemy": {
+        "strength": 2,
+        "agility": 6,
+        "vitality": 0,
+        "luck": 4,
+        "level": 3,
+        "dmg_min": 1,
+        "dmg_max": 2,
+        "hp": 1,
+        "hpmax": 12
+      },
+      "player_before": {
+        "strength": 4,
+        "agility": 3,
+        "vitality": 3,
+        "luck": 4,
+        "level": 1,
+        "dmg_min": 2,
+        "dmg_max": 4,
+        "hp": 4,
+        "hpmax": 29
+      },
+      "player_after": {
+        "strength": 4,
+        "agility": 3,
+        "vitality": 4,
+        "luck": 5,
+        "level": 2,
+        "dmg_min": 2,
+        "dmg_max": 4,
+        "hp": 14,
+        "hpmax": 34
+      },
+      "xp_before": 16,
+      "threshold_before": 20,
+      "level_before": 1,
+      "award_printed": 12,
+      "xp_after": 8,
+      "threshold_after": 30,
+      "level_after": 2,
+      "status_line": {
+        "xp": 8,
+        "threshold": 30
+      },
+      "levels_announced": 1,
+      "gains_announced": [
+        "vitality",
+        "luck"
+      ]
+    },
+    {
+      "run": "fresh_seed123",
+      "seed": 123,
+      "frame": 207,
+      "enemy": {
+        "strength": 4,
+        "agility": 4,
+        "vitality": 2,
+        "luck": 8,
+        "level": 3,
+        "dmg_min": 2,
+        "dmg_max": 4,
+        "hp": 1,
+        "hpmax": 24
+      },
+      "player_before": {
+        "strength": 3,
+        "agility": 3,
+        "vitality": 3,
+        "luck": 3,
+        "level": 0,
+        "dmg_min": 1,
+        "dmg_max": 3,
+        "hp": 12,
+        "hpmax": 28
+      },
+      "player_after": {
+        "strength": 3,
+        "agility": 4,
+        "vitality": 3,
+        "luck": 4,
+        "level": 1,
+        "dmg_min": 1,
+        "dmg_max": 3,
+        "hp": 17,
+        "hpmax": 28
+      },
+      "xp_before": 0,
+      "threshold_before": 10,
+      "level_before": 0,
+      "award_printed": 18,
+      "xp_after": 8,
+      "threshold_after": 20,
+      "level_after": 1,
+      "status_line": {
+        "xp": 8,
+        "threshold": 20
+      },
+      "levels_announced": 1,
+      "gains_announced": [
+        "agility",
+        "luck"
+      ]
+    },
+    {
+      "run": "save_r0_seed3",
+      "seed": 3,
+      "frame": 149,
+      "enemy": {
+        "strength": 23,
+        "agility": 9,
+        "vitality": 14,
+        "luck": 8,
+        "level": 21,
+        "dmg_min": 11,
+        "dmg_max": 23,
+        "hp": 10,
+        "hpmax": 103
+      },
+      "player_before": {
+        "strength": 24,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 15,
+        "dmg_min": 17,
+        "dmg_max": 29,
+        "hp": 111,
+        "hpmax": 129
+      },
+      "player_after": {
+        "strength": 24,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 15,
+        "dmg_min": 17,
+        "dmg_max": 29,
+        "hp": 116,
+        "hpmax": 129
+      },
+      "xp_before": 43,
+      "threshold_before": 160,
+      "level_before": 15,
+      "award_printed": 54,
+      "xp_after": 97,
+      "threshold_after": 160,
+      "level_after": 15,
+      "status_line": {
+        "xp": 97,
+        "threshold": 160
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r0_seed3",
+      "seed": 3,
+      "frame": 169,
+      "enemy": {
+        "strength": 10,
+        "agility": 5,
+        "vitality": 14,
+        "luck": 11,
+        "level": 16,
+        "dmg_min": 5,
+        "dmg_max": 10,
+        "hp": 39,
+        "hpmax": 90
+      },
+      "player_before": {
+        "strength": 24,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 15,
+        "dmg_min": 17,
+        "dmg_max": 29,
+        "hp": 111,
+        "hpmax": 129
+      },
+      "player_after": {
+        "strength": 24,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 15,
+        "dmg_min": 17,
+        "dmg_max": 29,
+        "hp": 116,
+        "hpmax": 129
+      },
+      "xp_before": 97,
+      "threshold_before": 160,
+      "level_before": 15,
+      "award_printed": 40,
+      "xp_after": 137,
+      "threshold_after": 160,
+      "level_after": 15,
+      "status_line": {
+        "xp": 137,
+        "threshold": 160
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r0_seed3",
+      "seed": 3,
+      "frame": 287,
+      "enemy": {
+        "strength": 21,
+        "agility": 4,
+        "vitality": 12,
+        "luck": 3,
+        "level": 14,
+        "dmg_min": 10,
+        "dmg_max": 21,
+        "hp": 17,
+        "hpmax": 91
+      },
+      "player_before": {
+        "strength": 24,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 15,
+        "dmg_min": 17,
+        "dmg_max": 29,
+        "hp": 129,
+        "hpmax": 129
+      },
+      "player_after": {
+        "strength": 26,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 16,
+        "dmg_min": 18,
+        "dmg_max": 31,
+        "hp": 131,
+        "hpmax": 131
+      },
+      "xp_before": 137,
+      "threshold_before": 160,
+      "level_before": 15,
+      "award_printed": 40,
+      "xp_after": 17,
+      "threshold_after": 170,
+      "level_after": 16,
+      "status_line": {
+        "xp": 17,
+        "threshold": 170
+      },
+      "levels_announced": 1,
+      "gains_announced": [
+        "strength",
+        "strength"
+      ]
+    },
+    {
+      "run": "save_r0_seed3",
+      "seed": 3,
+      "frame": 445,
+      "enemy": {
+        "strength": 6,
+        "agility": 6,
+        "vitality": 11,
+        "luck": 6,
+        "level": 10,
+        "dmg_min": 3,
+        "dmg_max": 6,
+        "hp": 23,
+        "hpmax": 71
+      },
+      "player_before": {
+        "strength": 26,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 16,
+        "dmg_min": 18,
+        "dmg_max": 31,
+        "hp": 130,
+        "hpmax": 131
+      },
+      "player_after": {
+        "strength": 26,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 16,
+        "dmg_min": 18,
+        "dmg_max": 31,
+        "hp": 131,
+        "hpmax": 131
+      },
+      "xp_before": 17,
+      "threshold_before": 170,
+      "level_before": 16,
+      "award_printed": 29,
+      "xp_after": 46,
+      "threshold_after": 170,
+      "level_after": 16,
+      "status_line": {
+        "xp": 46,
+        "threshold": 170
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r0_seed3",
+      "seed": 3,
+      "frame": 507,
+      "enemy": {
+        "strength": 9,
+        "agility": 17,
+        "vitality": 8,
+        "luck": 14,
+        "level": 18,
+        "dmg_min": 4,
+        "dmg_max": 9,
+        "hp": 26,
+        "hpmax": 59
+      },
+      "player_before": {
+        "strength": 26,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 16,
+        "dmg_min": 18,
+        "dmg_max": 31,
+        "hp": 113,
+        "hpmax": 131
+      },
+      "player_after": {
+        "strength": 26,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 16,
+        "dmg_min": 18,
+        "dmg_max": 31,
+        "hp": 118,
+        "hpmax": 131
+      },
+      "xp_before": 46,
+      "threshold_before": 170,
+      "level_before": 16,
+      "award_printed": 48,
+      "xp_after": 94,
+      "threshold_after": 170,
+      "level_after": 16,
+      "status_line": {
+        "xp": 94,
+        "threshold": 170
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r0_seed3",
+      "seed": 3,
+      "frame": 669,
+      "enemy": {
+        "strength": 8,
+        "agility": 6,
+        "vitality": 10,
+        "luck": 10,
+        "level": 13,
+        "dmg_min": 4,
+        "dmg_max": 8,
+        "hp": 5,
+        "hpmax": 68
+      },
+      "player_before": {
+        "strength": 26,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 16,
+        "dmg_min": 18,
+        "dmg_max": 31,
+        "hp": 118,
+        "hpmax": 131
+      },
+      "player_after": {
+        "strength": 26,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 16,
+        "dmg_min": 18,
+        "dmg_max": 31,
+        "hp": 123,
+        "hpmax": 131
+      },
+      "xp_before": 94,
+      "threshold_before": 170,
+      "level_before": 16,
+      "award_printed": 34,
+      "xp_after": 128,
+      "threshold_after": 170,
+      "level_after": 16,
+      "status_line": {
+        "xp": 128,
+        "threshold": 170
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r0_seed3",
+      "seed": 3,
+      "frame": 943,
+      "enemy": {
+        "strength": 9,
+        "agility": 6,
+        "vitality": 2,
+        "luck": 12,
+        "level": 10,
+        "dmg_min": 4,
+        "dmg_max": 9,
+        "hp": 2,
+        "hpmax": 29
+      },
+      "player_before": {
+        "strength": 26,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 16,
+        "dmg_min": 18,
+        "dmg_max": 31,
+        "hp": 130,
+        "hpmax": 131
+      },
+      "player_after": {
+        "strength": 26,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 16,
+        "dmg_min": 18,
+        "dmg_max": 31,
+        "hp": 131,
+        "hpmax": 131
+      },
+      "xp_before": 128,
+      "threshold_before": 170,
+      "level_before": 16,
+      "award_printed": 29,
+      "xp_after": 157,
+      "threshold_after": 170,
+      "level_after": 16,
+      "status_line": {
+        "xp": 157,
+        "threshold": 170
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r0_seed3",
+      "seed": 3,
+      "frame": 989,
+      "enemy": {
+        "strength": 26,
+        "agility": 8,
+        "vitality": 13,
+        "luck": 9,
+        "level": 22,
+        "dmg_min": 13,
+        "dmg_max": 26,
+        "hp": 50,
+        "hpmax": 101
+      },
+      "player_before": {
+        "strength": 26,
+        "agility": 13,
+        "vitality": 19,
+        "luck": 7,
+        "level": 16,
+        "dmg_min": 18,
+        "dmg_max": 31,
+        "hp": 8,
+        "hpmax": 131
+      },
+      "player_after": {
+        "strength": 27,
+        "agility": 13,
+        "vitality": 20,
+        "luck": 7,
+        "level": 17,
+        "dmg_min": 18,
+        "dmg_max": 32,
+        "hp": 19,
+        "hpmax": 137
+      },
+      "xp_before": 157,
+      "threshold_before": 170,
+      "level_before": 16,
+      "award_printed": 56,
+      "xp_after": 43,
+      "threshold_after": 180,
+      "level_after": 17,
+      "status_line": {
+        "xp": 43,
+        "threshold": 180
+      },
+      "levels_announced": 1,
+      "gains_announced": [
+        "strength",
+        "vitality"
+      ]
+    },
+    {
+      "run": "save_r2_seed3",
+      "seed": 3,
+      "frame": 61,
+      "enemy": {
+        "strength": 14,
+        "agility": 12,
+        "vitality": 21,
+        "luck": 5,
+        "level": 15,
+        "dmg_min": 7,
+        "dmg_max": 14,
+        "hp": 24,
+        "hpmax": 129
+      },
+      "player_before": {
+        "strength": 14,
+        "agility": 15,
+        "vitality": 15,
+        "luck": 17,
+        "level": 10,
+        "dmg_min": 10,
+        "dmg_max": 17,
+        "hp": 55,
+        "hpmax": 99
+      },
+      "player_after": {
+        "strength": 14,
+        "agility": 15,
+        "vitality": 15,
+        "luck": 17,
+        "level": 10,
+        "dmg_min": 10,
+        "dmg_max": 17,
+        "hp": 60,
+        "hpmax": 99
+      },
+      "xp_before": 25,
+      "threshold_before": 110,
+      "level_before": 10,
+      "award_printed": 52,
+      "xp_after": 77,
+      "threshold_after": 110,
+      "level_after": 10,
+      "status_line": {
+        "xp": 77,
+        "threshold": 110
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r2_seed3",
+      "seed": 3,
+      "frame": 129,
+      "enemy": {
+        "strength": 9,
+        "agility": 18,
+        "vitality": 19,
+        "luck": 12,
+        "level": 23,
+        "dmg_min": 4,
+        "dmg_max": 9,
+        "hp": 20,
+        "hpmax": 114
+      },
+      "player_before": {
+        "strength": 14,
+        "agility": 15,
+        "vitality": 15,
+        "luck": 17,
+        "level": 10,
+        "dmg_min": 10,
+        "dmg_max": 17,
+        "hp": 15,
+        "hpmax": 99
+      },
+      "player_after": {
+        "strength": 14,
+        "agility": 17,
+        "vitality": 15,
+        "luck": 17,
+        "level": 11,
+        "dmg_min": 10,
+        "dmg_max": 17,
+        "hp": 20,
+        "hpmax": 99
+      },
+      "xp_before": 77,
+      "threshold_before": 110,
+      "level_before": 10,
+      "award_printed": 58,
+      "xp_after": 25,
+      "threshold_after": 120,
+      "level_after": 11,
+      "status_line": {
+        "xp": 25,
+        "threshold": 120
+      },
+      "levels_announced": 1,
+      "gains_announced": [
+        "agility",
+        "agility"
+      ]
+    },
+    {
+      "run": "save_r2_seed3",
+      "seed": 3,
+      "frame": 201,
+      "enemy": {
+        "strength": 7,
+        "agility": 6,
+        "vitality": 5,
+        "luck": 14,
+        "level": 10,
+        "dmg_min": 3,
+        "dmg_max": 7,
+        "hp": 42,
+        "hpmax": 42
+      },
+      "player_before": {
+        "strength": 14,
+        "agility": 17,
+        "vitality": 15,
+        "luck": 17,
+        "level": 11,
+        "dmg_min": 10,
+        "dmg_max": 17,
+        "hp": 20,
+        "hpmax": 99
+      },
+      "player_after": {
+        "strength": 14,
+        "agility": 17,
+        "vitality": 15,
+        "luck": 17,
+        "level": 11,
+        "dmg_min": 10,
+        "dmg_max": 17,
+        "hp": 25,
+        "hpmax": 99
+      },
+      "xp_before": 25,
+      "threshold_before": 120,
+      "level_before": 11,
+      "award_printed": 32,
+      "xp_after": 57,
+      "threshold_after": 120,
+      "level_after": 11,
+      "status_line": {
+        "xp": 57,
+        "threshold": 120
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r2_seed3",
+      "seed": 3,
+      "frame": 245,
+      "enemy": {
+        "strength": 8,
+        "agility": 6,
+        "vitality": 6,
+        "luck": 14,
+        "level": 13,
+        "dmg_min": 4,
+        "dmg_max": 8,
+        "hp": 17,
+        "hpmax": 48
+      },
+      "player_before": {
+        "strength": 14,
+        "agility": 17,
+        "vitality": 15,
+        "luck": 17,
+        "level": 11,
+        "dmg_min": 10,
+        "dmg_max": 17,
+        "hp": 25,
+        "hpmax": 99
+      },
+      "player_after": {
+        "strength": 14,
+        "agility": 17,
+        "vitality": 15,
+        "luck": 17,
+        "level": 11,
+        "dmg_min": 10,
+        "dmg_max": 17,
+        "hp": 30,
+        "hpmax": 99
+      },
+      "xp_before": 57,
+      "threshold_before": 120,
+      "level_before": 11,
+      "award_printed": 34,
+      "xp_after": 91,
+      "threshold_after": 120,
+      "level_after": 11,
+      "status_line": {
+        "xp": 91,
+        "threshold": 120
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r2_seed3",
+      "seed": 3,
+      "frame": 321,
+      "enemy": {
+        "strength": 7,
+        "agility": 6,
+        "vitality": 2,
+        "luck": 5,
+        "level": 4,
+        "dmg_min": 3,
+        "dmg_max": 7,
+        "hp": 27,
+        "hpmax": 27
+      },
+      "player_before": {
+        "strength": 14,
+        "agility": 17,
+        "vitality": 15,
+        "luck": 17,
+        "level": 11,
+        "dmg_min": 10,
+        "dmg_max": 17,
+        "hp": 30,
+        "hpmax": 99
+      },
+      "player_after": {
+        "strength": 14,
+        "agility": 17,
+        "vitality": 15,
+        "luck": 17,
+        "level": 11,
+        "dmg_min": 10,
+        "dmg_max": 17,
+        "hp": 35,
+        "hpmax": 99
+      },
+      "xp_before": 91,
+      "threshold_before": 120,
+      "level_before": 11,
+      "award_printed": 20,
+      "xp_after": 111,
+      "threshold_after": 120,
+      "level_after": 11,
+      "status_line": {
+        "xp": 111,
+        "threshold": 120
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r3_seed3",
+      "seed": 3,
+      "frame": 41,
+      "enemy": {
+        "strength": 8,
+        "agility": 11,
+        "vitality": 7,
+        "luck": 25,
+        "level": 21,
+        "dmg_min": 4,
+        "dmg_max": 8,
+        "hp": 53,
+        "hpmax": 53
+      },
+      "player_before": {
+        "strength": 28,
+        "agility": 25,
+        "vitality": 28,
+        "luck": 31,
+        "level": 20,
+        "dmg_min": 24,
+        "dmg_max": 38,
+        "hp": 178,
+        "hpmax": 178
+      },
+      "player_after": {
+        "strength": 28,
+        "agility": 25,
+        "vitality": 28,
+        "luck": 31,
+        "level": 20,
+        "dmg_min": 24,
+        "dmg_max": 38,
+        "hp": 178,
+        "hpmax": 178
+      },
+      "xp_before": 3,
+      "threshold_before": 210,
+      "level_before": 20,
+      "award_printed": 51,
+      "xp_after": 54,
+      "threshold_after": 210,
+      "level_after": 20,
+      "status_line": {
+        "xp": 54,
+        "threshold": 210
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r3_seed3",
+      "seed": 3,
+      "frame": 63,
+      "enemy": {
+        "strength": 19,
+        "agility": 12,
+        "vitality": 18,
+        "luck": 7,
+        "level": 22,
+        "dmg_min": 9,
+        "dmg_max": 19,
+        "hp": 96,
+        "hpmax": 119
+      },
+      "player_before": {
+        "strength": 28,
+        "agility": 25,
+        "vitality": 28,
+        "luck": 31,
+        "level": 20,
+        "dmg_min": 24,
+        "dmg_max": 38,
+        "hp": 145,
+        "hpmax": 178
+      },
+      "player_after": {
+        "strength": 28,
+        "agility": 25,
+        "vitality": 28,
+        "luck": 31,
+        "level": 20,
+        "dmg_min": 24,
+        "dmg_max": 38,
+        "hp": 150,
+        "hpmax": 178
+      },
+      "xp_before": 54,
+      "threshold_before": 210,
+      "level_before": 20,
+      "award_printed": 56,
+      "xp_after": 110,
+      "threshold_after": 210,
+      "level_after": 20,
+      "status_line": {
+        "xp": 110,
+        "threshold": 210
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r3_seed3",
+      "seed": 3,
+      "frame": 143,
+      "enemy": {
+        "strength": 26,
+        "agility": 13,
+        "vitality": 29,
+        "luck": 10,
+        "level": 33,
+        "dmg_min": 13,
+        "dmg_max": 26,
+        "hp": 66,
+        "hpmax": 181
+      },
+      "player_before": {
+        "strength": 28,
+        "agility": 25,
+        "vitality": 28,
+        "luck": 31,
+        "level": 20,
+        "dmg_min": 24,
+        "dmg_max": 38,
+        "hp": 177,
+        "hpmax": 178
+      },
+      "player_after": {
+        "strength": 28,
+        "agility": 25,
+        "vitality": 28,
+        "luck": 31,
+        "level": 20,
+        "dmg_min": 24,
+        "dmg_max": 38,
+        "hp": 178,
+        "hpmax": 178
+      },
+      "xp_before": 110,
+      "threshold_before": 210,
+      "level_before": 20,
+      "award_printed": 78,
+      "xp_after": 188,
+      "threshold_after": 210,
+      "level_after": 20,
+      "status_line": {
+        "xp": 188,
+        "threshold": 210
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r3_seed3",
+      "seed": 3,
+      "frame": 789,
+      "enemy": {
+        "strength": 16,
+        "agility": 21,
+        "vitality": 22,
+        "luck": 9,
+        "level": 23,
+        "dmg_min": 8,
+        "dmg_max": 16,
+        "hp": 12,
+        "hpmax": 136
+      },
+      "player_before": {
+        "strength": 28,
+        "agility": 25,
+        "vitality": 28,
+        "luck": 31,
+        "level": 20,
+        "dmg_min": 24,
+        "dmg_max": 38,
+        "hp": 158,
+        "hpmax": 178
+      },
+      "player_after": {
+        "strength": 29,
+        "agility": 25,
+        "vitality": 28,
+        "luck": 32,
+        "level": 21,
+        "dmg_min": 24,
+        "dmg_max": 39,
+        "hp": 164,
+        "hpmax": 179
+      },
+      "xp_before": 188,
+      "threshold_before": 210,
+      "level_before": 20,
+      "award_printed": 68,
+      "xp_after": 46,
+      "threshold_after": 220,
+      "level_after": 21,
+      "status_line": {
+        "xp": 46,
+        "threshold": 220
+      },
+      "levels_announced": 1,
+      "gains_announced": [
+        "strength",
+        "luck"
+      ]
+    },
+    {
+      "run": "save_r3_seed3",
+      "seed": 3,
+      "frame": 823,
+      "enemy": {
+        "strength": 36,
+        "agility": 10,
+        "vitality": 19,
+        "luck": 19,
+        "level": 35,
+        "dmg_min": 18,
+        "dmg_max": 36,
+        "hp": 23,
+        "hpmax": 141
+      },
+      "player_before": {
+        "strength": 29,
+        "agility": 25,
+        "vitality": 28,
+        "luck": 32,
+        "level": 21,
+        "dmg_min": 24,
+        "dmg_max": 39,
+        "hp": 117,
+        "hpmax": 179
+      },
+      "player_after": {
+        "strength": 29,
+        "agility": 25,
+        "vitality": 28,
+        "luck": 32,
+        "level": 21,
+        "dmg_min": 24,
+        "dmg_max": 39,
+        "hp": 122,
+        "hpmax": 179
+      },
+      "xp_before": 46,
+      "threshold_before": 220,
+      "level_before": 21,
+      "award_printed": 84,
+      "xp_after": 130,
+      "threshold_after": 220,
+      "level_after": 21,
+      "status_line": {
+        "xp": 130,
+        "threshold": 220
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r3_seed3",
+      "seed": 3,
+      "frame": 849,
+      "enemy": {
+        "strength": 15,
+        "agility": 19,
+        "vitality": 9,
+        "luck": 16,
+        "level": 25,
+        "dmg_min": 7,
+        "dmg_max": 15,
+        "hp": 15,
+        "hpmax": 70
+      },
+      "player_before": {
+        "strength": 29,
+        "agility": 25,
+        "vitality": 28,
+        "luck": 32,
+        "level": 21,
+        "dmg_min": 24,
+        "dmg_max": 39,
+        "hp": 83,
+        "hpmax": 179
+      },
+      "player_after": {
+        "strength": 29,
+        "agility": 25,
+        "vitality": 28,
+        "luck": 32,
+        "level": 21,
+        "dmg_min": 24,
+        "dmg_max": 39,
+        "hp": 88,
+        "hpmax": 179
+      },
+      "xp_before": 130,
+      "threshold_before": 220,
+      "level_before": 21,
+      "award_printed": 59,
+      "xp_after": 189,
+      "threshold_after": 220,
+      "level_after": 21,
+      "status_line": {
+        "xp": 189,
+        "threshold": 220
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r4_seed4",
+      "seed": 4,
+      "frame": 43,
+      "enemy": {
+        "strength": 35,
+        "agility": 31,
+        "vitality": 36,
+        "luck": 34,
+        "level": 62,
+        "dmg_min": 17,
+        "dmg_max": 35,
+        "hp": 114,
+        "hpmax": 225
+      },
+      "player_before": {
+        "strength": 40,
+        "agility": 45,
+        "vitality": 44,
+        "luck": 52,
+        "level": 30,
+        "dmg_min": 31,
+        "dmg_max": 51,
+        "hp": 218,
+        "hpmax": 270
+      },
+      "player_after": {
+        "strength": 40,
+        "agility": 45,
+        "vitality": 44,
+        "luck": 52,
+        "level": 30,
+        "dmg_min": 31,
+        "dmg_max": 51,
+        "hp": 223,
+        "hpmax": 270
+      },
+      "xp_before": 33,
+      "threshold_before": 310,
+      "level_before": 30,
+      "award_printed": 136,
+      "xp_after": 169,
+      "threshold_after": 310,
+      "level_after": 30,
+      "status_line": {
+        "xp": 169,
+        "threshold": 310
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r4_seed4",
+      "seed": 4,
+      "frame": 101,
+      "enemy": {
+        "strength": 25,
+        "agility": 32,
+        "vitality": 6,
+        "luck": 31,
+        "level": 41,
+        "dmg_min": 12,
+        "dmg_max": 25,
+        "hp": 65,
+        "hpmax": 65
+      },
+      "player_before": {
+        "strength": 40,
+        "agility": 45,
+        "vitality": 44,
+        "luck": 52,
+        "level": 30,
+        "dmg_min": 31,
+        "dmg_max": 51,
+        "hp": 250,
+        "hpmax": 270
+      },
+      "player_after": {
+        "strength": 40,
+        "agility": 45,
+        "vitality": 44,
+        "luck": 52,
+        "level": 30,
+        "dmg_min": 31,
+        "dmg_max": 51,
+        "hp": 255,
+        "hpmax": 270
+      },
+      "xp_before": 169,
+      "threshold_before": 310,
+      "level_before": 30,
+      "award_printed": 94,
+      "xp_after": 263,
+      "threshold_after": 310,
+      "level_after": 30,
+      "status_line": {
+        "xp": 263,
+        "threshold": 310
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r4_seed4",
+      "seed": 4,
+      "frame": 305,
+      "enemy": {
+        "strength": 27,
+        "agility": 45,
+        "vitality": 37,
+        "luck": 33,
+        "level": 65,
+        "dmg_min": 13,
+        "dmg_max": 27,
+        "hp": 24,
+        "hpmax": 222
+      },
+      "player_before": {
+        "strength": 40,
+        "agility": 45,
+        "vitality": 44,
+        "luck": 52,
+        "level": 30,
+        "dmg_min": 31,
+        "dmg_max": 51,
+        "hp": 130,
+        "hpmax": 270
+      },
+      "player_after": {
+        "strength": 40,
+        "agility": 46,
+        "vitality": 45,
+        "luck": 52,
+        "level": 31,
+        "dmg_min": 31,
+        "dmg_max": 51,
+        "hp": 140,
+        "hpmax": 275
+      },
+      "xp_before": 263,
+      "threshold_before": 310,
+      "level_before": 30,
+      "award_printed": 142,
+      "xp_after": 95,
+      "threshold_after": 320,
+      "level_after": 31,
+      "status_line": {
+        "xp": 95,
+        "threshold": 320
+      },
+      "levels_announced": 1,
+      "gains_announced": [
+        "agility",
+        "vitality"
+      ]
+    },
+    {
+      "run": "save_r4_seed4",
+      "seed": 4,
+      "frame": 485,
+      "enemy": {
+        "strength": 31,
+        "agility": 34,
+        "vitality": 10,
+        "luck": 33,
+        "level": 48,
+        "dmg_min": 15,
+        "dmg_max": 31,
+        "hp": 26,
+        "hpmax": 91
+      },
+      "player_before": {
+        "strength": 40,
+        "agility": 46,
+        "vitality": 45,
+        "luck": 52,
+        "level": 31,
+        "dmg_min": 31,
+        "dmg_max": 51,
+        "hp": 177,
+        "hpmax": 275
+      },
+      "player_after": {
+        "strength": 40,
+        "agility": 46,
+        "vitality": 45,
+        "luck": 52,
+        "level": 31,
+        "dmg_min": 31,
+        "dmg_max": 51,
+        "hp": 182,
+        "hpmax": 275
+      },
+      "xp_before": 95,
+      "threshold_before": 320,
+      "level_before": 31,
+      "award_printed": 108,
+      "xp_after": 203,
+      "threshold_after": 320,
+      "level_after": 31,
+      "status_line": {
+        "xp": 203,
+        "threshold": 320
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    },
+    {
+      "run": "save_r4_seed4",
+      "seed": 4,
+      "frame": 767,
+      "enemy": {
+        "strength": 47,
+        "agility": 40,
+        "vitality": 67,
+        "luck": 58,
+        "level": 102,
+        "dmg_min": 23,
+        "dmg_max": 47,
+        "hp": 39,
+        "hpmax": 392
+      },
+      "player_before": {
+        "strength": 40,
+        "agility": 46,
+        "vitality": 45,
+        "luck": 52,
+        "level": 31,
+        "dmg_min": 31,
+        "dmg_max": 51,
+        "hp": 46,
+        "hpmax": 275
+      },
+      "player_after": {
+        "strength": 41,
+        "agility": 46,
+        "vitality": 46,
+        "luck": 52,
+        "level": 32,
+        "dmg_min": 31,
+        "dmg_max": 52,
+        "hp": 57,
+        "hpmax": 281
+      },
+      "xp_before": 203,
+      "threshold_before": 320,
+      "level_before": 31,
+      "award_printed": 212,
+      "xp_after": 95,
+      "threshold_after": 330,
+      "level_after": 32,
+      "status_line": {
+        "xp": 95,
+        "threshold": 330
+      },
+      "levels_announced": 1,
+      "gains_announced": [
+        "strength",
+        "vitality"
+      ]
+    },
+    {
+      "run": "save_r4_seed4",
+      "seed": 4,
+      "frame": 781,
+      "enemy": {
+        "strength": 13,
+        "agility": 18,
+        "vitality": 5,
+        "luck": 24,
+        "level": 27,
+        "dmg_min": 6,
+        "dmg_max": 13,
+        "hp": 48,
+        "hpmax": 48
+      },
+      "player_before": {
+        "strength": 41,
+        "agility": 46,
+        "vitality": 46,
+        "luck": 52,
+        "level": 32,
+        "dmg_min": 31,
+        "dmg_max": 52,
+        "hp": 66,
+        "hpmax": 281
+      },
+      "player_after": {
+        "strength": 41,
+        "agility": 46,
+        "vitality": 46,
+        "luck": 52,
+        "level": 32,
+        "dmg_min": 31,
+        "dmg_max": 52,
+        "hp": 71,
+        "hpmax": 281
+      },
+      "xp_before": 95,
+      "threshold_before": 330,
+      "level_before": 32,
+      "award_printed": 60,
+      "xp_after": 155,
+      "threshold_after": 330,
+      "level_after": 32,
+      "status_line": {
+        "xp": 155,
+        "threshold": 330
+      },
+      "levels_announced": 0,
+      "gains_announced": []
+    }
+  ],
+  "capture_notes": [],
+  "class_weights": [
+    [
+      1,
+      2,
+      1,
+      2
+    ],
+    [
+      2,
+      2,
+      2,
+      3
+    ],
+    [
+      2,
+      2,
+      2,
+      2
+    ],
+    [
+      3,
+      3,
+      3,
+      3
+    ],
+    [
+      5,
+      2,
+      4,
+      1
+    ],
+    [
+      4,
+      3,
+      3,
+      2
+    ],
+    [
+      3,
+      3,
+      2,
+      4
+    ],
+    [
+      5,
+      3,
+      4,
+      2
+    ],
+    [
+      5,
+      5,
+      5,
+      5
+    ],
+    [
+      5,
+      6,
+      8,
+      3
+    ],
+    [
+      0,
+      0,
+      0,
+      0
+    ]
+  ],
+  "class_names": [
+    "Дохляк",
+    "Нефор",
+    "Нарк",
+    "Подтсан",
+    "Отморозок",
+    "Гопник",
+    "Вор",
+    "Беспредельщик",
+    "Мент",
+    "Маньячок",
+    "Ректор НГУ"
+  ],
+  "start_stats": {
+    "0": [
+      3,
+      3,
+      3,
+      3
+    ],
+    "1": [
+      5,
+      2,
+      4,
+      1
+    ],
+    "2": [
+      4,
+      3,
+      3,
+      2
+    ],
+    "3": [
+      3,
+      3,
+      2,
+      4
+    ]
+  },
+  "class_of_answer_offset": 3,
+  "post_kill_stat_events_is": "One-shot stat grants in the post-kill block of FUN_1000_3d11, each behind the flag byte at `flag_save_offset` in the .SAV file. They fire only when the Random(0x1e) at 1000:52d5 comes up 0 and the flag is still clear. `deltas` are decoded out of the instructions at `at`, not transcribed by hand. These are not level-ups; they are the reason a character's stats exceed what its growth log alone accounts for.",
+  "post_kill_stat_events": [
+    {
+      "name": "event_1",
+      "flag_save_offset": 547,
+      "at": "1000:532f",
+      "deltas": {
+        "strength": 1,
+        "agility": 1,
+        "vitality": 1,
+        "luck": 1,
+        "hpmax": 6,
+        "hp": 6,
+        "dmg_max": 1
+      },
+      "non_constant_writes": [
+        "1000:535e add [dmg_min],reg"
+      ],
+      "note": "dmg_min also gains `1 - strength mod 2` (1000:534d..1000:5361), which is not a constant and so is not in `deltas`."
+    },
+    {
+      "name": "event_2",
+      "flag_save_offset": 548,
+      "at": "1000:538a",
+      "deltas": {
+        "strength": 4,
+        "agility": 4,
+        "vitality": 4,
+        "luck": 4,
+        "hpmax": 24,
+        "hp": 24,
+        "dmg_max": 4,
+        "dmg_min": 2
+      },
+      "non_constant_writes": [],
+      "note": ""
+    },
+    {
+      "name": "luck_plus_2",
+      "flag_save_offset": 545,
+      "at": "1000:5493",
+      "deltas": {
+        "luck": 2
+      },
+      "non_constant_writes": [],
+      "note": ""
+    },
+    {
+      "name": "luck_plus_1",
+      "flag_save_offset": 546,
+      "at": "1000:54c4",
+      "deltas": {
+        "luck": 1
+      },
+      "non_constant_writes": [],
+      "note": ""
+    }
+  ]
+}

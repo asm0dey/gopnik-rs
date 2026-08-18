@@ -295,12 +295,18 @@ so `threshold(level) = 10 + 10 * level`, starting at 10 for a fresh level-0
 character. Verified against every reference save: `(level 15, 160)`,
 `(10, 110)`, `(20, 210)`, `(30, 310)`, `(40, 410)`, and against a fresh
 character, which the game shows as `Сейчас у тебя 0 опыта, А для прокачки
-надо 10`. Each level grants **two** stat increases (`1000:2567`, the
+надо 10`. Each level grants **two** stat increases (`1000:287d`, the inner
 loop bound), drawn by `Random(sum of four class weights)` against a per-class
 weight table of four bytes at `DS:(class * 4 + 2)` — `1000:25aa`..`1000:25b6`
 reads `[[0x389c] * 4 + 5]` and the three siblings follow. Level is capped at
-40 (`1000:2580`). Full treatment belongs to Task 9b; recorded here because
-the award is computed inside the combat function.
+40 (`1000:2580`), unless the caller passes `param_1 <> 0`.
+
+**Task 9b carries this through**: `docs/re/progression.md` has the full
+level-up routine with its side effects, the weight table read out of the
+image, character creation, and 30 kills captured from the original that
+confirm both the award and the threshold arithmetic. `src/progress.rs` is the
+port. It is recorded here as well because the award is computed inside the
+combat function.
 
 ## Seed pinning
 
@@ -546,11 +552,12 @@ constrain it.
   This is a finding, not an omission — but it means the brief's "level 1 vs a
   level 6 fighter" coverage row cannot distinguish a right implementation
   from a wrong one.
-* **`+0x00`, the rank/class index.** It selects the displayed name
-  (`DS:002e` table) and the per-class stat-growth weights at `DS:(v*4+2)`.
-  A fresh `0-Пацан` character gets `3`; `SAVE_R2` has `6`. The mapping from
-  the class the player picks to this value is not established here, and the
-  `DS:0002` weight table has not been read out. Task 9b's territory.
+* **`+0x00`, the rank/class index — closed by Task 9b.** It selects the
+  displayed name (`DS:002e` table) and the per-class stat-growth weights at
+  `DS:(v*4+2)`. The stored value is the class prompt's answer plus 3
+  (`1000:712a`, `1000:71b8`), so a fresh `0-Пацан` gets `3` and `3-Вор` gets
+  `6`, matching `SAVE_R2`. All eleven rank names and weight rows are read out
+  of the image into `data/xp.json`; see `docs/re/progression.md`.
 * **The `string[2]` array at `+0x33`.** Indexed by level, holding the codes
   `'1'`..`'4'` for which stats each level granted, written by
   `FUN_1000_2526` next to each `^1Сила +1`-style message (the first at
@@ -564,7 +571,10 @@ constrain it.
   11 must reproduce this to keep a whole battle in sync; it is outside a
   single blow and so outside `src/combat.rs`.
 * **Twelve more `Random` call sites inside `FUN_1000_3d11` are recorded here
-  but not mapped.** (fix wave 1) Of the function's 27 `call 1f78:114b`
+  but not mapped.** (fix wave 1; **eight of the twelve — the whole post-kill
+  group — were mapped by Task 9b, see `docs/re/progression.md`, "The post-kill
+  stat-gain block". The four flee/other-command sites are still unmapped.**)
+  Of the function's 27 `call 1f78:114b`
   (`System.Random`) sites, the blow loops and the spectator taunt block above
   account for 15; these 12 do not, and a whole-battle differential replay
   (Task 12) will desynchronise on every one of them unless they are

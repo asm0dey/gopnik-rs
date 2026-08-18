@@ -13,7 +13,7 @@ Every `.SAV` file is exactly 694 bytes.
 |--------|---------------|-----|--------------|----------------------------------|
 | 0x000  | `pstring`     | 256 | `magic`      | confirmed — constant version banner |
 | 0x100  | `pstring`     | 256 | `name`       | confirmed — player name, colour-prefixed |
-| 0x200  | `u16`         | 2   | `rank_index` | confirmed (Task 9) — indexes the `DS:002e` name table; the class-choice → value mapping is still open, see below |
+| 0x200  | `u16`         | 2   | `rank_index` | confirmed (Task 9) — indexes the `DS:002e` name table **and** the `DS:0002` growth-weight table; the class-choice → value mapping was closed by Task 9b, see below |
 | 0x202  | `u16`         | 2   | `strength`   | confirmed (Task 9) |
 | 0x204  | `u16`         | 2   | `agility`    | confirmed (Task 9) |
 | 0x206  | `u16`         | 2   | `vitality`   | confirmed (Task 9) |
@@ -80,33 +80,40 @@ files (not taken on the report's word):
   `1000:258a` increments the `+0x0a` word under
   `^1Понтовость увеличивается:`, capped at 40 (`1000:2580`).
 - **`hpmax == 10 + 5*vitality + strength` holds exactly for `SAVE_R0`,
-  `SAVE_R3`, `SAVE_R5`** (129, 178, 325 — all match). It is off by 2 on both
-  `SAVE_R2` and `SAVE_R4` (predicts 101 and 272 against actual 99 and 270),
-  most plausibly equipment or a buff/debuff this record's base stats don't
-  carry — not investigated further here, and not a reason to doubt the
-  field identities, since three of five match exactly and the pattern
-  (`strength`/`vitality`, not some other pair) is what makes any of the
-  five saves match at all.
+  `SAVE_R3`, `SAVE_R5`** (129, 178, 325 — all match). It was off by 2 on
+  both `SAVE_R2` and `SAVE_R4` (predicting 101 and 272 against actual 99 and
+  270). **Task 9b resolved this**: a temporary buff at `1000:4b57` adds
+  `+2 strength` (and `+1`/`+2` damage) without touching `hpmax`, and
+  `1000:aeb3` takes it back when the countdown byte at **`0x231`** runs out.
+  That byte is nonzero in exactly `SAVE_R2` (1) and `SAVE_R4` (2) and zero in
+  the other three, so `hpmax == 10 + 5*vitality + strength - 2*(buff active)`
+  holds on all five. See `docs/re/progression.md`, "Cross-checks"; asserted
+  by `tests/progression.rs::reference_saves_agree_with_the_curve`.
 - **`agility`** is corroborated separately, live: `docs/re/combat.md` and
   `src/combat.rs` cite `SAVE_R2` printing `Точность 90%` at agility 15 and
   `SAVE_R5` printing `- 6 ударов` at agility 120 — both exactly the `0x204`
   word for those saves.
 
-**`rank_index` keeps that name, not a guess at what it selects.** Its role
-(a name-table index) is established; the mapping from the class the player
-picks to this stored value is not (`DS:0002`'s per-class weight table has
-not been read out) — Task 9b's territory, per `docs/re/combat.md`'s open
-questions.
+**`rank_index`'s mapping is now established (Task 9b).** The character
+creation block stores the class prompt's answer plus 3 (`1000:712a`,
+`1000:71b8`), so `0-Пацан` → 3 (Подтсан), `1-Отморозок` → 4, `2-Гопник` → 5,
+`3-Вор` → 6. The same word indexes both the `DS:002e` rank-name table and the
+`DS:0002` growth-weight table, and a class's starting stats are exactly its
+weight row. All eleven names and weights are in `data/xp.json`; addresses in
+`docs/re/progression.md`.
 
 ## Unknown / not yet established
 
 - **The 162-byte tail at 0x214–0x2b9.** Carried as opaque `bytes` for an
-  exact round trip. It is known to contain a run of Pascal `string[2]`
-  records among flags/counters, per the brief, and to hold the XP total at
-  `+0x32` (save offset `0x232`) and the next-level threshold at `+0x34`
-  (`0x234`, used above), but the run has not been segmented into individual
-  fields.
-- **The `rank_index → display name` mapping**, per the note above.
+  exact round trip. Task 9b named part of it: the four one-shot post-kill
+  event flags at `0x221`–`0x225`, the temporary-buff countdown at `0x231`,
+  the XP total at `0x232`, the next-level threshold at `0x234`, and the
+  growth log at `0x236`–`0x2ad` — an `array[1..40] of string[2]` holding the
+  codes `'1'`..`'4'` for which two stats each level granted
+  (`1000:2641`..`1000:267a`). It decodes cleanly in all five saves: exactly
+  `level` entries of exactly two codes, and nothing after them. The rest of
+  the tail, including `0x214`–`0x220` and `0x22e`–`0x230` and everything
+  past `0x2ad`, is still unsegmented.
 
 Per project convention, a field whose meaning is not confirmed stays named
 `unk_<hex_offset>`; none of the eight stat words qualify for that any more,
