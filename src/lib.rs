@@ -1,6 +1,7 @@
 pub mod combat;
 pub mod commands;
 pub mod data;
+pub mod game;
 pub mod locations;
 pub mod model;
 pub mod progress;
