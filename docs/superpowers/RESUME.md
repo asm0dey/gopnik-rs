@@ -477,6 +477,27 @@ game needs the text, not the `suspect` flag or the RE offsets.
 
 ## Carried forward — Task 11 must handle
 
+- **The game MUST run with no save files present, and it currently CANNOT.**
+  `src/save.rs` exposes only `Save::parse(bytes)` — there is no constructor for
+  a new character — and `to_bytes()` starts from `self.raw.clone()`, i.e. a
+  pre-existing 694-byte image. That design is right for round-trip fidelity
+  (Borland never clears shortstring padding, so those bytes must be preserved),
+  but it leaves no path to CREATE a save.
+
+  **Do not invent the missing bytes.** Two spans are genuinely unknown —
+  `unk_0214` (29 B) and `unk_02ae` (8 B) — and "save file bytes must match the
+  original exactly" is a top-level constraint. Zeroing them is a guess.
+
+  Correct approach: capture an authoritative new-character template from the
+  original under the oracle (start a new game, save immediately, extract the
+  `.SAV`), commit it as a `data/` artifact, and have `Save::new_game(...)`
+  start from those real bytes. Same principle as every other artifact here.
+
+  `PLACES.SAV` needs the same: 7 bytes, one flag per rediscoverable location,
+  created when absent. Note `docs/re/tables.md:460` records a `PLACES.SAV` with
+  all seven flags set, which is a captured state, not necessarily the initial
+  one — capture a fresh one rather than reusing it.
+
 - **No JSON ships as a file — the app is a single self-contained binary.**
   `src/data.rs:127-129` embeds `items.json`, `shops.json`, `enemies.json` via
   `include_str!`; there are no runtime file reads anywhere in `src/`.
