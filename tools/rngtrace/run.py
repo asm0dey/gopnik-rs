@@ -5,9 +5,11 @@
         --walks 30 --class-answer 0 --out build/rngtrace/trace-A.json
 
 One command, no manual gdb steps.  Every exit path kills the VM.  A run that
-logs no draws, that cannot install its breakpoints, or whose draw stream does
-not replay against the pinned seed exits non-zero -- it never writes a short
-trace and calls it evidence.
+logs no draws, that cannot install its breakpoints, whose gdb script aborted
+mid-walk, whose walks did not all reach the top-level prompt, or whose draw
+stream does not replay against the pinned seed exits non-zero -- it never
+writes a short trace and calls it evidence.  tracelog.verify_run holds the
+guards and states what each one defends against.
 """
 import argparse
 import json
@@ -18,23 +20,20 @@ from pathlib import Path
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from rngtrace import (driver, gdbsession, loadbase, rng, seedpatch,
+    from rngtrace import (driver, gdbsession, loadbase, seedpatch,
                           tracelog, vm)
 else:
-    from . import driver, gdbsession, loadbase, rng, seedpatch, tracelog, vm
+    from . import driver, gdbsession, loadbase, seedpatch, tracelog, vm
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_SEED = 0x12345678
 
-# Image offsets used for the runtime verifications.
-IMAGE_OFF_RANDOM = 0xF78 * 16 + 0x114B        # 0x108cb -- file 0x1219b
-IMAGE_OFF_RANDOMIZE = 0xF78 * 16 + 0x11E0     # 0x10960 -- file 0x12230
-IMAGE_OFF_RANDSEED = 0x10AE0 + 0x367E         # 0x1415e -- DS:367e, file 0x15a2e
-FILE_OFF_RANDOM = 0x1219B
-
+# The guest-memory verification that used to live here is loadbase.verify_guest_code:
+# it is a pure computation over a memory image, and it is the defence against
+# attaching at a wrong base, so it belongs where it can be unit tested.
 
 # DS is Ghidra 20ae; image offset of DS:0000 is (0x20ae - 0x1000) * 16.
-DS_IMAGE_OFF = 0x10AE0
+DS_IMAGE_OFF = loadbase.DATA_SEG_IMAGE_OFF
 # Field offsets within DS, from docs/re/combat.md's fighter record and
 # docs/re/wander.md's globals.  Read only, purely to record what state the
 # gates were evaluated against.
@@ -63,50 +62,9 @@ def read_state(mem, base):
         out[name] = int.from_bytes(mem[at:at + 2], "little")
     for name, off in sorted(STATE_BYTES.items()):
         out[name] = mem[base + DS_IMAGE_OFF + off]
-    out["randseed_367e"] = int.from_bytes(
-        mem[base + IMAGE_OFF_RANDSEED: base + IMAGE_OFF_RANDSEED + 4], "little")
+    at = base + loadbase.IMAGE_OFF_RANDSEED
+    out["randseed_367e"] = int.from_bytes(mem[at:at + 4], "little")
     return out
-
-
-def verify_guest_code(mem, exe, base, seed):
-    """Check the guest really holds OUR image at OUR base before breaking on it.
-
-    A breakpoint on the wrong address produces a plausible EMPTY trace, which is
-    the worst failure mode this harness has.
-    """
-    out = {}
-    want = exe[FILE_OFF_RANDOM:FILE_OFF_RANDOM + 29]
-    got = bytes(mem[base + IMAGE_OFF_RANDOM: base + IMAGE_OFF_RANDOM + 29])
-    if got != want:
-        raise RuntimeError("guest code at linear 0x%x is %s, expected Random %s"
-                           % (base + IMAGE_OFF_RANDOM, got.hex(" "), want.hex(" ")))
-    # The instruction encoding itself, re-checked here rather than trusted:
-    # `mul word [ss:bx+0x4]` twice and a `retf 2` tail is Random(Word), not a
-    # neighbouring routine.
-    if got.count(bytes.fromhex("36f76704")) != 2 or got[26:29] != bytes.fromhex("ca0200"):
-        raise RuntimeError("bytes at Random do not look like the 32x16 high take: %s"
-                           % got.hex(" "))
-    out["random_linear"] = "0x%X" % (base + IMAGE_OFF_RANDOM)
-    out["random_bytes"] = got.hex(" ")
-
-    patched = seedpatch.build_patch(seed)
-    gotp = bytes(mem[base + IMAGE_OFF_RANDOMIZE: base + IMAGE_OFF_RANDOMIZE + len(patched)])
-    if gotp != patched:
-        raise RuntimeError("seed patch is not in guest memory at linear 0x%x: %s"
-                           % (base + IMAGE_OFF_RANDOMIZE, gotp.hex(" ")))
-    out["randomize_linear"] = "0x%X" % (base + IMAGE_OFF_RANDOMIZE)
-    out["randomize_bytes"] = gotp.hex(" ")
-
-    randseed = int.from_bytes(mem[base + IMAGE_OFF_RANDSEED: base + IMAGE_OFF_RANDSEED + 4],
-                              "little")
-    out["randseed_at_attach"] = "0x%08X" % randseed
-    if randseed == 0:
-        out["randseed_state"] = "image value -- patched Randomize has not run yet"
-    elif randseed == seed:
-        out["randseed_state"] = "pinned seed in place, no draw has been spent yet"
-    else:
-        out["randseed_state"] = "already stepped -- draws happened before the attach"
-    return out, randseed
 
 
 def main(argv=None):
@@ -157,24 +115,25 @@ def main(argv=None):
         mem = machine.dump_memory()
         base_info = loadbase.derive(mem, exe)
         base = base_info["image_base"]
-        checks, randseed = verify_guest_code(mem, exe, base, seed)
-        if randseed not in (0, seed):
-            raise RuntimeError(
-                "RandSeed is already 0x%08X before the breakpoint could be "
-                "installed: draws were spent before the attach, so any trace "
-                "from this run would be missing its head." % randseed)
+        checks, randseed = loadbase.verify_guest_code(
+            mem, exe, base, seed, seedpatch.build_patch(seed))
 
         script = work / "trace.gdb"
         log = work / "trace.gdb.log"
-        script.write_text(gdbsession.build_script(base, log, args.gdb_port))
+        script.write_text(gdbsession.build_script(base, args.gdb_port))
         gdb = gdbsession.GdbSession(script, log).start()
         gdb.wait_ready()
 
         creation = driver.create_character(machine, args.class_answer,
                                           district=args.district)
         log_before = log.stat().st_size
+        # Screens either side of the drive: a guest that never ran -- because
+        # the gdb script aborted and left it stopped at a breakpoint -- shows a
+        # byte-identical screen while the driver types happily into it.
+        screen_before = machine.screen()
         drive_log = driver.walk(machine, args.walks)
         time.sleep(1.5)
+        screen_after = machine.screen()
         # Liveness, checked before the VM goes away: a dead gdb or a log that
         # stopped growing means the trace is truncated, and a truncated trace
         # must never be published as if it were the whole stream.
@@ -197,23 +156,20 @@ def main(argv=None):
 
     text = log.read_text(errors="replace")
     parsed = tracelog.parse(text)
-    verification = tracelog.verify(parsed, seed, min_draws=args.min_draws)
-    if parsed["ready"]["image_base"] != base:
+    if parsed["ready"] is not None and parsed["ready"]["image_base"] != base:
         raise RuntimeError("gdb attached at a different base than derived")
-
-    # Second completeness check, at the state tier: replaying the LCG one step
-    # per logged draw must land exactly on the RandSeed the guest ended with.
-    # A draw the tracer failed to log would leave the guest ahead of the replay.
-    expected_seed = seed
-    for _ in parsed["draws"]:
-        expected_seed = rng.step(expected_seed)
-    if final_state["randseed_367e"] != expected_seed:
-        raise RuntimeError(
-            "final RandSeed 0x%08X does not match the replay of %d logged draws "
-            "(0x%08X): the trace is incomplete."
-            % (final_state["randseed_367e"], len(parsed["draws"]), expected_seed))
-    verification["final_randseed"] = "0x%08X" % final_state["randseed_367e"]
-    verification["final_randseed_matches_replay"] = True
+    # EVERY guard, in one keyword-only call: leaving one out is a TypeError
+    # here rather than a quietly weaker run.  See tracelog's module docstring
+    # for what each guard defends against.
+    verification = tracelog.verify_run(
+        parsed, seed,
+        walks=args.walks,
+        load_seg=base_info["load_seg"],
+        screen_before=screen_before,
+        screen_after=screen_after,
+        randseed_at_attach=randseed,
+        randseed_final=final_state["randseed_367e"],
+        min_draws=args.min_draws)
 
     result = {
         "note": ("Live Random trace of orig/g.exe under qemu+gdb with RandSeed "
@@ -240,9 +196,11 @@ def main(argv=None):
         },
         "run": {
             "walks_requested": args.walks,
-            "class_answer": args.class_answer,
-            "class_value": driver.CLASS_VALUE[args.class_answer],
-            "class_name": driver.CLASS_ANSWERS[args.class_answer],
+            # The class comes from the guest, never from the CLI answer: with a
+            # save loaded the class prompt is never reached.  See class_record.
+            **driver.class_record(args.class_answer,
+                                  bool(creation.get("loaded_save")),
+                                  final_state["class_389c"]),
             "district_key": args.district,
             "saves_copied": saves_copied,
             "creation": creation,

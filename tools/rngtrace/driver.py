@@ -20,10 +20,48 @@ CLASS_ANSWERS = {0: "\u041f\u0430\u0446\u0430\u043d", 1: "\u041e\u0442\u043c\u04
                  2: "\u0413\u043e\u043f\u043d\u0438\u043a", 3: "\u0412\u043e\u0440"}
 # The stored class value is the menu answer + 3 (1000:71b8).
 CLASS_VALUE = {0: 3, 1: 4, 2: 5, 3: 6}
+CLASS_NAME_BY_VALUE = {v: CLASS_ANSWERS[k] for k, v in CLASS_VALUE.items()}
 
 
 class DriveError(RuntimeError):
     pass
+
+
+def class_record(class_answer, loaded_save, class_389c):
+    """What class the run ACTUALLY held, and where that came from.
+
+    `--class-answer` is only what the driver typed at the creation menu.  When a
+    save is loaded that menu is never reached, so the answer says nothing about
+    the character -- Task 11d's run E loaded SAVE_R3.SAV (a Вор, class 6) and
+    still recorded `class_value: 3` from the CLI default, a wrong field about
+    the original in a committed artifact.  The guest's own DS:389c is the
+    evidence; the answer is at most a corroboration of it, and when the two
+    disagree on a run that DID create a character the answer landed in the wrong
+    prompt (which has happened -- see this module's docstring), so that is an
+    error rather than a note.
+    """
+    rec = {
+        "class_value": class_389c,
+        "class_name": CLASS_NAME_BY_VALUE.get(class_389c),
+        "class_source": "read from the guest's own DS:389c at the end of the run",
+    }
+    if loaded_save:
+        rec["class_answer"] = None
+        rec["class_answer_note"] = (
+            "a save was loaded: the class prompt was never reached, so "
+            "--class-answer describes nothing about this run")
+        return rec
+    rec["class_answer"] = class_answer
+    want = CLASS_VALUE[class_answer]
+    if want != class_389c:
+        raise DriveError(
+            "the driver answered %d at the class menu (class %d, %s) but the "
+            "guest holds class %d (%s) at DS:389c: the answer did not land in "
+            "the class prompt, so this character is not the one asked for"
+            % (class_answer, want, CLASS_NAME_BY_VALUE.get(want), class_389c,
+               CLASS_NAME_BY_VALUE.get(class_389c)))
+    rec["class_answer_agrees_with_guest"] = True
+    return rec
 
 
 def last_line(screen: str) -> str:

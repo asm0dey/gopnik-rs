@@ -168,14 +168,73 @@ the run fails loudly instead:
   `(step^k(seed) * n) >> 32`. A MISSED draw desynchronises the LCG and every
   later prediction fails. This works because `Random` is the sole runtime path
   into `@Rand`: `orig/g.exe` contains **86** far calls to `0f78:114b`, **0** to
-  `0f78:11a8`, **0** to `0f78:1168`, and no near call reaches any of them from
-  outside `Random` itself (checked by decoding every `e8` in the segment).
+  `0f78:11a8` and **0** to `0f78:1168`. The only other `@Rand` caller,
+  `0f78:1168` (the Real-valued `Random`), is itself a *near* caller of `@Rand`
+  — but it is never far called, so nothing reaches it at runtime, and no other
+  near call reaches either from outside `Random` (checked by decoding every
+  `e8` in the segment).
 * **final `RandSeed` (state-tier completeness)** — at the end of the run the
   guest's own `RandSeed` is read back and must equal the seed stepped once per
   logged draw. An unlogged draw would leave the guest ahead of the replay.
 
 Both completeness checks passed on every run below, with zero leading states
 skipped.
+
+### The guard the first five missed (fix wave 1)
+
+A gdb command error inside the `while 1` loop aborts the sourced script and
+drops gdb to its prompt **with the guest stopped at a breakpoint**. Every guard
+above passes there, and this is the point: gdb is alive; the log grew, because
+gdb's own error text grew it; the frozen screen still classifies as the street
+prompt, so `driver.walk` types `w` the requested number of times and returns
+normally, inside budget; the truncated prefix replays against the LCG perfectly,
+because a prefix is self-consistent; and the stopped guest spends no further
+draws, so its final `RandSeed` still equals the replay of the logged prefix. The
+result is a trace with the first 40 of 393 draws that exits 0 and reads as
+evidence the other 353 did not happen — the third disguise of the one failure
+this harness exists to prevent.
+
+Three more guards, each with a unit test that fails without it:
+
+* **walk** (flow tier, and the decisive one) — every `w` typed at the street
+  prompt must produce a stop at the top-level `ReadLn` (`1000:ae63`), so
+  `prompt_stops >= walks` or the run errors. A guest that stopped progressing
+  cannot produce them, however healthy its screen looked. All five runs below
+  recorded `prompt_stops == walks + 1` (the prompt before the first `w`, then
+  one per completed turn).
+* **abort message** (log tier) — the harness's own shutdown aborts the script
+  too (it kills the VM first, on purpose), so the abort is not the signal, its
+  message is: the deliberate one always reads `Remote connection closed`. Any
+  other message, more than one abort, or any event logged after one, is an
+  error. All five committed logs carry exactly one abort, with that message, as
+  their last event.
+* **progress** (state tier) — the screen or `RandSeed` must differ between the
+  start and the end of the drive. A guest frozen from the first keystroke moves
+  neither.
+
+Two more from the same pass: no log line may be dropped silently
+(`printf "? %04x", $pc` pads to four digits but does not truncate, so a `$pc`
+above `0xffff` prints five and a four-digit-only pattern would have made an
+unexpected stop VANISH instead of tripping the non-empty guard), and every
+draw's return segment must equal the load segment.
+
+The five runs below predate these guards, so their `verification` blocks in
+`data/rng_trace.json` record what each run asserted **at the time** — the
+original five. The new guards were replayed afterwards against each run's own
+committed gdb log and all five pass: `prompt_stops` is `walks + 1` in every one,
+each log carries exactly one script abort with the deliberate message as its
+last event, every draw returned into segment `224b`, and no log line failed to
+parse. Nothing about the runs was re-executed to establish that; the logs are
+the same bytes the runs wrote.
+
+`tracelog.verify_run` holds all of them behind keyword-only parameters, so
+omitting one at the call site is a `TypeError` rather than a quietly weaker run,
+and the two strongest checks — the pre-breakpoint guest verification and the
+final-`RandSeed` reconciliation — are pure functions
+(`loadbase.verify_guest_code`, `tracelog.reconcile_final_randseed`) with tests
+that drive them with synthetic memory: wrong bytes at the breakpoint, a wrong
+base, the patch absent, `RandSeed` already stepped, and a final seed off by one
+step in either direction.
 
 ## The runs
 
@@ -203,7 +262,15 @@ copied into the game directory and the district prompt loads one.
 
 Every run's class, district, luck and item flags are read out of the guest's own
 data segment at the end of the run (`final_state` in `data/rng_trace.json`), so
-the gate operands are recorded rather than assumed.
+the gate operands are recorded rather than assumed. **The class in each run
+record is that guest read (`DS:389c`), never the harness's `--class-answer`:**
+the answer is what the driver typed at the creation menu, and run E never
+reached that menu. The first version of `data/rng_trace.json` echoed the CLI
+default there and stated `class_value: 3` / `Пацан` for run E, which loaded a
+class-6 Вор — a wrong field about the original, corrected in fix wave 1. On a
+run that *did* create a character the two must agree, and the harness now errors
+if they do not (that is the drift that once put the class answer into the NAME
+prompt).
 
 ## The comparison, draw by draw
 
@@ -241,7 +308,11 @@ Notes on the rows that need one:
 * **Draws 17 and 18 share one call site** (`1000:25fe`, inside the level-up
   loop), so they cannot be told apart by address. What the trace shows is that
   the church's `Random(5) == 0` arm spends **exactly two** draws there, which is
-  the loop bound at `1000:287d` the catalogue cites. Both carried `n = 12`,
+  the loop bound at `1000:287d` the catalogue cites. Both entries in
+  `data/rng_trace.json` and both `live_trace` blocks in `data/wander.json` now
+  carry a `shared_call_site` field saying so: each reports `observed_count: 2`
+  for the SAME two stops, and reading the artifacts alone they would otherwise
+  total four independent observations. Both carried `n = 12`,
   and 12 is the sum of the four class growth weights for class 3
   (`3+3+3+3`, read out of `orig/g.exe` at `DS:(class*4+2)`) — the class the run
   actually held, read from `DS:389c`.
@@ -254,16 +325,34 @@ Notes on the rows that need one:
 
 **Order.** Turn signatures — the ordered list of call sites between two
 top-level `ReadLn` stops — are the catalogue's order, not just its set. Run E's
-most common turn is all fourteen preamble draws in sequence:
+most common turn is **thirteen** of the fourteen preamble draws in sequence
+(`b321` absent, 14 turns); the row below it is the same turn with the Вор's
+theft succeeding, all **fourteen**, 8 turns:
 
 ```
-af68 afc7 b030 b0dc b186 b1b8 b1ea b21c b272 b2fa b353 b39e b3ae      (14x)
-af68 afc7 b030 b0dc b186 b1b8 b1ea b21c b272 b2fa b321 b353 b39e b3ae  (8x)
+af68 afc7 b030 b0dc b186 b1b8 b1ea b21c b272 b2fa b353 b39e b3ae      (14x)  13 sites
+af68 afc7 b030 b0dc b186 b1b8 b1ea b21c b272 b2fa b321 b353 b39e b3ae  (8x)  14 sites
 ```
 
-the second being the same turn with the Вор's theft succeeding. Every return
-segment logged across every run was `224b` — the load segment — so every one of
-these is a segment-`1000` offset and reads directly against `docs/re/`.
+Order is **asserted, not eyeballed**: `compare.check_order` requires each
+turn's preamble draws to appear in catalogued ordinal order (1..14), each at
+most once, and `data/rng_trace.json.order_check` records the result — 86 turns
+checked across the five runs, 0 violations. Without it the tool matched on call
+site and `n` alone, so a re-run whose order had drifted would still have read as
+corroborated, which is exactly what Task 12 will rely on it to catch. The
+church's draws 15..18 fire nested inside another routine and are outside the
+check.
+
+**Call sites are attributed by offset, and that needs one segment.** Every
+return segment logged across every run was `224b` — the load segment — so every
+one of these is a segment-`1000` offset and reads directly against `docs/re/`.
+That is now asserted per run (`return_segment_equals_load_seg`) rather than only
+summarised: a draw from another code segment whose offset collided with a
+catalogued one would otherwise be reported as a corroboration. The risk is small
+for this binary and here is why — all **86** far-call sites to `0f78:114b` lie at
+image offsets `0xd26`..`0xe0b7`, so every one of them is inside the first 64 KiB
+addressed by the load segment (re-derived here by scanning `orig/g.exe` for
+`9a 4b 11 78 0f`) — but "small" is not "checked".
 
 **"Nine draws per turn, falling to eight and then seven."** `docs/re/wander.md`
 predicts exactly this for a fresh Подтсан with no phone and no ring, and run A

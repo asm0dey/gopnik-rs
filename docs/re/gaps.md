@@ -378,8 +378,9 @@ are the questions that pass left open, and the ones it created.
   eighteen draws were observed in the running original — `tools/rngtrace`,
   `docs/re/rng-trace.md`, `data/rng_trace.json`. Five runs, 1387 draws, each
   fired at the catalogued site with the catalogued `n` (the two computed ones
-  checked at two districts), in the catalogued order, and **nothing was
-  contradicted**. The catalogue's tier is now **flow, corroborated by live
+  checked at two districts), in the catalogued order — asserted by the tool, not
+  read off the turn signatures: `data/rng_trace.json.order_check` records 86
+  turns checked and 0 violations — and **nothing was contradicted**. The catalogue's tier is now **flow, corroborated by live
   trace**. What that pass did *not* raise: probabilities still come from the
   comparison constants and never from counting outcomes, and the fight-flow
   questions below are untouched.

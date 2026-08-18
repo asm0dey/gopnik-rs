@@ -22,6 +22,13 @@ GHIDRA_BASE_SEG = 0x1000       # Ghidra loaded the image at segment 0x1000
 DATA_SEG_IMAGE_OFF = 0x10AE0   # image offset of DS (Ghidra 20ae:0000); above this,
                                # memory diverges from the file at runtime
 
+# Image offsets used by the pre-breakpoint guest verification below.
+IMAGE_OFF_RANDOM = 0xF78 * 16 + 0x114B          # 0x108cb -- file 0x1219b
+IMAGE_OFF_RANDOMIZE = 0xF78 * 16 + 0x11E0       # 0x10960 -- file 0x12230
+IMAGE_OFF_RANDSEED = DATA_SEG_IMAGE_OFF + 0x367E  # 0x1415e -- DS:367e, file 0x15a2e
+FILE_OFF_RANDOM = HEADER_BYTES + IMAGE_OFF_RANDOM  # 0x1219b
+RANDOM_BYTES = 29                                # entry .. `ca 02 00` inclusive
+
 
 def file_off_of_image_off(image_off: int) -> int:
     return HEADER_BYTES + image_off
@@ -134,3 +141,63 @@ def derive(mem: bytes, exe: bytes, hints=(0x2000, 0xC000), window: int = 64) -> 
 
 def linear(base: int, image_off: int) -> int:
     return base + image_off
+
+
+class GuestCodeError(RuntimeError):
+    pass
+
+
+def verify_guest_code(mem, exe, base, seed, expected_patch):
+    """Check the guest really holds OUR image at OUR base before breaking on it.
+
+    A breakpoint on the wrong address produces a plausible EMPTY trace, which is
+    the worst failure mode this harness has -- so this runs before a breakpoint
+    is installed, reads the guest's own memory, and refuses on any surprise:
+
+      * the 29 bytes at `base + 0x108cb` must equal the file's at `0x1219b`, and
+        must carry the two `36 f7 67 04` (`mul word [ss:bx+4]`) encodings and the
+        `ca 02 00` tail -- i.e. be the 32x16 high take, not a neighbour;
+      * the seed patch must be present at `base + 0x10960`;
+      * `RandSeed` at `base + 0x1415e` must read either 0x00000000 (the image
+        value: the patched Randomize has not run yet) or exactly the pinned seed
+        (it has run, no draw spent).  Anything else means draws were spent
+        BEFORE the attach, so the trace would be missing its head.
+
+    Pure: takes a memory image and returns (checks, randseed).  `expected_patch`
+    is passed in rather than computed here so this module stays independent of
+    seedpatch; run.py hands it `seedpatch.build_patch(seed)`.
+    """
+    out = {}
+    want = exe[FILE_OFF_RANDOM:FILE_OFF_RANDOM + RANDOM_BYTES]
+    got = bytes(mem[base + IMAGE_OFF_RANDOM: base + IMAGE_OFF_RANDOM + RANDOM_BYTES])
+    if got != want:
+        raise GuestCodeError("guest code at linear 0x%x is %s, expected Random %s"
+                             % (base + IMAGE_OFF_RANDOM, got.hex(" "), want.hex(" ")))
+    # The instruction encoding itself, re-checked here rather than trusted.
+    if got.count(bytes.fromhex("36f76704")) != 2 or got[26:29] != bytes.fromhex("ca0200"):
+        raise GuestCodeError("bytes at Random do not look like the 32x16 high take: %s"
+                             % got.hex(" "))
+    out["random_linear"] = "0x%X" % (base + IMAGE_OFF_RANDOM)
+    out["random_bytes"] = got.hex(" ")
+
+    gotp = bytes(mem[base + IMAGE_OFF_RANDOMIZE:
+                     base + IMAGE_OFF_RANDOMIZE + len(expected_patch)])
+    if gotp != bytes(expected_patch):
+        raise GuestCodeError("seed patch is not in guest memory at linear 0x%x: %s"
+                             % (base + IMAGE_OFF_RANDOMIZE, gotp.hex(" ")))
+    out["randomize_linear"] = "0x%X" % (base + IMAGE_OFF_RANDOMIZE)
+    out["randomize_bytes"] = gotp.hex(" ")
+
+    randseed = int.from_bytes(mem[base + IMAGE_OFF_RANDSEED:
+                                  base + IMAGE_OFF_RANDSEED + 4], "little")
+    out["randseed_at_attach"] = "0x%08X" % randseed
+    if randseed == 0:
+        out["randseed_state"] = "image value -- patched Randomize has not run yet"
+    elif randseed == seed:
+        out["randseed_state"] = "pinned seed in place, no draw has been spent yet"
+    else:
+        raise GuestCodeError(
+            "RandSeed is already 0x%08X before the breakpoint could be "
+            "installed: draws were spent before the attach, so any trace from "
+            "this run would be missing its head." % randseed)
+    return out, randseed

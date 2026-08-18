@@ -551,7 +551,9 @@ encounter. A mage turn (draw 14 returns `0`) adds none but blocks on input.
 * `unk_38b2`.
 * ~~No live breakpoint was used.~~ **Done in Task 11d** — `tools/rngtrace`,
   `docs/re/rng-trace.md`, `data/rng_trace.json`. The fourteen in-range sites
-  were observed in order on a pinned seed, and the church's four when it fired.
+  were observed in order on a pinned seed (the order is asserted by
+  `compare.check_order`; `data/rng_trace.json.order_check` records 86 turns
+  checked, 0 violations), and the church's four when it fired.
   What that pass did NOT settle is listed there: the probabilities still come
   from the comparison constants and never from counting observed outcomes, the
   fight-flow questions below are untouched, bucket 2's `y` path was never

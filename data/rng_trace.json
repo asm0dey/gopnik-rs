@@ -87,6 +87,34 @@
     }
   },
   "draws_observed_total": 1387,
+  "order_check": {
+    "note": "Asserted, not eyeballed: within every turn, the preamble draws observed must appear in catalogued ordinal order (1..14), each at most once.  compare() matches on call site and `n` only, so without this a re-run whose order had drifted would still read as corroborated.  The church's draws 15..18 fire nested inside another routine and are outside this check.",
+    "turns_checked": 86,
+    "violations": [],
+    "in_catalogue_order": true,
+    "per_run": {
+      "A": {
+        "turns_checked": 30,
+        "in_catalogue_order": true
+      },
+      "B": {
+        "turns_checked": 25,
+        "in_catalogue_order": true
+      },
+      "C": {
+        "turns_checked": 3,
+        "in_catalogue_order": true
+      },
+      "D": {
+        "turns_checked": 3,
+        "in_catalogue_order": true
+      },
+      "E": {
+        "turns_checked": 25,
+        "in_catalogue_order": true
+      }
+    }
+  },
   "comparison": [
     {
       "draw_ordinal": 1,
@@ -154,7 +182,6 @@
         200
       ],
       "verdict": "corroborated",
-      "why": "gate never satisfied in these runs: has_mobile == 1",
       "per_run": {
         "E": [
           200
@@ -172,7 +199,6 @@
         100
       ],
       "verdict": "corroborated",
-      "why": "gate never satisfied in these runs: has_mobile == 1",
       "per_run": {
         "E": [
           100
@@ -302,7 +328,6 @@
         20
       ],
       "verdict": "corroborated",
-      "why": "gate never satisfied in these runs: ring_gospodi_pomilui != 0",
       "per_run": {
         "E": [
           20
@@ -321,7 +346,6 @@
         60
       ],
       "verdict": "corroborated",
-      "why": "gate never satisfied in these runs: class == 6 (Вор)",
       "per_run": {
         "B": [
           20
@@ -343,7 +367,6 @@
         15
       ],
       "verdict": "corroborated",
-      "why": "gate never satisfied in these runs: class == 6 AND luck >= draw 10's result",
       "per_run": {
         "B": [
           5
@@ -448,7 +471,6 @@
         5
       ],
       "verdict": "corroborated",
-      "why": "site never reached in these runs",
       "per_run": {
         "C": [
           5
@@ -469,7 +491,6 @@
         4
       ],
       "verdict": "corroborated",
-      "why": "gate never satisfied in these runs: draw 15 returned exactly 1",
       "per_run": {
         "D": [
           4
@@ -486,8 +507,13 @@
       "observed_n": [
         12
       ],
+      "shared_call_site": {
+        "with_draws": [
+          18
+        ],
+        "note": "draw(s) 18 fire at this SAME address and cannot be told apart by it.  `observed_count` here is that one set of stops, reported once per catalogued ordinal -- it must not be added across these entries as if they were independent observations.  What the trace corroborates is HOW MANY draws the arm spends at this address, not which ordinal each stop is."
+      },
       "verdict": "corroborated",
-      "why": "gate never satisfied in these runs: draw 15 returned exactly 0 (1000:7f68 `cmp ax,0x0` / 1000:7f6b `jz 0x7f70`) AND, inside 1000:2526, level [0x38a6] != 40 (1000:2580 `cmp word [0x38a6],0x28` / 1000:2585 `jnz 0x258a`; reached because the church pushes param 0, tested at 1000:257a `cmp byte [bp+0x4],0x0`). At level 40 the routine jumps to 1000:28a0 and spends NO draw.",
       "per_run": {
         "C": [
           12
@@ -504,8 +530,13 @@
       "observed_n": [
         12
       ],
+      "shared_call_site": {
+        "with_draws": [
+          17
+        ],
+        "note": "draw(s) 17 fire at this SAME address and cannot be told apart by it.  `observed_count` here is that one set of stops, reported once per catalogued ordinal -- it must not be added across these entries as if they were independent observations.  What the trace corroborates is HOW MANY draws the arm spends at this address, not which ordinal each stop is."
+      },
       "verdict": "corroborated",
-      "why": "gate never satisfied in these runs: same gate as draw 17. The inner loop counter [bp-0x8] is initialised to 1 at 1000:25f1 (`c7 46 f8 01 00`), incremented at 1000:25f8, and the bound at 1000:287d is `cmp word [bp-0x8],0x2` / 1000:2881 `jz 0x2886` / 1000:2883 `jmp 0x25f8` -- exactly two iterations, so exactly two draws per level gained.",
       "per_run": {
         "C": [
           12
@@ -662,6 +693,8 @@
       "seed_hex": "0x12345678",
       "class_value": 3,
       "class_name": "Пацан",
+      "class_source": "guest DS:389c, read at the end of the run",
+      "class_answer": 0,
       "loaded_save": false,
       "district_key": "1",
       "saves_copied": [],
@@ -3524,6 +3557,8 @@
       "seed_hex": "0x12345678",
       "class_value": 6,
       "class_name": "Вор",
+      "class_source": "guest DS:389c, read at the end of the run",
+      "class_answer": 3,
       "loaded_save": false,
       "district_key": "1",
       "saves_copied": [],
@@ -5910,6 +5945,8 @@
       "seed_hex": "0x000004E1",
       "class_value": 3,
       "class_name": "Пацан",
+      "class_source": "guest DS:389c, read at the end of the run",
+      "class_answer": 0,
       "loaded_save": false,
       "district_key": "1",
       "saves_copied": [],
@@ -6203,6 +6240,8 @@
       "seed_hex": "0x0000027C",
       "class_value": 3,
       "class_name": "Пацан",
+      "class_source": "guest DS:389c, read at the end of the run",
+      "class_answer": 0,
       "loaded_save": false,
       "district_key": "1",
       "saves_copied": [],
@@ -6487,8 +6526,10 @@
       "label": "E",
       "trace_file": "build/rngtrace/traceE.json",
       "seed_hex": "0x12345678",
-      "class_value": 3,
-      "class_name": "Пацан",
+      "class_value": 6,
+      "class_name": "Вор",
+      "class_source": "guest DS:389c, read at the end of the run",
+      "class_answer": null,
       "loaded_save": true,
       "district_key": "3",
       "saves_copied": [

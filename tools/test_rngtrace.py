@@ -11,8 +11,14 @@ WHAT IS COVERED HERE (no emulator needed, runs anywhere):
     MZ image loaded at a synthetic base;
   * the trace-log parser: draw lines, turn markers, call-site arithmetic;
   * every short-trace guard: no READY, no breakpoints, zero draws, an
-    unexpected stop, and -- the important one -- a DROPPED draw, which the LCG
-    replay must catch because a missed draw desynchronises everything after it;
+    unexpected stop, a DROPPED draw (the LCG replay must catch it, because a
+    missed draw desynchronises everything after it), and -- the one the first
+    round of guards missed -- a gdb-script ABORT MID-WALK, which every other
+    guard passes: gdb is alive, the log grew, the frozen screen still reads as
+    the street prompt, and a truncated prefix replays perfectly;
+  * the guest-memory verification that runs before a breakpoint is installed
+    (wrong bytes at Random, the seed patch absent, RandSeed already stepped),
+    and the final-RandSeed reconciliation, on synthetic memory;
   * the gdb script shape, as a regression on the reason it is a `while` loop
     (qemu reports $pc as the 16-bit offset, so breakpoint `commands` never run).
 
@@ -37,7 +43,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "tools"))
 
-from rngtrace import compare, gdbsession, loadbase, rng, seedpatch, tracelog  # noqa: E402
+from rngtrace import (compare, driver, gdbsession, loadbase, rng,  # noqa: E402
+                      seedpatch, tracelog, vm)
 
 
 class TestRngPredictor(unittest.TestCase):
@@ -194,10 +201,31 @@ class TestLoadBase(unittest.TestCase):
 SEED = 0x12345678
 
 
+# Verbatim gdb chatter from the committed runs' logs, styled glyphs included.
+GDB_PREAMBLE = [
+    "\u26a0\ufe0f warning: A handler for the OS ABI \"GNU/Linux\" is not built into this configuration",
+    "of GDB.  Attempting to continue with the default i8086 settings.",
+    "",
+    "The target architecture is set to \"i8086\".",
+    "\u26a0\ufe0f warning: No executable has been specified and target does not support",
+    "determining executable automatically.  Try using the \"file\" command.",
+    "0x0000bdf4 in ?? ()",
+]
+GDB_STOP = ["", "Program received signal SIGTRAP, Trace/breakpoint trap.",
+            "0x00001165 in ?? ()"]
+
+
 def synth_log(draws, prompts_before=(), base=0x224B0, ready=True, bp=2,
-              unexpected=()):
-    """A gdb log shaped exactly like the real one."""
+              unexpected=(), abort=None, chatter=False, trailing=()):
+    """A gdb log shaped exactly like the real one.
+
+    `abort` is the gdb "Error in sourced command file:" pair: the harness's own
+    shutdown always reports `Remote connection closed`, and anything else means
+    a command inside the trace loop failed with the guest still stopped.
+    """
     out = []
+    if chatter:
+        out.extend(GDB_PREAMBLE)
     if bp:
         for i in range(bp):
             out.append("Breakpoint %d at 0x%x" % (i + 1, base + i))
@@ -207,10 +235,17 @@ def synth_log(draws, prompts_before=(), base=0x224B0, ready=True, bp=2,
     for i, d in enumerate(draws):
         if i in prompts_before:
             out.append("P")
+        if chatter:
+            out.extend(GDB_STOP)
         out.append("R %04x %04x %04x %04x"
                    % (d["ret_off"], d.get("ret_seg", 0x224B), d["n"], d["result"]))
     for pc in unexpected:
         out.append("? %04x" % pc)
+    out.extend(trailing)
+    if abort:
+        out.append("\u274c\ufe0f build/rngtrace/run/trace.gdb:25: Error in sourced command file:")
+        out.append(abort)
+        out.append("(gdb)")
     return "\n".join(out) + "\n"
 
 
@@ -311,7 +346,7 @@ class TestTraceLog(unittest.TestCase):
 
 class TestGdbScript(unittest.TestCase):
     def test_breaks_on_the_derived_linear_address(self):
-        s = gdbsession.build_script(0x224B0, Path("/dev/null"), 1234)
+        s = gdbsession.build_script(0x224B0, 1234)
         self.assertIn("break *0x32d95", s)     # 0x224b0 + 0x108e5, Random's retf
         self.assertIn("break *0x2d313", s)     # 0x224b0 + 0xae63, the prompt ReadLn
         self.assertNotIn("0x224B0", s.replace("base=%x", ""))  # never hardcoded twice
@@ -320,7 +355,7 @@ class TestGdbScript(unittest.TestCase):
         """Regression: qemu reports $pc as the 16-bit offset while the
         breakpoint is at the linear address, so gdb cannot attribute the stop
         and a `commands` block never runs.  The loop must dispatch on $pc."""
-        s = gdbsession.build_script(0x224B0, Path("/dev/null"), 1234)
+        s = gdbsession.build_script(0x224B0, 1234)
         self.assertIn("while 1", s)
         self.assertIn("if $pc == 0x1165", s)
         self.assertIn("if $pc == 0xae63", s)
@@ -330,7 +365,7 @@ class TestGdbScript(unittest.TestCase):
         """Regression on the retrap: gdb does not know a breakpoint is at the
         stop address, so it never removes/steps/reinserts, and QEMU re-traps
         the same instruction forever while the guest makes no progress."""
-        s = gdbsession.build_script(0x224B0, Path("/dev/null"), 1234)
+        s = gdbsession.build_script(0x224B0, 1234)
         loop = s.split("while 1", 1)[1]
         self.assertIn("disable", loop)
         self.assertIn("stepi", loop)
@@ -339,7 +374,7 @@ class TestGdbScript(unittest.TestCase):
         self.assertLess(loop.index("stepi"), loop.index("enable"))
 
     def test_reads_the_caller_frame_at_the_retf(self):
-        s = gdbsession.build_script(0x224B0, Path("/dev/null"), 1234)
+        s = gdbsession.build_script(0x224B0, 1234)
         self.assertIn("($ss*16+$sp)", s)      # return offset
         self.assertIn("($ss*16+$sp+2)", s)    # return segment
         self.assertIn("($ss*16+$sp+4)", s)    # n
@@ -407,12 +442,435 @@ class TestCatalogueComparison(unittest.TestCase):
         self.assertFalse(extra["1000:0efd"]["inside_preamble_range"])
         self.assertFalse(extra["1000:b54e"]["inside_preamble_range"])
 
+    def test_a_computed_n_with_no_context_is_an_error_not_a_fourth_verdict(self):
+        """Three verdicts exist and only three.  compare() used to emit a fourth,
+        `observed`, for a computed-`n` draw with no expected value -- silently,
+        and outside anything downstream knows how to read."""
+        cat = [c for c in compare.catalogue(self.wander) if c["draw_ordinal"] == 10]
+        with self.assertRaises(ValueError) as cm:
+            compare.compare(cat, self._observed(0xB2FA, 60),
+                            {"n_expr_values": {}, "state_note": ""})
+        self.assertIn("cannot judge", str(cm.exception))
+
+    def test_draws_sharing_a_call_site_are_flagged_as_one_set_of_stops(self):
+        """Draws 17 and 18 both fire at 1000:25fe.  Reported side by side with
+        `observed_count: 2` each, they read as four independent observations in
+        the machine-readable artifact; there were two stops in all."""
+        cat = [c for c in compare.catalogue(self.wander)
+               if c["draw_ordinal"] in (17, 18)]
+        ctx = {"n_expr_values": {"17": 12, "18": 12}, "state_note": "class 3"}
+        res, _ = compare.compare(cat, self._observed(0x25FE, 12, 2), ctx)
+        self.assertEqual([r["shared_call_site"]["with_draws"] for r in res],
+                         [[18], [17]])
+        for r in res:
+            self.assertIn("must not be added across these entries",
+                          r["shared_call_site"]["note"])
+
+    def test_a_draw_at_its_own_call_site_is_not_flagged(self):
+        cat = [c for c in compare.catalogue(self.wander) if c["draw_ordinal"] == 12]
+        res, _ = compare.compare(cat, self._observed(0xB353, 25),
+                                 {"n_expr_values": {}, "state_note": ""})
+        self.assertNotIn("shared_call_site", res[0])
+
+    def test_the_committed_artifact_flags_draws_17_and_18(self):
+        trace = json.loads((REPO / "data" / "rng_trace.json").read_text())
+        for entry in trace["comparison"]:
+            if entry["draw_ordinal"] in (17, 18):
+                self.assertIn("shared_call_site", entry)
+            elif "at" in entry:
+                self.assertNotIn("shared_call_site", entry)
+
+    def test_the_two_class_tables_do_not_drift(self):
+        """compare.py is run as a script and cannot import the package, so it
+        carries its own copy of the class names; they must agree."""
+        self.assertEqual(compare.CLASS_NAME_BY_VALUE, driver.CLASS_NAME_BY_VALUE)
+
+    def test_a_run_that_loaded_a_save_reports_the_guest_class(self):
+        """Run E loaded SAVE_R3.SAV (a Вор, class 6) and never answered the
+        class prompt; the artifact used to echo the CLI default, class 3."""
+        trace = json.loads((REPO / "data" / "rng_trace.json").read_text())
+        for run in trace["runs"]:
+            self.assertEqual(run["class_value"], run["final_state"]["class_389c"])
+            if run["loaded_save"]:
+                self.assertIsNone(run["class_answer"])
+
     def test_turn_signature_preserves_order(self):
         draws = [{"turn": 1, "call_site_offset": 0xAF68},
                  {"turn": 1, "call_site_offset": 0xB353},
                  {"turn": 2, "call_site_offset": 0xB353}]
         self.assertEqual(compare.turn_site_sequences(draws),
                          {1: ["af68", "b353"], 2: ["b353"]})
+
+
+class TestGdbAbortAndWalkGuards(unittest.TestCase):
+    """The failure the first round of guards missed, and its two detectors.
+
+    A gdb command error inside the `while 1` loop aborts the sourced script and
+    drops gdb to its prompt WITH THE GUEST STOPPED AT A BREAKPOINT.  Every
+    original guard passes there: gdb is alive, the log grew (with gdb's own
+    error text), the frozen screen still classifies as the street prompt so the
+    driver keeps typing and returns normally, the truncated prefix replays
+    against the LCG, and the stopped guest spends no further draws so its
+    RandSeed still equals the replay.  The result is a 40-of-393-draw trace that
+    exits 0 and reads as evidence the other 353 draws never happened.
+    """
+
+    def short_run(self, drawn=40, prompts=3, abort=None):
+        ns = ([20, 20, 10, 10, 100, 100, 25, 200, 100] * 10)[:drawn]
+        sites = ([0xAF68, 0xAFC7, 0xB186, 0xB1B8, 0xB1EA, 0xB21C, 0xB353,
+                  0xB39E, 0xB3AE] * 10)[:drawn]
+        draws = real_stream(ns, sites=sites)
+        at = set(range(0, drawn, max(1, drawn // prompts)))
+        at = set(sorted(at)[:prompts])
+        return tracelog.parse(synth_log(draws, prompts_before=at, abort=abort))
+
+    def test_every_original_guard_passes_the_truncated_trace(self):
+        """This is why the new guards had to exist: the old ones say OK."""
+        parsed = self.short_run()
+        v = tracelog.verify(parsed, SEED)               # install, count, replay
+        self.assertEqual(v["lcg_replay"], "match")
+        self.assertEqual(v["draws_verified"], 40)
+        # ... and the state-tier check passes too: a STOPPED guest spends no
+        # further draws, so its RandSeed still matches the logged prefix.
+        seed_after_40 = parsed["draws"][-1]["seed_after"]
+        self.assertEqual(
+            tracelog.reconcile_final_randseed(parsed["draws"], SEED,
+                                              seed_after_40)["final_randseed_matches_replay"],
+            True)
+
+    def test_walk_guard_catches_the_truncated_trace(self):
+        """40 draws, 3 prompt stops, 30 walks asked for: the `w`s that were
+        typed after the guest froze never reached 1000:ae63."""
+        parsed = self.short_run()
+        with self.assertRaises(tracelog.TraceError) as cm:
+            tracelog.check_walk_completed(parsed, 30)
+        self.assertIn("only 3 times", str(cm.exception))
+
+    def test_verify_run_rejects_the_truncated_trace(self):
+        parsed = self.short_run()
+        final = SEED
+        for _ in parsed["draws"]:
+            final = rng.step(final)
+        with self.assertRaises(tracelog.TraceError) as cm:
+            tracelog.verify_run(parsed, SEED, walks=30, load_seg=0x224B,
+                                screen_before="a", screen_after="b",
+                                randseed_at_attach=0, randseed_final=final)
+        self.assertIn("top-level ReadLn", str(cm.exception))
+
+    def test_verify_run_accepts_a_complete_run(self):
+        parsed = self.short_run(drawn=40, prompts=4)
+        final = SEED
+        for _ in parsed["draws"]:
+            final = rng.step(final)
+        v = tracelog.verify_run(parsed, SEED, walks=3, load_seg=0x224B,
+                                screen_before="a", screen_after="b",
+                                randseed_at_attach=0, randseed_final=final)
+        self.assertTrue(v["final_randseed_matches_replay"])
+        self.assertEqual(v["draws_verified"], 40)
+
+    def test_walk_guard_passes_a_complete_run(self):
+        parsed = self.short_run(drawn=40, prompts=4)
+        self.assertEqual(tracelog.check_walk_completed(parsed, 3)["prompt_stops"], 4)
+
+    def test_command_error_abort_is_an_error(self):
+        """The other detector: the abort MESSAGE.  gdb aborts the script on any
+        command error, and the harness's own shutdown aborts it too -- so the
+        message is what separates them."""
+        parsed = self.short_run(abort="Cannot access memory at address 0x1234")
+        with self.assertRaises(tracelog.TraceError) as cm:
+            tracelog.check_script_abort(parsed)
+        self.assertIn("Cannot access memory", str(cm.exception))
+
+    def test_deliberate_shutdown_abort_is_accepted(self):
+        parsed = self.short_run(abort=tracelog.EXPECTED_ABORT_MESSAGE)
+        self.assertIn("deliberate", tracelog.check_script_abort(parsed)["gdb_script_abort"])
+
+    def test_no_abort_at_all_is_accepted(self):
+        self.assertEqual(tracelog.check_script_abort(self.short_run())["gdb_script_abort"],
+                         "none")
+
+    def test_two_aborts_are_an_error(self):
+        text = synth_log(real_stream([20, 20]), abort=tracelog.EXPECTED_ABORT_MESSAGE)
+        text += ("❌️ x.gdb:25: Error in sourced command file:\n%s\n"
+                 % tracelog.EXPECTED_ABORT_MESSAGE)
+        with self.assertRaises(tracelog.TraceError):
+            tracelog.check_script_abort(tracelog.parse(text))
+
+    def test_events_after_the_abort_are_an_error(self):
+        text = synth_log(real_stream([20, 20]), abort=tracelog.EXPECTED_ABORT_MESSAGE)
+        text += "R af6d 224b 0014 0000\n"
+        with self.assertRaises(tracelog.TraceError) as cm:
+            tracelog.check_script_abort(tracelog.parse(text))
+        self.assertIn("after the gdb script aborted", str(cm.exception))
+
+    def test_the_five_committed_runs_would_pass_these_guards(self):
+        """The guards must not reject the runs already published: each real log
+        ends with exactly one abort, and its message is the deliberate one."""
+        for label in "ABCDE":
+            log = REPO / "build" / "rngtrace" / ("run%s" % label) / "trace.gdb.log"
+            if not log.exists():          # the workdirs are gitignored scratch
+                self.skipTest("no committed run logs in build/ on this machine")
+            parsed = tracelog.parse(log.read_text(errors="replace"))
+            self.assertEqual(parsed["unparsed"], [], label)
+            self.assertIn("deliberate",
+                          tracelog.check_script_abort(parsed)["gdb_script_abort"], label)
+
+
+class TestProgressGuard(unittest.TestCase):
+    def test_a_frozen_guest_is_an_error(self):
+        with self.assertRaises(tracelog.TraceError) as cm:
+            tracelog.check_guest_progressed("screen", "screen", 0x12345678, 0x12345678)
+        self.assertIn("no evidence", str(cm.exception))
+
+    def test_a_changed_screen_is_progress(self):
+        out = tracelog.check_guest_progressed("a", "b", 1, 1)
+        self.assertTrue(out["screen_changed_during_drive"])
+
+    def test_a_moved_randseed_is_progress(self):
+        out = tracelog.check_guest_progressed("a", "a", 1, 2)
+        self.assertTrue(out["randseed_moved_during_drive"])
+
+    def test_missing_screens_are_an_error_not_a_pass(self):
+        with self.assertRaises(tracelog.TraceError):
+            tracelog.check_guest_progressed(None, None, 1, 2)
+
+
+class TestReturnSegmentGuard(unittest.TestCase):
+    """Call sites are attributed by OFFSET alone, which needs one segment."""
+
+    def parsed(self, segs):
+        draws = real_stream([20] * len(segs))
+        for d, seg in zip(draws, segs):
+            d["ret_seg"] = seg
+        return tracelog.parse(synth_log(draws))
+
+    def test_all_draws_from_the_load_segment_pass(self):
+        out = tracelog.check_return_segments(self.parsed([0x224B, 0x224B]), 0x224B)
+        self.assertTrue(out["return_segment_equals_load_seg"])
+
+    def test_a_foreign_return_segment_is_an_error(self):
+        with self.assertRaises(tracelog.TraceError) as cm:
+            tracelog.check_return_segments(self.parsed([0x224B, 0x3F00]), 0x224B)
+        self.assertIn("3f00", str(cm.exception))
+
+
+class TestLogLinesAreNeverDropped(unittest.TestCase):
+    def test_a_five_digit_unexpected_stop_is_not_dropped(self):
+        """`printf "? %04x", $pc` pads to four digits but does not truncate: a
+        $pc above 0xffff prints five, and a {4}-only pattern would silently drop
+        the line instead of reporting the unexpected stop."""
+        parsed = tracelog.parse(synth_log(real_stream([20])) + "? 12345\n")
+        self.assertEqual(parsed["unexpected_stops"], [0x12345])
+        self.assertEqual(parsed["unparsed"], [])
+        with self.assertRaises(tracelog.TraceError) as cm:
+            tracelog.verify(parsed, SEED)
+        self.assertIn("unexpected", str(cm.exception))
+
+    def test_a_malformed_harness_line_fails_the_run(self):
+        parsed = tracelog.parse(synth_log(real_stream([20])) + "R af6d 224b 0014\n")
+        self.assertEqual(len(parsed["unparsed"]), 1)
+        with self.assertRaises(tracelog.TraceError) as cm:
+            tracelog.verify(parsed, SEED)
+        self.assertIn("unparsed", str(cm.exception))
+
+    def test_real_gdb_chatter_parses_clean(self):
+        parsed = tracelog.parse(synth_log(real_stream([20, 20, 10]), chatter=True,
+                                          abort=tracelog.EXPECTED_ABORT_MESSAGE))
+        self.assertEqual(parsed["unparsed"], [])
+        self.assertEqual(len(parsed["draws"]), 3)
+
+
+def guest_memory(exe, base, seed, patched=True, randseed=0, corrupt_random=False):
+    """Physical memory holding the real image at `base`, as the guest would."""
+    img = bytearray(loadbase.load_image(exe))
+    if patched:
+        p = seedpatch.build_patch(seed)
+        img[loadbase.IMAGE_OFF_RANDOMIZE:loadbase.IMAGE_OFF_RANDOMIZE + len(p)] = p
+    if corrupt_random:
+        img[loadbase.IMAGE_OFF_RANDOM + 4] ^= 0xFF
+    img[loadbase.IMAGE_OFF_RANDSEED:loadbase.IMAGE_OFF_RANDSEED + 4] = \
+        randseed.to_bytes(4, "little")
+    mem = bytearray(base + len(img) + 16)
+    mem[base:base + len(img)] = img
+    return bytes(mem)
+
+
+class TestGuestCodeVerification(unittest.TestCase):
+    """The defence against attaching at a WRONG base, which is the failure that
+    produces a plausible EMPTY trace.  It was unreachable inside run.py's
+    main(); it is a pure function over a memory image now."""
+
+    BASE = 0x224B0
+    SEED = 0x12345678
+
+    def setUp(self):
+        self.exe = (REPO / "orig" / "g.exe").read_bytes()
+        self.patch = seedpatch.build_patch(self.SEED)
+
+    def test_accepts_the_real_image_with_randseed_still_at_the_image_value(self):
+        mem = guest_memory(self.exe, self.BASE, self.SEED)
+        checks, randseed = loadbase.verify_guest_code(mem, self.exe, self.BASE,
+                                                     self.SEED, self.patch)
+        self.assertEqual(randseed, 0)
+        self.assertIn("has not run yet", checks["randseed_state"])
+        self.assertEqual(checks["random_linear"], "0x%X" % (self.BASE + 0x108CB))
+
+    def test_accepts_the_pinned_seed_before_any_draw(self):
+        mem = guest_memory(self.exe, self.BASE, self.SEED, randseed=self.SEED)
+        checks, randseed = loadbase.verify_guest_code(mem, self.exe, self.BASE,
+                                                     self.SEED, self.patch)
+        self.assertEqual(randseed, self.SEED)
+        self.assertIn("no draw has been spent", checks["randseed_state"])
+
+    def test_rejects_wrong_bytes_at_the_breakpoint(self):
+        mem = guest_memory(self.exe, self.BASE, self.SEED, corrupt_random=True)
+        with self.assertRaises(loadbase.GuestCodeError) as cm:
+            loadbase.verify_guest_code(mem, self.exe, self.BASE, self.SEED, self.patch)
+        self.assertIn("expected Random", str(cm.exception))
+
+    def test_rejects_a_wrong_base(self):
+        mem = guest_memory(self.exe, self.BASE, self.SEED)
+        with self.assertRaises(loadbase.GuestCodeError):
+            loadbase.verify_guest_code(mem, self.exe, self.BASE + 0x10, self.SEED,
+                                       self.patch)
+
+    def test_rejects_an_unpatched_guest(self):
+        mem = guest_memory(self.exe, self.BASE, self.SEED, patched=False)
+        with self.assertRaises(loadbase.GuestCodeError) as cm:
+            loadbase.verify_guest_code(mem, self.exe, self.BASE, self.SEED, self.patch)
+        self.assertIn("seed patch is not in guest memory", str(cm.exception))
+
+    def test_rejects_a_randseed_that_has_already_stepped(self):
+        """Draws spent before the attach: the trace would be missing its head,
+        and the LCG replay would then need a skip to line up at all."""
+        mem = guest_memory(self.exe, self.BASE, self.SEED,
+                           randseed=rng.step(self.SEED))
+        with self.assertRaises(loadbase.GuestCodeError) as cm:
+            loadbase.verify_guest_code(mem, self.exe, self.BASE, self.SEED, self.patch)
+        self.assertIn("already", str(cm.exception))
+
+
+class TestFinalRandSeedReconciliation(unittest.TestCase):
+    """The tail-truncation guard: the LCG replay of a PREFIX is self-consistent,
+    so only the guest's own final RandSeed catches draws lost at the end."""
+
+    def draws(self, n=9):
+        parsed = tracelog.parse(synth_log(real_stream([20, 20, 10, 10, 100, 100,
+                                                       25, 200, 100][:n])))
+        return parsed["draws"]
+
+    def stepped(self, k):
+        s = SEED
+        for _ in range(k):
+            s = rng.step(s)
+        return s
+
+    def test_matches_the_guest_seed(self):
+        out = tracelog.reconcile_final_randseed(self.draws(), SEED, self.stepped(9))
+        self.assertTrue(out["final_randseed_matches_replay"])
+
+    def test_one_unlogged_draw_at_the_tail_is_caught(self):
+        with self.assertRaises(tracelog.TraceError) as cm:
+            tracelog.reconcile_final_randseed(self.draws(), SEED, self.stepped(10))
+        self.assertIn("incomplete", str(cm.exception))
+
+    def test_one_step_short_is_caught(self):
+        with self.assertRaises(tracelog.TraceError):
+            tracelog.reconcile_final_randseed(self.draws(), SEED, self.stepped(8))
+
+
+class TestClassRecord(unittest.TestCase):
+    """`--class-answer` is what the driver TYPED; DS:389c is what the guest
+    HOLDS.  Run E of Task 11d loaded a save (a Вор, class 6) and the trace JSON
+    still recorded class 3 from the CLI default."""
+
+    def test_a_loaded_save_takes_the_class_from_the_guest(self):
+        rec = driver.class_record(0, True, 6)
+        self.assertEqual(rec["class_value"], 6)
+        self.assertEqual(rec["class_name"], "Вор")   # Вор
+        self.assertIsNone(rec["class_answer"])
+
+    def test_a_created_character_records_the_agreeing_answer(self):
+        rec = driver.class_record(3, False, 6)
+        self.assertEqual(rec["class_value"], 6)
+        self.assertEqual(rec["class_answer"], 3)
+        self.assertTrue(rec["class_answer_agrees_with_guest"])
+
+    def test_an_answer_that_did_not_land_in_the_class_prompt_is_an_error(self):
+        """The documented drift: a blind key script put the class answer in the
+        NAME prompt.  The guest's own class settles it."""
+        with self.assertRaises(driver.DriveError) as cm:
+            driver.class_record(3, False, 3)
+        self.assertIn("did not land in the class prompt", str(cm.exception))
+
+
+class TestOrderCheck(unittest.TestCase):
+    """`in the catalogued order` is claimed in docs/re/gaps.md and
+    docs/re/wander.md; compare() matches on site and `n` only, so without this
+    a re-run whose order had drifted would still read as corroborated."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cat = compare.catalogue(json.loads((REPO / "data" / "wander.json").read_text()))
+
+    def turn(self, sites, t=1):
+        return [{"turn": t, "call_site_offset": s, "n": 0, "result": 0} for s in sites]
+
+    def test_a_catalogued_turn_is_in_order(self):
+        out = compare.check_order(self.cat, self.turn(
+            [0xAF68, 0xAFC7, 0xB186, 0xB1B8, 0xB1EA, 0xB21C, 0xB353, 0xB39E, 0xB3AE]))
+        self.assertTrue(out["in_catalogue_order"])
+        self.assertEqual(out["turns_checked"], 1)
+
+    def test_two_draws_swapped_is_a_violation(self):
+        out = compare.check_order(self.cat, self.turn(
+            [0xAF68, 0xB186, 0xAFC7, 0xB353]), label="X")
+        self.assertFalse(out["in_catalogue_order"])
+        self.assertEqual(out["violations"][0]["ordinals"], [1, 5, 2, 12])
+        self.assertEqual(out["violations"][0]["run"], "X")
+
+    def test_the_same_site_twice_in_one_turn_is_a_violation(self):
+        out = compare.check_order(self.cat, self.turn([0xB353, 0xB353]))
+        self.assertFalse(out["in_catalogue_order"])
+
+    def test_each_turn_is_checked_independently(self):
+        obs = self.turn([0xB353, 0xB39E], t=1) + self.turn([0xAF68, 0xAFC7], t=2)
+        out = compare.check_order(self.cat, obs)
+        self.assertTrue(out["in_catalogue_order"])
+        self.assertEqual(out["turns_checked"], 2)
+
+    def test_church_draws_are_outside_the_check(self):
+        """15..18 fire nested inside another routine, so their position in the
+        turn is not the preamble's ordinal sequence."""
+        out = compare.check_order(self.cat, self.turn([0xB39E, 0x25FE, 0xB3AE]))
+        self.assertTrue(out["in_catalogue_order"])
+
+    def test_the_committed_runs_are_in_order(self):
+        trace = json.loads((REPO / "data" / "rng_trace.json").read_text())
+        self.assertTrue(trace["order_check"]["in_catalogue_order"])
+        self.assertEqual(trace["order_check"]["turns_checked"], 86)
+        self.assertEqual(trace["order_check"]["violations"], [])
+
+
+class TestVmLifecycle(unittest.TestCase):
+    """No qemu here -- only that the context manager cannot leak one."""
+
+    def test_enter_kills_the_vm_when_start_raises(self):
+        with tempfile.TemporaryDirectory() as td:
+            machine = vm.Vm("/dev/null", td, td, sock_dir=td)
+            killed = []
+
+            def boom():
+                machine.proc = object()          # qemu is already running here
+                raise vm.MonitorError("monitor never came up")
+
+            machine.start = boom
+            machine.kill = lambda: killed.append(True)
+            with self.assertRaises(vm.MonitorError):
+                with machine:
+                    self.fail("the body must not run")
+            self.assertEqual(killed, [True])
+
 
 
 if __name__ == "__main__":

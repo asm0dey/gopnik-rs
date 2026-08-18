@@ -41,7 +41,9 @@ IMAGE_OFF_RANDOM_RETF = 0xF78 * 16 + OFF_RANDOM_RETF     # 0x108e5
 IMAGE_OFF_MAIN_READLN = OFF_MAIN_READLN                  # segment 1000 == image base
 
 
-def build_script(image_base: int, log_path: Path, port: int) -> str:
+def build_script(image_base: int, port: int) -> str:
+    """The whole trace loop, as a gdb script.  Nothing here writes a file: the
+    log is gdb's own stdout, redirected by GdbSession."""
     retf = image_base + IMAGE_OFF_RANDOM_RETF
     readln = image_base + IMAGE_OFF_MAIN_READLN
     return f"""set confirm off

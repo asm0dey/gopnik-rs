@@ -124,7 +124,15 @@ class Vm:
             pass
 
     def __enter__(self):
-        return self.start()
+        # start() opens qemu and THEN connects the monitor; if the monitor never
+        # comes up, the qemu process is already running and would be leaked by a
+        # bare `return self.start()`.  The VM dies on every exit path, this one
+        # included.
+        try:
+            return self.start()
+        except BaseException:
+            self.kill()
+            raise
 
     def __exit__(self, *exc):
         self.kill()

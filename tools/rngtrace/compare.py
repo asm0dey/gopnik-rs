@@ -27,6 +27,14 @@ PREAMBLE_HI = 0xB3BA
 # out of orig/g.exe rather than taken from another data file.
 DS_FILE_OFF = 0x18D0 + 0x10AE0
 
+# The stored class value is the creation menu answer + 3 (1000:71b8).  Kept in
+# step with driver.CLASS_NAME_BY_VALUE by a test; this module is run as a
+# script, so it does not import the package.
+CLASS_NAME_BY_VALUE = {3: "\u041f\u0430\u0446\u0430\u043d",
+                       4: "\u041e\u0442\u043c\u043e\u0440\u043e\u0437\u043e\u043a",
+                       5: "\u0413\u043e\u043f\u043d\u0438\u043a",
+                       6: "\u0412\u043e\u0440"}
+
 
 def class_weight_sum(exe: bytes, cls: int) -> int:
     at = DS_FILE_OFF + cls * 4 + 2
@@ -73,6 +81,10 @@ def compare(cat, observed, context):
     for d in observed:
         by_site.setdefault(d["call_site_offset"], []).append(d)
 
+    shared = {}
+    for c in cat:
+        shared.setdefault(c["site_offset"], []).append(c["draw_ordinal"])
+
     results = []
     for c in cat:
         hits = by_site.get(c["site_offset"], [])
@@ -83,6 +95,23 @@ def compare(cat, observed, context):
             "gate": c["gate"], "observed_count": len(hits),
             "observed_n": ns,
         }
+        others = [o for o in shared[c["site_offset"]] if o != c["draw_ordinal"]]
+        if others:
+            # Two catalogued draws at ONE address are ONE set of stops.  Without
+            # this, a reader of the machine-readable artifact alone sees draw 17
+            # and draw 18 each reporting `observed_count: 2` and totals four
+            # independent observations, when there were two stops in all.
+            entry["shared_call_site"] = {
+                "with_draws": others,
+                "note": ("draw(s) %s fire at this SAME address and cannot be "
+                         "told apart by it.  `observed_count` here is that one "
+                         "set of stops, reported once per catalogued ordinal -- "
+                         "it must not be added across these entries as if they "
+                         "were independent observations.  What the trace "
+                         "corroborates is HOW MANY draws the arm spends at this "
+                         "address, not which ordinal each stop is."
+                         % ", ".join(str(o) for o in others)),
+            }
         if not hits:
             entry["verdict"] = "not observed"
             entry["why"] = ("gate never satisfied in these runs: %s" % c["gate"]
@@ -100,8 +129,18 @@ def compare(cat, observed, context):
                 entry["verdict"] = "corroborated"
                 entry["detail"] = ("computed n: `%s` = %d in this run's state (%s)"
                                    % (c["n_expr"], expected, context["state_note"]))
+            elif expected is None:
+                # Three verdicts exist, and only three.  A computed-`n` draw
+                # with no value for this run's state cannot be judged, so it is
+                # an error in the comparison itself rather than a fourth verdict
+                # nobody downstream knows how to read.
+                raise ValueError(
+                    "draw %d has a computed `n` (%s) but this run's context "
+                    "supplies no expected value for it: the comparison cannot "
+                    "judge it, and must not invent a verdict"
+                    % (c["draw_ordinal"], c["n_expr"]))
             else:
-                entry["verdict"] = "contradicted" if expected is not None else "observed"
+                entry["verdict"] = "contradicted"
                 entry["detail"] = ("computed n `%s`; expected %s here, observed %s"
                                    % (c["n_expr"], expected, ns))
         results.append(entry)
@@ -117,6 +156,49 @@ def compare(cat, observed, context):
             "inside_preamble_range": PREAMBLE_LO <= site <= PREAMBLE_HI,
         }
     return results, extra
+
+
+def preamble_ordinals(cat):
+    """{call-site offset: catalogued draw ordinal} for the preamble draws."""
+    return {c["site_offset"]: c["draw_ordinal"]
+            for c in cat if c["where"] == "preamble"}
+
+
+def check_order(cat, observed, label=None):
+    """Each turn's preamble draws must appear in catalogue ORDINAL order.
+
+    compare() above matches on call site and `n` alone, so a re-run whose order
+    had drifted would still be reported "corroborated" -- while
+    docs/re/wander.md and docs/re/gaps.md claim the catalogued ORDER, not just
+    the catalogued set.  This turns that claim into something the tool asserts
+    rather than something a human read off the turn signatures.
+
+    Only preamble draws are checked: the church's four (15..18) fire nested
+    inside another routine, so their position in the turn is not the preamble's
+    ordinal sequence.  A site seen twice in one turn is a violation too -- a
+    subsequence visits each ordinal at most once.
+    """
+    order = preamble_ordinals(cat)
+    turns = {}
+    for d in observed:
+        turns.setdefault(d["turn"], []).append(d)
+    violations = []
+    checked = 0
+    for t in sorted(turns):
+        seen = [(order[d["call_site_offset"]], d["call_site_offset"])
+                for d in turns[t] if d["call_site_offset"] in order]
+        if not seen:
+            continue
+        checked += 1
+        ords = [o for o, _ in seen]
+        if any(b <= a for a, b in zip(ords, ords[1:])):
+            violations.append({
+                "run": label, "turn": t,
+                "ordinals": ords,
+                "sites": ["1000:%04x" % site for _, site in seen],
+            })
+    return {"turns_checked": checked, "violations": violations,
+            "in_catalogue_order": not violations}
 
 
 def turn_site_sequences(observed):
@@ -148,8 +230,14 @@ def run_record(label, path, run):
         "label": label,
         "trace_file": path,
         "seed_hex": run["seed_hex"],
-        "class_value": run["run"]["class_value"],
-        "class_name": run["run"]["class_name"],
+        # The class is the guest's own DS:389c, never the CLI's --class-answer:
+        # a run that LOADED a save never reached the class prompt, so the answer
+        # describes nothing (run E: answer 0 -> class 3, guest holds class 6).
+        "class_value": run["final_state"]["class_389c"],
+        "class_name": CLASS_NAME_BY_VALUE.get(run["final_state"]["class_389c"]),
+        "class_source": "guest DS:389c, read at the end of the run",
+        "class_answer": (None if run["run"]["creation"].get("loaded_save")
+                         else run["run"].get("class_answer")),
         "loaded_save": run["run"]["creation"].get("loaded_save", False),
         "district_key": run["run"]["district_key"],
         "saves_copied": run["run"].get("saves_copied", []),
@@ -195,9 +283,10 @@ def main(argv=None):
     # district and the class are read out of the guest's own DS:3692 / DS:389c
     # at the end of each run, and the weights are read out of orig/g.exe.
     exe = (REPO / "orig" / "g.exe").read_bytes()
-    order = {"contradicted": 3, "corroborated": 2, "observed": 1, "not observed": 0}
+    order = {"contradicted": 3, "corroborated": 2, "not observed": 0}
     folded, extra = {}, {}
     contexts = {}
+    order_checks = []
     for run, lab in zip(runs, labels):
         district = run["final_state"]["district_3692"]
         cls = run["final_state"]["class_389c"]
@@ -213,7 +302,9 @@ def main(argv=None):
         contexts[lab] = {"district": district, "class": cls,
                          "class_weight_sum": wsum,
                          "n_expr_values": ctx["n_expr_values"]}
-        res, ext = compare(cat, [d for d in merged if d["run"] == lab], ctx)
+        obs = [d for d in merged if d["run"] == lab]
+        res, ext = compare(cat, obs, ctx)
+        order_checks.append(dict(check_order(cat, obs, label=lab), run=lab))
         for entry in res:
             key = entry["draw_ordinal"]
             entry = dict(entry, per_run={lab: entry["observed_n"]})
@@ -241,6 +332,10 @@ def main(argv=None):
                 extra[site] = dict(info)
     for entry in folded.values():
         entry["per_run"] = {k: v for k, v in entry["per_run"].items() if v}
+        if entry["verdict"] != "not observed":
+            # `why` explains a NON-observation; a run that did not fire the draw
+            # contributes it, and a later run that DID must not keep it.
+            entry.pop("why", None)
     results = [folded[k] for k in sorted(folded)]
     context = {
         "note": ("What each run's computed `n` should be, and where every "
@@ -264,6 +359,21 @@ def main(argv=None):
         "turn_marker": runs[0]["turn_marker"],
         "context": context,
         "draws_observed_total": len(merged),
+        "order_check": {
+            "note": ("Asserted, not eyeballed: within every turn, the preamble "
+                     "draws observed must appear in catalogued ordinal order "
+                     "(1..14), each at most once.  compare() matches on call "
+                     "site and `n` only, so without this a re-run whose order "
+                     "had drifted would still read as corroborated.  The "
+                     "church's draws 15..18 fire nested inside another routine "
+                     "and are outside this check."),
+            "turns_checked": sum(o["turns_checked"] for o in order_checks),
+            "violations": [v for o in order_checks for v in o["violations"]],
+            "in_catalogue_order": all(o["in_catalogue_order"] for o in order_checks),
+            "per_run": {o["run"]: {"turns_checked": o["turns_checked"],
+                                   "in_catalogue_order": o["in_catalogue_order"]}
+                        for o in order_checks},
+        },
         "comparison": results,
         "sites_not_in_catalogue": extra,
         "runs": [run_record(lab, t, r) for lab, t, r in zip(labels, args.traces, runs)],
@@ -273,6 +383,13 @@ def main(argv=None):
         Path(args.out).write_text(text)
     else:
         print(text)
+    oc = out["order_check"]
+    print("ORDER: %d turns checked, %d violation(s), in catalogue order: %s"
+          % (oc["turns_checked"], len(oc["violations"]), oc["in_catalogue_order"]),
+          file=sys.stderr)
+    for v in oc["violations"]:
+        print("  ORDER VIOLATION run %s turn %s: %s"
+              % (v["run"], v["turn"], " ".join(v["sites"])), file=sys.stderr)
     for r in results:
         print("draw %2d %-11s n=%-6s %-13s observed=%d %s"
               % (r["draw_ordinal"], r["at"],
