@@ -71,7 +71,24 @@
 | Command verbs | `bmar mar rep girl pr kl trn s w f i hp sv name kos wes help` + keys `a d e h k t x` |
 
 **Explicitly NOT established** (these are RE tasks, not assumptions):
-- The RNG algorithm. Borland's `0x08088405` LCG multiplier is **absent** from this binary; the constant does not appear contiguously and there is no `mov ax,8405`/`mov dx,0808` pair. Task 8 must identify the actual generator from disassembly.
+- ~~The RNG algorithm.~~ **RESOLVED by Task 8 — and the old wording below was
+  a false conclusion drawn from a true observation.** The byte-level facts were
+  right: `05 84 08 08` occurs 0 times in the file, `b8 05 84` 0 times, `ba 08 08`
+  0 times. The inference that the multiplier is therefore absent was wrong. It
+  **is** the stock Borland LCG, `RandSeed := RandSeed * $08088405 + 1 (mod
+  2^32)`, at `System.@Rand` `1f78:11a8`. The compiler never materialises the
+  dword: it multiplies by the low word `$8405` (the single literal `05 84` at
+  `1f78:11de`) and synthesises the `$0808` partial products from a shift/add
+  chain (`lo<<3` then `add ch,cl` contributes `lo*0x0808` at bit 16). No byte
+  search could ever have found it. Verified against the binary's own bytes, and
+  by mutating the multiplier byte in a *copy* of the exe and observing the
+  emitted vectors change. See `docs/re/rng.md`.
+  **Also established:** `Random(n)` at `1f78:114b` is `(RandSeed * n) >> 32`, a
+  high-take, **not** a modulo — this changes the distribution of every roll.
+  `Randomize` at `1f78:11e0` seeds from DOS `INT 21h/AH=2Ch`.
+  **Task 9 must mirror the original's 16-bit wrapping at `Random(Integer)` call
+  sites, not clamp** — several call sites compute `n` from `Integer`
+  expressions (e.g. `Random(hi - lo)`, `Random(level*0x19)`).
 - The meaning of state words at save offset `0x200+0x00`–`0x0E` and everything past `0x14`.
 - The `02 3x 3x` repeating records near the end of the save (Pascal `string[2]` of ASCII digits `1`–`4`, count varies 10–39 across saves).
 
