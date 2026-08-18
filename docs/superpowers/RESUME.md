@@ -222,6 +222,16 @@ them from byte noise.
 - **No frequency/reuse-based filtering** of string candidates, ever. It discarded real text once already.
 - Operand extraction uses `getScalar` (immediates only). Never `getOpObjects` — it decomposes `[BP+4]` into false candidates.
 - **RNG fallback approved by the owner:** try to recover the original generator; if impossible, use a self-contained PRNG (NOT the `rand` crate), report DONE_WITH_CONCERNS, and delete the vector-comparison tests rather than seed them from our own implementation. This makes Task 12's differential test deterministic-values-only.
+- **RNG effort is timeboxed (owner, during Task 8).** The owner does not believe
+  the RNG strongly influences this game and does not want significant effort
+  spent recreating it. Do not grind the decompilation: if the generator is not
+  identifiable with reasonable effort, take fallback option 3 and move on.
+  **Exception:** concrete evidence that the RNG materially drives outcomes —
+  called from the damage-roll, hit-chance, or loot/price paths in a way that
+  dominates results — is worth escalating to the owner before continuing, not
+  worth pressing on unilaterally. Task 8's report must record how far recovery
+  got and what a future attempt should try first, so this stays resumable if
+  the owner later decides fidelity here matters.
 - Task 11 must contain NO placeholder handlers or dummy enemies (owner chose rubric over plan).
 - **Task 5 amendment (owner-approved, option 2):** the plan's round-trip test
   is near-tautological — `encode()` starts from `rec["_raw"]` and copies the
