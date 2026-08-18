@@ -17,10 +17,55 @@
 | 4c — indexed string array tables | complete, approved | `534bfe8` |
 
 | 2b + 2c — pointer-anchored re-extraction + gap tiling | complete, approved (2 review rounds) | `01de56b..4fd2fda` |
+| 3 — DOSBox-X oracle harness | complete, approved (3 fix waves) | `3f372a0..f44b6f7` |
 
-**NEXT: Task 3** — DOSBox-X oracle. Must first establish whether headless
-capture works: `SDL_VIDEODRIVER=dummy` may fail on this SDL1 build, fallback
-`xvfb-run`. Every differential test in Task 12 depends on this.
+**NEXT: Task 5** — save format decoder. Apply the owner-approved option-2
+amendment recorded under "Decisions made".
+
+### Task 3 outcome — the oracle works, and how
+
+Headless capture via `-c screenshot`/autotype was a dead end and was replaced.
+`g.exe > OUT.TXT` yields 0 bytes (Borland Crt writes straight to VGA text
+memory), and dosbox-x `-c` commands only fire when the shell is idle, so
+autotype after `-c g.exe` never runs until the game exits.
+
+The harness instead loads a TSR (`tools/oracle/scrhook.asm`/`.com`) that hooks
+INT 16h: on every blocking key read it appends the 80x25 text buffer to
+SCREEN.BIN and answers the read from a scripted key file. Serving keys from
+the handler is what makes it deterministic — the Nth key request gets the Nth
+scripted key, so nothing depends on autotype pacing, emulator speed, or the
+15-key BIOS buffer, and scripts are not bound by the 127-char DOS command line.
+
+**Consequences later tasks must know:**
+- Only input-request screens are captured. A screen the game overwrites
+  between two key requests is never seen. Task 9 should script fights so each
+  interesting screen is followed by a key request (it naturally is).
+- Pass `--expect-frames`. The host stops the run after SCREEN.BIN is quiet for
+  3s, which is a wall-clock judgement; a stall truncates the capture and a
+  truncated capture is otherwise indistinguishable from a complete one.
+  `run_oracle.sh` forwards `--expect-frames` and `--timeout` through to
+  `capture.py`.
+- Key script limit is 1024 bytes (the TSR's buffer); longer is refused.
+- A key request made while DOS is busy (InDOS) is neither captured nor
+  answered.
+- `data/oracle_prompts.json` is authoritative for which prompt consumes which
+  key; the table in `docs/re/oracle.md` is a hand copy.
+- Determinism is empirical, not proved: 5 runs across 2 scripts agree byte for
+  byte, including an RNG-driven outcome. If a later task sees drift, first
+  suspect is the game seeding from the emulated clock.
+
+Three fix waves. Round 1: `--timeout` parsed but never forwarded, no
+truncation guard. Round 2: both fixes unreachable from `run_oracle.sh` (the
+interface Tasks 8/9/12 actually call), untested, and the prompt/key RE finding
+had no `data/` artifact. Round 3: the new tests were anchored at the helper,
+not the call site — reverting the guard's wiring line or the shell's `"$@"`
+forwarding both left the suite green. **The recurring shape: a fix that is
+correct in the code but unreachable or untested at the site that broke.**
+
+Controller ruling: the "citing the Ghidra address" half of the two-places
+constraint binds static-disassembly findings. This task's prompt/key finding
+is behavioral, recovered by driving the emulator, so it has no address to
+cite. Not a gap.
 
 ### Task 2b + 2c outcome
 
@@ -71,12 +116,13 @@ the implementer's.
 
 ## Current verified state
 
-All four suites pass:
+All five suites pass:
 ```
 python3 tools/verify_corpus.py         -> OK 7 corpus files verified
 python3 tools/test_extract_strings.py  -> OK 796 strings extracted, 77 flagged suspect
 python3 tools/test_string_pointers.py  -> OK 695 string pointers recovered, 3 unaccounted
 python3 tools/test_string_tables.py    -> OK 54 table entries extracted
+python3 tools/oracle/test_oracle_smoke.py -> OK 8 checks, ~1.75s, 2 dosbox-x launches
 ```
 
 - `data/strings.json` — 796 entries (695 pointer-anchored + 54 table + 47 gap-tiled). Trustworthy; rebuilds byte-identically from the two input artifacts.
@@ -100,11 +146,21 @@ them from byte noise.
 - Operand extraction uses `getScalar` (immediates only). Never `getOpObjects` — it decomposes `[BP+4]` into false candidates.
 - **RNG fallback approved by the owner:** try to recover the original generator; if impossible, use a self-contained PRNG (NOT the `rand` crate), report DONE_WITH_CONCERNS, and delete the vector-comparison tests rather than seed them from our own implementation. This makes Task 12's differential test deterministic-values-only.
 - Task 11 must contain NO placeholder handlers or dummy enemies (owner chose rubric over plan).
+- **Task 5 amendment (owner-approved, option 2):** the plan's round-trip test
+  is near-tautological — `encode()` starts from `rec["_raw"]` and copies the
+  tail verbatim, so every unnamed byte round-trips regardless of correctness,
+  and a wrong-but-consistent `OFF_HP` would still pass. The plan's comment
+  claiming it "proves we account for every one of the 694 bytes" is FALSE and
+  must be deleted. Task 5 additionally builds the named regions from the
+  decoded fields WITHOUT `_raw` and asserts those bytes match the original.
+  The tail stays declared opaque. Reason: Task 7's Rust `save.rs` is generated
+  from these offsets; a silently wrong offset propagates into the port.
 
 ## Known open items
 
 - ~~14 blind-scan strings unrecovered by pointer anchoring~~ — **resolved by Task 2c.** The tiling check found them: 37 of 39 letter-bearing gaps tile exactly as complete Pascal shortstrings, and they are the game's command tokens (`s`, `sv`, `e`, `v`, `f`, `k`, `y`, `\`, `1`–`4`) plus a `С^ У^ П^ Е^` split banner. Task 4b's `N>=3` Cyrillic floor had excluded them. Task 11 compares input against these. The 2 non-tiling gaps sit between `suspect` entries and are code bytes — hence the check skips gaps beside suspect anchors.
-- `dosbox-x` is installed; Task 3 must still establish whether headless capture works (`SDL_VIDEODRIVER=dummy` may fail on this SDL1 build; fallback is `xvfb-run`).
+- ~~whether headless capture works~~ — **resolved by Task 3.** It does; see the Task 3 outcome above for the mechanism and its limits.
+- Accepted residual risk (Task 3, reviewer-flagged Minor, no action): `test_run_wires_frame_count_guard` patches three `capture.py` internals (`subprocess.Popen`, `_wait`, `decode_frames`) to reach `run()` without an emulator, so a harmless refactor of `run()` can break it. Proportionate given the no-second-emulator-launch constraint. If a fourth wave of stub-anchored tests is ever needed, reconsider injection seams instead.
 
 ## Workflow commands
 
