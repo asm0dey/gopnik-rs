@@ -220,9 +220,12 @@ flags are contiguous.
 | `kl` | `20ae:3699` | `1000:df10` | `1000:e36d` | `0xBBF6` |
 | `trn` | `20ae:369a` | `1000:e39a` | `1000:e948` | `0xBEC2` |
 
-Nothing sets a flag from a *failed* entry. Two setters are implemented in the
-port: `1000:d751` (`girl` reveals the club) and `1000:b570` (the wander
-bucket-2 branch reveals the girl, after its own `Random(2)`).
+Nothing sets a flag from a *failed* entry. A scan for `c6 06 [94-9a] 36 imm8`
+finds 17 setters and 14 clears; `docs/re/gaps.md` carries the full inventory.
+FOUR setters are implemented in the port: `1000:d751` (`girl` reveals the
+club), `1000:b570` (the wander bucket-2 branch reveals the girl, after its own
+`Random(2)`), and the character-creation pair `1000:6dc3` (Vet) / `1000:6dc8`
+(Market), which every new game gets for free at zero RNG cost.
 
 Four more are located but not implemented, all in the wander preamble that
 runs before the bucket roll, each firing on `Random(n) == 0` with its flag

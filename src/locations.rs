@@ -5,10 +5,19 @@
 //! under any permutation of the 7 slots, so the file itself cannot pin the
 //! order down -- the reader at `1000:6c5a` does, and [`TRACKED`] quotes it.
 //!
-//! Entering a new district hides every location again; `reset_for_new_district`
+//! Entering a new district hides locations again; `reset_for_new_district`
 //! models that (`docs/re/tables.md`, "Availability gates": `district` is
 //! `20ae:3692`, raised once понтовость reaches `district * 10`, file `0xC462`
 //! / `1000:ab92`).
+//!
+//! KNOWN DIVERGENCE, established from flow: the original's reset is NOT
+//! unconditional. `1000:ab96` clears Vet and Market, then three `74 05` skips
+//! each spare exactly one flag -- Club at `1000:aba7` and Girl at `1000:abb8`
+//! are spared when `[20ae:389c] == 3`, Den at `1000:abc9` when it is `5`
+//! (Gym at `1000:abac` and BigMarket at `1000:abbd` are always cleared, being
+//! the second store in each pair, past the skip). `reset_for_new_district`
+//! clears all seven unconditionally. Fixing it needs `[0x389c]`'s meaning,
+//! which is not established -- see `docs/re/gaps.md`.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Location {

@@ -1,90 +1,319 @@
 {
-  "note": "Command dispatch chain traced from orig/g.exe's entry function (Task 11). file_off = 0x18D0 + addr for every 1000:XXXX address. See docs/re/command-dispatch.md for the full method and citations. Not read by src/ -- provenance only, same split as data/*.provenance.json.",
-  "prompt": {
-    "street": "\\",
-    "combat": "Битва\\",
-    "prompt_string_file_off": "0x9BF1"
+ "note": "Command dispatch chain traced from orig/g.exe's entry function (Task 11). file_off = 0x18D0 + addr for every 1000:XXXX address. See docs/re/command-dispatch.md for the full method and citations. Not read by src/ -- provenance only, same split as data/*.provenance.json.",
+ "prompt": {
+  "street": "\\",
+  "combat": "Битва\\",
+  "prompt_string_file_off": "0x9BF1"
+ },
+ "confirmed_dispatch_chain": [
+  {
+   "verb": "w",
+   "compare_addr": "1000:ae86",
+   "token_file_off": "0x9D5E",
+   "status": "confirmed",
+   "note": "wander/encounter roll"
   },
-  "confirmed_dispatch_chain": [
-    {"verb": "w", "compare_addr": "1000:ae86", "token_file_off": "0x9D5E", "status": "confirmed", "note": "wander/encounter roll"},
-    {"verb": "run", "compare_addr": "1000:ae97", "token_file_off": "0x9D60", "status": "confirmed", "note": "synonym of w, same jump target 1000:aea1"},
-    {"verb": "mar", "compare_addr": "1000:b94a", "token_file_off": "0xA42C", "status": "confirmed", "note": "market; gated on 20ae:3694 discovery flag + 20ae:3b76 pursuit flag"},
-    {"verb": "bmar", "compare_addr": "1000:c4be", "token_file_off": "0xAA24", "status": "confirmed", "note": "dealers"},
-    {"verb": "rep", "compare_addr": "1000:d3a6", "token_file_off": "0xB236", "status": "confirmed", "note": "vet"},
-    {"verb": "girl", "compare_addr": "1000:d6ed", "token_file_off": "0xB46A", "status": "confirmed", "note": "girlfriend"},
-    {"verb": "fight", "compare_addr": "1000:d7d8", "token_file_off": "0xB584", "status": "confirmed", "note": "deprecated alias, prints refusal at 0xB58A pointing at w -- NOT a fight command"},
-    {"verb": "pr", "compare_addr": "1000:d802", "token_file_off": "0xB5BD", "status": "confirmed", "note": "den"},
-    {"verb": "kl", "compare_addr": "1000:df06", "token_file_off": "0xB9BA", "status": "confirmed", "note": "club"},
-    {"verb": "trn", "compare_addr": "1000:e390", "token_file_off": "0xBC23", "status": "confirmed", "note": "gym"},
-    {"verb": "kos", "compare_addr": "1000:e973", "token_file_off": "0xBEEF", "status": "confirmed", "note": "smoke a joint"},
-    {"verb": "i", "compare_addr": "1000:ea94", "token_file_off": "0xBFDE", "status": "confirmed", "note": "prints the 13-line command list; NOT inventory"},
-    {"verb": "s", "compare_addr": "1000:ec82", "token_file_off": "0xB855", "status": "confirmed", "note": "stats"},
-    {"verb": "f", "compare_addr": "1000:ec96", "token_file_off": "0xC31C", "status": "dispatch_confirmed_handler_corroborated", "note": "shoot, corroborated by adjacent refusal string at 0xC31E"},
-    {"verb": "k", "compare_addr": "1000:ecc7", "token_file_off": "0xC341", "status": "dispatch_confirmed_handler_corroborated", "note": "fight, corroborated by adjacent refusal string at 0xC343"},
-    {"verb": "name", "compare_addr": "1000:ecf1", "token_file_off": "0xC37C", "status": "confirmed", "note": "rename"},
-    {"verb": "version", "compare_addr": "1000:edab", "token_file_off": "0xC3B9", "status": "confirmed", "note": "prints version banner; not in the in-game help text"},
-    {"verb": "help", "compare_addr": "1000:edd5", "token_file_off": "0xC3E9", "status": "dispatch_confirmed_content_unverified", "note": "dispatched, printed content not traced"},
-    {"verb": "exit", "compare_addr": "1000:ede9", "token_file_off": "0xC3EE", "status": "confirmed", "note": "quit; not in the help text"},
-    {"verb": "e", "compare_addr": "1000:edfa", "token_file_off": "0xB43E", "status": "confirmed", "note": "quit"}
-  ],
-  "corroborated_only": [
-    {"verb": "sv", "help_line_file_off": "0xC195", "status": "corroborated_not_dispatcher_confirmed", "evidence": "docs/re/tables.md section 4 oracle capture (sv mid-fight prints enemy stats) + help text. 0xC195 is the whole help line 'Напиши: ^6sv^7 ...', NOT a token string; no token for sv was located."},
-    {"verb": "v", "help_line_file_off": "0xC210", "status": "corroborated_not_dispatcher_confirmed", "evidence": "help text only. 0xC210 is a whole help line, not a token."},
-    {"verb": "x", "token_file_off": "0xAF9E", "status": "corroborated_not_dispatcher_confirmed", "evidence": "bmar submenu text at 0xAA58, sell junk. 0xAF9E genuinely is a token string."},
-    {"verb": "wes", "token_file_off": "0xAFDA", "status": "corroborated_not_dispatcher_confirmed", "evidence": "bmar submenu text at 0xAA8A, sell items. 0xAFDA genuinely is a token string."}
-  ],
-  "subroutine_dispatched": [
-    {"verb": "h", "call_addr": "1000:e966", "callee": "FUN_1000_29c4", "compare_addr": "1000:29f0", "token_file_off": "0x4197", "status": "confirmed", "note": "entry passes DS:3972 to FUN_1000_29c4, which compares it internally; drink one half-litre. Second call site 1000:4b00 from FUN_1000_3d11 with DS:3a72."},
-    {"verb": "mh", "call_addr": "1000:e966", "callee": "FUN_1000_29c4", "compare_addr": "1000:2a02", "token_file_off": "0x4199", "status": "confirmed", "note": "same call; drink until full or dry, one summary line."}
-  ],
-  "encounter_trace": {
-    "readln_addr": "1000:ae63",
-    "readln_var": "DS:3972",
-    "w_run_match_target": "1000:aea1",
-    "stoned_countdown_var": "DS:38cd",
-    "encounter_roll_reused_from": "1000:b358",
-    "encounter_roll_formula": "Random(25)+1, bucketed 1 / 2-4 / 5-9 / 10-25 into DS:3970",
-    "encounter_roll_reuse_status": "assumed_not_confirmed_for_regular_turn_path",
-    "encounter_bucket_trigger": 3,
-    "encounter_generator_call": "1000:b5b8 -> FUN_1000_0d14",
-    "cop_class_special_case": {"class": 8, "branch_addr": "1000:b76a", "modelled": false},
-    "answer_readln_var": "DS:3a72",
-    "accept_token_file_off": "0x9BF3",
-    "accept_token": "y",
-    "accept_flag_var": "DS:3b72",
-    "decline_random_call": "1000:b725 Random(2) (set up at 1000:b721)",
-    "decline_random_zero": "1000:b72e writes 0xA2BB '^4Он тебя заметил.' and sets the accept flag at 1000:b747 -- roll 0 MEANS THE FIGHT HAPPENS",
-    "decline_random_nonzero": "1000:b74e writes 0xA2CE '^2Ты смылся.' and leaves the flag clear -- escaped",
-    "decline_random_call_status": "confirmed_for_one_of_at_least_two_code_paths",
-    "second_decline_path_addr": "1000:b691",
-    "second_decline_path_status": "no_visible_random_roll_found",
-    "combat_trigger": "1000:b826 -> call FUN_1000_3d11(param_1=0)"
+  {
+   "verb": "run",
+   "compare_addr": "1000:ae97",
+   "token_file_off": "0x9D60",
+   "status": "confirmed",
+   "note": "synonym of w, same jump target 1000:aea1"
   },
-  "combat_modality": {
-    "confirmed_modal_by": "docs/re/oracle-captures/command-table-and-combat.md (mar and i ignored at Битва\\ prompt)",
-    "verbs_traced_in_combat_loop": ["sv"],
-    "verbs_assumed_in_combat_loop_unconfirmed": ["k"],
-    "internal_dispatch_chain_disassembled": false
+  {
+   "verb": "mar",
+   "compare_addr": "1000:b94a",
+   "token_file_off": "0xA42C",
+   "status": "confirmed",
+   "note": "market; gated on 20ae:3694 discovery flag + 20ae:3b76 pursuit flag"
   },
-  "shop_modality": {
-    "status": "confirmed",
-    "basis": "each location handler writes its own prompt string and then ReadLn's into DS:3a72, the same second input variable combat uses, not the top-level DS:3972. Proven for mar: Write of 0xA691 at 1000:bd08, ReadLn at 1000:bd21.",
-    "prompt_strings": {
-      "mar": "0xA691", "bmar": "0xAC4B", "rep": "0xB313", "pr": "0xB787", "kl": "0xBAB2", "trn": "0xBD43",
-      "bmar_sell_items_submenu": "0xB00C"
-    },
-    "girl_is_not_modal": "girl has no prompt string and no ReadLn; 1000:d701..1000:d798 runs to completion in one turn."
+  {
+   "verb": "bmar",
+   "compare_addr": "1000:c4be",
+   "token_file_off": "0xAA24",
+   "status": "confirmed",
+   "note": "dealers"
   },
-  "discovery_flags": {
-    "note": "seven contiguous bytes; each location's gate is cmp byte [flag],1 and the not-equal arm writes one refusal string.",
-    "mar":  {"flag": "20ae:3694", "gate_addr": "1000:b954", "refusal_addr": "1000:c49b", "refusal_file_off": "0xA9F8"},
-    "bmar": {"flag": "20ae:3695", "gate_addr": "1000:c4c8", "refusal_addr": "1000:d383", "refusal_file_off": "0xB1CC"},
-    "pr":   {"flag": "20ae:3696", "gate_addr": "1000:d80c", "refusal_addr": "1000:dee3", "refusal_file_off": "0xB980"},
-    "girl": {"flag": "20ae:3697", "gate_addr": "1000:d6f7", "refusal_addr": "1000:d7b5", "refusal_file_off": "0xB568"},
-    "rep":  {"flag": "20ae:3698", "gate_addr": "1000:d3b0", "refusal_addr": "1000:d6ca", "refusal_file_off": "0xB440"},
-    "kl":   {"flag": "20ae:3699", "gate_addr": "1000:df10", "refusal_addr": "1000:e36d", "refusal_file_off": "0xBBF6"},
-    "trn":  {"flag": "20ae:369a", "gate_addr": "1000:e39a", "refusal_addr": "1000:e948", "refusal_file_off": "0xBEC2"},
-    "setters_found": ["1000:d751 sets girl's club flag 20ae:3699", "1000:b570 sets 20ae:3697 in the wander bucket-2 branch", "1000:b196 sets 20ae:3698 in the wander preamble", "1000:b1c8 sets 20ae:3694 in the wander preamble", "1000:b1fa sets 20ae:3699 in the wander preamble", "1000:b22c sets 20ae:369a in the wander preamble"],
-    "never_set_by": "a refused entry"
+  {
+   "verb": "rep",
+   "compare_addr": "1000:d3a6",
+   "token_file_off": "0xB236",
+   "status": "confirmed",
+   "note": "vet"
+  },
+  {
+   "verb": "girl",
+   "compare_addr": "1000:d6ed",
+   "token_file_off": "0xB46A",
+   "status": "confirmed",
+   "note": "girlfriend"
+  },
+  {
+   "verb": "fight",
+   "compare_addr": "1000:d7d8",
+   "token_file_off": "0xB584",
+   "status": "confirmed",
+   "note": "deprecated alias, prints refusal at 0xB58A pointing at w -- NOT a fight command"
+  },
+  {
+   "verb": "pr",
+   "compare_addr": "1000:d802",
+   "token_file_off": "0xB5BD",
+   "status": "confirmed",
+   "note": "den"
+  },
+  {
+   "verb": "kl",
+   "compare_addr": "1000:df06",
+   "token_file_off": "0xB9BA",
+   "status": "confirmed",
+   "note": "club"
+  },
+  {
+   "verb": "trn",
+   "compare_addr": "1000:e390",
+   "token_file_off": "0xBC23",
+   "status": "confirmed",
+   "note": "gym"
+  },
+  {
+   "verb": "kos",
+   "compare_addr": "1000:e973",
+   "token_file_off": "0xBEEF",
+   "status": "confirmed",
+   "note": "smoke a joint"
+  },
+  {
+   "verb": "i",
+   "compare_addr": "1000:ea94",
+   "token_file_off": "0xBFDE",
+   "status": "confirmed",
+   "note": "prints the 13-line command list; NOT inventory"
+  },
+  {
+   "verb": "s",
+   "compare_addr": "1000:ec82",
+   "token_file_off": "0xB855",
+   "status": "confirmed",
+   "note": "stats"
+  },
+  {
+   "verb": "f",
+   "compare_addr": "1000:ec96",
+   "token_file_off": "0xC31C",
+   "status": "dispatch_confirmed_handler_corroborated",
+   "note": "shoot, corroborated by adjacent refusal string at 0xC31E"
+  },
+  {
+   "verb": "k",
+   "compare_addr": "1000:ecc7",
+   "token_file_off": "0xC341",
+   "status": "dispatch_confirmed_handler_corroborated",
+   "note": "fight, corroborated by adjacent refusal string at 0xC343"
+  },
+  {
+   "verb": "name",
+   "compare_addr": "1000:ecf1",
+   "token_file_off": "0xC37C",
+   "status": "confirmed",
+   "note": "rename"
+  },
+  {
+   "verb": "version",
+   "compare_addr": "1000:edab",
+   "token_file_off": "0xC3B9",
+   "status": "confirmed",
+   "note": "prints version banner; not in the in-game help text"
+  },
+  {
+   "verb": "help",
+   "compare_addr": "1000:edd5",
+   "token_file_off": "0xC3E9",
+   "status": "dispatch_confirmed_content_unverified",
+   "note": "dispatched, printed content not traced"
+  },
+  {
+   "verb": "exit",
+   "compare_addr": "1000:ede9",
+   "token_file_off": "0xC3EE",
+   "status": "confirmed",
+   "note": "quit; not in the help text"
+  },
+  {
+   "verb": "e",
+   "compare_addr": "1000:edfa",
+   "token_file_off": "0xB43E",
+   "status": "confirmed",
+   "note": "quit"
   }
+ ],
+ "corroborated_only": [
+  {
+   "verb": "sv",
+   "help_line_file_off": "0xC195",
+   "status": "corroborated_not_dispatcher_confirmed",
+   "evidence": "docs/re/tables.md section 4 oracle capture (sv mid-fight prints enemy stats) + help text. 0xC195 is the whole help line 'Напиши: ^6sv^7 ...', NOT a token string; no token for sv was located."
+  },
+  {
+   "verb": "v",
+   "help_line_file_off": "0xC210",
+   "status": "corroborated_not_dispatcher_confirmed",
+   "evidence": "help text only. 0xC210 is a whole help line, not a token."
+  },
+  {
+   "verb": "x",
+   "token_file_off": "0xAF9E",
+   "status": "corroborated_not_dispatcher_confirmed",
+   "evidence": "bmar submenu text at 0xAA58, sell junk. 0xAF9E genuinely is a token string."
+  },
+  {
+   "verb": "wes",
+   "token_file_off": "0xAFDA",
+   "status": "corroborated_not_dispatcher_confirmed",
+   "evidence": "bmar submenu text at 0xAA8A, sell items. 0xAFDA genuinely is a token string."
+  }
+ ],
+ "subroutine_dispatched": [
+  {
+   "verb": "h",
+   "call_addr": "1000:e966",
+   "callee": "FUN_1000_29c4",
+   "compare_addr": "1000:29f0",
+   "token_file_off": "0x4197",
+   "status": "confirmed",
+   "note": "entry passes DS:3972 to FUN_1000_29c4, which compares it internally; drink one half-litre. Second call site 1000:4b00 from FUN_1000_3d11 with DS:3a72."
+  },
+  {
+   "verb": "mh",
+   "call_addr": "1000:e966",
+   "callee": "FUN_1000_29c4",
+   "compare_addr": "1000:2a02",
+   "token_file_off": "0x4199",
+   "status": "confirmed",
+   "note": "same call; drink until full or dry, one summary line."
+  }
+ ],
+ "encounter_trace": {
+  "readln_addr": "1000:ae63",
+  "readln_var": "DS:3972",
+  "w_run_match_target": "1000:aea1",
+  "stoned_countdown_var": "DS:38cd",
+  "encounter_roll_reused_from": "1000:b358",
+  "encounter_roll_formula": "Random(25)+1, bucketed 1 / 2-4 / 5-9 / 10-25 into DS:3970",
+  "encounter_roll_reuse_status": "assumed_not_confirmed_for_regular_turn_path",
+  "encounter_bucket_trigger": 3,
+  "encounter_generator_call": "1000:b5b8 -> FUN_1000_0d14",
+  "cop_class_special_case": {
+   "class": 8,
+   "branch_addr": "1000:b76a",
+   "modelled": false
+  },
+  "answer_readln_var": "DS:3a72",
+  "accept_token_file_off": "0x9BF3",
+  "accept_token": "y",
+  "accept_flag_var": "DS:3b72",
+  "decline_random_call": "1000:b725 Random(2) (set up at 1000:b721)",
+  "decline_random_zero": "1000:b72e writes 0xA2BB '^4Он тебя заметил.' and sets the accept flag at 1000:b747 -- roll 0 MEANS THE FIGHT HAPPENS",
+  "decline_random_nonzero": "1000:b74e writes 0xA2CE '^2Ты смылся.' and leaves the flag clear -- escaped",
+  "decline_random_call_status": "confirmed_for_one_of_at_least_two_code_paths",
+  "second_decline_path_addr": "1000:b691",
+  "second_decline_path_status": "no_visible_random_roll_found",
+  "combat_trigger": "1000:b826 -> call FUN_1000_3d11(param_1=0)"
+ },
+ "combat_modality": {
+  "confirmed_modal_by": "docs/re/oracle-captures/command-table-and-combat.md (mar and i ignored at Битва\\ prompt)",
+  "verbs_traced_in_combat_loop": [
+   "sv"
+  ],
+  "verbs_assumed_in_combat_loop_unconfirmed": [
+   "k"
+  ],
+  "internal_dispatch_chain_disassembled": false
+ },
+ "shop_modality": {
+  "status": "confirmed",
+  "basis": "each location handler writes its own prompt string and then ReadLn's into DS:3a72, the same second input variable combat uses, not the top-level DS:3972. Proven for mar: Write of 0xA691 at 1000:bd08, ReadLn at 1000:bd21.",
+  "prompt_strings": {
+   "mar": "0xA691",
+   "bmar": "0xAC4B",
+   "rep": "0xB313",
+   "pr": "0xB787",
+   "kl": "0xBAB2",
+   "trn": "0xBD43",
+   "bmar_sell_items_submenu": "0xB00C"
+  },
+  "girl_is_not_modal": "girl has no prompt string and no ReadLn; 1000:d701..1000:d798 runs to completion in one turn."
+ },
+ "discovery_flags": {
+  "note": "seven contiguous bytes; each location's gate is cmp byte [flag],1 and the not-equal arm writes one refusal string.",
+  "mar": {
+   "flag": "20ae:3694",
+   "gate_addr": "1000:b954",
+   "refusal_addr": "1000:c49b",
+   "refusal_file_off": "0xA9F8"
+  },
+  "bmar": {
+   "flag": "20ae:3695",
+   "gate_addr": "1000:c4c8",
+   "refusal_addr": "1000:d383",
+   "refusal_file_off": "0xB1CC"
+  },
+  "pr": {
+   "flag": "20ae:3696",
+   "gate_addr": "1000:d80c",
+   "refusal_addr": "1000:dee3",
+   "refusal_file_off": "0xB980"
+  },
+  "girl": {
+   "flag": "20ae:3697",
+   "gate_addr": "1000:d6f7",
+   "refusal_addr": "1000:d7b5",
+   "refusal_file_off": "0xB568"
+  },
+  "rep": {
+   "flag": "20ae:3698",
+   "gate_addr": "1000:d3b0",
+   "refusal_addr": "1000:d6ca",
+   "refusal_file_off": "0xB440"
+  },
+  "kl": {
+   "flag": "20ae:3699",
+   "gate_addr": "1000:df10",
+   "refusal_addr": "1000:e36d",
+   "refusal_file_off": "0xBBF6"
+  },
+  "trn": {
+   "flag": "20ae:369a",
+   "gate_addr": "1000:e39a",
+   "refusal_addr": "1000:e948",
+   "refusal_file_off": "0xBEC2"
+  },
+  "setters_found": [
+   "1000:6dc3 sets 20ae:3698 (Vet) at character creation",
+   "1000:6dc8 sets 20ae:3694 (Market) at character creation",
+   "1000:d751 sets girl's club flag 20ae:3699",
+   "1000:b570 sets 20ae:3697 in the wander bucket-2 branch",
+   "1000:b196 sets 20ae:3698 in the wander preamble",
+   "1000:b1c8 sets 20ae:3694 in the wander preamble",
+   "1000:b1fa sets 20ae:3699 in the wander preamble",
+   "1000:b22c sets 20ae:369a in the wander preamble",
+   "1000:73cf sets 20ae:3697 on the [20ae:389c]==3 progression reveal",
+   "1000:73d4 sets 20ae:3699 on the [20ae:389c]==3 progression reveal",
+   "1000:73e0 sets 20ae:3695 on the [20ae:389c]==6 progression reveal",
+   "1000:73c3 sets 20ae:3696 on the [20ae:389c]==5 progression reveal",
+   "1000:dcf6 sets 20ae:3695 via the gated 'a' token",
+   "1000:dcfb sets 20ae:369a via the gated 'a' token",
+   "1000:ae1f sets 20ae:3696 (Den) -- trigger UNVERIFIED",
+   "1000:4aa5 sets 20ae:3696 (Den) -- trigger UNVERIFIED",
+   "1000:52b3 sets 20ae:3696 (Den) -- trigger UNVERIFIED"
+  ],
+  "never_set_by": "a refused entry",
+  "setters_implemented_in_port": [
+   "1000:6dc3",
+   "1000:6dc8",
+   "1000:d751",
+   "1000:b570"
+  ],
+  "scan": "c6 06 [94-9a] 36 imm8 over the whole image: 17 setters, 14 clears. No A2/88/89/C7 stores target 20ae:3694..369a. See docs/re/gaps.md."
+ }
 }
