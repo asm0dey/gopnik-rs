@@ -44,3 +44,47 @@ hardcode it — DOS picks the load segment.
 - vvfat must be `-hda fat:rw:<dir>`; read-only fails with "Block node is
   read-only". Mount a COPY of the game, never `orig/`.
 - `boot.start()` launches a VM — kill it when done or it lingers.
+
+## gdb techniques worth using here
+
+Adapted from the gdb skill at
+https://github.com/mohitmishra786/low-level-dev-skills (C/C++ userspace
+oriented; the parts below are the ones that survive the jump to a symbol-less
+16-bit guest over a remote stub).
+
+**Auto-logging breakpoints — the core of the Random tracer.** A breakpoint that
+prints and resumes itself turns one gdb session into a trace, while the qemu
+monitor drives input from another process:
+
+    set logging file rnd.log
+    set logging enabled on
+    break *ADDR
+    commands
+      silent
+      printf "site=%x n=%x\n", *(unsigned short*)($ss*16+$sp), \
+                               *(unsigned short*)($ss*16+$sp+4)
+      continue
+    end
+    continue
+
+At a Borland far-call entry the stack holds `[sp]`=return offset,
+`[sp+2]`=return segment, `[sp+4]`=the pushed argument. The return offset IS the
+Ghidra call-site offset, so the log reads directly against `docs/re/`.
+
+**Conditional breakpoints** narrow a hot routine to one caller without stopping
+on every draw:
+
+    break *RANDOM_ADDR if *(unsigned short*)($ss*16+$sp) == 0xb725
+
+**`tbreak`** for one-shot stops (e.g. catch the first entry into a routine, then
+get out of the way).
+
+**UNVERIFIED, worth one experiment:** gdb reverse debugging
+(`target record-btrace` / `record full`, then `reverse-continue`) would answer
+"which branch led here" directly. Whether it works over qemu's stub in real
+mode is untested — treat as speculative until someone runs it, and do not cite
+it in a finding.
+
+**Not applicable:** `rbreak` and anything symbol-driven (no symbols),
+`break foo if x > 10` by variable name (no debug info), and the skill's
+crash/core-dump material (a DOS guest produces none).
