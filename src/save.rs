@@ -57,7 +57,10 @@ impl fmt::Display for SaveError {
                 write!(f, "character {c:?} has no CP866 representation")
             }
             SaveError::TooLong(n) => {
-                write!(f, "encoded length {n} exceeds {PSTRING_CAP}-byte shortstring cap")
+                write!(
+                    f,
+                    "encoded length {n} exceeds {PSTRING_CAP}-byte shortstring cap"
+                )
             }
         }
     }

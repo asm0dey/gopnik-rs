@@ -61,7 +61,10 @@ pub fn parse(src: &str) -> Vec<Span> {
                 if let Some(new_color) = from_code(next) {
                     chars.next();
                     if !buf.is_empty() {
-                        spans.push(Span { color, text: std::mem::take(&mut buf) });
+                        spans.push(Span {
+                            color,
+                            text: std::mem::take(&mut buf),
+                        });
                     }
                     color = Some(new_color);
                     continue;
@@ -132,7 +135,10 @@ mod tests {
         let spans = parse("^4Ты сдох.");
         assert_eq!(
             spans,
-            vec![Span { color: Some(Color::Red), text: "Ты сдох.".to_string() }]
+            vec![Span {
+                color: Some(Color::Red),
+                text: "Ты сдох.".to_string()
+            }]
         );
     }
 
@@ -140,7 +146,13 @@ mod tests {
     fn parse_handles_leading_plain_text_and_multiple_colors() {
         let spans = parse("Зрители:^6Мочи его!");
         assert_eq!(spans.len(), 2);
-        assert_eq!(spans[0], Span { color: None, text: "Зрители:".to_string() });
+        assert_eq!(
+            spans[0],
+            Span {
+                color: None,
+                text: "Зрители:".to_string()
+            }
+        );
         assert_eq!(spans[1].color, Some(Color::Brown));
         assert_eq!(spans[1].text, "Мочи его!");
     }
@@ -176,7 +188,13 @@ mod tests {
         // to the literal-push branch and both characters are copied as-is.
         assert_eq!(strip("a^8b"), "a^8b");
         assert_eq!(strip("a^9b"), "a^9b");
-        assert_eq!(parse("a^8b"), vec![Span { color: None, text: "a^8b".to_string() }]);
+        assert_eq!(
+            parse("a^8b"),
+            vec![Span {
+                color: None,
+                text: "a^8b".to_string()
+            }]
+        );
     }
 
     #[test]
@@ -185,7 +203,13 @@ mod tests {
         // before the second code (^7, White) overwrites `color`, so no
         // span is ever emitted for Red -- it is silently discarded.
         let spans = parse("^4^7abc");
-        assert_eq!(spans, vec![Span { color: Some(Color::White), text: "abc".to_string() }]);
+        assert_eq!(
+            spans,
+            vec![Span {
+                color: Some(Color::White),
+                text: "abc".to_string()
+            }]
+        );
         assert_eq!(strip("^4^7abc"), "abc");
     }
 
@@ -196,7 +220,13 @@ mod tests {
         // guarded by `!buf.is_empty()`, so the trailing ^4 contributes no
         // span at all.
         let spans = parse("abc^4");
-        assert_eq!(spans, vec![Span { color: None, text: "abc".to_string() }]);
+        assert_eq!(
+            spans,
+            vec![Span {
+                color: None,
+                text: "abc".to_string()
+            }]
+        );
         assert_eq!(strip("abc^4"), "abc");
     }
 

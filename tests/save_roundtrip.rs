@@ -4,7 +4,9 @@ use std::path::Path;
 const MAGIC: &str = "^4Gopnik: ^7version 1.02 june,sept 2003";
 
 fn load(name: &str) -> Vec<u8> {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("orig").join(name);
+    let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("orig")
+        .join(name);
     std::fs::read(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
 }
 
@@ -27,7 +29,12 @@ fn all_reference_saves_round_trip_byte_exactly() {
 
         let save = Save::parse(&bytes).unwrap_or_else(|e| panic!("{name}: parse: {e:?}"));
         assert_eq!(save.magic, MAGIC, "{name}: magic");
-        assert!(save.hp <= save.hpmax, "{name}: hp {} > hpmax {}", save.hp, save.hpmax);
+        assert!(
+            save.hp <= save.hpmax,
+            "{name}: hp {} > hpmax {}",
+            save.hp,
+            save.hpmax
+        );
 
         let out = save
             .to_bytes()
@@ -61,7 +68,10 @@ fn rejects_wrong_size() {
 #[test]
 fn display_name_strips_markup_but_raw_name_keeps_it() {
     let save = Save::parse(&load("SAVE_R5.SAV")).unwrap();
-    assert_eq!(save.name, "^7 Mudila", "raw name must keep markup for round-trip");
+    assert_eq!(
+        save.name, "^7 Mudila",
+        "raw name must keep markup for round-trip"
+    );
     assert_eq!(save.display_name(), " Mudila");
     assert!(!save.display_name().contains('^'));
 }
@@ -72,7 +82,9 @@ fn to_bytes_reports_error_instead_of_panicking_on_unencodable_name() {
     // CP866 representation must surface as an error, not a panic.
     let mut save = Save::parse(&load("SAVE_R0.SAV")).unwrap();
     save.name = "^7 漢".to_string();
-    let err = save.to_bytes().expect_err("unmappable char must error, not panic");
+    let err = save
+        .to_bytes()
+        .expect_err("unmappable char must error, not panic");
     assert!(matches!(err, save::SaveError::Unmappable('漢')), "{err:?}");
 }
 
@@ -103,7 +115,11 @@ fn to_bytes_caps_on_encoded_cp866_bytes_not_utf8_bytes_or_char_count() {
     // CP866 bytes (under the 255 cap) -- must succeed. A check against
     // UTF-8 byte length would wrongly reject this.
     save.name = "п".repeat(200);
-    assert_eq!(save.name.len(), 400, "sanity: UTF-8 encoding is 2 bytes/char");
+    assert_eq!(
+        save.name.len(),
+        400,
+        "sanity: UTF-8 encoding is 2 bytes/char"
+    );
     save.to_bytes()
         .expect("200 Cyrillic chars fit in the 255-byte CP866 cap");
 
@@ -135,8 +151,7 @@ fn rust_offsets_match_save_layout_json() {
         fields
             .iter()
             .find(|f| f["name"] == name)
-            .unwrap_or_else(|| panic!("no field named {name:?} in save_layout.json"))
-            ["off"]
+            .unwrap_or_else(|| panic!("no field named {name:?} in save_layout.json"))["off"]
             .as_u64()
             .unwrap() as usize
     };

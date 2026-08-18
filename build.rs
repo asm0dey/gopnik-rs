@@ -146,8 +146,9 @@ fn req_str_array<'a>(path: &str, row: &'a Value, label: &str, field: &str) -> Ve
         .unwrap_or_else(|| panic!("{label}: field {field:?} is not an array ({path})"))
         .iter()
         .map(|v| {
-            v.as_str()
-                .unwrap_or_else(|| panic!("{label}: field {field:?} has a non-string element ({path})"))
+            v.as_str().unwrap_or_else(|| {
+                panic!("{label}: field {field:?} has a non-string element ({path})")
+            })
         })
         .collect()
 }

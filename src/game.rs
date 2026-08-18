@@ -214,7 +214,11 @@ impl Game {
         term::println("^4Gopnik: ^7version 1.02 june,sept 2003");
     }
 
-    fn dispatch(&mut self, cmd: Command, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
+    fn dispatch(
+        &mut self,
+        cmd: Command,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<()> {
         match cmd {
             Command::Quit => self.running = false,
             Command::Stats => self.show_stats(),
@@ -466,7 +470,12 @@ impl Game {
             if !self.gate_open(row.gate) {
                 continue;
             }
-            let Some(idx) = row.key.parse::<usize>().ok().filter(|n| (1..=9).contains(n)) else {
+            let Some(idx) = row
+                .key
+                .parse::<usize>()
+                .ok()
+                .filter(|n| (1..=9).contains(n))
+            else {
                 continue;
             };
             term::println(&format!(
@@ -559,7 +568,10 @@ impl Game {
                 p.luck as i64,
             ],
         ));
-        term::println(&text::fill("Урон #-#", &[p.dmg_min as i64, p.dmg_max as i64]));
+        term::println(&text::fill(
+            "Урон #-#",
+            &[p.dmg_min as i64, p.dmg_max as i64],
+        ));
         if p.armor > 0 {
             term::println(&text::fill("^2Броня #    ", &[p.armor as i64]));
         }
@@ -630,7 +642,10 @@ impl Game {
                 enemy.luck as i64,
             ],
         ));
-        term::println(&text::fill("Урон #-#", &[enemy.dmg_min as i64, enemy.dmg_max as i64]));
+        term::println(&text::fill(
+            "Урон #-#",
+            &[enemy.dmg_min as i64, enemy.dmg_max as i64],
+        ));
         term::println(&text::fill(
             "Здоровье #/#  ",
             &[enemy.hp as i64, enemy.hpmax as i64],
@@ -908,9 +923,7 @@ impl Game {
             .iter()
             .find(|e| e.class == class)
             .map(|e| e.name.to_string())
-            .unwrap_or_else(|| {
-                panic!("data/enemies.json has no row for rolled class {class}")
-            });
+            .unwrap_or_else(|| panic!("data/enemies.json has no row for rolled class {class}"));
         Fighter {
             name,
             class,
@@ -1029,10 +1042,7 @@ impl Game {
         self.player.dmg_max += 2;
         let shortfall = self.player.hpmax.saturating_sub(self.player.hp);
         if shortfall < 10 {
-            term::print(&text::fill(
-                "^2Колёса прибавляют #з. ",
-                &[shortfall as i64],
-            ));
+            term::print(&text::fill("^2Колёса прибавляют #з. ", &[shortfall as i64]));
             self.player.hp = self.player.hpmax;
             term::println(&text::fill(
                 "^2Здоровья:#/#. Осталось # косяков",
@@ -1282,7 +1292,11 @@ impl Game {
     ///   `^2Ты победил.` is *not* a per-fight line: it is file `0x1DBF`, the
     ///   centred end-of-game banner `FUN_1000_074b` writes when you beat the
     ///   rector, and printing it here was a fabrication.
-    fn run_combat(&mut self, mut enemy: Fighter, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
+    fn run_combat(
+        &mut self,
+        mut enemy: Fighter,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<()> {
         loop {
             if self.player.hp == 0 || enemy.hp == 0 {
                 break;
@@ -1315,7 +1329,13 @@ impl Game {
             "^6За отпин врага ты получаешь # качков опыта",
             &[award as i64],
         ));
-        progress::apply_levels(&mut self.progress, &mut self.player, &mut self.rng, award, false);
+        progress::apply_levels(
+            &mut self.progress,
+            &mut self.player,
+            &mut self.rng,
+            award,
+            false,
+        );
 
         while self.district < 5 && self.player.level >= u16::from(self.district) * 10 {
             self.district += 1;
@@ -1356,9 +1376,7 @@ impl Game {
                 &[blow.damage as i64, enemy.hp as i64],
             ));
             match blow.broke {
-                Some(Break::Jaw) => {
-                    term::println("^2Ты сломал врагу челюсть. ^4Враг: А! козёл!")
-                }
+                Some(Break::Jaw) => term::println("^2Ты сломал врагу челюсть. ^4Враг: А! козёл!"),
                 Some(Break::Leg) => {
                     term::println("^2Ты сломал врагу ногу. ^4Враг: Ну что за урод!")
                 }

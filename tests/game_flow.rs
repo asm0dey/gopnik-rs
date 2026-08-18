@@ -3,7 +3,9 @@ use std::path::Path;
 
 #[test]
 fn places_round_trips_the_real_file() {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("orig").join("PLACES.SAV");
+    let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("orig")
+        .join("PLACES.SAV");
     let bytes = std::fs::read(p).unwrap();
     assert_eq!(bytes.len(), 7);
 
