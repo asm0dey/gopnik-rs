@@ -105,6 +105,8 @@ public class EnumerateBranches extends GhidraScript {
         int guardResolved = 0;
         int guardNull = 0;
         int guardJoinCrossed = 0;
+        int gameBranches = 0;
+        int gameBranchesTouched = 0;
 
         for (Function f : funcs) {
             String fname = f.getName();
@@ -125,6 +127,9 @@ public class EnumerateBranches extends GhidraScript {
 
                 totalBranches++;
                 branchCount.merge(fname, 1, Integer::sum);
+                if ("game".equals(fclass)) {
+                    gameBranches++;
+                }
                 if (!Long.toString(fileOffCalc(ins.getAddress()))
                         .equals(fileOffGhidra(ins.getAddress()))) {
                     fileOffMismatches++;
@@ -153,6 +158,9 @@ public class EnumerateBranches extends GhidraScript {
                 boolean touched = cited != null || guardCited != null;
                 if (touched) {
                     citedBranchCount.merge(fname, 1, Integer::sum);
+                    if ("game".equals(fclass)) {
+                        gameBranchesTouched++;
+                    }
                 }
                 long nearest = nearestCitation(ins.getAddress(), f, citations);
 
@@ -167,8 +175,12 @@ public class EnumerateBranches extends GhidraScript {
                 sb.append(", \"class\": ").append(q(fclass));
                 sb.append(", \"mnemonic\": ").append(q(ins.getMnemonicString()));
                 sb.append(", \"text\": ").append(q(ins.toString()));
-                sb.append(", \"taken\": ").append(taken == null ? "null" : q(addr(taken)));
-                sb.append(", \"fallthrough\": ").append(fall == null ? "null" : q(addr(fall)));
+                // Both destinations are rendered in the BRANCH's own segment
+                // so that `taken`/`fallthrough` join against `addr` as strings.
+                sb.append(", \"taken\": ")
+                        .append(taken == null ? "null" : q(addrIn(taken, ins.getAddress())));
+                sb.append(", \"fallthrough\": ")
+                        .append(fall == null ? "null" : q(addrIn(fall, ins.getAddress())));
                 sb.append(", \"reads_flags\": [").append(qJoin(new ArrayList<>(g.wanted))).append("]");
                 if (g.insn == null) {
                     sb.append(", \"guard\": null");
@@ -527,6 +539,38 @@ public class EnumerateBranches extends GhidraScript {
             pw.println("\"port_citation_sources\": [\"src/**/*.rs\","
                     + " \"data/command_dispatch.json\"],");
 
+            // The caveat travels WITH the data. uncited_spans is the most
+            // tempting thing in this file to read as a to-do list, and a
+            // consumer that never opens docs/re/branches.md will do exactly
+            // that unless the artifact says otherwise itself.
+            pw.println("\"port_cross_reference\": {");
+            pw.println("  \"metric\": \"port_touched is true iff the branch's own address"
+                    + " or its guard's address appears as a SEG:OFF citation in"
+                    + " src/**/*.rs or data/command_dispatch.json. docs/re/*.md is"
+                    + " deliberately NOT scanned: documented is not ported.\",");
+            pw.println("  \"is_proxy\": true,");
+            pw.println("  \"means\": \"port_touched == false means 'no address citation',"
+                    + " NOT 'unimplemented'. uncited_spans is a ranking of where the"
+                    + " port's own notes stop; it is not a to-do list.\",");
+            pw.println("  \"observed_failure_directions\": [");
+            pw.println("    {\"direction\": \"over_reports_coverage\","
+                    + " \"example\": [\"1000:b3a7\", \"1000:b3b7\"],"
+                    + " \"detail\": \"src/game.rs cites both addresses precisely in order to"
+                    + " record that the port does NOT spend those two Random draws."
+                    + " A citation can be a record of a gap.\"},");
+            pw.println("    {\"direction\": \"under_reports_coverage\","
+                    + " \"example\": [\"data/shops.json\"],"
+                    + " \"detail\": \"Shop prices were ported from the extracted table in"
+                    + " data/shops.json rather than read branch by branch, so shop menu"
+                    + " bodies carry no branch citations and read as untouched even"
+                    + " though part of their behaviour is modelled.\"}");
+            pw.println("  ],");
+            pw.println("  \"game_branches\": " + gameBranches + ",");
+            pw.println("  \"game_branches_touched\": " + gameBranchesTouched + ",");
+            pw.println("  \"game_branches_touched_pct\": "
+                    + String.format("%.1f", 100.0 * gameBranchesTouched / gameBranches));
+            pw.println("},");
+
             pw.println("\"functions\": [");
             pw.println(String.join(",\n", funcJson));
             pw.println("],");
@@ -638,16 +682,54 @@ public class EnumerateBranches extends GhidraScript {
         return g;
     }
 
+    /**
+     * Flat offsets of every port citation inside a function body, sorted, cached
+     * per function. Walking the whole body per branch is O(body size) each time,
+     * which for `entry` (17,143 bytes, 406 branches) is ~7M address steps.
+     */
+    private final Map<Address, long[]> citationOffsetCache = new HashMap<>();
+
+    private long[] citationOffsets(Function f, Map<Address, List<String>> citations) {
+        long[] cached = citationOffsetCache.get(f.getEntryPoint());
+        if (cached != null) {
+            return cached;
+        }
+        AddressSetView body = f.getBody();
+        List<Long> offs = new ArrayList<>();
+        for (Address c : citations.keySet()) {
+            if (body.contains(c)) {
+                offs.add(c.getOffset());
+            }
+        }
+        long[] arr = new long[offs.size()];
+        for (int i = 0; i < arr.length; i++) {
+            arr[i] = offs.get(i);
+        }
+        Arrays.sort(arr);
+        citationOffsetCache.put(f.getEntryPoint(), arr);
+        return arr;
+    }
+
     /** Bytes from `a` to the closest port citation in the same function, or -1. */
     private long nearestCitation(Address a, Function f, Map<Address, List<String>> citations) {
+        long[] offs = citationOffsets(f, citations);
+        if (offs.length == 0) {
+            return -1;
+        }
+        long here = a.getOffset();
+        int i = Arrays.binarySearch(offs, here);
+        if (i >= 0) {
+            return 0;
+        }
+        int ins = -i - 1;
         long best = -1;
-        for (Address c : f.getBody().getAddresses(true)) {
-            if (!citations.containsKey(c)) {
-                continue;
-            }
-            long dist = Math.abs(c.getOffset() - a.getOffset());
-            if (best < 0 || dist < best) {
-                best = dist;
+        if (ins < offs.length) {
+            best = offs[ins] - here;
+        }
+        if (ins > 0) {
+            long d = here - offs[ins - 1];
+            if (best < 0 || d < best) {
+                best = d;
             }
         }
         return best;
@@ -759,6 +841,32 @@ public class EnumerateBranches extends GhidraScript {
 
     private String addr(Address a) {
         return a.toString();
+    }
+
+    /**
+     * Render {@code a} using the segment of {@code ref}.
+     *
+     * Ghidra's {@code Instruction.getFallThrough()} renormalises the segment of
+     * the address it returns, while {@code getFlows()} does not: a branch at
+     * 1ee5:0013 gets taken=1ee5:0017 but fallthrough=1000:ee65. Both denote the
+     * same linear byte, but a consumer joining `fallthrough` against `addr` as a
+     * STRING silently fails on every such record. Rebuilding the address in the
+     * branch's own segment makes the three fields join.
+     *
+     * Falls back to the raw rendering when either address is not segmented or
+     * when the byte is not reachable from ref's segment in 16 bits.
+     */
+    private String addrIn(Address a, Address ref) {
+        if (!(a instanceof SegmentedAddress) || !(ref instanceof SegmentedAddress)) {
+            return addr(a);
+        }
+        int seg = segOf(ref);
+        long flat = (long) segOf(a) * 16 + offOf(a);
+        long off = flat - (long) seg * 16;
+        if (off < 0 || off > 0xffffL) {
+            return addr(a);
+        }
+        return String.format("%04x:%04x", seg, off);
     }
 
     private String realSegOff(Address a) {
