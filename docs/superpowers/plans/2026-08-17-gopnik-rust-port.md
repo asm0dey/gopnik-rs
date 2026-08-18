@@ -2673,10 +2673,25 @@ Write `data/xp.json`:
 least levels 1 through 10. `award_cases` holds `{"player_level", "enemy_level",
 "expected"}` triples captured from the oracle.
 
-Cross-check against the reference saves: `SAVE_R0` is level 4, `SAVE_R2`–`R4`
-are level 6, `SAVE_R5` is level 5 (word at save offset `0x200`, pending Task 9's
-confirmation of that field's meaning). Whatever curve you recover must be
-consistent with those levels given each save's XP value.
+Cross-check against the reference saves.
+
+**CORRECTED after Task 9 — the offset in the original wording was wrong.**
+The level is the word at save offset **`0x20a`**, NOT `0x200`. `0x200` is the
+**rank-name index**. This was established by Task 9 and independently
+re-verified by its reviewer against all five reference saves:
+
+- `word[0x234] == 10 + 10 * word[0x20a]` holds for every save —
+  `(15,160) (10,110) (20,210) (30,310) (40,410)`.
+- Reading level from `0x200` instead gives `4, 6, 6, 6, 5`, which satisfies no
+  consistent threshold relation. **The old "R0 is level 4, R2–R4 are level 6,
+  R5 is level 5" claim came from that wrong offset — do not reuse those
+  numbers.** Take the levels from `0x20a`.
+- `hpmax == 10 + 5*vitality + strength` holds exactly for R0, R3 and R5.
+
+Whatever curve you recover must be consistent with the levels read from
+`0x20a` given each save's XP value. See `docs/re/combat.md` and
+`docs/re/save-format.md`, which Task 9's fix wave updates with the confirmed
+field names.
 
 - [ ] **Step 3: Write the failing test**
 
