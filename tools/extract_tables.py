@@ -282,13 +282,19 @@ TAG_RE = re.compile(r"^[a-z]{2,6}$")
 KEY_RE = re.compile(r"\^[0-7](?P<key>.)")
 
 # `mov al,[price]` / `xor ah,ah` / `sub [20ae:38c7],ax` -- the site that
-# actually debits the player.  Collected into a single file-wide set of
-# debited addresses; a row is `charged: true` when the address its
-# affordability test reads is a member.  That is membership in the set, not
-# a per-row check that *this row's own* handler is what debits it -- it is
-# sound here only because every address in the set turns out to be debited
-# exactly once (verified by hand), so the two coincide.  See
-# docs/re/tables.md, "The row idiom".
+# actually debits the player.  Collected into a single file-wide map from the
+# match position to the debited byte's address; a row is `charged: true` when
+# the address its affordability test reads is one of the values.  That is
+# membership in the set, not a per-row check that *this row's own* handler is
+# what debits it -- it is sound here only because every address in the set
+# turns out to be debited exactly once (verified by hand), so the two
+# coincide.  See docs/re/tables.md, "The row idiom".
+#
+# This is only one of three ways the binary produces the `ax` that
+# `sub [20ae:38c7],ax` subtracts; the "Other price sites" section below scans
+# the bare `sub` and classifies *every* occurrence, so no debit site can go
+# unrecorded.  The map this returns is what that section reuses -- there is
+# no second full-file rescan.
 CHARGE_RE = re.compile(rb"\xA0(?P<addr>..)\x30\xE4\x29\x06\xC7\x38", re.DOTALL)
 
 # `cmp byte [imm16],imm8` followed by a conditional jump: the availability
@@ -374,7 +380,11 @@ def parse_shops(blob: bytes) -> tuple:
             }
         )
 
-    charged = {u16(m.group("addr")) for m in CHARGE_RE.finditer(blob)}
+    # One full-file CHARGE_RE scan, kept as {match position -> debited byte
+    # address} so the "Other price sites" section below can classify each
+    # `sub [money],ax` site without rescanning the file.
+    charge_map = {m.start(): u16(m.group("addr")) for m in CHARGE_RE.finditer(blob)}
+    charged = set(charge_map.values())
     for row in rows:
         row["charged"] = int(row["price_addr"].split(":")[1], 16) in charged
 
@@ -405,7 +415,7 @@ def parse_shops(blob: bytes) -> tuple:
             district = [g[1] for g in active if g[1].startswith("district")]
             row["gate"] = district[-1] if district else None
             row["extra_gates"] = [g[1] for g in active if not g[1].startswith("district")]
-    return rows, charged
+    return rows, charge_map
 
 
 # ---------------------------------------------------------------------------
@@ -534,25 +544,69 @@ def parse_enemies(blob: bytes, ranks: list) -> list:
 # Other price sites (data/other_price_sites.json)
 # ---------------------------------------------------------------------------
 #
-# CHARGE_RE (above) already collects every `mov al,[addr] / xor ah,ah / sub
-# [money],ax` debit site's address into `charged`. 18 of those addresses are
-# the mar/bmar price bytes in data/shops.json; parse_shops() discards the
-# rest. This section recovers them, plus two further debit forms CHARGE_RE's
-# specific byte pattern does not match at all: a price baked into the
-# instruction as an immediate, and (one instance) a computed amount. See
-# docs/re/tables.md, "Other price sources, not extracted".
+# The player's money is the word at 20ae:38c7. Every instruction in the binary
+# that debits it is one of exactly two `sub` encodings:
+#
+#   29 06 C7 38      sub word [20ae:38c7],ax     -- amount in ax
+#   83 2E C7 38 ib   sub word [20ae:38c7],imm8   -- amount is an immediate
+#
+# Both are scanned over the whole file. The `ax` form is the one that used to
+# be recorded only indirectly (through CHARGE_RE, which matches the *whole*
+# `mov al,[byte] / xor ah,ah / sub` idiom and therefore silently skipped every
+# site whose ax comes from somewhere else); a `sub [money],ax` at file 0x68e4
+# was left unrecorded that way. So the scan below is on the bare `sub`, and
+# every one of its matches is then classified by which idiom produced ax.
+# Total-equals-sum is therefore true by construction rather than by hope, and
+# tools/test_extract_tables.py re-scans orig/g.exe itself and asserts it.
+#
+# See docs/re/tables.md, "Other price sources, not extracted".
+
+# `sub word [20ae:38c7],ax` -- the amount is whatever is in ax.
+SUB_AX_RE = re.compile(rb"\x29\x06\xC7\x38")
 
 # `sub word [20ae:38c7],imm8` -- the price is an immediate operand, not read
 # from any array or variable. Found by scanning for `83 2E C7 38 ib`.
 SUB_IMM8_RE = re.compile(rb"\x83\x2E\xC7\x38(?P<imm>.)", re.DOTALL)
 
-# `mov byte [addr],imm8` -- below, used to find where a BSS byte variable is
-# initialised with a literal value.
-MOV_BYTE_IMM_RE = re.compile(rb"\xC6\x06(?P<addr>..)(?P<imm>.)", re.DOTALL)
+# The three idioms that produce the `ax` SUB_AX_RE subtracts. CHARGE_RE (in
+# the shops section above) is the first of them; these two are the others.
+#
+# `mov al,[byte] / xor ah,ah / mov dx,imm16 / mul dx / sub [money],ax` -- the
+# amount is a byte variable times a constant. This is the Рушель Блаво
+# save-game charge's idiom, which an earlier revision of this script claimed
+# had "no fixed byte idiom to scan for". It does: these are the exact bytes
+# at file 0x8eed. What resists scanning is the *meaning* (which service is
+# being paid for, which string is printed), not the site -- so the site,
+# the multiplied address and the multiplier are all scanned, and only the
+# annotation is hand-verified (COMPUTED_WHAT below).
+MUL_CHARGE_RE = re.compile(
+    rb"\xA0(?P<addr>..)\x30\xE4\xBA(?P<mul>..)\xF7\xE2\x29\x06\xC7\x38", re.DOTALL
+)
 
-# `mov al,[addr]` -- below, used to find every place a given byte address is
-# read (a superset of the read half of CHARGE_RE's idiom).
+# `call far seg:off / sub [money],ax` -- the amount is a call's return value.
+CALL_CHARGE_RE = re.compile(
+    rb"\x9A(?P<off>..)(?P<seg>..)\x29\x06\xC7\x38", re.DOTALL
+)
+
+# `mov byte [addr],imm8` / `add byte [addr],imm8` / `mov al,[addr]` /
+# `cmp byte [addr],imm8` -- the four idioms that touch a byte variable. Used
+# below to account for every reference to a debited variable's address.
+MOV_BYTE_IMM_RE = re.compile(rb"\xC6\x06(?P<addr>..)(?P<imm>.)", re.DOTALL)
+ADD_BYTE_IMM_RE = re.compile(rb"\x80\x06(?P<addr>..)(?P<imm>.)", re.DOTALL)
 MOV_AL_ADDR_RE = re.compile(rb"\xA0(?P<addr>..)", re.DOTALL)
+# `cmp byte [addr],imm8` is byte-for-byte the availability-gate idiom the
+# shops section already compiles; aliased rather than compiled twice so the
+# two can never drift apart.
+CMP_BYTE_IMM_RE = CMP_GATE_RE
+
+# ---- The only hand-written knowledge in this section ----------------------
+#
+# Everything else below -- every address, file offset, immediate, multiplier,
+# call target, and the category each debit site falls into -- is derived from
+# orig/g.exe by the scans above. These two tables are not: they are the
+# `what` annotations, verified by reading the shortstrings at the named file
+# offsets straight out of orig/g.exe, and they are keyed by file offset so a
+# shifted scan cannot silently re-attach them to the wrong site.
 
 # Two of the eleven immediate-price sites are identified: the two Клуб
 # (gambling) rows print their price as the literal `#` at the front of their
@@ -568,13 +622,41 @@ SUB_IMM8_WHAT = {
     0xFBEC: 'Клуб: 22^7  разузнать приемы мухлёжников(Удача +1), string at file 0xba85',
 }
 
+# The one `mul` charge site. The formula falls out of the scan; the service
+# name and the string cross-reference (which string is printed, and where the
+# instruction that loads it lives -- two different numbers) are hand-verified
+# with `ndisasm -b16` over the file region. See docs/re/tables.md.
+COMPUTED_WHAT = {
+    0x8EED: {
+        "what": "Рушель Блаво save-game service",
+        "guard_addr": "1000:760a",
+        "string_file_off": "0x8d2d",
+        "string_text": "За # рублей он может сделать сохранение прямо здесь.",
+        "string_load_addr": "1000:7583",
+        "string_load_file_off": "0x8e53",
+    }
+}
+
+# byte[20ae:3692] is the district counter -- see CMP_GATE_RE above. Naming it
+# in a derived formula string is the same fact gate_name() already asserts.
+VAR_NAMES = {DISTRICT_ADDR: "district"}
+
+
+def code_addr(file_off: int) -> str:
+    """Ghidra `1000:off` for a file offset.
+
+    Derived, never transcribed: `file_off = 0x18d0 + (seg - 0x1000) * 16 +
+    off`, so with seg == 0x1000 the offset half is simply `file_off - 0x18d0`.
+    """
+    return f"1000:{file_off - FILE_BASE:04x}"
+
 
 def find_sub_imm8_sites(blob: bytes) -> list:
     sites = []
     for m in SUB_IMM8_RE.finditer(blob):
         sites.append(
             {
-                "addr": f"1000:{m.start() - FILE_BASE:04x}",
+                "addr": code_addr(m.start()),
                 "file_off": f"0x{m.start():04x}",
                 "imm": m.group("imm")[0],
                 "what": SUB_IMM8_WHAT.get(m.start()),
@@ -583,47 +665,151 @@ def find_sub_imm8_sites(blob: bytes) -> list:
     return sites
 
 
-def find_var_charge_sites(blob: bytes, charged: set, shop_addrs: set) -> list:
-    """Charged addresses CHARGE_RE found that are not a mar/bmar price byte.
+def classify_ax_debit_sites(blob: bytes, charge_map: dict, shop_rows: dict) -> list:
+    """Every `sub [20ae:38c7],ax` in orig/g.exe, classified by ax's source.
 
-    Each is a third debit form: `mov al,[var] / xor ah,ah / sub [money],ax`,
-    where the amount comes from a byte *variable* rather than the const
-    array (mar/bmar) or an immediate (sub_word_imm8_sites). For each, this
-    also records every site that sets the variable with a literal `mov byte
-    [addr],imm8` and every site that reads it with `mov al,[addr]` -- all
-    re-derived from orig/g.exe, nothing transcribed.
+    One row per SUB_AX_RE match, in file order -- so the row count is the
+    number of `29 06 C7 38` occurrences in the binary, and a site cannot be
+    dropped by belonging to no category: it would come out as
+    `amount_form: "unrecognised"` instead, loudly.
+
+    `charge_map` is parse_shops()'s {CHARGE_RE match position -> debited byte
+    address}; `shop_rows` maps a shop price byte's address to its
+    "<shop>:<key>" row key, so a site that debits a data/shops.json row says
+    which row.
+    """
+    # CHARGE_RE / MUL_CHARGE_RE / CALL_CHARGE_RE all end with the four `sub`
+    # bytes, so `match.end() - 4` is the position SUB_AX_RE reports.
+    byte_form = {pos + len(b"\xA0\x00\x00\x30\xE4"): addr for pos, addr in charge_map.items()}
+    mul_form = {
+        m.end() - 4: (u16(m.group("addr")), u16(m.group("mul")))
+        for m in MUL_CHARGE_RE.finditer(blob)
+    }
+    call_form = {
+        m.end() - 4: (u16(m.group("seg")), u16(m.group("off")))
+        for m in CALL_CHARGE_RE.finditer(blob)
+    }
+
+    sites = []
+    for m in SUB_AX_RE.finditer(blob):
+        pos = m.start()
+        site = {
+            "addr": code_addr(pos),
+            "file_off": f"0x{pos:04x}",
+            "amount_form": "unrecognised",
+            "amount_addr": None,
+            "category": "unrecognised",
+            "shop_row": None,
+            "recorded_in": None,
+        }
+        if pos in mul_form:
+            addr, _mul = mul_form[pos]
+            site["amount_form"] = "byte_times_imm16"
+            site["amount_addr"] = f"20ae:{addr:04x}"
+            site["category"] = "computed"
+            site["recorded_in"] = "computed_sites"
+        elif pos in byte_form:
+            addr = byte_form[pos]
+            site["amount_form"] = "byte"
+            site["amount_addr"] = f"20ae:{addr:04x}"
+            if addr in shop_rows:
+                site["category"] = "shop_row"
+                site["shop_row"] = shop_rows[addr]
+                site["recorded_in"] = "data/shops.json"
+            else:
+                site["category"] = "variable"
+                site["recorded_in"] = "var_sites"
+        elif pos in call_form:
+            site["amount_form"] = "call_result"
+            site["category"] = "other"
+            site["recorded_in"] = "other_ax_sites"
+        sites.append(site)
+    return sites
+
+
+def find_var_sites(blob: bytes, ax_sites: list) -> list:
+    """Full accounting of every byte variable a `sub [money],ax` site debits.
+
+    For each such address this records every site that touches it, split by
+    the idiom that touches it -- writes (`mov byte [addr],imm8` and `add byte
+    [addr],imm8`), reads (`mov al,[addr]`) and compares (`cmp byte
+    [addr],imm8`) -- plus `ref_count`, the number of times the address's two
+    little-endian bytes occur anywhere in the file image. `ref_count` equal to
+    the number of recorded sites is what says the account is complete rather
+    than merely long: if some further idiom touched the variable, the counts
+    would disagree. All re-derived from orig/g.exe, nothing transcribed.
+
+    `charge_sites` is a *subset* of `read_sites` (the debit reads the variable
+    with `mov al,[addr]` like any other read), so it is not added into
+    `recorded_sites`.
     """
     out = []
-    for addr in sorted(a for a in charged if a not in shop_addrs):
+    addrs = sorted(
+        {
+            int(s["amount_addr"].split(":")[1], 16)
+            for s in ax_sites
+            if s["category"] == "variable"
+        }
+    )
+    for addr in addrs:
+        raw = bytes([addr & 0xFF, addr >> 8])
         charge_sites = [
-            m.start() for m in CHARGE_RE.finditer(blob) if u16(m.group("addr")) == addr
+            {"addr": code_addr(s), "file_off": f"0x{s:04x}"}
+            for s in sorted(
+                int(x["file_off"], 16) - len(b"\xA0\x00\x00\x30\xE4")
+                for x in ax_sites
+                if x["amount_addr"] == f"20ae:{addr:04x}" and x["category"] == "variable"
+            )
         ]
-        init_sites = [
-            (m.start(), m.group("imm")[0])
-            for m in MOV_BYTE_IMM_RE.finditer(blob)
+        write_sites = sorted(
+            [
+                (m.start(), "mov", m.group("imm")[0])
+                for m in MOV_BYTE_IMM_RE.finditer(blob)
+                if u16(m.group("addr")) == addr
+            ]
+            + [
+                (m.start(), "add", m.group("imm")[0])
+                for m in ADD_BYTE_IMM_RE.finditer(blob)
+                if u16(m.group("addr")) == addr
+            ]
+        )
+        read_sites = [
+            m.start()
+            for m in MOV_AL_ADDR_RE.finditer(blob)
             if u16(m.group("addr")) == addr
         ]
-        read_sites = [
-            m.start() for m in MOV_AL_ADDR_RE.finditer(blob) if u16(m.group("addr")) == addr
+        compare_sites = [
+            (m.start(), m.group("imm")[0])
+            for m in CMP_BYTE_IMM_RE.finditer(blob)
+            if u16(m.group("addr")) == addr
         ]
         out.append(
             {
                 "addr": f"20ae:{addr:04x}",
-                "charge_sites": [
-                    {"addr": f"1000:{s - FILE_BASE:04x}", "file_off": f"0x{s:04x}"}
-                    for s in charge_sites
-                ],
-                "init_sites": [
+                "scanned_idioms": {
+                    "write_sites": "C6 06 <addr> ib (mov) / 80 06 <addr> ib (add)",
+                    "read_sites": "A0 <addr> (mov al)",
+                    "compare_sites": "80 3E <addr> ib (cmp byte)",
+                    "charge_sites": "A0 <addr> 30 E4 29 06 C7 38 (subset of read_sites)",
+                },
+                "ref_count": blob.count(raw),
+                "recorded_sites": len(write_sites) + len(read_sites) + len(compare_sites),
+                "charge_sites": charge_sites,
+                "write_sites": [
                     {
-                        "addr": f"1000:{s - FILE_BASE:04x}",
+                        "addr": code_addr(s),
                         "file_off": f"0x{s:04x}",
+                        "op": op,
                         "imm": imm,
                     }
-                    for s, imm in init_sites
+                    for s, op, imm in write_sites
                 ],
                 "read_sites": [
-                    {"addr": f"1000:{s - FILE_BASE:04x}", "file_off": f"0x{s:04x}"}
-                    for s in read_sites
+                    {"addr": code_addr(s), "file_off": f"0x{s:04x}"} for s in read_sites
+                ],
+                "compare_sites": [
+                    {"addr": code_addr(s), "file_off": f"0x{s:04x}", "imm": imm}
+                    for s, imm in compare_sites
                 ],
                 "what": None,
             }
@@ -631,44 +817,98 @@ def find_var_charge_sites(blob: bytes, charged: set, shop_addrs: set) -> list:
     return out
 
 
-# The Рушель Блаво save-game service (`district*50`) is a fourth debit form
-# -- `sub [money],ax` where ax is computed by a multiply rather than read
-# from an array, a variable, or an immediate -- and has no fixed byte idiom
-# CHARGE_RE/SUB_IMM8_RE can scan for without also matching unrelated
-# arithmetic elsewhere in the binary. Hand-verified against orig/g.exe
-# (`ndisasm -b16` over the file region, docs/re/tables.md) rather than
-# pattern-scanned; kept here rather than dropped, per that finding.
-def computed_sites() -> list:
-    return [
-        {
-            "addr": "1000:761d",
-            "file_off": "0x8eed",
-            "formula": "district*50",
-            "what": "Рушель Блаво save-game service",
-            "guard_addr": "1000:760a",
-            "string_file_off": "0x8d2d",
-            "string_text": "За # рублей он может сделать сохранение прямо здесь.",
-            "string_load_addr": "1000:7583",
-            "string_load_file_off": "0x8e53",
+def find_computed_sites(blob: bytes) -> list:
+    """The `byte * imm16` debit form, scanned rather than hand-listed.
+
+    `formula` and both addresses fall out of MUL_CHARGE_RE; only the `what`
+    and the string cross-reference come from COMPUTED_WHAT.
+    """
+    out = []
+    for m in MUL_CHARGE_RE.finditer(blob):
+        pos = m.end() - 4
+        addr = u16(m.group("addr"))
+        mul = u16(m.group("mul"))
+        name = VAR_NAMES.get(addr, f"byte[20ae:{addr:04x}]")
+        row = {
+            "addr": code_addr(pos),
+            "file_off": f"0x{pos:04x}",
+            "amount_addr": f"20ae:{addr:04x}",
+            "multiplier": mul,
+            "formula": f"{name}*{mul}",
+            "what": None,
         }
-    ]
+        row.update(COMPUTED_WHAT.get(pos, {}))
+        out.append(row)
+    return out
 
 
-def build_other_price_sites(blob: bytes, charged: set, shop_addrs: set) -> dict:
+def find_other_ax_sites(blob: bytes, ax_sites: list) -> list:
+    """`sub [money],ax` sites that are neither an array/variable read nor a
+    multiply -- currently one, whose amount is a far call's return value.
+
+    Nothing is known about what it charges for, so `what` is null. It is
+    recorded because it debits the player's money, not because its purpose is
+    established.
+    """
+    call_form = {
+        m.end() - 4: (u16(m.group("seg")), u16(m.group("off")))
+        for m in CALL_CHARGE_RE.finditer(blob)
+    }
+    out = []
+    for s in ax_sites:
+        if s["category"] not in {"other", "unrecognised"}:
+            continue
+        pos = int(s["file_off"], 16)
+        row = {
+            "addr": s["addr"],
+            "file_off": s["file_off"],
+            "amount_form": s["amount_form"],
+            "call_target": None,
+            "what": None,
+        }
+        if pos in call_form:
+            seg, off = call_form[pos]
+            row["call_target"] = f"{seg:04x}:{off:04x}"
+        out.append(row)
+    return out
+
+
+def build_other_price_sites(blob: bytes, charge_map: dict, shop_rows: dict) -> dict:
+    ax_sites = classify_ax_debit_sites(blob, charge_map, shop_rows)
+    counts = {}
+    for s in ax_sites:
+        counts[s["category"]] = counts.get(s["category"], 0) + 1
     return {
         "note": (
-            "Places in orig/g.exe that debit [20ae:38c7] (the player's "
-            "money) besides the mar/bmar rows in data/shops.json. Generated "
-            'by tools/extract_tables.py -- see docs/re/tables.md, "Other '
-            'price sources, not extracted" -- except computed_sites, which '
-            "is hand-verified rather than pattern-scanned (see the comment "
-            "above computed_sites() in that script; docs/re/tables.md has "
-            "the disassembly). Not linked to any item or row here; that is "
-            "Task 11's job."
+            "Every place in orig/g.exe that debits [20ae:38c7], the player's "
+            "money. The player's money is subtracted by exactly two "
+            "instruction encodings -- `29 06 C7 38` (sub [money],ax) and "
+            "`83 2E C7 38 ib` (sub [money],imm8) -- and both are scanned over "
+            "the whole file by tools/extract_tables.py, so this file is "
+            "complete by construction rather than by inspection: "
+            "ax_debit_sites lists every `ax` site there is, classified, and "
+            "its count equals the sum of its categories. Eighteen of the `ax` "
+            "sites are the mar/bmar rows already in data/shops.json and are "
+            "listed here only as cross-reference; the sections below carry "
+            "the detail for the rest. DERIVED from the binary: every address, "
+            "file offset, immediate, multiplier, call target, formula and "
+            "category. HAND-ANNOTATED (verified by reading the shortstrings "
+            "at the cited file offsets out of orig/g.exe, see SUB_IMM8_WHAT "
+            "and COMPUTED_WHAT in tools/extract_tables.py): the two Клуб "
+            "`what` strings, and the computed row's `what`, `guard_addr` and "
+            "`string_*` fields. A null `what` means the purpose is not "
+            "established -- identifying them is Task 11's job, not this one's."
         ),
+        "ax_debit_sites": {
+            "idiom": "29 06 C7 38 -- sub word [20ae:38c7],ax",
+            "count": len(ax_sites),
+            "counts_by_category": dict(sorted(counts.items())),
+            "sites": ax_sites,
+        },
         "sub_word_imm8_sites": find_sub_imm8_sites(blob),
-        "var_sites": find_var_charge_sites(blob, charged, shop_addrs),
-        "computed_sites": computed_sites(),
+        "var_sites": find_var_sites(blob, ax_sites),
+        "computed_sites": find_computed_sites(blob),
+        "other_ax_sites": find_other_ax_sites(blob, ax_sites),
     }
 
 
@@ -776,7 +1016,7 @@ def main() -> None:
     tables = json.loads(STRING_TABLES.read_text(encoding="utf-8"))
     ranks = next(t for t in tables["tables"] if t["name"] == "ranks")["entries"]
 
-    shops, charged = parse_shops(blob)
+    shops, charge_map = parse_shops(blob)
     items = parse_items(strings)
     link_item_prices(items, shops)
     enemies = parse_enemies(blob, ranks)
@@ -785,8 +1025,13 @@ def main() -> None:
     shops_runtime, shops_prov = split_shops(shops)
     enemies_runtime, enemies_prov = split_enemies(enemies)
 
-    shop_addrs = {int(r["price_addr"].split(":")[1], 16) for r in shops}
-    other_prices = build_other_price_sites(blob, charged, shop_addrs)
+    # addr -> "<shop>:<key>", so a debit site that charges a data/shops.json
+    # row can name the row instead of just its price byte.
+    shop_rows = {
+        int(r["price_addr"].split(":")[1], 16): f'{r["shop"]}:{r["key"]}'
+        for r in shops
+    }
+    other_prices = build_other_price_sites(blob, charge_map, shop_rows)
 
     write_json(OUT_ITEMS, items_runtime)
     write_json(OUT_ITEMS_PROV, items_prov)
