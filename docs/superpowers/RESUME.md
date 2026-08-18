@@ -28,8 +28,65 @@ the start instead of having ~20 `println!` sites rewritten afterwards.
 | 7 — Rust save load/store, byte-exact | complete, approved (1 fix wave) | `5b066ad`, `a7b1152` |
 | 8 — RNG recovered and ported | complete, approved (1 fix wave) | `74adfdc`, `8fe47cc` |
 | 9 — combat math recovered + ported | complete, approved (2 fix waves) | `ab6b8d3`, `11eeea8`, `002c674` |
+| 9b — XP thresholds + stat growth | complete, approved (2 fix waves) | `e699366`, `faf55fe`, `c90e73b` |
 
-**NEXT: Task 9b** (XP thresholds and stat growth).
+**NEXT: Task 10** (item, shop and enemy tables).
+
+### Task 9b outcome
+
+`xp_to_next(level) = 10 + 10*level` — a stored requirement, not a table
+(`1000:6de0` init 10, `1000:2550` +10, `1000:4ac7` -10 on de-level).
+XP award = sum of the enemy's four stats (`1000:51b9`), level-independent.
+A level draws exactly TWO increases against a class weight table at `DS:0002`
+(`FUN_1000_2526`).
+
+**The `hpmax` anomaly is SOLVED and it was not a coincidence.** A consumable at
+`1000:4b57` grants `+2 str / +1 dmg_min / +2 dmg_max` and sets a countdown byte
+`[0x38cd] := 3`; `1000:aeb3` subtracts it back on expiry. Neither touches
+`hpmax`. That byte is `.SAV 0x231` and reads `0,1,0,2,0` across R0/R2/R3/R4/R5
+— nonzero in exactly the two saves that were 2 low. So
+`hpmax == 10 + 5*vit + str - 2*(buff active)` on all five. Corroborated
+independently: `dmg_max - str` and `dmg_min - str div 2` are buff-invariant and
+agree pairwise on every save. A second grant site exists at `1000:e9b8` with
+countdown 10 instead of 3.
+
+**`rank_index` is CLOSED** (was a Task 9 open question): the stored value is the
+class prompt's answer + 3 (`1000:71b8`). It selects both the rank name and the
+growth weights, and a class's starting stats ARE its weight row.
+`new_character`: `hpmax := vit*5 + 10 + str`, `hp := hpmax`,
+`dmg_min := str idiv 2`, `dmg_max := str` (`1000:71bd..71e4`).
+
+**Owner-approved interface amendments (plan updated, do not revert):**
+- `apply_levels(&mut Progress, &mut Fighter, &mut Rng, award, uncapped)`. The
+  brief's `apply_levels(f, xp)` CANNOT express the original: the draw needs the
+  class (`1000:25aa`) and the shared generator (`1000:25fe`), and the stored
+  threshold diverges from `10+10*level` at the cap because the drain loop
+  (`1000:2546`) is uncapped while the grant loop (`1000:2580`) is not.
+- **`class` lives in `Fighter`**, field `+0x00` of the record it mirrors.
+  `Progress` is `{xp, threshold}`.
+
+**The original's `==`-not-`>=` cap bug is reproduced deliberately**
+(`1000:2580`), so a level already past 40 is not stopped.
+
+**Draw order at level-up IS pinned** — better than the implementer's own concern
+claimed. `FUN_1000_2526` (`0x2526..0x28c8`) contains EXACTLY ONE `Random` call
+site, `1000:25fe`, in a loop bounded by `cmp word [bp-0x8],0x2`. Two draws per
+level, nothing else, called at `1000:523b` BEFORE the post-kill `Random(0x1e)`
+at `1000:52d5`. Only the roll->stat mapping under a live seed is unreplayed.
+
+**8 of Task 9's 12 unmapped `Random` sites are now mapped** (the whole post-kill
+group). Four flee/command-handler sites remain open: `1000:4db7, 4e16, 4ef5,
+4f18`.
+
+`data/save_layout.json` now TILES the record exactly (694 = 694, no gaps, no
+overlaps), enforced by `save_layout_json_fields_tile_the_record`. Tail region:
+`unk_0214`(29) `buff_countdown`(1) `xp`(2) `threshold`(2) `growth_log`(120)
+`unk_02ae`(8).
+
+**Coverage gap, honestly marked:** thresholds observed at 13 levels
+(1,2,10,11,15,16,17,20,21,30,31,32,40). The rest carry
+`UNVERIFIED by observation` in `data/xp.json`, enforced by a test — a fresh
+character dies before grinding that far (12 seeds tried, best reached level 2).
 
 ### Task 9 outcome
 
@@ -317,7 +374,7 @@ python3 tools/oracle/test_oracle_smoke.py -> OK 8 checks, ~1.75s, 2 dosbox-x lau
 python3 tools/test_decode_save.py       -> OK 5 saves decoded and round-tripped
 cargo test                             -> ok. 16 unit + 8 integration; 0 failed; 0 warnings
 cargo clippy --all-targets             -> clean
-cargo test (35 total, all suites green); cargo clippy --all-targets clean
+cargo test (54 total, all suites green); cargo clippy --all-targets clean
 python3 tools/gen_rng_vectors.py       -> reproduces data/rng_vectors.json byte-identically
 ```
 
@@ -396,6 +453,15 @@ them from byte noise.
   accessors would age better now that the fields have real names.
 - **Task 9** blow-index coverage is thin above index 1: 40 cases reach index >= 1,
   8 reach >= 2, 2 reach index 4.
+
+## Carried forward — Task 11 must handle
+
+- **`Fighter::class` defaults to `0` via `#[derive(Default)]`, and
+  `class_weights(0)` is a REAL non-zero weight row.** So a caller who forgets to
+  set `class` silently gets a valid-looking class rather than an obviously-wrong
+  value. Wire real character creation carefully.
+- `new_character(name, answer)` now takes a required name, so it cannot be
+  forgotten — but Task 11 still owns sourcing a real one.
 
 ## Carried forward — Task 11 (rendering / print orchestration) must decide this
 
