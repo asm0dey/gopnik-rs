@@ -14,6 +14,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import unittest.mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import capture  # noqa: E402
@@ -97,6 +98,93 @@ def test_capture():
     print(f"OK {len(frames)} frames captured, byte-identical across two runs")
 
 
+def test_expect_frames_guard():
+    """expect_frames must fail loud on a mismatch, not silently accept a
+    truncated capture. Reuses the SCREEN.BIN test_capture already captured
+    -- no extra emulator run, per the cost constraint on this test file.
+    """
+    screen = OUT / "work" / "SCREEN.BIN"
+    frames = capture.decode_frames(screen.read_bytes())
+    assert len(frames) == 15, f"expected 15 frames from test_capture, got {len(frames)}"
+
+    log = OUT / "dosbox.log"
+    try:
+        capture._check_frame_count(frames, expect_frames=len(frames) + 1, log=log)
+    except capture.OracleError as e:
+        assert "expected" in str(e)
+    else:
+        raise AssertionError(
+            "_check_frame_count did not raise OracleError on a frame-count mismatch"
+        )
+
+    # A correct count must not raise.
+    capture._check_frame_count(frames, expect_frames=len(frames), log=log)
+    capture._check_frame_count(frames, expect_frames=None, log=log)
+    print("OK expect_frames mismatch raises OracleError")
+
+
+def test_cli_threads_timeout_and_expect_frames():
+    """main() must forward --timeout and --expect-frames to run(), not just
+    parse and discard them (that was the bug fixed in fix wave 1: --timeout
+    was parsed but never passed to run()). run() is stubbed out, so this
+    never touches the emulator.
+    """
+    calls = []
+
+    def fake_run(keys, out_dir, timeout=120, settle=3.0, expect_frames=None):
+        calls.append(
+            {"keys": keys, "out_dir": out_dir, "timeout": timeout, "expect_frames": expect_frames}
+        )
+        return ["stub frame"]
+
+    argv = [
+        "capture.py",
+        "--keys", r"\n",
+        "--out", "/tmp/gopnik_oracle_cli_stub",
+        "--timeout", "7",
+        "--expect-frames", "3",
+    ]
+    with unittest.mock.patch.object(capture, "run", fake_run), \
+         unittest.mock.patch.object(sys, "argv", argv):
+        rc = capture.main()
+
+    assert rc == 0
+    assert len(calls) == 1
+    assert calls[0]["timeout"] == 7, f"--timeout not threaded into run(): {calls[0]}"
+    assert calls[0]["expect_frames"] == 3, f"--expect-frames not threaded into run(): {calls[0]}"
+    print("OK CLI threads --timeout and --expect-frames into run()")
+
+
+def test_cli_reports_oracle_error_cleanly():
+    """A run() failure must come back as a clean message and a nonzero exit,
+    not a raw traceback out of main(). run() is stubbed, no emulator.
+    """
+    def raiser(*args, **kwargs):
+        raise capture.OracleError("boom")
+
+    argv = ["capture.py", "--keys", r"\n", "--out", "/tmp/gopnik_oracle_cli_stub2"]
+    with unittest.mock.patch.object(capture, "run", raiser), \
+         unittest.mock.patch.object(sys, "argv", argv):
+        rc = capture.main()  # must not raise
+
+    assert rc != 0, "main() should report failure via return code, not raise"
+    print("OK CLI reports OracleError without a raw traceback")
+
+
+def test_oracle_prompts_json_matches_source():
+    """data/oracle_prompts.json must be exactly what capture.py's own
+    INTRO_KEY_PROMPTS/COMMANDS constants generate -- it is a generated
+    artifact, not a hand-maintained duplicate.
+    """
+    committed = json.loads(
+        ROOT.joinpath("data", "oracle_prompts.json").read_text(encoding="utf-8")
+    )
+    assert committed["intro_keys"] == capture.INTRO_KEYS
+    assert committed["intro_key_prompts"] == capture.INTRO_KEY_PROMPTS
+    assert committed["commands"] == capture.COMMANDS
+    print("OK data/oracle_prompts.json matches capture.py's INTRO_KEY_PROMPTS/COMMANDS")
+
+
 def test_scrhook_matches_source():
     """The committed scrhook.com must be what scrhook.asm assembles to."""
     if shutil.which("nasm") is None:
@@ -116,4 +204,8 @@ def test_scrhook_matches_source():
 
 if __name__ == "__main__":
     test_capture()
+    test_expect_frames_guard()
+    test_cli_threads_timeout_and_expect_frames()
+    test_cli_reports_oracle_error_cleanly()
+    test_oracle_prompts_json_matches_source()
     test_scrhook_matches_source()

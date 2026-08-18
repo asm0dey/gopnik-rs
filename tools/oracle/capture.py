@@ -27,6 +27,7 @@ Usage:
     capture.py --keys "\\n1\\n\\n\\n\\n\\n\\n\\n0\\n\\ne\\n\\n" --out run1/
 """
 import argparse
+import json
 import os
 import pathlib
 import shutil
@@ -50,6 +51,58 @@ MAX_KEYS = 1024  # KEYBUF_SIZE in scrhook.asm; the TSR reads no more than this
 # and Enter, then Enter to accept the default name. Recovered by reading the
 # captured frames back, one key request at a time; see docs/re/oracle.md.
 INTRO_KEYS = "\n1\n\n\n\n\n\n\n0\n\n"
+
+# Structured form of the same finding: which prompt each segment of
+# INTRO_KEYS answers, recovered the same way (reading captured frames back
+# one key request at a time). This is the source of truth for
+# data/oracle_prompts.json -- see write_re_findings() below -- and for the
+# table in docs/re/oracle.md; keep all three in sync if the intro script
+# ever changes.
+INTRO_KEY_PROMPTS = [
+    {"keys": r"\n", "prompt": 'title screen, "Нажми какую-нибудь кнопку"'},
+    {
+        "keys": "1",
+        "prompt": (
+            '"Нажми цифру с какого района начать" -- district, 1 starts '
+            "from scratch"
+        ),
+    },
+    {
+        "keys": r"\n" + " x 7",
+        "prompt": 'seven any-key story pages, ending at "Выбери кем ты будешь"',
+    },
+    {
+        "keys": r"0\n",
+        "prompt": "class prompt (line input): 0-Пацан, 1-Отморозок, 2-Гопник, 3-Вор",
+    },
+    {
+        "keys": r"\n",
+        "prompt": '"А зовут тебя:" (line input) -- empty accepts the default Раздолбай',
+    },
+]
+
+# The game's command vocabulary at its `\` prompt (reached after
+# INTRO_KEYS), as listed by the in-game `i` command and cross-checked by
+# running each one through the oracle. A value of None means the command
+# was observed to exist but its semantics were not established -- left
+# explicitly unknown rather than guessed.
+COMMANDS = {
+    "i": "lists commands",
+    "w": "wander",
+    "k": "fight",
+    "mar": "market",
+    "rep": "vet",
+    "girl": None,
+    "kl": "club",
+    "s": "look at yourself",
+    "sv": "inspect the enemy",
+    "v": "reinforcements",
+    "kos": None,
+    "h": None,
+    "mh": None,
+    "name": None,
+    "e": "quit",
+}
 
 
 class OracleError(RuntimeError):
@@ -127,6 +180,33 @@ def decode_frames(blob: bytes) -> list[str]:
     return frames
 
 
+def write_re_findings(path: pathlib.Path = ROOT / "data" / "oracle_prompts.json") -> None:
+    """Emit the machine-readable form of INTRO_KEY_PROMPTS and COMMANDS.
+
+    capture.py is the single source for this RE finding -- data/*.json is a
+    generated artifact, not hand-maintained. Re-run this (e.g. `python3 -c
+    "import capture; capture.write_re_findings()"` from tools/oracle/) after
+    editing INTRO_KEY_PROMPTS or COMMANDS above, and commit the result.
+    """
+    payload = {
+        "note": (
+            "Which prompt each segment of capture.INTRO_KEYS answers, and the "
+            "game's \\-prompt command vocabulary. Recovered by driving "
+            "orig/g.exe through tools/oracle/capture.py and reading the "
+            "captured frames back one key request at a time. Commands whose "
+            "semantics were not established are null, not guessed. Generated "
+            "by capture.write_re_findings() from INTRO_KEY_PROMPTS/COMMANDS "
+            "in tools/oracle/capture.py -- see docs/re/oracle.md."
+        ),
+        "intro_keys": INTRO_KEYS,
+        "intro_key_prompts": INTRO_KEY_PROMPTS,
+        "commands": COMMANDS,
+    }
+    path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+
 def _prepare(out_dir: pathlib.Path, keys: str) -> pathlib.Path:
     """Build a scratch copy of the game to run. orig/ is never mounted."""
     work = out_dir / "work"
@@ -188,6 +268,23 @@ def _wait(proc: subprocess.Popen, screen: pathlib.Path, deadline: float, settle:
         time.sleep(0.1)
 
 
+def _check_frame_count(
+    frames: list[str], expect_frames: int | None, log: pathlib.Path
+) -> None:
+    """Raise OracleError if `frames` does not have exactly `expect_frames` entries.
+
+    Split out of run() so this guard can be exercised directly against an
+    already-captured frame list in tests, without launching the emulator
+    again. See run()'s docstring for why the check exists.
+    """
+    if expect_frames is not None and len(frames) != expect_frames:
+        raise OracleError(
+            f"captured {len(frames)} frames, expected {expect_frames}: the run "
+            "was cut short (or the script changed). A short capture is not a "
+            f"usable oracle result; see {log} for the emulator log"
+        )
+
+
 def run(
     keys: str,
     out_dir: pathlib.Path,
@@ -245,12 +342,7 @@ def run(
             f"scrhook.com produced no SCREEN.BIN; see {log} for the emulator log"
         )
     frames = decode_frames(screen.read_bytes())
-    if expect_frames is not None and len(frames) != expect_frames:
-        raise OracleError(
-            f"captured {len(frames)} frames, expected {expect_frames}: the run "
-            "was cut short (or the script changed). A short capture is not a "
-            f"usable oracle result; see {log} for the emulator log"
-        )
+    _check_frame_count(frames, expect_frames, log)
     (out_dir / "screens.txt").write_text(
         "".join(f"=== frame {i} ===\n{f}\n" for i, f in enumerate(frames)),
         encoding="utf-8",
@@ -275,12 +367,16 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    frames = run(
-        unescape(args.keys),
-        args.out,
-        timeout=args.timeout,
-        expect_frames=args.expect_frames,
-    )
+    try:
+        frames = run(
+            unescape(args.keys),
+            args.out,
+            timeout=args.timeout,
+            expect_frames=args.expect_frames,
+        )
+    except (OracleError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
     print(f"{len(frames)} frames -> {args.out / 'screens.txt'}", file=sys.stderr)
     print(frames[-1])
     return 0

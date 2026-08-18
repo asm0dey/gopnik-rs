@@ -136,6 +136,13 @@ at yourself, `sv` inspect the enemy, `v` reinforcements, `kos`, `h`, `mh`,
 `name`, `e` quit). `e` quits, prints the result sheet and waits for one more
 key before returning to DOS.
 
+The machine-readable form of this table and command list is
+`data/oracle_prompts.json`. `tools/oracle/capture.py`'s `INTRO_KEY_PROMPTS`
+and `COMMANDS` constants are the source of truth; the JSON is generated from
+them by `capture.write_re_findings()`, not hand-maintained. Commands whose
+semantics were not established (`girl`, `kos`, `h`, `mh`, `name`) are `null`
+in the JSON rather than guessed.
+
 ## The corpus stays read-only
 
 Every run copies `orig/` into `<out_dir>/work/` and mounts *that*; `orig/` is
