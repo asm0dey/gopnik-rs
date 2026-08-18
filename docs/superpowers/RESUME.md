@@ -26,8 +26,65 @@ the start instead of having ~20 `println!` sites rewritten afterwards.
 | 5 — .SAV decoder + layout artifact | complete, approved (first pass) | `8973100` |
 | 6 — Rust crate skeleton + text layer | complete, approved (1 fix wave) | `85c38b3`, `2533d35` |
 | 7 — Rust save load/store, byte-exact | complete, approved (1 fix wave) | `5b066ad`, `a7b1152` |
+| 8 — RNG recovered and ported | complete, approved (1 fix wave) | `74adfdc`, `8fe47cc` |
 
-**NEXT: Task 8** (RNG recovery).
+**NEXT: Task 9** (combat math).
+
+### Task 8 outcome — the RNG is the real one, tier 1, no substitute
+
+`System.@Rand` at **`1f78:11a8`** IS the stock Borland LCG:
+`RandSeed := RandSeed * $08088405 + 1 (mod 2^32)`.
+
+**The plan's old "multiplier is absent" fact was a false conclusion from true
+observations.** `05 84 08 08` occurs 0 times in the file, `b8 05 84` 0 times,
+`ba 08 08` 0 times — all correct. But the compiler never materialises the
+dword: it multiplies by the low word `$8405` (the single literal `05 84` at
+`1f78:11de`) and synthesises `$0808` from a shift/add chain. No byte search
+could have found it. Corrected in the plan.
+
+**`Random(n)` at `1f78:114b` is `(RandSeed * n) >> 32` — a high-take, NOT a
+modulo.** Different distribution. Confirmed: committed vectors match
+`(s*n)>>32` and fail `s%n` for all six moduli.
+
+**Task 9 must mirror 16-bit wrapping at `Random(Integer)` call sites, not
+clamp.** Real examples: `Random(hi - lo)`, `Random(level*0x19)`,
+`Random(level*0x28)`. `below(n: u16)` forces the caller to be explicit.
+86 call sites total (42 `entry`, 27 `3d11`, 14 `0d14`, 2 `7c67`, 1 `2526`).
+
+`Randomize` at `1f78:11e0` seeds from DOS `INT 21h/AH=2Ch`; deliberately NOT
+ported, seeding is a caller decision. `src/rng.rs` has `Debug`/`Clone` and
+`state()`/`set_state()` for Task 9 snapshots.
+
+**Vector provenance is genuinely non-circular.** `tools/gen_rng_vectors.py`
+decodes and executes the original's own instruction bytes out of `orig/g.exe`
+in a small 8086 interpreter; constants are read from the binary at runtime.
+The reviewer proved it by flipping the multiplier byte in a COPY of the exe and
+watching the emitted vectors change. Never regenerate these from `src/rng.rs`.
+
+### THE SEEDING ANSWER — Task 12 depends on this
+
+**The game is genuinely clock-seeded and diverges run to run.**
+`docs/re/rng.md` was right; `docs/re/oracle.md` was WRONG and is now corrected.
+
+Proven empirically on the owner's protocol: enter a name, then ~50 `w`
+commands. Three runs with real wall-clock gaps gave three different
+`SCREEN.BIN` captures, diverging at frame 18 of 114, with a different first
+enemy each run. A direct probe of `INT 21h/AH=2Ch` confirmed DOSBox-X's guest
+clock tracks real host wall time, not a fixed instant.
+
+The old five-run "byte-identical" evidence is still true but was **over-read**:
+those scripts stayed inside the deterministic opening and never reached
+RNG-dependent output, so the test could not have failed. Owner's domain
+knowledge matched exactly — the opening is always the same, variation starts
+when the protagonist walks.
+
+**Consequence for Task 12:** the differential harness CANNOT compare raw oracle
+output on any RNG-dependent screen without pinning the seed on both sides.
+Options: patch the guest to skip `Randomize`; pin the emulated clock; or set
+`RandSeed` directly in the guest (now possible — Task 8 recovered both the seed
+location and `Randomize`'s formula). Otherwise restrict comparison to
+RNG-independent screens, which would exclude combat. This is a real property of
+the game, not an emulator artifact to route around.
 
 ### Task 7 outcome
 
@@ -200,6 +257,8 @@ python3 tools/oracle/test_oracle_smoke.py -> OK 8 checks, ~1.75s, 2 dosbox-x lau
 python3 tools/test_decode_save.py       -> OK 5 saves decoded and round-tripped
 cargo test                             -> ok. 16 unit + 8 integration; 0 failed; 0 warnings
 cargo clippy --all-targets             -> clean
+cargo test (29 total: 16 unit + 5 rng_vectors + 8 save_roundtrip)
+python3 tools/gen_rng_vectors.py       -> reproduces data/rng_vectors.json byte-identically
 ```
 
 - `data/strings.json` — 796 entries (695 pointer-anchored + 54 table + 47 gap-tiled). Trustworthy; rebuilds byte-identically from the two input artifacts.
@@ -255,6 +314,17 @@ them from byte noise.
   decoded fields WITHOUT `_raw` and asserts those bytes match the original.
   The tail stays declared opaque. Reason: Task 7's Rust `save.rs` is generated
   from these offsets; a silently wrong offset propagates into the port.
+
+## Minor findings deferred to the final whole-branch review
+
+- **Task 8** frame-level evidence is asserted, not inspectable. `docs/re/rng.md`
+  and `docs/re/oracle.md` cite "frame 18 of 114" and per-run enemy names from
+  oracle runs whose raw output was never committed. The load-bearing conclusion
+  (three differing `SCREEN.BIN` md5s) is reproducible by re-running; the
+  frame-level detail is not. Next empirical check of this kind should commit the
+  divergence excerpt to `docs/re/` or `data/`.
+- **Task 8** `src/rng.rs:53` doc comment on `below` mentions only
+  `below(0) == 0`, not `below(1) == 0`, though the test pins both.
 
 ## Carried forward — Task 11 (rendering / print orchestration) must decide this
 
