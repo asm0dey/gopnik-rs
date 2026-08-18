@@ -477,47 +477,32 @@ game needs the text, not the `suspect` flag or the RE offsets.
 
 ## Carried forward — Task 11 must handle
 
-- **The game MUST run with no save files present, and it currently CANNOT.**
-  `src/save.rs` exposes only `Save::parse(bytes)` — there is no constructor for
-  a new character — and `to_bytes()` starts from `self.raw.clone()`, i.e. a
-  pre-existing 694-byte image. That design is right for round-trip fidelity
-  (Borland never clears shortstring padding, so those bytes must be preserved),
-  but it leaves no path to CREATE a save.
+- **The game runs from `g.exe` alone — VERIFIED empirically, not assumed.**
+  Staged a corpus containing only `g.exe` (no `.SAV`, no `places.sav`) and ran
+  it under the oracle: full intro, character creation, and `w` responds
+  normally. `places.sav` is NOT a precondition — it is CREATED BY the save
+  routine, alongside the character save. An earlier note here claimed Task 11
+  must create it when absent; that was wrong.
 
-  **Do not invent the missing bytes.** Two spans are genuinely unknown —
-  `unk_0214` (29 B) and `unk_02ae` (8 B) — and "save file bytes must match the
-  original exactly" is a top-level constraint. Zeroing them is a guess.
+  Save paths, from `data/strings.json`:
+  - `0x8d62 Ты хочешь сохраниться?` -> writes `0x8d7b save_r0.sav` AND
+    `0x8d87 places.sav` (the Рушель Блаво service, the `district*50` charge at
+    `1000:761d`).
+  - `0x9bcd Хочешь сохранить свои достижения?` -> writes `save_r<N>.sav`.
+  - `0x7c3b Можно начать с того места где ты сохранился` — load is offered only
+    when a save exists.
 
-  Correct approach: capture an authoritative new-character template from the
-  original under the oracle (start a new game, save immediately, extract the
-  `.SAV`), commit it as a `data/` artifact, and have `Save::new_game(...)`
-  start from those real bytes. Same principle as every other artifact here.
+- **Still open: `Save` cannot CREATE a save.** `src/save.rs` exposes only
+  `Save::parse(bytes)`, and `to_bytes()` starts from `self.raw.clone()` — a
+  pre-existing 694-byte image. Right for round-trip fidelity (Borland never
+  clears shortstring padding) but it leaves no path to write a save for a
+  character that never loaded one, which is the normal new-game case.
 
-  `PLACES.SAV` needs the same: 7 bytes, one flag per rediscoverable location,
-  created when absent. Note `docs/re/tables.md:460` records a `PLACES.SAV` with
-  all seven flags set, which is a captured state, not necessarily the initial
-  one — capture a fresh one rather than reusing it.
-
-- **No JSON ships as a file — the app is a single self-contained binary.**
-  `src/data.rs:127-129` embeds `items.json`, `shops.json`, `enemies.json` via
-  `include_str!`; there are no runtime file reads anywhere in `src/`.
-  `combat_vectors.json`, `xp.json`, `rng_vectors.json` and `save_layout.json`
-  are TEST-ONLY fixtures and must never be embedded — `combat_vectors.json`
-  alone is 264K.
-- **`data/strings.json` (133K) is not embedded yet** and Task 11 needs the game
-  text. It will be by far the largest thing compiled in. Embed it deliberately,
-  not by accident.
-- **`items()` re-parses its JSON on every call** and returns an owned `Vec`.
-  Call it ONCE at startup and hold the result; do not call it per turn. Do not
-  add a `OnceLock` speculatively — the plan says add one only if profiling
-  shows the parse matters.
-
-- **`Fighter::class` defaults to `0` via `#[derive(Default)]`, and
-  `class_weights(0)` is a REAL non-zero weight row.** So a caller who forgets to
-  set `class` silently gets a valid-looking class rather than an obviously-wrong
-  value. Wire real character creation carefully.
-- `new_character(name, answer)` now takes a required name, so it cannot be
-  forgotten — but Task 11 still owns sourcing a real one.
+  **Do not invent the missing bytes.** `unk_0214` (29 B) and `unk_02ae` (8 B)
+  are genuinely unknown, and "save file bytes must match the original exactly"
+  is a top-level constraint. Capture what the original writes: new character,
+  earn the save fee, save, extract both files, commit as a `data/` artifact,
+  and have `Save::new_game(...)` start from those real bytes.
 
 ## Carried forward — Task 11 (rendering / print orchestration) must decide this
 
