@@ -50,10 +50,20 @@ fn load_array(path: &str) -> Vec<Value> {
 
 /// Row identifier used in panic messages -- falls back to the row's index
 /// when the row doesn't even have an `id` field to report.
+/// Names a row in build-failure messages. Shop rows carry no `id` -- they are
+/// keyed by the shop they belong to and the key the player types -- so name
+/// them by that pair rather than falling through to a bare index, which is
+/// what a maintainer chasing a shop-data panic would otherwise get.
 fn row_label(path: &str, row: &Value, index: usize) -> String {
-    match row.get("id").and_then(Value::as_str) {
-        Some(id) => format!("{path}: row {id:?}"),
-        None => format!("{path}: row #{index}"),
+    if let Some(id) = row.get("id").and_then(Value::as_str) {
+        return format!("{path}: row {id:?}");
+    }
+    match (
+        row.get("shop").and_then(Value::as_str),
+        row.get("key").and_then(Value::as_str),
+    ) {
+        (Some(shop), Some(key)) => format!("{path}: row {shop}/{key}"),
+        _ => format!("{path}: row #{index}"),
     }
 }
 
