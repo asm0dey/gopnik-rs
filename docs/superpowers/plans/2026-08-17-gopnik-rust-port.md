@@ -2639,8 +2639,23 @@ reviewer can accept the damage math while rejecting the level curve.
   /// XP awarded for defeating `enemy` while at `player_level`.
   pub fn xp_award(player_level: u16, enemy: &Fighter) -> u32;
   pub struct LevelUp { pub new_level: u16, pub hpmax_gain: u16 }
-  /// Applies as many level-ups as `xp` allows. Returns each one in order.
-  pub fn apply_levels(f: &mut Fighter, xp: u32) -> Vec<LevelUp>;
+  /// Applies as many level-ups as `award` allows. Returns each one in order.
+  ///
+  /// **AMENDED after Task 9b (owner-approved).** The original signature
+  /// `apply_levels(f: &mut Fighter, xp: u32)` CANNOT express the original's
+  /// behaviour. Three reasons, each verified against the disassembly:
+  ///   1. The draw needs the CLASS — `1000:25aa` indexes `DS:(x*4+2)` via the
+  ///      word at `DS:389c`. Without it `LevelUp::hpmax_gain` is uncomputable.
+  ///   2. The draw needs the SHARED generator (`1000:25fe`). A function owning
+  ///      its own `Rng` desynchronises the stream Task 12 replays.
+  ///   3. The threshold is STORED STATE that provably diverges from
+  ///      `10 + 10*level`: the drain loop at `1000:2546` is uncapped while the
+  ///      grant loop stops at `1000:2580`, so at the cap
+  ///      `threshold != xp_to_next(level)`.
+  ///   `uncapped` is a real caller-controlled argument (`[bp+4]`), not an
+  ///   invention. `xp_to_next` and `xp_award` keep their original signatures.
+  pub fn apply_levels(p: &mut Progress, f: &mut Fighter, rng: &mut Rng,
+                      award: u32, uncapped: bool) -> Vec<LevelUp>;
   ```
 
 - [ ] **Step 1: Recover the curve**
@@ -2668,6 +2683,16 @@ Write `data/xp.json`:
   "award_cases": []
 }
 ```
+
+**AMENDED after Task 9b (owner-approved): `class` lives in `Fighter`, not
+`Progress`.** It is field `+0x00` of the same 16-byte record `Fighter` already
+mirrors (`.SAV 0x200` / `DS:389c`), so `Fighter` maps the record 1:1 and
+`Progress` is just `{ xp, threshold }`.
+
+**The `award_cases` shape below is also superseded.** Task 9b established at
+`1000:51b9` that the award is the sum of the enemy's four stats and neither
+level enters it, so a `{player_level, enemy_level, expected}` triple is
+vacuous — cases carry the enemy's whole record instead.
 
 `thresholds[i]` is the XP needed to go from level `i+1` to `i+2`, covering at
 least levels 1 through 10. `award_cases` holds `{"player_level", "enemy_level",
