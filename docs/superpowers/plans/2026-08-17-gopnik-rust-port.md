@@ -3062,10 +3062,34 @@ handling; it is line-based (`stdin().read_line()`).
 
 Checked against RUSTSEC-2021-0139 (`ansi_term` unmaintained) at the owner's
 request: **not applicable.** `cargo tree` shows neither `colored` nor `anstream`
-depends on `ansi_term`. Of that advisory's suggested alternatives, `anstyle`,
-`owo-colors`, `yansi`, `nu-ansi-term`, `ansiterm` and `stylish` are all styling
-APIs (`"x".red()`), which is the shape we specifically do not need; `console`
-would work but carries cursor and terminal-size machinery we never use.
+depends on `ansi_term`. Every alternative that advisory suggests was then
+evaluated against what this task actually needs — a policy bool plus a Windows
+VT call, NOT a styling API (the game's `^N` markup chooses the colours, never
+Rust code). Verified by reading each crate's source; do not re-litigate:
+
+| Crate | Windows VT | Policy (NO_COLOR/CLICOLOR/tty) |
+|---|---|---|
+| `colored` 3.1.1 | manual `set_virtual_terminal` | yes, built in |
+| `yansi` 1.0.1 | automatic, but see below | yes, needs `detect-env` + `detect-tty` |
+| `console` 0.16 | yes | yes |
+| `ansiterm` 0.12 | `enable_ansi_support` | **none** |
+| `nu-ansi-term` 0.50 | yes | **none** |
+| `owo-colors` 4.3 | **none** | `NO_COLOR` only |
+| `anstyle` 1.0 | **none** | **none** (style types only) |
+
+`ansiterm` and `nu-ansi-term` give Windows VT and `paint` but no policy at all,
+so the fiddly precedence logic would come back to us hand-rolled. `console`
+works but carries cursor and terminal-size machinery we never use.
+
+`yansi` was the genuine contender and lost on a footgun worth recording: its
+Windows VT enabling lives in `os_support()` (`condition.rs:170` ->
+`windows::cache_enable()`), which `Condition::DEFAULT` invokes but
+`Condition::TTY_AND_COLOR` (`condition.rs:353` = `stdouterr_are_tty() &&
+clicolor() && no_color()`) does **not**. So the natural
+`yansi::whenever(Condition::TTY_AND_COLOR)` detects a TTY on Windows, emits
+ANSI, and never enables VT — precisely the bug this task exists to prevent.
+Avoiding it needs a hand-composed condition. It also requires stdout **and**
+stderr to be TTYs, so redirecting only stderr silently kills colour on stdout.
 
 **Design — `colored` is used as a policy oracle, not as a styling API.**
 
