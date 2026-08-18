@@ -2,8 +2,8 @@
 //!
 //! `PLACES.SAV` is 7 bytes, one per rediscoverable location. `orig/PLACES.SAV`
 //! is all `0x01` (every location already found), which round-trips correctly
-//! under any permutation of the 7 slots -- see the "unverified" note on
-//! [`TRACKED`] below.
+//! under any permutation of the 7 slots, so the file itself cannot pin the
+//! order down -- the reader at `1000:6c5a` does, and [`TRACKED`] quotes it.
 //!
 //! Entering a new district hides every location again; `reset_for_new_district`
 //! models that (`docs/re/tables.md`, "Availability gates": `district` is
@@ -26,23 +26,33 @@ pub enum Location {
 
 /// The seven locations tracked by `PLACES.SAV`, in file order.
 ///
-/// **UNVERIFIED.** All five `.SAV` files under `orig/` carry `01` in every
-/// slot (`orig/PLACES.SAV` itself is `01 01 01 01 01 01 01`), so the file's
-/// own bytes cannot pin down which byte belongs to which location -- the
-/// round-trip test below passes under any permutation of this array. Pinning
-/// the true order needs the disassembly of the save/load routine that reads
-/// `PLACES.SAV`, which this task did not locate (the search for the
-/// PLACES.SAV read/load routine's disassembly was not run to completion; see
-/// `docs/re/gaps.md`). The order below is a guess in the same spirit as the
-/// brief's -- Market/BigMarket/Vet/Girl/Den/Club/Gym, the order the game's
-/// own `mar`/`bmar`/`rep`/`girl`/`pr`/`kl`/`trn` command tokens appear in
-/// `data/strings.json` (`docs/re/tables.md`'s cited offsets) -- but that is
-/// evidence about the *command table*, not about `PLACES.SAV`'s own byte
-/// layout, so it is not being asserted as confirmed.
+/// **Established from flow.** `places.sav` is read by the routine at
+/// `1000:6c5a`, and it uses `Read`, not `BlockRead` -- seven separate
+/// one-byte reads, each naming its destination flag, so the file's byte
+/// order is read off the disassembly directly:
 ///
-/// **New evidence, still not proof.** Task 11's review pass disassembled all
-/// seven discovery gates and found the flags to be seven *contiguous* bytes
-/// in this order (`docs/re/command-dispatch.md`, "Discovery gates"):
+/// ```text
+/// 6c5a  mov di,0x3e36 / push ds / push di   ; the file variable
+/// 6c6a  call 0f78:0ae7                      ; build the name from DS:3d32
+/// 6c74  call 0f78:0b66                      ; + cs:0x63f2 = file 0x7CC2, 'places.sav'
+/// 6c79  call 0f78:072e                      ; Assign
+/// 6c87  call 0f78:0769                      ; Reset(f, 1)   -- record size 1
+/// 6c8c  call 0f78:028a                      ; IOResult; non-zero -> 1000:6d3b
+/// 6ca2  call 0f78:081e  -> DS:0x3694        ; Read #1  Market
+/// 6cb4  call 0f78:081e  -> DS:0x3695        ; Read #2  BigMarket
+/// 6cc6  call 0f78:081e  -> DS:0x3696        ; Read #3  Den
+/// 6cd8  call 0f78:081e  -> DS:0x3697        ; Read #4  Girl
+/// 6cea  call 0f78:081e  -> DS:0x3698        ; Read #5  Vet
+/// 6cfc  call 0f78:081e  -> DS:0x3699        ; Read #6  Club
+/// 6d0e  call 0f78:081e  -> DS:0x369a        ; Read #7  Gym
+/// 6d1b  call 0f78:07ea                      ; Close
+/// 6d20  writes '^0Загружено из places' (file 0x7CCD)
+/// ```
+///
+/// So **file order == flag-address order**, and the array below is that
+/// order. The seven flags are the contiguous bytes at `20ae:3694..369a`
+/// whose gates are disassembled in `docs/re/command-dispatch.md`,
+/// "Discovery gates":
 ///
 /// | byte | `20ae:` | verb | location |
 /// |---|---|---|---|
@@ -54,20 +64,22 @@ pub enum Location {
 /// | 5 | `3699` | `kl` | Club |
 /// | 6 | `369a` | `trn` | Gym |
 ///
-/// That is the *in-memory* order, and it differs from the array below at
-/// slots 2 and 4 (Den and Vet are swapped). A seven-byte contiguous block is
-/// exactly what a `BlockRead` of a seven-byte `PLACES.SAV` would fill, but
-/// the read itself was still not located, so this array is deliberately left
-/// as it was rather than reordered on a strong hunch. Reordering it changes
-/// nothing observable today (`orig/PLACES.SAV` is `01` in every slot and
-/// `mark_found`/`is_found` are symmetric), and the round-trip test below
-/// still passes under any permutation.
+/// Earlier revisions carried Den and Vet swapped at slots 2 and 4, on the
+/// order the `mar`/`bmar`/`rep`/`girl`/`pr`/`kl`/`trn` command tokens appear
+/// in `data/strings.json` -- evidence about the *command table*, not about
+/// the file. `orig/PLACES.SAV` is `01` in every slot and cannot arbitrate
+/// (the round-trip test below passes under any permutation), so the
+/// disassembly above is the only thing that settles it, and it does.
+///
+/// The read's own failure arm (`1000:6d3b`, taken when `IOResult` is
+/// non-zero) clears the flags with three `[0x389c]`-keyed exceptions and
+/// leaves via `1000:6da0`; it is described in `docs/re/gaps.md`.
 pub const TRACKED: [Location; 7] = [
     Location::Market,
     Location::BigMarket,
-    Location::Vet,
-    Location::Girl,
     Location::Den,
+    Location::Girl,
+    Location::Vet,
     Location::Club,
     Location::Gym,
 ];
@@ -128,6 +140,25 @@ mod tests {
         assert!(places.is_found(Location::Temple));
         assert!(places.is_found(Location::Dorm));
         assert!(!places.is_found(Location::Market));
+    }
+
+    /// The order `1000:6ca2`..`1000:6d0e` reads the seven bytes into
+    /// `DS:0x3694`..`DS:0x369a`. Den is slot 2 and Vet slot 4, not the
+    /// other way round.
+    #[test]
+    fn tracked_is_the_order_the_places_sav_reader_uses() {
+        assert_eq!(
+            TRACKED,
+            [
+                Location::Market,    // 6ca2 -> 0x3694
+                Location::BigMarket, // 6cb4 -> 0x3695
+                Location::Den,       // 6cc6 -> 0x3696
+                Location::Girl,      // 6cd8 -> 0x3697
+                Location::Vet,       // 6cea -> 0x3698
+                Location::Club,      // 6cfc -> 0x3699
+                Location::Gym,       // 6d0e -> 0x369a
+            ]
+        );
     }
 
     #[test]
