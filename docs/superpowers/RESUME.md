@@ -232,6 +232,19 @@ them from byte noise.
   worth pressing on unilaterally. Task 8's report must record how far recovery
   got and what a future attempt should try first, so this stays resumable if
   the owner later decides fidelity here matters.
+- **`rand` was offered by the owner and declined, with the owner deferring to
+  this judgement — do not revisit without new information.** `rand`'s `StdRng`
+  is explicitly non-portable: its own docs (`rand-0.9.4/src/rngs/std.rs:20-24`)
+  say "any future library version may replace the algorithm and results may be
+  platform-dependent" and "even with a fixed seed, output is not portable".
+  Fallback option 3's entire requirement is same-seed-same-sequence stable
+  across builds and platforms, because save files and Task 12's differential
+  harness depend on reproducible rolls; a `rand` upgrade could silently change
+  every sequence while the tests still passed (they would be comparing our
+  output to our output). It also pulls 6 transitive crates for one seeded
+  integer sequence. If a crate is ever genuinely wanted here, the correct one
+  is `rand_chacha` pinned — the portable variant `rand`'s own docs point to —
+  but the 5-line xorshift does the same job with zero dependencies.
 - Task 11 must contain NO placeholder handlers or dummy enemies (owner chose rubric over plan).
 - **Task 5 amendment (owner-approved, option 2):** the plan's round-trip test
   is near-tautological — `encode()` starts from `rec["_raw"]` and copies the
