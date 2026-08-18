@@ -46,6 +46,7 @@ OUT_ENEMIES = ROOT / "data" / "enemies.json"
 OUT_ITEMS_PROV = ROOT / "data" / "items.provenance.json"
 OUT_SHOPS_PROV = ROOT / "data" / "shops.provenance.json"
 OUT_ENEMIES_PROV = ROOT / "data" / "enemies.provenance.json"
+OUT_OTHER_PRICES = ROOT / "data" / "other_price_sites.json"
 
 # ---------------------------------------------------------------------------
 # Segment arithmetic.
@@ -346,7 +347,7 @@ def find_gates(blob: bytes, lo: int, hi: int) -> list:
     return gates
 
 
-def parse_shops(blob: bytes) -> list:
+def parse_shops(blob: bytes) -> tuple:
     rows = []
     for m in SHOP_ROW_RE.finditer(blob):
         start = m.start()
@@ -404,7 +405,7 @@ def parse_shops(blob: bytes) -> list:
             district = [g[1] for g in active if g[1].startswith("district")]
             row["gate"] = district[-1] if district else None
             row["extra_gates"] = [g[1] for g in active if not g[1].startswith("district")]
-    return rows
+    return rows, charged
 
 
 # ---------------------------------------------------------------------------
@@ -520,10 +521,155 @@ def parse_enemies(blob: bytes, ranks: list) -> list:
                     ]
                 ),
                 "generated": False,
-                "source": f"1000:11c2 (file 0x{m.start():04x}), param_1 == {variant}",
+                "source": (
+                    f"1000:{m.start() - FILE_BASE:04x} (file 0x{m.start():04x}), "
+                    f"inside FUN_1000_11c2, param_1 == {variant}"
+                ),
             }
         )
     return enemies
+
+
+# ---------------------------------------------------------------------------
+# Other price sites (data/other_price_sites.json)
+# ---------------------------------------------------------------------------
+#
+# CHARGE_RE (above) already collects every `mov al,[addr] / xor ah,ah / sub
+# [money],ax` debit site's address into `charged`. 18 of those addresses are
+# the mar/bmar price bytes in data/shops.json; parse_shops() discards the
+# rest. This section recovers them, plus two further debit forms CHARGE_RE's
+# specific byte pattern does not match at all: a price baked into the
+# instruction as an immediate, and (one instance) a computed amount. See
+# docs/re/tables.md, "Other price sources, not extracted".
+
+# `sub word [20ae:38c7],imm8` -- the price is an immediate operand, not read
+# from any array or variable. Found by scanning for `83 2E C7 38 ib`.
+SUB_IMM8_RE = re.compile(rb"\x83\x2E\xC7\x38(?P<imm>.)", re.DOTALL)
+
+# `mov byte [addr],imm8` -- below, used to find where a BSS byte variable is
+# initialised with a literal value.
+MOV_BYTE_IMM_RE = re.compile(rb"\xC6\x06(?P<addr>..)(?P<imm>.)", re.DOTALL)
+
+# `mov al,[addr]` -- below, used to find every place a given byte address is
+# read (a superset of the read half of CHARGE_RE's idiom).
+MOV_AL_ADDR_RE = re.compile(rb"\xA0(?P<addr>..)", re.DOTALL)
+
+# Two of the eleven immediate-price sites are identified: the two Клуб
+# (gambling) rows print their price as the literal `#` at the front of their
+# own row text (docs/re/tables.md), rather than through the shop `#`
+# placeholder, which is why they are not `mar`/`bmar` rows. Verified by
+# reading the shortstrings at these exact file offsets straight out of
+# orig/g.exe -- not inferred from proximity to the charge site, which
+# false-matches more than once when tried (see
+# .superpowers/sdd/task-10-report.md). Every other site stays `what: null`;
+# identifying them is Task 11's job, not this one's.
+SUB_IMM8_WHAT = {
+    0xFB77: 'Клуб: 15^7  потусоваться на дискотеке(Ловкость +1), string at file 0xba50',
+    0xFBEC: 'Клуб: 22^7  разузнать приемы мухлёжников(Удача +1), string at file 0xba85',
+}
+
+
+def find_sub_imm8_sites(blob: bytes) -> list:
+    sites = []
+    for m in SUB_IMM8_RE.finditer(blob):
+        sites.append(
+            {
+                "addr": f"1000:{m.start() - FILE_BASE:04x}",
+                "file_off": f"0x{m.start():04x}",
+                "imm": m.group("imm")[0],
+                "what": SUB_IMM8_WHAT.get(m.start()),
+            }
+        )
+    return sites
+
+
+def find_var_charge_sites(blob: bytes, charged: set, shop_addrs: set) -> list:
+    """Charged addresses CHARGE_RE found that are not a mar/bmar price byte.
+
+    Each is a third debit form: `mov al,[var] / xor ah,ah / sub [money],ax`,
+    where the amount comes from a byte *variable* rather than the const
+    array (mar/bmar) or an immediate (sub_word_imm8_sites). For each, this
+    also records every site that sets the variable with a literal `mov byte
+    [addr],imm8` and every site that reads it with `mov al,[addr]` -- all
+    re-derived from orig/g.exe, nothing transcribed.
+    """
+    out = []
+    for addr in sorted(a for a in charged if a not in shop_addrs):
+        charge_sites = [
+            m.start() for m in CHARGE_RE.finditer(blob) if u16(m.group("addr")) == addr
+        ]
+        init_sites = [
+            (m.start(), m.group("imm")[0])
+            for m in MOV_BYTE_IMM_RE.finditer(blob)
+            if u16(m.group("addr")) == addr
+        ]
+        read_sites = [
+            m.start() for m in MOV_AL_ADDR_RE.finditer(blob) if u16(m.group("addr")) == addr
+        ]
+        out.append(
+            {
+                "addr": f"20ae:{addr:04x}",
+                "charge_sites": [
+                    {"addr": f"1000:{s - FILE_BASE:04x}", "file_off": f"0x{s:04x}"}
+                    for s in charge_sites
+                ],
+                "init_sites": [
+                    {
+                        "addr": f"1000:{s - FILE_BASE:04x}",
+                        "file_off": f"0x{s:04x}",
+                        "imm": imm,
+                    }
+                    for s, imm in init_sites
+                ],
+                "read_sites": [
+                    {"addr": f"1000:{s - FILE_BASE:04x}", "file_off": f"0x{s:04x}"}
+                    for s in read_sites
+                ],
+                "what": None,
+            }
+        )
+    return out
+
+
+# The Рушель Блаво save-game service (`district*50`) is a fourth debit form
+# -- `sub [money],ax` where ax is computed by a multiply rather than read
+# from an array, a variable, or an immediate -- and has no fixed byte idiom
+# CHARGE_RE/SUB_IMM8_RE can scan for without also matching unrelated
+# arithmetic elsewhere in the binary. Hand-verified against orig/g.exe
+# (`ndisasm -b16` over the file region, docs/re/tables.md) rather than
+# pattern-scanned; kept here rather than dropped, per that finding.
+def computed_sites() -> list:
+    return [
+        {
+            "addr": "1000:761d",
+            "file_off": "0x8eed",
+            "formula": "district*50",
+            "what": "Рушель Блаво save-game service",
+            "guard_addr": "1000:760a",
+            "string_file_off": "0x8d2d",
+            "string_text": "За # рублей он может сделать сохранение прямо здесь.",
+            "string_load_addr": "1000:7583",
+            "string_load_file_off": "0x8e53",
+        }
+    ]
+
+
+def build_other_price_sites(blob: bytes, charged: set, shop_addrs: set) -> dict:
+    return {
+        "note": (
+            "Places in orig/g.exe that debit [20ae:38c7] (the player's "
+            "money) besides the mar/bmar rows in data/shops.json. Generated "
+            'by tools/extract_tables.py -- see docs/re/tables.md, "Other '
+            'price sources, not extracted" -- except computed_sites, which '
+            "is hand-verified rather than pattern-scanned (see the comment "
+            "above computed_sites() in that script; docs/re/tables.md has "
+            "the disassembly). Not linked to any item or row here; that is "
+            "Task 11's job."
+        ),
+        "sub_word_imm8_sites": find_sub_imm8_sites(blob),
+        "var_sites": find_var_charge_sites(blob, charged, shop_addrs),
+        "computed_sites": computed_sites(),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -630,7 +776,7 @@ def main() -> None:
     tables = json.loads(STRING_TABLES.read_text(encoding="utf-8"))
     ranks = next(t for t in tables["tables"] if t["name"] == "ranks")["entries"]
 
-    shops = parse_shops(blob)
+    shops, charged = parse_shops(blob)
     items = parse_items(strings)
     link_item_prices(items, shops)
     enemies = parse_enemies(blob, ranks)
@@ -639,15 +785,20 @@ def main() -> None:
     shops_runtime, shops_prov = split_shops(shops)
     enemies_runtime, enemies_prov = split_enemies(enemies)
 
+    shop_addrs = {int(r["price_addr"].split(":")[1], 16) for r in shops}
+    other_prices = build_other_price_sites(blob, charged, shop_addrs)
+
     write_json(OUT_ITEMS, items_runtime)
     write_json(OUT_ITEMS_PROV, items_prov)
     write_json(OUT_SHOPS, shops_runtime)
     write_json(OUT_SHOPS_PROV, shops_prov)
     write_json(OUT_ENEMIES, enemies_runtime)
     write_json(OUT_ENEMIES_PROV, enemies_prov)
+    write_json(OUT_OTHER_PRICES, other_prices)
     print(
         f"wrote {len(items_runtime)} items, {len(shops_runtime)} shop rows, "
-        f"{len(enemies_runtime)} enemy rows (+3 provenance files)"
+        f"{len(enemies_runtime)} enemy rows (+3 provenance files, "
+        f"+data/other_price_sites.json)"
     )
 
 

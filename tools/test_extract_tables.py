@@ -99,6 +99,7 @@ def test_shops():
     # Shop rows have no `id`; the provenance file is keyed by "<shop>:<key>",
     # and every runtime row must trace back to exactly one such entry.
     assert set(prov) == {key(r) for r in shops}, "provenance keys must match rows exactly"
+    assert len(prov) == len(shops), "a key collision would hide a dropped row"
     for p in prov.values():
         assert set(p) == {
             "price_addr", "displayed_price_addr", "charged",
@@ -137,7 +138,7 @@ def test_shops():
         assert p["charged"] is True, p
         assert p["price_addr"].startswith("20ae:")
 
-    # Availability gates, as read at 1000:b9b3.. and 1000:c51e...
+    # Availability gates, as read at 1000:b9b3.. and 1000:c51d...
     assert [r["gate"] for r in by_shop["mar"]] == [
         None, None, None, None, None,
         "district>1", "district>1", "district>2", "district>3",
@@ -155,6 +156,7 @@ def test_enemies():
     by_id = {e["id"]: e for e in enemies}
     ids = [e["id"] for e in enemies]
     assert set(prov) == set(ids), "provenance ids must match runtime ids exactly"
+    assert len(prov) == len(enemies), "a key collision would hide a dropped row"
     for p in prov.values():
         assert set(p) == {"source"}, p
     for e in enemies:
@@ -195,7 +197,9 @@ def test_enemies():
         "strength": 50, "agility": 60, "vitality": 188, "luck": 32,
         "dmg_min": 25, "dmg_max": 50, "hp": 1000, "hpmax": 1000, "armor": 80,
     }
-    assert prov["rektor_ngu_v0"]["source"].startswith("1000:11c2")
+    assert "FUN_1000_11c2" in prov["rektor_ngu_v0"]["source"]
+    assert prov["rektor_ngu_v0"]["source"].startswith("1000:11dc (file 0x2aac)")
+    assert prov["rektor_ngu_v1"]["source"].startswith("1000:1205 (file 0x2ad5)")
     print(f"OK {len(enemies)} enemy rows extracted ({len(prov)} provenance rows)")
 
 

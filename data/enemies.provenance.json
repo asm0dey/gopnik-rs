@@ -33,9 +33,9 @@
   "source": "1000:0d9a clamps the rolled class to 9, so 1000:0d14 never produces this class and never reads the weights at 20ae:002a; name from the `ranks` string table at 20ae:002e, stats from the two scripted `_v0`/`_v1` rows below."
  },
  "rektor_ngu_v0": {
-  "source": "1000:11c2 (file 0x2aac), param_1 == 0"
+  "source": "1000:11dc (file 0x2aac), inside FUN_1000_11c2, param_1 == 0"
  },
  "rektor_ngu_v1": {
-  "source": "1000:11c2 (file 0x2ad5), param_1 == 1"
+  "source": "1000:1205 (file 0x2ad5), inside FUN_1000_11c2, param_1 == 1"
  }
 }
