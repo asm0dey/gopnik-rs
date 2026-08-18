@@ -84,7 +84,7 @@
     "rep":  {"flag": "20ae:3698", "gate_addr": "1000:d3b0", "refusal_addr": "1000:d6ca", "refusal_file_off": "0xB440"},
     "kl":   {"flag": "20ae:3699", "gate_addr": "1000:df10", "refusal_addr": "1000:e36d", "refusal_file_off": "0xBBF6"},
     "trn":  {"flag": "20ae:369a", "gate_addr": "1000:e39a", "refusal_addr": "1000:e948", "refusal_file_off": "0xBEC2"},
-    "setters_found": ["1000:d751 sets girl's club flag 20ae:3699", "1000:b570 sets 20ae:3697 in the wander bucket-2 branch"],
+    "setters_found": ["1000:d751 sets girl's club flag 20ae:3699", "1000:b570 sets 20ae:3697 in the wander bucket-2 branch", "1000:b196 sets 20ae:3698 in the wander preamble", "1000:b1c8 sets 20ae:3694 in the wander preamble", "1000:b1fa sets 20ae:3699 in the wander preamble", "1000:b22c sets 20ae:369a in the wander preamble"],
     "never_set_by": "a refused entry"
   }
 }

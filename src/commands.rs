@@ -101,9 +101,8 @@
 //! * `wes` is not `Weapon`; it sells items at `bmar` (corroboration only).
 //! * `hp` is not a global health command -- its only occurrence in
 //!   `data/strings.json` is inside `pr`'s own submenu; not in this table at
-//!   all, falls through to `Key('h')`... no, `hp` is two characters, so it
-//!   falls through to `Unknown("hp")` at the top level, which is correct:
-//!   there is no evidence it is dispatched here.
+//!   all, so it falls through to `Unknown("hp")` at the top level, which is
+//!   correct: there is no evidence it is dispatched here.
 //! * `i` is the command list, not inventory (confirmed dispatcher entry,
 //!   corroborated by the live capture). The brief's `Inventory` variant is
 //!   removed; nothing in this task found a dedicated inventory verb.
@@ -172,7 +171,10 @@ pub enum Command {
     /// `wes` at the dealers (sell items). Same corroboration level as
     /// `SellJunk` (file `0xAA8A`).
     SellItems,
-    Key(char),
+    /// Any line the dispatcher's compare chain does not match. The original
+    /// writes nothing for these (`1000:ee01` `jmp 0xab75`, straight back to
+    /// the prompt), and it draws no distinction between a stray single
+    /// character and a stray word -- so neither does this.
     Unknown(String),
 }
 
@@ -211,13 +213,7 @@ pub fn parse(input: &str) -> Command {
         "mh" => Command::BingeDrink,
         "x" => Command::SellJunk,
         "wes" => Command::SellItems,
-        _ => {
-            let mut chars = v.chars();
-            match (chars.next(), chars.next()) {
-                (Some(c), None) => Command::Key(c),
-                _ => Command::Unknown(v),
-            }
-        }
+        _ => Command::Unknown(v),
     }
 }
 
@@ -287,12 +283,16 @@ mod tests {
         assert_eq!(parse("s"), Command::Stats);
     }
 
+    /// A single character the table does not claim is no more dispatched
+    /// than a stray word is. Location submenu keys (`h`/`r` at the vet,
+    /// the digits at `mar`) never reach `parse`: `Game::shop_turn` matches
+    /// them on the raw line first, because the original reads them through
+    /// its own `ReadLn DS:3a72` that never enters `entry`'s dispatch chain.
     #[test]
-    fn unclaimed_single_letters_fall_back_to_key() {
-        for c in ['a', 'd', 'p', 'r', 't'] {
-            assert_eq!(parse(&c.to_string()), Command::Key(c));
+    fn unclaimed_single_letters_are_unknown_like_any_other_line() {
+        for c in ['a', 'd', 'p', 'r', 't', '7'] {
+            assert_eq!(parse(&c.to_string()), Command::Unknown(c.to_string()));
         }
-        assert_eq!(parse("7"), Command::Key('7'));
     }
 
     #[test]

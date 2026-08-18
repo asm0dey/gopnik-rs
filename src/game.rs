@@ -210,7 +210,7 @@ impl Game {
             // `jmp 0xab75` at 1000:ee01, straight back to the top of the
             // loop, with no output in between. The `^4? <input>` line an
             // earlier revision printed here was composed, not a real string.
-            Command::Key(_) | Command::Unknown(_) => {}
+            Command::Unknown(_) => {}
         }
         Ok(())
     }
@@ -443,7 +443,15 @@ impl Game {
             2 => term::println("^0общагу ВКИ"),
             3 => term::println("^0гоповский притон"),
             4 => term::println("^0притон отморозков"),
-            _ => term::println(""),
+            // No `else`: `1000:d82f`, `1000:d859`, `1000:d879` and
+            // `1000:d899` are four independent `cmp byte [0x3692],N`
+            // blocks, the last of which falls through to `1000:d8b9`. A
+            // district outside 1..=4 -- reachable, since `run_combat`'s
+            // promotion loop runs `while self.district < 5` -- writes the
+            // prefix and nothing more: no suffix, and no newline either,
+            // because the prefix went out through `0eed:0000` (`Write`)
+            // and no `WriteLn` follows.
+            _ => {}
         }
     }
 
@@ -1174,8 +1182,15 @@ impl Game {
     ///   otherwise, if the den is known and money >= 10, the hospital rescue
     ///   at `1000:4fce` (file `0x50DF`, `money -= 10`, hp restored) --
     ///   neither modelled here. The plain case is `1000:5053`: file `0x5127`
-    ///   (`^4Ты сдох.`) and then `FUN_1000_074b(0)`, the end screen, which
-    ///   ends in `Halt` (`1000:0ac0`). So death **ends the game**.
+    ///   (`^4Ты сдох.`) and then `FUN_1000_074b(0)`, the end screen. So death
+    ///   **ends the game** -- established from flow, not from the RTL's
+    ///   symbol layout: `FUN_1000_074b`'s last act is `1000:0abe`
+    ///   `xor ax,ax` / `1000:0ac0` `call 1f78:0116`, and that routine
+    ///   (Ghidra `1f78`, file `0x11166`) restores the saved interrupt
+    ///   vectors and terminates the process at file `0x1123C`..`0x1123E`
+    ///   with `b4 4c` `cd 21` -- `mov ah,0x4c` / `int 0x21`. The `mov sp,bp`
+    ///   / `pop bp` / `ret 2` epilogue at `1000:0ac5` is unreachable
+    ///   compiler boilerplate.
     /// * `1000:5189` the enemy died: file `0x5250` (`^2Враг сдох.`), then
     ///   `1000:51b4` file `0x525D` with `str+agi+vit+luck` as the award.
     ///   `^2Ты победил.` is *not* a per-fight line: it is file `0x1DBF`, the
@@ -1593,8 +1608,13 @@ mod tests {
         assert!(lines.iter().any(|l| l.contains("1.5")));
     }
 
+    /// Only the "does not panic" half is asserted. `term` writes straight to
+    /// this process's stdout, so a unit test cannot capture it; the
+    /// "prints nothing" half rests on `inspect_enemy`'s early `return` when
+    /// `last_enemy` is `None`, which is structural, not observed. Asserting
+    /// it would need an output-capture harness the crate does not have.
     #[test]
-    fn inspect_before_any_fight_prints_nothing_and_does_not_panic() {
+    fn inspect_before_any_fight_does_not_panic() {
         let g = game();
         assert!(g.last_enemy.is_none());
         g.inspect_enemy();
@@ -1832,7 +1852,9 @@ mod tests {
     }
 
     /// I7: a dead player ends the game (`1000:5053` -> `FUN_1000_074b(0)`,
-    /// which ends in `Halt`), rather than walking on as a 0-HP corpse.
+    /// whose tail-call at `1000:0ac0` reaches the RTL's `mov ah,0x4c` /
+    /// `int 0x21` at file `0x1123C` -- see [`Game::run_combat`]), rather
+    /// than walking on as a 0-HP corpse.
     #[test]
     fn player_death_stops_the_loop() {
         let mut g = game();

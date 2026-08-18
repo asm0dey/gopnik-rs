@@ -220,9 +220,16 @@ flags are contiguous.
 | `kl` | `20ae:3699` | `1000:df10` | `1000:e36d` | `0xBBF6` |
 | `trn` | `20ae:369a` | `1000:e39a` | `1000:e948` | `0xBEC2` |
 
-Nothing sets a flag from a *failed* entry. The two setters found so far are
-`1000:d751` (`girl` reveals the club) and `1000:b570` (the wander bucket-2
-branch reveals the girl, after its own `Random(2)`).
+Nothing sets a flag from a *failed* entry. Two setters are implemented in the
+port: `1000:d751` (`girl` reveals the club) and `1000:b570` (the wander
+bucket-2 branch reveals the girl, after its own `Random(2)`).
+
+Four more are located but not implemented, all in the wander preamble that
+runs before the bucket roll, each firing on `Random(n) == 0` with its flag
+still clear: `1000:b196` (`0x3698`, Vet), `1000:b1c8` (`0x3694`, Market),
+`1000:b1fa` (`0x3699`, Club) and `1000:b22c` (`0x369a`, Gym). See
+`docs/re/gaps.md`, "Wander preamble", for the rolls, gates and strings, and
+for why they are not wired up.
 
 ## The encounter decline branch (corrected)
 
