@@ -360,7 +360,7 @@ def test_other_price_sites():
     print(
         f"OK {ax['count']} sub[money],ax sites classified "
         f"({ax['counts_by_category']}), {len(imm8)} imm8 sites, "
-        f"{var['ref_count']}/{var['ref_count']} refs to {var['addr']} accounted for"
+        f"{var['recorded_sites']}/{var['ref_count']} refs to {var['addr']} accounted for"
     )
 
 

@@ -294,7 +294,7 @@ Row 9's extra gates: `20ae:394d` is the "owns a pistol" flag set at `0xE5D5`;
 but only while the player knows `bmar` and owns a pistol, and it stops at 25
 (`0xC7FB`). So the silencer appears 25 wanders after the pistol is bought.
 
-### Other price sources, not extracted
+### Other price sources, not extracted into `data/shops.json`
 
 `mar` and `bmar` are not the only places the binary charges the player. The
 player's money is the word at `20ae:38c7`, and exactly two instruction
