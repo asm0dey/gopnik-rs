@@ -33,7 +33,7 @@ pub enum Location {
 /// the true order needs the disassembly of the save/load routine that reads
 /// `PLACES.SAV`, which this task did not locate (the search for the
 /// PLACES.SAV read/load routine's disassembly was not run to completion; see
-/// task-11-report.md). The order below is a guess in the same spirit as the
+/// `docs/re/gaps.md`). The order below is a guess in the same spirit as the
 /// brief's -- Market/BigMarket/Vet/Girl/Den/Club/Gym, the order the game's
 /// own `mar`/`bmar`/`rep`/`girl`/`pr`/`kl`/`trn` command tokens appear in
 /// `data/strings.json` (`docs/re/tables.md`'s cited offsets) -- but that is

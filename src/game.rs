@@ -533,7 +533,7 @@ impl Game {
     /// `help`. Dispatched confirmed at `1000:edd5`; its printed content was
     /// not traced. Nothing is printed rather than inventing a line: the game
     /// has no "not implemented" string, so there is nothing verbatim to say.
-    /// Reported as a gap in task-11-report.md.
+    /// Reported as a gap in `docs/re/gaps.md`.
     fn show_help(&self) {}
 
     /// `sv`. Shows the last-fought opponent's stat block. The header is the
@@ -835,7 +835,7 @@ impl Game {
 
     // There is deliberately no `save_game()` wrapper here. The original has
     // no "saved OK" / "save failed" string anywhere, so a wrapper could only
-    // print composed text -- see [`Game::write_save`] and task-11-report.md.
+    // print composed text -- see [`Game::write_save`] and `docs/re/gaps.md`.
 
     /// Writes a checkpoint save. See the module doc: `Unsupported` for
     /// every `Game` this task can construct.
@@ -877,7 +877,7 @@ impl Game {
     /// `name`. `^2Звали тебя:^7 ` / `^2А теперь будут:^7 ` are this port's
     /// own prompts and are the one place the module knowingly departs from
     /// the byte-verbatim rule; `1000:ecf1`'s handler body was not traced.
-    /// Flagged in task-11-report.md.
+    /// Flagged in `docs/re/gaps.md`.
     fn rename(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
         term::print("^2Звали тебя:^7 ");
         term::println(&self.player.name);
@@ -1088,7 +1088,7 @@ impl Game {
     /// test compares money against (`cmp word [0x38c7],0x3` at `1000:d410`).
     /// The debiting code inside the vet's own submenu was not traced, so
     /// "3 rubles is also what is charged" remains an inference; see
-    /// task-11-report.md.
+    /// `docs/re/gaps.md`.
     fn heal_jaw(&mut self) {
         self.pay_and_heal(3, self.player.broken_jaw, |f| f.broken_jaw = false);
     }
@@ -1166,7 +1166,7 @@ impl Game {
     /// by `FUN_1000_3d11`'s own call into `FUN_1000_29c4` at `1000:4b00`) was
     /// not traced; `k` (attack) is this port's own choice, consistent with
     /// `k` being the fight verb everywhere else, but **not independently
-    /// confirmed as the in-combat attack key**. See task-11-report.md.
+    /// confirmed as the in-combat attack key**. See `docs/re/gaps.md`.
     ///
     /// Death and victory both come from `FUN_1000_3d11`'s own tail:
     ///

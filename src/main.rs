@@ -4,7 +4,7 @@
 //! that `orig/g.exe` runs from itself alone, so "no save file" is the
 //! ordinary new-game case, not an error to handle. Loading an existing
 //! character is out of this task's scope; see `src/game.rs`'s module doc
-//! and task-11-report.md.
+//! and `docs/re/gaps.md`.
 
 use gopnik::game::Game;
 use gopnik::model::Fighter;
