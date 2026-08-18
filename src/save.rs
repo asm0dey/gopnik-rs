@@ -38,6 +38,14 @@ pub enum SaveError {
     /// A character being encoded into a save has no CP866 representation
     /// (for example a player-typed name containing non-Cyrillic script).
     Unmappable(char),
+    /// A `pstring` field's CP866-encoded bytes exceed the format's 255-byte
+    /// cap (a Pascal `string[255]` length prefix is a single byte, so this
+    /// is a real property of the on-disk format, not an internal invariant).
+    /// Carries the actual encoded length. Note this is a byte count, not a
+    /// `char` count: CP866 is one byte per character, but the same string
+    /// as Rust `String` (UTF-8) can be up to two bytes per character for
+    /// non-ASCII (e.g. Cyrillic) text.
+    TooLong(usize),
 }
 
 impl fmt::Display for SaveError {
@@ -47,6 +55,9 @@ impl fmt::Display for SaveError {
             SaveError::BadCp866Bytes => write!(f, "bytes are not valid CP866"),
             SaveError::Unmappable(c) => {
                 write!(f, "character {c:?} has no CP866 representation")
+            }
+            SaveError::TooLong(n) => {
+                write!(f, "encoded length {n} exceeds {PSTRING_CAP}-byte shortstring cap")
             }
         }
     }
@@ -106,7 +117,9 @@ fn get_pstring(b: &[u8], off: usize) -> Result<String, SaveError> {
 
 fn put_pstring(buf: &mut [u8], off: usize, s: &str) -> Result<(), SaveError> {
     let raw = cp866_encode(s)?;
-    assert!(raw.len() <= PSTRING_CAP);
+    if raw.len() > PSTRING_CAP {
+        return Err(SaveError::TooLong(raw.len()));
+    }
     buf[off] = raw.len() as u8;
     buf[off + 1..off + 1 + raw.len()].copy_from_slice(&raw);
     // Bytes past the length are left exactly as they were.

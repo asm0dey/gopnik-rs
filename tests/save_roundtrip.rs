@@ -9,6 +9,11 @@ fn load(name: &str) -> Vec<u8> {
 }
 
 #[test]
+// Note: this test does NOT independently validate the `unk_stat*`/`tail`
+// offsets. `to_bytes` writes those bytes back to the same self-computed
+// offsets it read them from, so the round-trip passes regardless of
+// whether those offsets are actually correct against the original Pascal
+// layout; only `rust_offsets_match_save_layout_json` (below) guards that.
 fn all_reference_saves_round_trip_byte_exactly() {
     for name in [
         "SAVE_R0.SAV",
@@ -69,6 +74,45 @@ fn to_bytes_reports_error_instead_of_panicking_on_unencodable_name() {
     save.name = "^7 漢".to_string();
     let err = save.to_bytes().expect_err("unmappable char must error, not panic");
     assert!(matches!(err, save::SaveError::Unmappable('漢')), "{err:?}");
+}
+
+#[test]
+fn to_bytes_reports_error_instead_of_panicking_on_name_over_shortstring_cap() {
+    // Task 11 feeds player-typed names into this path; a name whose CP866
+    // encoding exceeds the 255-byte shortstring cap must surface as an
+    // error, not panic/abort the process (the release profile sets
+    // `panic = "abort"`). No unmappable character is needed to hit this --
+    // plain ASCII over length is enough.
+    let mut save = Save::parse(&load("SAVE_R0.SAV")).unwrap();
+    save.name = "x".repeat(300);
+    let err = save
+        .to_bytes()
+        .expect_err("over-cap name must error, not panic");
+    assert!(matches!(err, save::SaveError::TooLong(300)), "{err:?}");
+}
+
+#[test]
+fn to_bytes_caps_on_encoded_cp866_bytes_not_utf8_bytes_or_char_count() {
+    // In CP866 every Cyrillic character is 1 byte, but in the Rust
+    // `String`'s UTF-8 representation the same character is 2 bytes. The
+    // cap must be checked against the encoded (CP866) byte length, not
+    // against `str::len()` (UTF-8 bytes) or `chars().count()`.
+    let mut save = Save::parse(&load("SAVE_R0.SAV")).unwrap();
+
+    // 200 Cyrillic characters: 400 UTF-8 bytes (over 255) but only 200
+    // CP866 bytes (under the 255 cap) -- must succeed. A check against
+    // UTF-8 byte length would wrongly reject this.
+    save.name = "п".repeat(200);
+    assert_eq!(save.name.len(), 400, "sanity: UTF-8 encoding is 2 bytes/char");
+    save.to_bytes()
+        .expect("200 Cyrillic chars fit in the 255-byte CP866 cap");
+
+    // 256 Cyrillic characters: also 256 CP866 bytes, one over the cap.
+    save.name = "п".repeat(256);
+    let err = save
+        .to_bytes()
+        .expect_err("256 CP866 bytes exceeds the 255-byte cap");
+    assert!(matches!(err, save::SaveError::TooLong(256)), "{err:?}");
 }
 
 /// The save layout is hand-maintained in two places: `tools/decode_save.py`
