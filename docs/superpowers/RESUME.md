@@ -27,8 +27,68 @@ the start instead of having ~20 `println!` sites rewritten afterwards.
 | 6 — Rust crate skeleton + text layer | complete, approved (1 fix wave) | `85c38b3`, `2533d35` |
 | 7 — Rust save load/store, byte-exact | complete, approved (1 fix wave) | `5b066ad`, `a7b1152` |
 | 8 — RNG recovered and ported | complete, approved (1 fix wave) | `74adfdc`, `8fe47cc` |
+| 9 — combat math recovered + ported | complete, approved (2 fix waves) | `ab6b8d3`, `11eeea8`, `002c674` |
 
-**NEXT: Task 9** (combat math).
+**NEXT: Task 9b** (XP thresholds and stat growth).
+
+### Task 9 outcome
+
+Combat function is **`FUN_1000_3d11` (`1000:3d11`)**, confirmed by five combat
+strings resolving to instructions inside its body and nowhere else.
+**Task 4's three candidates (`1000:1a03`, `1000:6a0d`, `1000:7c67`) were all
+wrong** and are retracted in `docs/re/functions.md`.
+
+`src/combat.rs` + `src/model.rs` ported and validated against **295 cases /
+352 blows** captured from the original under a seed-pinned oracle. A reviewer
+independently re-derived the blow math from the disassembly and reproduced
+every blow with zero mismatches. Swapping the high-take for `%` breaks 206 of
+314 blows — the data pins the semantics hard.
+
+**Seed pinning exists now and Task 12 should reuse it.** `pin_seed` in
+`tools/oracle/capture.py` patches `Randomize`'s 13-byte body at file offset
+`0x12230` — on the SCRATCH COPY only. It refuses any binary lacking that exact
+body. `docs/re/combat.md:314-345` documents apply AND remove. `orig/g.exe` is
+never touched; no pinned binary is ever committed. Owner's constraint: unpin
+when possible; pinning is capture-time only, the port keeps normal seeding.
+
+**Vector capture is genuinely non-circular.** `tools/capture_combat_vectors.py`
+reads damage/hit-miss from CP866 screen text and stats/seed from guest memory
+via a new `STATE.BIN` window, gated on a save-banner signature so `DS` is
+proven not assumed. It never imports or reads the Rust crate.
+
+**The TSR changed.** `scrhook.asm`/`.com` grew 81 bytes to dump the stats the
+vectors need (agility, luck, armor, dmg_min/max, RandSeed are never printed).
+Reassembles byte-identically; `test_scrhook_matches_source` still guards it.
+
+**Harness defect fixed:** DOSBox-X was popping a modal "Quit DOSBox-X warning"
+on teardown, which would hang any unattended run. `quit warning=false` in the
+conf, and the SIGTERM step was removed entirely (every frame is already on
+disk, so SIGTERM bought nothing but dosbox-x's shutdown path). Always run
+through `capture.py` — it sets `SDL_VIDEODRIVER=dummy`; a bare `dosbox-x`
+invocation opens a real window and brings the modal back.
+
+**Findings that change other tasks:**
+- The eight save stat words are now NAMED, not `unk_*`:
+  `rank_index, strength, agility, vitality, luck, level, dmg_min, dmg_max`.
+  Evidenced from `1000:1419`, which prints `+0x02..+0x08` against
+  `Сл:# Лв:# Жв:# Уд:#`, and `1000:143b` printing `Урон #-#`.
+  **Level is at `0x20a`. `0x200` is the rank-name index.** Task 9b's brief was
+  corrected. `SAVE_R0` is level 15, not 4 — 4 was the rank index.
+- **Level and broken jaw/leg do NOT affect combat math at all.** Verified by
+  linear sweep of `[3d11,584c)`. The brief's "level 1 vs level 6" coverage row
+  is vacuous and cannot discriminate a correct implementation.
+- **12 of the 27 `Random` sites in the combat function are unmapped**
+  (`4db7, 4e16, 4ef5, 4f18, 52d5, 5402, 5427, 5454, 5482, 5530, 5617, 5681` —
+  flee handlers and the post-kill loot/stat-gain block). Recorded as open
+  questions in `docs/re/combat.md`. **Task 12's whole-battle differential
+  replay will desync on every one of them.**
+
+**Open, deliberately not guessed:** `hpmax == 10 + 5*vitality + strength` holds
+exactly for R0/R3/R5 but is off by 2 for R2 and R4. `rank_index`'s class→value
+mapping is unmapped. Five UNVERIFIED combat gaps remain (armour fully absorbing
+a hit — unreachable; break comparison at exact equality; the зубная защита
+`Random(4)` branch — `Fighter` has no field for the item; collapse constants
+10/28 in isolation).
 
 ### Task 8 outcome — the RNG is the real one, tier 1, no substitute
 
@@ -257,7 +317,7 @@ python3 tools/oracle/test_oracle_smoke.py -> OK 8 checks, ~1.75s, 2 dosbox-x lau
 python3 tools/test_decode_save.py       -> OK 5 saves decoded and round-tripped
 cargo test                             -> ok. 16 unit + 8 integration; 0 failed; 0 warnings
 cargo clippy --all-targets             -> clean
-cargo test (29 total: 16 unit + 5 rng_vectors + 8 save_roundtrip)
+cargo test (35 total, all suites green); cargo clippy --all-targets clean
 python3 tools/gen_rng_vectors.py       -> reproduces data/rng_vectors.json byte-identically
 ```
 
@@ -325,6 +385,17 @@ them from byte noise.
   divergence excerpt to `docs/re/` or `data/`.
 - **Task 8** `src/rng.rs:53` doc comment on `below` mentions only
   `below(0) == 0`, not `below(1) == 0`, though the test pins both.
+
+## Minor findings deferred to the final whole-branch review
+
+- **Task 9** the 12 unmapped `Random` call sites live only in `docs/re/combat.md`
+  with no `data/` counterpart — the one place the "two places" rule is unmet.
+  Defensible (they are open questions, not findings) but worth a decision.
+- **Task 9** `src/save.rs` keeps `stats: [u16; 8]` with meanings in a doc
+  comment; Task 11 will index it with bare literals. Named constants or
+  accessors would age better now that the fields have real names.
+- **Task 9** blow-index coverage is thin above index 1: 40 cases reach index >= 1,
+  8 reach >= 2, 2 reach index 4.
 
 ## Carried forward — Task 11 (rendering / print orchestration) must decide this
 
