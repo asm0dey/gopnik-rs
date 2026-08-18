@@ -57,7 +57,7 @@ compare instruction directly and reading the token bytes at
 | `i` | `1000:ea94` | `0xBFDE` | prints the 13-line command list; **not inventory** |
 | `s` | `1000:ec82` | `0xB855` | stats |
 | `f` | `1000:ec96` | `0xC31C` | handler not traced past `jz`; corroborated as "shoot" by the adjacent refusal string at `0xC31E` |
-| `k` | `1000:ecc7` | `0xC341` | handler not traced past `jz`; corroborated as "fight" by the adjacent refusal string at `0xC343` |
+| `k` | `1000:ecc7` | `0xC341` | handler not traced past `jz`; corroborated as "fight" by the adjacent refusal string at `0xC343`, `^6Чё машешь копытами? Ищи мудака которого будешь пинать!` (colour code `^6`, **not** `^4`) |
 | `name` | `1000:ecf1` | `0xC37C` | rename |
 | `version` | `1000:edab` | `0xC3B9` | prints the version banner; **not in the in-game help text** |
 | `help` | `1000:edd5` | `0xC3E9` | dispatched; printed content not traced |
@@ -66,19 +66,40 @@ compare instruction directly and reading the token bytes at
 
 ## Verbs not found in this chain (corroboration only)
 
-`sv`, `v`, `h`, `mh`, `x`, `wes` do not appear among the `DS:3972`-first
+`sv`, `v`, `x`, `wes` do not appear among the `DS:3972`-first
 `FUN_1f78_0bd8` calls this pass found. They are still implemented in
 `src/commands.rs` (not dropped), on the following corroborating evidence
 only:
 
 - `sv`: `docs/re/tables.md` section 4's oracle capture (typing `sv`
   mid-fight against the original prints the enemy's stat block) plus the
-  help text's own line (file `0xC195`).
-- `v`, `h`, `mh`: help text only (files `0xC210`, `0xC261`, `0xC2A1`). `h`
-  additionally corroborated by `FUN_1000_29c4` (the beer-healing routine)
-  being callable from both `entry` and `FUN_1000_3d11`.
+  help text's own line (file `0xC195`). **`0xC195` is that whole help line,
+  not a token string** -- no `sv` token was located anywhere.
+- `v`: help text only (file `0xC210`, again a whole help line, not a token).
 - `x`, `wes`: `bmar`'s own submenu text (files `0xAA58`, `0xAA8A`), not the
-  top-level help block at all.
+  top-level help block at all. Their token strings at `0xAF9E`/`0xAFDA`
+  **are** real tokens; they are most likely compared inside `bmar`'s own
+  `^0Барыги\` submenu loop rather than in `entry`.
+
+### `h` and `mh` are dispatched, by a subroutine (resolved)
+
+An earlier revision listed these two here as corroboration-only. They are
+**confirmed**, and they are top-level verbs. `entry` does not compare them
+itself; at `1000:e966` it pushes the just-read line `DS:3972` and calls
+`FUN_1000_29c4` (`E8 5B 40`, whose 16-bit-wrapping target is `1000:29c4` --
+a naive 32-bit relative-target calculation lands on `0x12FC4` and misses the
+call, which is why an earlier byte scan for callers found only the one from
+`FUN_1000_3d11`). That routine holds the compares:
+
+| token | file off | bytes | compared at |
+|---|---|---|---|
+| `h` | `0x4197` | `01 68` | `1000:29f0`, and again at `2a6a`, `2aa0`, `2af2`, `2b40`, `2b89` |
+| `mh` | `0x4199` | `02 6D 68` | `1000:2a02`, and again at `2bb0` |
+
+The first two compares gate entry to the routine (`1000:2a0e` returns when
+the line is neither); the rest choose which messages get written and whether
+the drink loop repeats. `FUN_1000_3d11` calls the same routine at
+`1000:4b00` with its own `DS:3a72`, which is why beer also works in a fight.
 
 A follow-up should grep each token's file offset in
 `data/string_pointers_audit.tsv` and disassemble the referencing
@@ -155,11 +176,68 @@ not confirmed as the in-combat key -- the capture's three `w` presses in
 combat produced no visible output, consistent with `w` either doing
 nothing there or doing something silent).
 
-## Shop modality
+## Shop modality (was inferred, now confirmed)
 
-Not independently disassembled. `src/game.rs`'s `Mode::Shop` (accept a
-location's own keys plus `w` to leave, reject everything else) is inferred
-by symmetry with the confirmed combat modality, plus every location's own
-intro text naming `w` as the only way out (e.g. `mar`'s `"напиши w чтобы
-уйти"`, file `0xA430`) and never mentioning another verb. Flagged as an
-inference, not a confirmed fact, in task-11-report.md.
+An earlier revision of this document flagged `Mode::Shop` as an inference by
+symmetry with combat. It is now **disassembled and confirmed**: each location
+handler ends by *writing* its own prompt string and then `ReadLn`-ing into
+`DS:3a72` -- the same second input variable combat uses, never the top-level
+`DS:3972`. Traced end-to-end for `mar`: `1000:bd08` writes `^0Базар\` (file
+`0xA691`) with `0eed:0000` (`Write`, no newline) and `1000:bd21`..`1000:bd2f`
+is the `ReadLn`.
+
+| location | prompt string | file off |
+|---|---|---|
+| `mar` | `^0Базар\` | `0xA691` |
+| `bmar` | `^0Барыги\` | `0xAC4B` |
+| `bmar`'s sell-items submenu | `^0Продать вещи\` | `0xB00C` |
+| `rep` | `^0Ветеренар\` | `0xB313` |
+| `pr` | `^0Притон\` | `0xB787` |
+| `kl` | `^0Клуб\` | `0xBAB2` |
+| `trn` | `^0Качалка\` | `0xBD43` |
+
+`girl` has **no** prompt string and no `ReadLn`: `1000:d701`..`1000:d798`
+runs to completion in a single turn, so it is not modal and `src/game.rs`
+does not put it in `Mode::Shop`.
+
+This also explains why the vet's `h` (heal a broken jaw) and the street's
+`h` (drink a beer) can share a letter: they are read by two different
+`ReadLn`s and never reach the same compare chain.
+
+## Discovery gates
+
+Every gated location is `cmp byte [<flag>],1` immediately after its token
+matches; the not-equal arm writes exactly one refusal string. The seven
+flags are contiguous.
+
+| verb | flag | gate at | refusal at | refusal string (file off) |
+|---|---|---|---|---|
+| `mar` | `20ae:3694` | `1000:b954` | `1000:c49b` | `0xA9F8` |
+| `bmar` | `20ae:3695` | `1000:c4c8` | `1000:d383` | `0xB1CC` |
+| `pr` | `20ae:3696` | `1000:d80c` | `1000:dee3` | `0xB980` |
+| `girl` | `20ae:3697` | `1000:d6f7` | `1000:d7b5` | `0xB568` |
+| `rep` | `20ae:3698` | `1000:d3b0` | `1000:d6ca` | `0xB440` |
+| `kl` | `20ae:3699` | `1000:df10` | `1000:e36d` | `0xBBF6` |
+| `trn` | `20ae:369a` | `1000:e39a` | `1000:e948` | `0xBEC2` |
+
+Nothing sets a flag from a *failed* entry. The two setters found so far are
+`1000:d751` (`girl` reveals the club) and `1000:b570` (the wander bucket-2
+branch reveals the girl, after its own `Random(2)`).
+
+## The encounter decline branch (corrected)
+
+`1000:b718` is `jnz 0xb721`, i.e. the answer was **not** `y`. `1000:b725`
+calls `Random(2)`; `1000:b72a`..`1000:b72c` is `or ax,ax` / `jnz 0xb74e`.
+
+- **`ax == 0`** falls through to `1000:b72e`, writes `^4Он тебя заметил.`
+  (file `0xA2BB`) and sets the accept flag with
+  `mov byte [0x3b72],1` at `1000:b747`. **The fight happens.**
+- **`ax != 0`** jumps to `1000:b74e`, writes `^2Ты смылся.` (file `0xA2CE`)
+  and leaves the flag clear. **Escaped.**
+
+`1000:b81f` then tests the flag and calls `FUN_1000_3d11(0)` at `1000:b829`.
+Nothing else is written on either arm; `^4Эй мудак?!` (file `0x457A`) is
+`FUN_1000_3d11`'s class-7 opener at `1000:3dc7`, not part of this branch.
+
+The answer is case-folded before the compare (`call 0eed:0216` at
+`1000:b704`), so `Y` is accepted as well as `y`.
