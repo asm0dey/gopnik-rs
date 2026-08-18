@@ -11,7 +11,14 @@
 ## Global Constraints
 
 - **Fidelity target is game logic, not terminal bytes.** Damage rolls, hit chance, XP thresholds, prices, RNG sequence, and save file bytes must match the original exactly. Screen layout/ANSI output need only be faithful in content and colour index, not in exact cursor positioning.
-- **Source text is CP866.** All extracted strings are converted to UTF-8 exactly once, at extraction time, and stored as UTF-8 in JSON. No CP866 handling anywhere in the Rust crate.
+- **Source text is CP866.** All extracted *game text* is converted to UTF-8
+  exactly once, at extraction time by the Python tooling, and stored as UTF-8 in
+  JSON. The Rust crate handles UTF-8 only, with ONE exception: **save file I/O**,
+  where CP866 is the live on-disk encoding and no extraction-time conversion can
+  apply, because the bytes are produced at runtime from a player-typed name.
+  That conversion uses the `oem_cp` crate and is confined to `src/save.rs`.
+  (Owner-approved amendment, Task 7. The original wording forbade CP866 anywhere
+  in the crate, which `Save::parse`/`Save::to_bytes` cannot satisfy.)
 - **`^0`–`^7` are markup, not content.** They are colour-change directives in
   the original's own display language. Never treat them as literal characters:
   never print them, never measure string width with them included, never let
@@ -23,7 +30,13 @@
 - **All Russian game text is preserved verbatim.** No translation, no censoring, no rewording. The game contains deliberate crude slang; that is the content.
 - **Ghidra is driven by Java scripts only.** PyGhidra requires `jpype1`, which does not build on Python 3.14. Do not attempt `pip install pyghidra`.
 - **Python tooling uses the standard library only.** No pip installs, no venv.
-- **Rust dependencies limited to `serde` + `serde_json`.** Anything else requires explicit sign-off.
+- **Rust dependencies limited to `serde` + `serde_json` + `oem_cp`.** Anything
+  else requires explicit sign-off. `oem_cp` was signed off by the owner for Task
+  7: the owner prefers a crate to a hand-written codepage table. It is preferred
+  over `encoding_rs` because its `encode_string_checked` returns `None` on an
+  unmappable char, whereas `encoding_rs::IBM866.encode` silently substitutes an
+  HTML numeric character reference (`&#28450;`) into the byte stream — verified
+  empirically, and a landmine for byte-exact save writing.
 - **Never modify files under `orig/`.** They are the reference corpus and are checked in read-only.
 - **Every RE finding lands in two places:** a human-readable note under `docs/re/` citing the Ghidra address, and a machine-readable artifact under `data/`. A finding that exists only in a commit message does not count.
 - **Unknown means unknown.** If a field's meaning is not established, name it `unk_<hex_offset>` and preserve its bytes. Never guess a semantic name to make a table look finished.
