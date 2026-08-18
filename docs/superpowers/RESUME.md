@@ -454,6 +454,27 @@ them from byte noise.
 - **Task 9** blow-index coverage is thin above index 1: 40 cases reach index >= 1,
   8 reach >= 2, 2 reach index 4.
 
+## QUEUED — dispatch as soon as the Task 10 fix wave lands
+
+**Split RE provenance out of the runtime data artifacts (owner-directed).**
+
+The provenance addresses are currently fields on the RUNTIME structs in
+`src/data.rs`, so Task 11's gameplay code would see them:
+`Item.src_off`, `Item.price_src`, `ShopEntry.price_addr`,
+`ShopEntry.displayed_price_addr`, `ShopEntry.code_addr`, `Enemy.source`.
+The `String`s also allocate on every parse.
+
+Fix: `data/{items,shops,enemies}.json` keep only what the game needs; a sibling
+`data/*.provenance.json` keyed by `id` carries the addresses. Only the runtime
+files get `include_str!`'d in `src/data.rs`. The "two places" rule is still met
+— provenance stays a machine-readable `data/` artifact, just not one compiled
+into the game binary. `tools/extract_tables.py` emits both; artifacts must
+still regenerate byte-identically.
+
+Do it BEFORE Task 11 consumes the API — same reasoning as the `class` move.
+Apply the same principle when Task 11 embeds `data/strings.json` (133K): the
+game needs the text, not the `suspect` flag or the RE offsets.
+
 ## Carried forward — Task 11 must handle
 
 - **No JSON ships as a file — the app is a single self-contained binary.**
