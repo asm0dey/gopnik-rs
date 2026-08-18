@@ -161,9 +161,50 @@ mod tests {
 
     #[test]
     fn caret_not_followed_by_digit_is_literal() {
-        assert_eq!(strip("2^3"), "2");
         assert_eq!(strip("a^zb"), "a^zb");
         assert_eq!(strip("trailing^"), "trailing^");
+    }
+
+    #[test]
+    fn caret_followed_by_valid_digit_is_consumed() {
+        assert_eq!(strip("2^3"), "2");
+    }
+
+    #[test]
+    fn caret_followed_by_out_of_range_digit_is_literal() {
+        // '8' and '9' aren't mapped by from_code, so the '^' falls through
+        // to the literal-push branch and both characters are copied as-is.
+        assert_eq!(strip("a^8b"), "a^8b");
+        assert_eq!(strip("a^9b"), "a^9b");
+        assert_eq!(parse("a^8b"), vec![Span { color: None, text: "a^8b".to_string() }]);
+    }
+
+    #[test]
+    fn consecutive_color_codes_with_no_text_between_collapse_to_last() {
+        // The first code (^4, Red) never accumulates any buffered text
+        // before the second code (^7, White) overwrites `color`, so no
+        // span is ever emitted for Red -- it is silently discarded.
+        let spans = parse("^4^7abc");
+        assert_eq!(spans, vec![Span { color: Some(Color::White), text: "abc".to_string() }]);
+        assert_eq!(strip("^4^7abc"), "abc");
+    }
+
+    #[test]
+    fn trailing_color_code_produces_no_span() {
+        // The code is consumed and `color` is updated, but the loop ends
+        // before any further text accumulates, and the post-loop flush is
+        // guarded by `!buf.is_empty()`, so the trailing ^4 contributes no
+        // span at all.
+        let spans = parse("abc^4");
+        assert_eq!(spans, vec![Span { color: None, text: "abc".to_string() }]);
+        assert_eq!(strip("abc^4"), "abc");
+    }
+
+    #[test]
+    fn render_leading_uncolored_span_then_colored_span() {
+        // The uncoloured first span emits no SGR code at all; the reset
+        // is appended once at the very end, not per span.
+        assert_eq!(render("abc^4def"), "abc\x1b[31mdef\x1b[0m");
     }
 
     #[test]
