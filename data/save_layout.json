@@ -1,0 +1,83 @@
+{
+ "size": 694,
+ "fields": [
+  {
+   "name": "magic",
+   "off": 0,
+   "kind": "pstring",
+   "len": 256
+  },
+  {
+   "name": "name",
+   "off": 256,
+   "kind": "pstring",
+   "len": 256
+  },
+  {
+   "name": "unk_stat0",
+   "off": 512,
+   "kind": "u16",
+   "len": 2
+  },
+  {
+   "name": "unk_stat1",
+   "off": 514,
+   "kind": "u16",
+   "len": 2
+  },
+  {
+   "name": "unk_stat2",
+   "off": 516,
+   "kind": "u16",
+   "len": 2
+  },
+  {
+   "name": "unk_stat3",
+   "off": 518,
+   "kind": "u16",
+   "len": 2
+  },
+  {
+   "name": "unk_stat4",
+   "off": 520,
+   "kind": "u16",
+   "len": 2
+  },
+  {
+   "name": "unk_stat5",
+   "off": 522,
+   "kind": "u16",
+   "len": 2
+  },
+  {
+   "name": "unk_stat6",
+   "off": 524,
+   "kind": "u16",
+   "len": 2
+  },
+  {
+   "name": "unk_stat7",
+   "off": 526,
+   "kind": "u16",
+   "len": 2
+  },
+  {
+   "name": "hp",
+   "off": 528,
+   "kind": "u16",
+   "len": 2
+  },
+  {
+   "name": "hpmax",
+   "off": 530,
+   "kind": "u16",
+   "len": 2
+  },
+  {
+   "name": "tail",
+   "off": 532,
+   "kind": "bytes",
+   "len": 162
+  }
+ ]
+}
