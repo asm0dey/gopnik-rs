@@ -46,6 +46,68 @@ ROWS = 25
 FRAME_BYTES = COLUMNS * ROWS * 2  # character byte + attribute byte per cell
 MAX_KEYS = 1024  # KEYBUF_SIZE in scrhook.asm; the TSR reads no more than this
 
+# --- guest memory window ---------------------------------------------------
+# Mirrors STATE_BASE/STATE_SIZE in scrhook.asm. Each STATE.BIN record is the
+# interrupted program's DS as a little-endian word, then STATE_SIZE bytes read
+# from DS:STATE_BASE.
+STATE_BASE = 0x3600
+STATE_SIZE = 2048
+STATE_RECORD = 2 + STATE_SIZE
+
+# --- seed pinning ----------------------------------------------------------
+# g.exe seeds RandSeed from the DOS clock (System.Randomize at 1f78:11e0, the
+# only INT 21h/AH=2Ch in the binary and reached from exactly one call site,
+# 1000:6a5d), so two runs of the same script diverge. Overwriting Randomize's
+# body in the *scratch copy* with a constant store makes a run reproducible.
+# orig/g.exe is never touched, and a pinned binary is never committed: pass
+# seed=None -- the default -- and the game seeds itself from the clock exactly
+# as it ships. See docs/re/combat.md.
+RANDOMIZE_FILE_OFF = 0x12230  # 0x18D0 + (0x1f78 - 0x1000) * 16 + 0x11e0
+RANDOMIZE_ORIGINAL = bytes.fromhex("b42ccd21890e7e3689168036cb")
+
+
+def pin_seed_patch(seed: int) -> bytes:
+    r"""The 13 bytes that replace System.Randomize's body to pin `seed`.
+
+    Same length as the original body, so nothing else in the image moves:
+
+        C7 06 7E 36 lo lo   mov word [0x367e], seed_lo   ; RandSeed.lo
+        C7 06 80 36 hi hi   mov word [0x3680], seed_hi   ; RandSeed.hi
+        CB                  retf
+
+    The addressing is DS-relative, exactly as the instructions it replaces
+    (`mov [0x367e],cx` / `mov [0x3680],dx`), so it stores through the same
+    segment the original did.
+    """
+    if not 0 <= seed <= 0xFFFFFFFF:
+        raise ValueError(f"seed {seed} does not fit in 32 bits")
+    lo = seed & 0xFFFF
+    hi = (seed >> 16) & 0xFFFF
+    return (
+        b"\xc7\x06\x7e\x36" + lo.to_bytes(2, "little")
+        + b"\xc7\x06\x80\x36" + hi.to_bytes(2, "little")
+        + b"\xcb"
+    )
+
+
+def pin_seed(exe: pathlib.Path, seed: int) -> None:
+    """Apply pin_seed_patch to `exe` in place. Refuses anything but g.exe.
+
+    To undo: delete the patched copy. There is nothing else to reverse --
+    the patch is only ever applied to the scratch copy _prepare() makes, and
+    _prepare() rebuilds that copy from orig/ on every run.
+    """
+    blob = bytearray(exe.read_bytes())
+    found = bytes(blob[RANDOMIZE_FILE_OFF : RANDOMIZE_FILE_OFF + len(RANDOMIZE_ORIGINAL)])
+    if found != RANDOMIZE_ORIGINAL:
+        raise OracleError(
+            f"{exe} does not have System.Randomize's body at "
+            f"{RANDOMIZE_FILE_OFF:#x} (found {found.hex()}); refusing to patch"
+        )
+    patch = pin_seed_patch(seed)
+    blob[RANDOMIZE_FILE_OFF : RANDOMIZE_FILE_OFF + len(patch)] = patch
+    exe.write_bytes(bytes(blob))
+
 # Keys that walk a fresh game from the title screen to the command prompt:
 # any key past the logo, district "1", seven any-key story pages, class "0"
 # and Enter, then Enter to accept the default name. Recovered by reading the
@@ -156,6 +218,25 @@ def encode_keys(keys: str) -> bytes:
     return keys.replace("\n", "\r").encode("cp866")
 
 
+def decode_states(blob: bytes) -> list[tuple[int, bytes]]:
+    """Split a STATE.BIN into one (ds, window) pair per captured frame.
+
+    `window` is STATE_SIZE bytes of the interrupted program's data segment
+    starting at STATE_BASE, so window[off - STATE_BASE] is the byte the guest
+    had at DS:off.
+    """
+    if len(blob) % STATE_RECORD:
+        raise OracleError(
+            f"STATE.BIN is {len(blob)} bytes, not a whole number of "
+            f"{STATE_RECORD}-byte records"
+        )
+    out = []
+    for start in range(0, len(blob), STATE_RECORD):
+        rec = blob[start : start + STATE_RECORD]
+        out.append((int.from_bytes(rec[:2], "little"), rec[2:]))
+    return out
+
+
 def decode_frames(blob: bytes) -> list[str]:
     """Split a SCREEN.BIN into one UTF-8 screen of text per captured frame.
 
@@ -207,8 +288,13 @@ def write_re_findings(path: pathlib.Path = ROOT / "data" / "oracle_prompts.json"
     )
 
 
-def _prepare(out_dir: pathlib.Path, keys: str) -> pathlib.Path:
-    """Build a scratch copy of the game to run. orig/ is never mounted."""
+def _prepare(out_dir: pathlib.Path, keys: str, seed: int | None = None) -> pathlib.Path:
+    """Build a scratch copy of the game to run. orig/ is never mounted.
+
+    With `seed` set, the scratch g.exe -- never orig/g.exe -- gets its
+    System.Randomize body replaced by a constant store, so the run is
+    reproducible. Leave it None for the shipped clock-seeded behaviour.
+    """
     work = out_dir / "work"
     if work.exists():
         shutil.rmtree(work)
@@ -228,6 +314,8 @@ def _prepare(out_dir: pathlib.Path, keys: str) -> pathlib.Path:
             "scrhook.com can hold"
         )
     (work / "KEYS.TXT").write_bytes(script)
+    if seed is not None:
+        pin_seed(work / "g.exe", seed)
     return work
 
 
@@ -239,6 +327,14 @@ def _wait(proc: subprocess.Popen, screen: pathlib.Path, deadline: float, settle:
     once SCREEN.BIN has stopped growing -- the last frame is already
     committed to disk by then. Hitting the deadline is a failure, never a
     silent partial capture.
+
+    Teardown is SIGKILL, not SIGTERM. scrhook.com commits every frame to disk
+    as it writes it (INT 21h/AH=68h), so there is nothing buffered for a
+    graceful shutdown to flush and nothing to lose. A SIGTERM'd dosbox-x, on
+    the other hand, runs its own shutdown path -- which can put up a modal
+    "are you sure you want to quit" dialog while a program is still running,
+    and then sit on it. A killed process cannot show a dialog and cannot
+    hang, which is what an unattended harness needs.
     """
     size = 0
     changed = time.monotonic()
@@ -255,15 +351,8 @@ def _wait(proc: subprocess.Popen, screen: pathlib.Path, deadline: float, settle:
         if current != size:
             size, changed = current, now
         elif size and now - changed >= settle:
-            # Every frame is already committed to disk, so there is nothing
-            # to lose by being brisk here; dosbox-x can sit on a SIGTERM for
-            # ten seconds, which would otherwise dominate the run time.
-            proc.terminate()
-            try:
-                proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
+            proc.kill()
+            proc.wait()
             return
         time.sleep(0.1)
 
@@ -291,6 +380,7 @@ def run(
     timeout: int = 120,
     settle: float = 3.0,
     expect_frames: int | None = None,
+    seed: int | None = None,
 ) -> list[str]:
     """Run the original with `keys` and return one screen of text per frame.
 
@@ -310,7 +400,7 @@ def run(
     silent truncation into a failure.
     """
     out_dir = pathlib.Path(out_dir)
-    work = _prepare(out_dir, keys)
+    work = _prepare(out_dir, keys, seed=seed)
     screen = work / "SCREEN.BIN"
     log = out_dir / "dosbox.log"
 
@@ -365,6 +455,14 @@ def main() -> int:
         type=int,
         help="fail unless the run captures exactly this many frames",
     )
+    ap.add_argument(
+        "--seed",
+        type=lambda v: int(v, 0),
+        help=(
+            "pin RandSeed in the scratch copy of g.exe instead of letting it "
+            "seed from the DOS clock; omit for the shipped behaviour"
+        ),
+    )
     args = ap.parse_args()
 
     try:
@@ -373,6 +471,7 @@ def main() -> int:
             args.out,
             timeout=args.timeout,
             expect_frames=args.expect_frames,
+            seed=args.seed,
         )
     except (OracleError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)

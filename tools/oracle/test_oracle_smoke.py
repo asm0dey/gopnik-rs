@@ -222,16 +222,22 @@ def test_run_oracle_sh_forwards_extra_args():
 
 
 def test_cli_threads_timeout_and_expect_frames():
-    """main() must forward --timeout and --expect-frames to run(), not just
-    parse and discard them (that was the bug fixed in fix wave 1: --timeout
-    was parsed but never passed to run()). run() is stubbed out, so this
-    never touches the emulator.
+    """main() must forward --timeout, --expect-frames and --seed to run(),
+    not just parse and discard them (that was the bug fixed in fix wave 1:
+    --timeout was parsed but never passed to run()). run() is stubbed out, so
+    this never touches the emulator.
     """
     calls = []
 
-    def fake_run(keys, out_dir, timeout=120, settle=3.0, expect_frames=None):
+    def fake_run(keys, out_dir, timeout=120, settle=3.0, expect_frames=None, seed=None):
         calls.append(
-            {"keys": keys, "out_dir": out_dir, "timeout": timeout, "expect_frames": expect_frames}
+            {
+                "keys": keys,
+                "out_dir": out_dir,
+                "timeout": timeout,
+                "expect_frames": expect_frames,
+                "seed": seed,
+            }
         )
         return ["stub frame"]
 
@@ -241,6 +247,7 @@ def test_cli_threads_timeout_and_expect_frames():
         "--out", "/tmp/gopnik_oracle_cli_stub",
         "--timeout", "7",
         "--expect-frames", "3",
+        "--seed", "0x1234",
     ]
     with unittest.mock.patch.object(capture, "run", fake_run), \
          unittest.mock.patch.object(sys, "argv", argv):
@@ -250,7 +257,50 @@ def test_cli_threads_timeout_and_expect_frames():
     assert len(calls) == 1
     assert calls[0]["timeout"] == 7, f"--timeout not threaded into run(): {calls[0]}"
     assert calls[0]["expect_frames"] == 3, f"--expect-frames not threaded into run(): {calls[0]}"
-    print("OK CLI threads --timeout and --expect-frames into run()")
+    assert calls[0]["seed"] == 0x1234, f"--seed not threaded into run(): {calls[0]}"
+    print("OK CLI threads --timeout, --expect-frames and --seed into run()")
+
+
+def test_seed_pin_is_exact_and_refuses_a_wrong_binary():
+    """The pin must be the same length as System.Randomize's body, must
+    reproduce the two stores it replaces, and must refuse to patch anything
+    that does not have that body where it expects it -- otherwise a silently
+    misplaced patch would corrupt the game instead of pinning it.
+    """
+    patch = capture.pin_seed_patch(0xDEADBEEF)
+    assert len(patch) == len(capture.RANDOMIZE_ORIGINAL), (
+        f"pin is {len(patch)} bytes, Randomize's body is "
+        f"{len(capture.RANDOMIZE_ORIGINAL)}; a different length would shift "
+        "everything after it"
+    )
+    assert patch == bytes.fromhex("c7067e36efbec7068036addecb"), patch.hex()
+
+    # orig/g.exe really does have that body where capture.py says it does.
+    orig = ROOT.joinpath("orig", "g.exe").read_bytes()
+    at = capture.RANDOMIZE_FILE_OFF
+    assert orig[at : at + len(capture.RANDOMIZE_ORIGINAL)] == capture.RANDOMIZE_ORIGINAL
+
+    scratch = OUT / "pin_seed_probe.exe"
+    scratch.parent.mkdir(parents=True, exist_ok=True)
+    scratch.write_bytes(orig)
+    capture.pin_seed(scratch, 0)
+    patched = scratch.read_bytes()
+    assert len(patched) == len(orig), "the pin must not resize the image"
+    assert patched[at : at + 13] == capture.pin_seed_patch(0)
+    assert patched[:at] == orig[:at] and patched[at + 13 :] == orig[at + 13 :], (
+        "the pin touched bytes outside Randomize's body"
+    )
+    # orig/ itself is never written to.
+    assert ROOT.joinpath("orig", "g.exe").read_bytes() == orig
+
+    scratch.write_bytes(b"\x00" * (at + 64))
+    try:
+        capture.pin_seed(scratch, 0)
+    except capture.OracleError:
+        pass
+    else:
+        raise AssertionError("pin_seed patched a binary that is not g.exe")
+    print("OK seed pin is byte-exact, in place, and refuses a foreign binary")
 
 
 def test_cli_reports_oracle_error_cleanly():
@@ -309,3 +359,4 @@ if __name__ == "__main__":
     test_cli_reports_oracle_error_cleanly()
     test_oracle_prompts_json_matches_source()
     test_scrhook_matches_source()
+    test_seed_pin_is_exact_and_refuses_a_wrong_binary()

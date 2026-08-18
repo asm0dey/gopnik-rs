@@ -2,7 +2,20 @@
 ;
 ; Hooks INT 16h. On every *blocking* key read (AH=00h/10h) it
 ;   1. appends the 80x25 text screen (B800:0000, 4000 bytes) to SCREEN.BIN
-;   2. returns the next byte of the KEYS.TXT script instead of a real key.
+;   2. appends a snapshot of the interrupted program's own data segment to
+;      STATE.BIN: the DS value as a word, then STATE_SIZE bytes read from
+;      DS:STATE_BASE
+;   3. returns the next byte of the KEYS.TXT script instead of a real key.
+;
+; The STATE.BIN window exists because the numbers an oracle needs are not all
+; printed: g.exe keeps RandSeed and both fighters' stat records inside its own
+; DGROUP and only ever shows a subset on screen. Reading them out of guest
+; memory is the same evidence the screen is, taken one step earlier. The
+; window is deliberately a fixed, game-specific span rather than a whole
+; segment, to keep the capture small; STATE_BASE/STATE_SIZE below are the only
+; knobs. Whether DS really is the game's DGROUP at INT 16h time is not assumed
+; here -- the DS word is recorded so the host side can check the window
+; against a known signature (see docs/re/combat.md).
 ;
 ; Both halves are pinned to game state rather than to wall-clock time: one
 ; frame per key the game asks for, and the Nth request always gets the Nth
@@ -24,12 +37,21 @@
 
 KEYBUF_SIZE     equ     1024
 
+; Window of the interrupted program's data segment copied to STATE.BIN. For
+; g.exe this covers RandSeed (DS:367Eh), the player record (DS:369Ch) and the
+; enemy record (DS:3952h) -- see docs/re/combat.md.
+STATE_BASE      equ     0x3600
+STATE_SIZE      equ     2048
+
 start:  jmp     install
 
 ; ---- resident data -------------------------------------------------------
 oldvec: dd      0               ; previous INT 16h handler
 indos:  dd      0               ; far pointer to the DOS InDOS flag
 fh:     dw      0               ; SCREEN.BIN file handle
+fh2:    dw      0               ; STATE.BIN file handle
+callerds: dw    0               ; interrupted program's DS, and the STATE.BIN
+                                ; record header -- written from here
 mypsp:  dw      0               ; our PSP segment
 kptr:   dw      keybuf          ; next unread key in keybuf
 kend:   dw      keybuf          ; one past the last key
@@ -46,6 +68,7 @@ isr:
         pusha
         push    ds
         push    es
+        mov     [cs:callerds], ds
         les     bx, [cs:indos]
         cmp     byte [es:bx], 0 ; DOS busy? then neither dump nor inject
         jne     .chain
@@ -66,6 +89,24 @@ isr:
         mov     bx, [cs:fh]
         mov     ah, 0x68        ; commit, so the host sees the frame at once
         int     0x21
+
+        push    cs              ; STATE.BIN record: the caller's DS as a word,
+        pop     ds              ; taken from our own segment...
+        mov     dx, callerds
+        mov     cx, 2
+        mov     bx, [cs:fh2]
+        mov     ah, 0x40
+        int     0x21
+        mov     ds, [cs:callerds]  ; ...then the window out of that segment
+        mov     dx, STATE_BASE
+        mov     cx, STATE_SIZE
+        mov     bx, [cs:fh2]
+        mov     ah, 0x40
+        int     0x21
+        mov     bx, [cs:fh2]
+        mov     ah, 0x68
+        int     0x21
+
         pop     bx
         mov     ah, 0x50        ; restore the interrupted program's PSP
         int     0x21
@@ -111,6 +152,13 @@ install:
         jc      fail
         mov     [fh], ax
 
+        mov     ah, 0x3c        ; create STATE.BIN
+        xor     cx, cx
+        mov     dx, fnstate
+        int     0x21
+        jc      fail
+        mov     [fh2], ax
+
         mov     ax, 0x3d00      ; open KEYS.TXT for reading
         mov     dx, fnkeys
         int     0x21
@@ -148,4 +196,5 @@ fail:
         int     0x21
 
 fnscreen:       db      'SCREEN.BIN', 0
+fnstate:        db      'STATE.BIN', 0
 fnkeys:         db      'KEYS.TXT', 0

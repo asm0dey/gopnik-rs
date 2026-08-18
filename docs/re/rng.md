@@ -24,12 +24,25 @@ paragraphs; Ghidra loaded the image at segment `0x1000`).
 
 | Ghidra address | Ghidra name | File offset | Pascal identity |
 |---|---|---|---|
-| `1f78:11a8` | `FUN_1f78_11a8` | `0x122b8` | `System.@Rand` — steps `RandSeed` |
-| `1f78:114b` | `FUN_1f78_114b` | `0x1225b` | `System.Random(Range: Word): Word` |
-| `1f78:1168` | (in `FUN_1f78_114b`'s block) | `0x12278` | `System.Random: Real` (unused by the game) |
-| `1f78:11e0` | `FUN_1f78_11e0` | `0x122f0` | `System.Randomize` |
-| `1f78:11de` | — | `0x122ee` | the literal word `$8405` (the multiplier's low half) |
+| `1f78:11a8` | `FUN_1f78_11a8` | `0x121f8` | `System.@Rand` — steps `RandSeed` |
+| `1f78:114b` | `FUN_1f78_114b` | `0x1219b` | `System.Random(Range: Word): Word` |
+| `1f78:1168` | (in `FUN_1f78_114b`'s block) | `0x121b8` | `System.Random: Real` (unused by the game) |
+| `1f78:11e0` | `FUN_1f78_11e0` | `0x12230` | `System.Randomize` |
+| `1f78:11de` | — | `0x1222e` | the literal word `$8405` (the multiplier's low half) |
 | `20ae:367e` | — | `0x15a2e` | `RandSeed: LongInt`, four bytes, `$00000000` in the load image |
+
+**Corrected in Task 9.** The five `1f78:*` file offsets in the table above
+were each 0xC0 too high in the first revision of this document
+(`0x122b8` for `@Rand`, and so on) -- `(0x1f78 - 0x1000) * 16` had been
+worked out as `0xf840` instead of `0xf780`. The `20ae:367e` row was right,
+because it was computed separately. The *formula* stated above the table
+was always correct, and `tools/gen_rng_vectors.py` derives its offsets from
+that formula at run time rather than from this table, so
+`data/rng_vectors.json` was never affected. Task 9 needed
+`System.Randomize`'s real offset in order to patch it for seed pinning
+(`docs/re/combat.md`), which is how the slip surfaced; the corrected values
+are what `orig/g.exe` actually contains, checked byte for byte against the
+disassembly quoted below.
 
 `RandSeed`'s two halves are addressed separately by the code: low word at
 `DS:$367e`, high word at `DS:$3680`. `DS` is segment `20ae`.
