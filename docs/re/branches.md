@@ -583,6 +583,13 @@ print('unaccounted runs', len(grp),
       [(hex(g[0]), len(g)) for g in grp])
 
 # --- strings.json entries that overlap a function body (10) ----------------
+# NOTE: this line reads `size` as the span [entry, entry+size), which is the
+# very trap described above -- `size` is a count of addresses in a body that
+# may be non-contiguous, so a span over-reads for the few split functions.
+# It is safe HERE and only here: the sole split body in the image is
+# 1f78:1117, whose phantom range 1f78:1121..112c contains no strings.json
+# entry, so the count is 10 either way.  Do not copy this line into a check
+# where the over-read would matter -- use the address set, not the span.
 iv = [(f['entry_file_off'], f['entry_file_off']+f['size']) for f in d['functions']]
 print('entries overlapping a function body',
       sum(1 for e in S if any(e['off'] < t and e['off']+1+len(e['text']) > s0
