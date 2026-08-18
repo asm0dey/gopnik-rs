@@ -8,7 +8,7 @@
 //!
 //! | record | `.SAV` | field | evidence |
 //! |---|---|---|---|
-//! | `+0x00` | `0x200` | name/rank index (not modelled) | `1000:13dc`..`1000:13e4`, `[0x3952] shl 8 + 0x2e` indexes a 256-byte-stride string table |
+//! | `+0x00` | `0x200` | `class` (rank/weight-table index) | `1000:13dc`..`1000:13e4`, `[0x3952] shl 8 + 0x2e` indexes a 256-byte-stride string table; `1000:25aa` indexes the growth-weight table with it; `1000:712a`/`1000:71b8` store it at character creation. See `docs/re/progression.md`. |
 //! | `+0x02` | `0x202` | `strength` | `1000:1419` prints it as `Сл:#`; `1000:499a` decrements it with `^4Сила -1` |
 //! | `+0x04` | `0x204` | `agility` | same print; drives the blow budget at `1000:3fa7` |
 //! | `+0x06` | `0x206` | `vitality` | same print (`Жв:#`) |
@@ -42,6 +42,12 @@
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Fighter {
     pub name: String,
+    /// `+0x00` / `.SAV 0x200` -- indexes both the rank-name table and the
+    /// growth-weight table `crate::progress::CLASS_WEIGHTS`. Moved here from
+    /// `crate::progress::Progress` (Task 9b fix wave 1): it is part of the
+    /// same 16-byte record every other field below mirrors, not XP
+    /// bookkeeping kept outside it.
+    pub class: u16,
     pub level: u16,
     pub hp: u16,
     pub hpmax: u16,

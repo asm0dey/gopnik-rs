@@ -18,15 +18,26 @@ image unless the shortstring at `DS:002e` decodes to `Дохляк`.
 |---|---|---|---|
 | `DS:389c` | `0x200` | class / rank index | `1000:25aa` indexes the weight table with it, `1000:712a` stores it |
 | `DS:38a6` | `0x20a` | level (понтовость), 0..40 | `1000:258a` increments it, `1000:2580` caps it |
-| `DS:38ce` | `0x232` | XP not yet spent on a level | `1000:2536`, `1000:254d` |
-| `DS:38d0` | `0x234` | XP needed for the next level | `1000:2550`, `1000:6de0` |
-| `DS:38d2` | `0x236` | growth log, `array[1..40] of string[2]` | `1000:2641`..`1000:267a` writes it |
+| `DS:38cd` | `0x231` | temporary-buff countdown | see "A second grant site" below; named in `data/save_layout.json` as `buff_countdown` |
+| `DS:38ce` | `0x232` | XP not yet spent on a level | `1000:2536`, `1000:254d`; named in `data/save_layout.json` as `xp` |
+| `DS:38d0` | `0x234` | XP needed for the next level | `1000:2550`, `1000:6de0`; named in `data/save_layout.json` as `threshold` |
+| `DS:38d2` | `0x236` | growth log, `array[1..40] of string[2]` | `1000:2641`..`1000:267a` writes it; named in `data/save_layout.json` as `growth_log` |
 
 The growth-log base is worth spelling out. The code computes the element
 address as `level * 3 + 0x38cf` (`1000:2647`..`1000:2651`), which is Borland's
 biased base for a one-based array: element 1 sits at `0x38d2`, i.e. `.SAV`
 `0x236`. That is why the array does not collide with the XP words at `0x232`
 and `0x234` — see "Cross-checks" for the decoded contents of all five saves.
+
+**Fix wave 1 (owner decision):** `DS:389c`/`.SAV 0x200`, the class/rank
+index, is field `+0x00` of the *same* 16-byte fighter record every other row
+of this table's neighbours (`level`, and — outside this table —
+`strength`/`agility`/`vitality`/`luck`/`dmg_min`/`dmg_max`/`hp`/`hpmax`) are
+part of. It now lives on `Fighter::class` in `src/model.rs`, not on
+`Progress`; `Progress` is `{ xp, threshold }` — the two words genuinely kept
+*outside* the record. `docs/re/save-format.md` and `src/save.rs` already
+treated this offset as part of the record (`rank_index`, `save.stats[0]`);
+this only changes where the Rust port carries the field it decodes to.
 
 ## The threshold
 
@@ -248,10 +259,17 @@ command handlers and are still unmapped.
 Three sources, none of them `src/progress.rs`.
 
 **1. The load image.** `tools/capture_xp_cases.py` reads the class weight
-table, the rank names, the four sets of starting stats and the post-kill event
-deltas straight out of `orig/g.exe` at fixed offsets, checking the opcode
-bytes at each site before taking an immediate. A wrong offset is an error, not
-a wrong number.
+table, the rank names, the four sets of starting stats, the post-kill event
+deltas and, since fix wave 1, the four scalar constants `MAX_LEVEL`,
+`GAINS_PER_LEVEL`, `THRESHOLD_BASE` and `THRESHOLD_STEP`
+(`read_scalar_constants`) straight out of `orig/g.exe` at fixed offsets,
+checking the opcode bytes at each site before taking an immediate. A wrong
+offset is an error, not a wrong number. Before fix wave 1 those four scalars
+were hand-transcribed literals with address comments — correct (verified
+against the binary independently while fixing this), but not opcode-checked
+the way everything else here is; `tests/progression.rs::tables_match_the_binary`
+now asserts all four against the opcode-checked reads, not just
+`max_level`/`gains_per_level` as before.
 
 **2. The Task 3 oracle.** Seven pinned-seed runs of the original under
 DOSBox-X (`data/xp.json`, `level_up_cases`), 30 kills. Per kill: the award and
@@ -273,13 +291,22 @@ twenty are R3's twenty — so they are three snapshots of one character.
 
 ### Coverage, honestly
 
-Thresholds are witnessed at levels 0, 1, 2, 10, 11, 15, 16, 20, 21, 30, 31,
-32 (oracle) and 10, 15, 20, 30, 40 (saves). **Levels 3..9, 12..14, 17..19,
-22..29 and 33..39 were never reached**: a fresh character dies before it can
-grind that far inside one keystroke script, and no shipped save sits there.
-Those entries in `data/xp.json` are marked `UNVERIFIED by observation` and
-carry only what `1000:6de0` and `1000:2550` predict. Nothing was invented to
-fill the table.
+`data/xp.json`'s `thresholds`/`threshold_provenance` arrays cover levels
+1..40 (a fresh level-0 character's threshold of 10 is a separate fact, from
+`1000:6de0` directly, not a row of this table). Recomputed straight from the
+artifact rather than transcribed by hand: 13 of those 40 levels are
+`observed:`-tagged — **1, 2, 10, 11, 15, 16, 17, 20, 21, 30, 31, 32** (oracle)
+and **10, 15, 20, 30, 40** (also oracle or a shipped save; 10/15/20/30 are
+witnessed both ways). **Levels 3..9, 12..14, 18..19, 22..29 and 33..39 were
+never reached** and are marked `UNVERIFIED by observation`, carrying only
+what `1000:6de0` and `1000:2550` predict. A fresh character dies before it
+can grind that far inside one keystroke script, and no shipped save sits
+there. Nothing was invented to fill the table.
+
+(An earlier version of this section said level 17 was never reached. It was:
+`save_r0_seed3` frame 989 observes it after a level-up. Re-derive this list
+from `data/xp.json` rather than trusting prose, including this paragraph, if
+the capture ever changes.)
 
 The generator state at each captured level-up was not recorded, so the two
 stat draws are *not* replayed against the original. What is checked instead is
@@ -290,8 +317,8 @@ memory held afterwards, in all 30 cases.
 ## Cross-checks
 
 **`SAVE_R0` rebuilt from scratch.** `tests/progression.rs::save_r0_rebuilds_from_its_growth_log`
-starts at `new_character(1)` — the answer that stores the class `SAVE_R0`
-holds — replays the 30 stat grants its growth log records, applies the three
+starts at `new_character("SAVE_R0", 1)` — the answer that stores the class
+`SAVE_R0` holds — replays the 30 stat grants its growth log records, applies the three
 one-shot post-kill events whose flag bytes the file has set, and lands on
 `(24, 13, 19, 7)` with `hpmax` 129: the file's stats, to the point, with no
 residual. Growth log, flags and target stats are bytes in a file that shipped
@@ -313,10 +340,37 @@ buff:
 * `1000:aeb3` — when the countdown reaches 0 it subtracts the same
   `2 / 1 / 2` back. It does not touch `hpmax` either.
 
-So while the buff is up, `strength` is 2 higher than `hpmax` reflects. The
-countdown byte is `.SAV 0x231`, and it is nonzero in exactly `SAVE_R2` (1) and
-`SAVE_R4` (2) and zero in the other three — the same two saves, and only those
-two. With that one term, the identity holds on all five:
+**A second grant site exists** (fix wave 1 finding), reached from a different
+function — the neighbouring strings at `CS:a564`/`CS:a57a` decode to
+`^4Не хватает рубликов` / `^2Ты прокачиваешь пресс.`, i.e. this second site
+sits inside the gym's money-gated exercise menu, not inside the combat
+function `1000:4b57` is in:
+
+```
+1000:e9a0  cmp byte [0x38cd],0        ; buff already running?
+1000:e9a5  jz 1000:e9aa               ; no -- proceed
+1000:e9a7  jmp 1000:ea71              ; yes -- skip the whole block
+1000:e9aa  cmp word [0x38c5],0        ; have a joint to smoke?
+1000:e9af  jg 1000:e9b4
+1000:e9b1  jmp 1000:ea56              ; no -- skip
+1000:e9b4  dec word [0x38c5]          ; consume one
+1000:e9b8  mov byte [0x38cd],0xa      ; countdown := 10, not 3
+1000:e9bd  add word [0x389e],0x2      ; strength +2
+1000:e9c2  inc word [0x38a8]          ; dmg_min +1
+1000:e9c6  add word [0x38aa],0x2      ; dmg_max +2
+```
+
+Same consumable (`DS:38c5`, the joints counter), same countdown byte
+(`DS:38cd`), same `+2 strength` / `+1 dmg_min` / `+2 dmg_max`, same "already
+buffed" guard, same refusal to touch `hpmax` — the only difference from
+`1000:4b57` is the countdown value: **10 turns instead of 3**. So a joint
+smoked at the gym leaves a longer-lasting buff than one smoked in a fight,
+and either way `strength` ends up 2 higher than `hpmax` reflects — which is
+why the countdown byte, `.SAV 0x231`, being nonzero (regardless of which
+site set it) is the only fact `reference_saves_agree_with_the_curve` needs.
+It is nonzero in exactly `SAVE_R2` (1) and `SAVE_R4` (2) and zero in the
+other three — the same two saves, and only those two. With that one term,
+the identity holds on all five:
 
 | save | vit | str | `.SAV 0x231` | `10 + 5*vit + str - 2*buff` | actual `hpmax` |
 |---|---:|---:|---:|---:|---:|
@@ -346,5 +400,17 @@ weapon bonus per save: 5, 3, 10, 11, 12 for R0, R2, R3, R4, R5.
 * **Levels 3..9 and the other gaps** in the threshold table are predictions,
   not observations.
 * **The rest of the 162-byte tail.** The growth log (`0x236`..`0x2ad`), the XP
-  words (`0x232`, `0x234`), the buff countdown (`0x231`) and the four one-shot
-  flags (`0x221`..`0x225`) are now named; the remaining bytes are not.
+  words (`0x232`, `0x234`) and the buff countdown (`0x231`) are named in
+  `data/save_layout.json` (fix wave 1); the four one-shot flags
+  (`0x221`..`0x225`) are named in `data/xp.json`'s `flag_save_offset`
+  instead. The remaining bytes are not named anywhere.
+* **`Progress::xp`/`Progress::threshold` are `u32` here, but the original's
+  `DS:38ce`/`DS:38d0` are 16-bit words.** Every signed-comparison branch
+  that touches them (`1000:253c`, `1000:255f`, `1000:51f4`) uses `jnl`, a
+  *signed* jump. A character with a `u32` count near `0x8000` would compare
+  differently under the original's signed 16-bit arithmetic than under this
+  port's unsigned 32-bit arithmetic. Unreachable in practice — reaching it
+  needs a character parked at the level cap and drained roughly 3200 levels'
+  worth of threshold-only XP without ever levelling up again, far beyond
+  anything a save or a capture exhibits — but the divergence exists and is
+  not modelled. Noted here rather than silently assumed away.

@@ -16,7 +16,7 @@
 use gopnik::model::Fighter;
 use gopnik::progress::{
     apply_levels, class_weights, grant, new_character, xp_award, xp_to_next, Progress, Stat,
-    CLASS_WEIGHTS, GAINS_PER_LEVEL, MAX_LEVEL, START_STATS, THRESHOLD_STEP,
+    CLASS_WEIGHTS, GAINS_PER_LEVEL, MAX_LEVEL, START_STATS, THRESHOLD_BASE, THRESHOLD_STEP,
 };
 use gopnik::rng::Rng;
 use gopnik::save::Save;
@@ -26,6 +26,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Deserialize, Clone)]
 struct Record {
+    class: u16,
     strength: u16,
     agility: u16,
     vitality: u16,
@@ -41,6 +42,7 @@ impl Record {
     fn build(&self) -> Fighter {
         Fighter {
             name: "captured".into(),
+            class: self.class,
             level: self.level,
             hp: self.hp,
             hpmax: self.hpmax,
@@ -64,6 +66,16 @@ struct AwardCase {
     expected: u32,
 }
 
+/// The two numbers `^6Сейчас у тебя # качков опыта. До слеующей прокачки надо
+/// #` printed off the 80x25 text screen -- a channel independent of the
+/// `xp`/`threshold` words `captured_level_ups_replay` reads out of the
+/// guest's memory (`DS:38ce`/`DS:38d0`) for the same case.
+#[derive(Deserialize)]
+struct StatusLine {
+    xp: u32,
+    threshold: u32,
+}
+
 #[derive(Deserialize)]
 struct LevelUpCase {
     run: String,
@@ -78,6 +90,7 @@ struct LevelUpCase {
     xp_after: u32,
     threshold_after: u32,
     level_after: u16,
+    status_line: StatusLine,
     levels_announced: usize,
     gains_announced: Vec<String>,
 }
@@ -93,6 +106,8 @@ struct StatEvent {
 struct Xp {
     max_level: u16,
     gains_per_level: usize,
+    threshold_base: u32,
+    threshold_step: u32,
     thresholds: Vec<u32>,
     threshold_provenance: Vec<String>,
     award_cases: Vec<AwardCase>,
@@ -110,6 +125,25 @@ fn root() -> PathBuf {
 fn xp() -> Xp {
     let p = root().join("data").join("xp.json");
     serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
+}
+
+/// Look up a field's byte offset in `data/save_layout.json` by name, the
+/// same source `tests/save_roundtrip.rs::rust_offsets_match_save_layout_json`
+/// cross-checks `src/save.rs` against. Used here so the buff-countdown byte,
+/// the XP words and the growth log are read from the artifact rather than
+/// hardcoded literals.
+fn save_layout_off(name: &str) -> usize {
+    let p = root().join("data").join("save_layout.json");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+    let json: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
+    json["fields"]
+        .as_array()
+        .expect("fields array")
+        .iter()
+        .find(|f| f["name"] == name)
+        .unwrap_or_else(|| panic!("no field named {name:?} in data/save_layout.json"))["off"]
+        .as_u64()
+        .unwrap() as usize
 }
 
 fn stat_of(name: &str) -> Stat {
@@ -172,7 +206,7 @@ fn thresholds_are_monotonic() {
 #[test]
 fn fresh_character_owes_ten() {
     assert_eq!(xp_to_next(0), 10);
-    let (_, p) = new_character(0);
+    let (_, p) = new_character("test", 0);
     assert_eq!(p.threshold, 10);
     assert_eq!(p.xp, 0);
 }
@@ -234,7 +268,7 @@ fn award_ignores_player_level() {
 
 #[test]
 fn insufficient_xp_grants_nothing() {
-    let (mut f, mut p) = new_character(0);
+    let (mut f, mut p) = new_character("test", 0);
     let mut rng = Rng::new(1);
     let ups = apply_levels(&mut p, &mut f, &mut rng, 0, false);
     assert!(ups.is_empty());
@@ -245,7 +279,7 @@ fn insufficient_xp_grants_nothing() {
 
 #[test]
 fn multiple_levels_apply_in_one_go() {
-    let (mut f, mut p) = new_character(0);
+    let (mut f, mut p) = new_character("test", 0);
     let mut rng = Rng::new(1);
     let huge = xp_to_next(0) + xp_to_next(1) + xp_to_next(2);
     let ups = apply_levels(&mut p, &mut f, &mut rng, huge, false);
@@ -265,7 +299,7 @@ fn multiple_levels_apply_in_one_go() {
 /// the threshold instead of deriving it from the level.
 #[test]
 fn level_cap_stops_the_level_but_not_the_threshold() {
-    let (mut f, mut p) = new_character(0);
+    let (mut f, mut p) = new_character("test", 0);
     f.level = MAX_LEVEL;
     p.threshold = xp_to_next(MAX_LEVEL);
     let mut rng = Rng::new(1);
@@ -282,7 +316,7 @@ fn level_cap_stops_the_level_but_not_the_threshold() {
 /// and are not stopped by the cap.
 #[test]
 fn uncapped_level_up_passes_forty() {
-    let (mut f, mut p) = new_character(0);
+    let (mut f, mut p) = new_character("test", 0);
     f.level = MAX_LEVEL;
     p.threshold = xp_to_next(MAX_LEVEL);
     let mut rng = Rng::new(1);
@@ -305,7 +339,6 @@ fn captured_level_ups_replay() {
         let mut p = Progress {
             xp: c.xp_before,
             threshold: c.threshold_before,
-            class: 3,
         };
         assert_eq!(f.level, c.level_before, "{} frame {}", c.run, c.frame);
         assert_eq!(
@@ -335,6 +368,19 @@ fn captured_level_ups_replay() {
             "{} frame {}",
             c.run,
             c.frame
+        );
+        // The screen and the guest's memory are two independent channels for
+        // the same two numbers -- assert they actually agree rather than just
+        // capturing both and never comparing them.
+        assert_eq!(
+            c.status_line.xp, c.xp_after,
+            "status line xp vs memory, {} frame {}",
+            c.run, c.frame
+        );
+        assert_eq!(
+            c.status_line.threshold, c.threshold_after,
+            "status line threshold vs memory, {} frame {}",
+            c.run, c.frame
         );
     }
 }
@@ -374,7 +420,7 @@ fn captured_gains_reproduce_the_stats() {
 #[test]
 fn growth_preserves_the_hpmax_identity() {
     for answer in 0..=3u16 {
-        let (mut f, mut p) = new_character(answer);
+        let (mut f, mut p) = new_character("test", answer);
         let mut rng = Rng::new(u32::from(answer) * 7 + 1);
         for _ in 0..200 {
             assert_eq!(f.hpmax, 10 + 5 * f.vitality + f.strength);
@@ -392,6 +438,11 @@ fn tables_match_the_binary() {
     let x = xp();
     assert_eq!(x.max_level, MAX_LEVEL);
     assert_eq!(x.gains_per_level, GAINS_PER_LEVEL);
+    // Opcode-checked reads (tools/capture_xp_cases.py::read_scalar_constants),
+    // not hand-transcribed literals compared against hand-transcribed
+    // literals -- see docs/re/progression.md, "How the numbers were checked".
+    assert_eq!(x.threshold_base, THRESHOLD_BASE);
+    assert_eq!(x.threshold_step, THRESHOLD_STEP);
     assert_eq!(x.class_of_answer_offset, 3);
     assert_eq!(x.class_weights.len(), CLASS_WEIGHTS.len());
     for (i, row) in x.class_weights.iter().enumerate() {
@@ -415,8 +466,8 @@ fn tables_match_the_binary() {
 fn zero_weight_class_gains_nothing() {
     assert_eq!(class_weights(10), [0, 0, 0, 0]);
     assert_eq!(class_weights(11), [0, 0, 0, 0]);
-    let (mut f, mut p) = new_character(0);
-    p.class = 10;
+    let (mut f, mut p) = new_character("Ректор", 0);
+    f.class = 10;
     let before = f.clone();
     let mut rng = Rng::new(5);
     let ups = apply_levels(&mut p, &mut f, &mut rng, 10, false);
@@ -477,11 +528,12 @@ fn save_r0_rebuilds_from_its_growth_log() {
     assert_eq!((class, level), (4, 15));
 
     // The class prompt's answer that stores this class (1000:71b8).
-    let (mut f, _) = new_character(class - x.class_of_answer_offset);
+    let (mut f, _) = new_character("SAVE_R0", class - x.class_of_answer_offset);
 
-    // The growth log: .SAV 0x236, three bytes per level (a length byte and
-    // two stat codes), indexed from 1.
-    let log_at = 0x236 - gopnik::save::OFF_TAIL;
+    // The growth log: .SAV 0x236 (data/save_layout.json's `growth_log`),
+    // three bytes per level (a length byte and two stat codes), indexed
+    // from 1.
+    let log_at = save_layout_off("growth_log") - gopnik::save::OFF_TAIL;
     let mut grants = 0;
     for lvl in 1..=level as usize {
         let at = log_at + (lvl - 1) * 3;
@@ -544,20 +596,22 @@ fn save_r0_rebuilds_from_its_growth_log() {
 /// that are 2 low.
 #[test]
 fn reference_saves_agree_with_the_curve() {
+    let threshold_off = save_layout_off("threshold");
+    let buff_countdown_off = save_layout_off("buff_countdown");
     let mut checked = 0;
     let mut buffed = 0;
     for name in ["SAVE_R0", "SAVE_R2", "SAVE_R3", "SAVE_R4", "SAVE_R5"] {
         let blob = std::fs::read(root().join("orig").join(format!("{name}.SAV"))).unwrap();
         let save = Save::parse(&blob).unwrap();
         let level = save.stats[5];
-        let threshold = u16::from_le_bytes([blob[0x234], blob[0x235]]);
+        let threshold = u16::from_le_bytes([blob[threshold_off], blob[threshold_off + 1]]);
         assert_eq!(
             u32::from(threshold),
             xp_to_next(level),
             "{name}: level {level} threshold"
         );
 
-        let buff = u16::from(blob[0x231] != 0) * 2;
+        let buff = u16::from(blob[buff_countdown_off] != 0) * 2;
         buffed += usize::from(buff > 0);
         assert_eq!(
             save.hpmax,

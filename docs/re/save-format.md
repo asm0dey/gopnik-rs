@@ -23,9 +23,24 @@ Every `.SAV` file is exactly 694 bytes.
 | 0x20e  | `u16`         | 2   | `dmg_max`    | confirmed (Task 9) |
 | 0x210  | `u16`         | 2   | `hp`         | confirmed — current hit points |
 | 0x212  | `u16`         | 2   | `hpmax`      | confirmed — maximum hit points |
-| 0x214  | `bytes`       | 162 | `tail`       | **unknown**, opaque — flags, counters, and a run of Pascal `string[2]` records, not yet segmented |
+| 0x214  | `bytes`       | 162 | `tail`       | opaque, kept for a byte-exact round trip — see below for the parts of it that are now named |
 
-`0x214 + 162 = 0x2ba = 694`, so the tail runs to end of file.
+`0x214 + 162 = 0x2b6 = 694`, so the tail runs to end of file.
+
+Four regions inside `tail` are now named (Task 9b fix wave 1) — `data/save_layout.json`'s `fields` array carries both the opaque `tail` entry above (unchanged, so `tests/save_roundtrip.rs::rust_offsets_match_save_layout_json` still finds it at the same offset) and these four as additional, more specific entries over the same bytes:
+
+| offset | kind    | len | name             | status |
+|--------|---------|-----|------------------|--------|
+| 0x231  | `u8`    | 1   | `buff_countdown` | confirmed (Task 9b) — countdown on the temporary +2 strength / +1 dmg_min / +2 dmg_max buff from a smoked joint; nonzero means the buff is live and `hpmax` does not reflect it |
+| 0x232  | `u16`   | 2   | `xp`             | confirmed (Task 9b) — XP not yet spent on a level |
+| 0x234  | `u16`   | 2   | `threshold`      | confirmed (Task 9b) — XP needed for the next level |
+| 0x236  | `bytes` | 120 | `growth_log`     | confirmed (Task 9b) — `array[1..40] of string[2]`, three bytes per level, the two stat codes `'1'`..`'4'` each level granted |
+
+The four one-shot post-kill event flags at `0x221`–`0x225` are also known
+(Task 9b) but are not in this file: they live in `data/xp.json`'s
+`post_kill_stat_events[*].flag_save_offset` instead, alongside the deltas
+each flag gates. `0x214`–`0x220`, `0x226`–`0x230` and `0x2ae`–`0x2b5` remain
+unnamed.
 
 `pstring` is a Borland Pascal shortstring: one length byte (`0..255`)
 followed by up to 255 payload bytes at a fixed 256-byte slot. Text is
@@ -104,16 +119,20 @@ weight row. All eleven names and weights are in `data/xp.json`; addresses in
 
 ## Unknown / not yet established
 
-- **The 162-byte tail at 0x214–0x2b9.** Carried as opaque `bytes` for an
-  exact round trip. Task 9b named part of it: the four one-shot post-kill
-  event flags at `0x221`–`0x225`, the temporary-buff countdown at `0x231`,
-  the XP total at `0x232`, the next-level threshold at `0x234`, and the
-  growth log at `0x236`–`0x2ad` — an `array[1..40] of string[2]` holding the
-  codes `'1'`..`'4'` for which two stats each level granted
-  (`1000:2641`..`1000:267a`). It decodes cleanly in all five saves: exactly
+- **The 162-byte tail at 0x214–0x2b5.** Carried as opaque `bytes` for an
+  exact round trip. Task 9b established the meaning of part of it in prose
+  (the four one-shot post-kill event flags at `0x221`–`0x225`, the
+  temporary-buff countdown at `0x231`, the XP total at `0x232`, the
+  next-level threshold at `0x234`, and the growth log at `0x236`–`0x2ad` — an
+  `array[1..40] of string[2]` holding the codes `'1'`..`'4'` for which two
+  stats each level granted, `1000:2641`..`1000:267a`) but that finding never
+  reached a machine-readable artifact; fix wave 1 closed that gap by naming
+  the buff countdown, the XP words and the growth log in
+  `data/save_layout.json` (see "Layout" above) and the flags in
+  `data/xp.json`. The growth log decodes cleanly in all five saves: exactly
   `level` entries of exactly two codes, and nothing after them. The rest of
-  the tail, including `0x214`–`0x220` and `0x22e`–`0x230` and everything
-  past `0x2ad`, is still unsegmented.
+  the tail, `0x214`–`0x220`, `0x226`–`0x230` and `0x2ae`–`0x2b5`, remains
+  unsegmented and unnamed in either artifact.
 
 Per project convention, a field whose meaning is not confirmed stays named
 `unk_<hex_offset>`; none of the eight stat words qualify for that any more,

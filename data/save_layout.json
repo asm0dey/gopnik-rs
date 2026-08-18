@@ -78,6 +78,30 @@
    "off": 532,
    "kind": "bytes",
    "len": 162
+  },
+  {
+   "name": "buff_countdown",
+   "off": 561,
+   "kind": "u8",
+   "len": 1
+  },
+  {
+   "name": "xp",
+   "off": 562,
+   "kind": "u16",
+   "len": 2
+  },
+  {
+   "name": "threshold",
+   "off": 564,
+   "kind": "u16",
+   "len": 2
+  },
+  {
+   "name": "growth_log",
+   "off": 566,
+   "kind": "bytes",
+   "len": 120
   }
  ]
 }

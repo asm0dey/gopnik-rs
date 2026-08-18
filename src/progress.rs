@@ -13,7 +13,13 @@
 //! |---|---|---|---|
 //! | `DS:38ce` | `0x232` | XP not yet spent on a level | `1000:2536`, `1000:254d` |
 //! | `DS:38d0` | `0x234` | XP needed for the next level | `1000:2550`, `1000:6de0` |
-//! | `DS:389c` | `0x200` | class / rank index | `1000:25aa`, `1000:712a` |
+//!
+//! `DS:389c` / `.SAV 0x200`, the class/rank index, is **not** here: it is
+//! field `+0x00` of the same 16-byte record the rest of [`crate::model::Fighter`]
+//! mirrors (`1000:25aa` indexes the weight table with it, `1000:712a`/
+//! `1000:71b8` store it at character creation), so it lives on
+//! [`crate::model::Fighter::class`] instead. This is a fix-wave-1 move: Task
+//! 9b originally carried it here because `Fighter` had no class field yet.
 //!
 //! ## Deviation from the Task 9b brief
 //!
@@ -138,19 +144,22 @@ pub struct Progress {
     pub xp: u32,
     /// `DS:38d0` / `.SAV 0x234`.
     pub threshold: u32,
-    /// `DS:389c` / `.SAV 0x200`, indexing [`CLASS_WEIGHTS`].
-    pub class: u16,
 }
 
 impl Progress {
     /// A new character's state: `1000:6de0` sets the threshold to 10 and
     /// nothing writes the level or the XP total, both of which start at 0.
-    pub fn new(class: u16) -> Progress {
+    pub fn new() -> Progress {
         Progress {
             xp: 0,
             threshold: THRESHOLD_BASE,
-            class,
         }
+    }
+}
+
+impl Default for Progress {
+    fn default() -> Progress {
+        Progress::new()
     }
 }
 
@@ -294,7 +303,7 @@ pub fn apply_levels(
         levels += 1;
     }
 
-    let weights = class_weights(p.class);
+    let weights = class_weights(f.class);
     let sum: u16 = weights.iter().sum();
     for _ in 0..levels {
         if !uncapped && f.level == MAX_LEVEL {
@@ -322,6 +331,12 @@ pub fn apply_levels(
 
 /// A freshly created character: `1000:7140`..`1000:71e8`.
 ///
+/// `name` is stored verbatim into [`Fighter::name`]; the original prompts for
+/// it separately (`^0А зовут тебя:`) and this port has no way to invent a
+/// default, so a caller must supply one rather than risk shipping a
+/// silently-empty name (Task 11's job; this signature just makes forgetting
+/// it a compile error instead of a blank save).
+///
 /// `answer` is what the player typed at
 /// `0-Пацан, 1-Отморозок, 2-Гопник, 3-Вор`; anything outside `0..=3` is
 /// folded to `0` (`1000:712d`..`1000:713b`). The stored class is
@@ -333,11 +348,13 @@ pub fn apply_levels(
 /// `dmg_min = strength div 2` (`1000:71d8`) and `dmg_max = strength`
 /// (`1000:71e4`). Level and XP start at zero and the threshold at 10
 /// (`1000:6de0`).
-pub fn new_character(answer: u16) -> (Fighter, Progress) {
+pub fn new_character(name: &str, answer: u16) -> (Fighter, Progress) {
     let answer = if answer <= 3 { answer } else { 0 };
     let [strength, agility, vitality, luck] = START_STATS[usize::from(answer)];
     let hpmax = 10 + 5 * vitality + strength;
     let f = Fighter {
+        name: name.to_string(),
+        class: answer + CLASS_OF_ANSWER_OFFSET,
         level: 0,
         hp: hpmax,
         hpmax,
@@ -349,5 +366,5 @@ pub fn new_character(answer: u16) -> (Fighter, Progress) {
         dmg_max: strength,
         ..Fighter::default()
     };
-    (f, Progress::new(answer + CLASS_OF_ANSWER_OFFSET))
+    (f, Progress::new())
 }

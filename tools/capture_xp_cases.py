@@ -52,6 +52,7 @@ SAVE_BANNER_AT = 0x369C
 SAVE_BANNER = "^4Gopnik: ^7version 1.02 june,sept 2003"
 
 STAT_OFFSETS = {
+    "class": 0x00,
     "strength": 0x02,
     "agility": 0x04,
     "vitality": 0x06,
@@ -117,6 +118,56 @@ N_CLASSES = 11
 # `c7 06 <addr16> <imm16>`, so the immediate sits four bytes in.
 START_STAT_SITES = {0: 0x71A0, 1: 0x7148, 2: 0x7167, 3: 0x7186}
 CLASS_OF_ANSWER_ADD = 0x71B8  # `add word [0x389c],0x3`
+
+# The four scalar constants of FUN_1000_2526, each read out of its own
+# instruction's immediate rather than hand-transcribed -- the same
+# opcode-checked-before-taking-an-immediate method used above for the class
+# weights and the starting stats.
+MAX_LEVEL_AT = 0x2580  # `cmp word [0x38a6],imm8` -- the понтовость cap
+GAINS_PER_LEVEL_AT = 0x287D  # `cmp word [bp-0x8],imm8` -- draws per level
+THRESHOLD_BASE_AT = 0x6DE0  # `mov word [0x38d0],imm16` -- a new character's first threshold
+THRESHOLD_STEP_AT = 0x2550  # `add word [0x38d0],imm8` -- per-level threshold step
+
+
+def read_scalar_constants(blob):
+    """MAX_LEVEL, GAINS_PER_LEVEL, THRESHOLD_BASE and THRESHOLD_STEP, out of
+    the immediates of the instructions that set them, each checked against
+    its expected opcode bytes before the immediate is taken.
+    """
+    at = CS_FILE_BASE + MAX_LEVEL_AT
+    if blob[at] != 0x83 or blob[at + 1] != 0x3E or blob[at + 2 : at + 4] != bytes.fromhex("a638"):
+        raise capture.OracleError(
+            f"1000:{MAX_LEVEL_AT:04x} is not `cmp word [0x38a6],imm8`"
+        )
+    max_level = blob[at + 4]
+
+    at = CS_FILE_BASE + GAINS_PER_LEVEL_AT
+    if blob[at] != 0x83 or blob[at + 1] != 0x7E or blob[at + 2] != 0xF8:
+        raise capture.OracleError(
+            f"1000:{GAINS_PER_LEVEL_AT:04x} is not `cmp word [bp-0x8],imm8`"
+        )
+    gains_per_level = blob[at + 3]
+
+    at = CS_FILE_BASE + THRESHOLD_BASE_AT
+    if blob[at] != 0xC7 or blob[at + 1] != 0x06 or blob[at + 2 : at + 4] != bytes.fromhex("d038"):
+        raise capture.OracleError(
+            f"1000:{THRESHOLD_BASE_AT:04x} is not `mov word [0x38d0],imm16`"
+        )
+    threshold_base = int.from_bytes(blob[at + 4 : at + 6], "little")
+
+    at = CS_FILE_BASE + THRESHOLD_STEP_AT
+    if blob[at] != 0x83 or blob[at + 1] != 0x06 or blob[at + 2 : at + 4] != bytes.fromhex("d038"):
+        raise capture.OracleError(
+            f"1000:{THRESHOLD_STEP_AT:04x} is not `add word [0x38d0],imm8`"
+        )
+    threshold_step = blob[at + 4]
+
+    return {
+        "max_level": max_level,
+        "gains_per_level": gains_per_level,
+        "threshold_base": threshold_base,
+        "threshold_step": threshold_step,
+    }
 
 
 # Player-record words, by DS address (docs/re/combat.md, "The fighter record").
@@ -239,11 +290,13 @@ def read_exe_constants(exe: pathlib.Path):
         raise capture.OracleError(
             f"{exe}: 1000:{CLASS_OF_ANSWER_ADD:04x} is not `add word [0x389c],imm8`"
         )
+    scalars = read_scalar_constants(blob)
     return {
         "class_weights": weights,
         "class_names": names,
         "start_stats": {str(k): v for k, v in sorted(start.items())},
         "class_of_answer_offset": blob[at + 4],
+        **scalars,
         "post_kill_stat_events_is": (
             "One-shot stat grants in the post-kill block of FUN_1000_3d11, "
             "each behind the flag byte at `flag_save_offset` in the .SAV "
@@ -365,12 +418,6 @@ def harvest(name, seed, frames, states, notes):
     return cases
 
 
-MAX_LEVEL = 40  # 1000:2580, `cmp word [0x38a6],0x28`
-GAINS_PER_LEVEL = 2  # 1000:287d, `cmp word [bp-0x8],0x2`
-THRESHOLD_BASE = 10  # 1000:6de0, `mov word [0x38d0],0xa` on a new character
-THRESHOLD_STEP = 10  # 1000:2550, `add word [0x38d0],0xa` per level
-
-
 def reference_save_observations():
     """(level, threshold) read straight out of the five shipped .SAV files.
 
@@ -387,12 +434,16 @@ def reference_save_observations():
     return obs
 
 
-def build_thresholds(cases):
+def build_thresholds(cases, max_level, threshold_base, threshold_step):
     """thresholds[i] = XP needed to go from level i+1 to level i+2.
 
     Every entry carries where it came from. An entry no run and no shipped
     save ever showed is marked UNVERIFIED: the value is what the two
     instructions that maintain the word predict, not something observed.
+
+    `max_level`, `threshold_base` and `threshold_step` come from
+    `read_scalar_constants` -- opcode-checked reads out of the binary, not
+    hand-transcribed literals.
     """
     observed = {}
     for c in cases:
@@ -407,8 +458,8 @@ def build_thresholds(cases):
         observed.setdefault(lvl, []).extend(entries)
 
     values, provenance = [], []
-    for level in range(1, MAX_LEVEL + 1):
-        predicted = THRESHOLD_BASE + THRESHOLD_STEP * level
+    for level in range(1, max_level + 1):
+        predicted = threshold_base + threshold_step * level
         seen = observed.get(level, [])
         for where, thr in seen:
             if thr != predicted:
@@ -483,7 +534,13 @@ def main():
     if not cases:
         raise capture.OracleError("no cases captured")
 
-    thresholds, provenance = build_thresholds(cases)
+    exe_consts = read_exe_constants(ROOT / "orig" / "g.exe")
+    thresholds, provenance = build_thresholds(
+        cases,
+        exe_consts["max_level"],
+        exe_consts["threshold_base"],
+        exe_consts["threshold_step"],
+    )
     payload = {
         "note": (
             "Task 9b. Two independent sources, neither of them the Rust port. "
@@ -497,8 +554,8 @@ def main():
             "docs/re/progression.md. Regenerate: python3 "
             "tools/capture_xp_cases.py"
         ),
-        "max_level": MAX_LEVEL,
-        "gains_per_level": GAINS_PER_LEVEL,
+        "max_level": exe_consts["max_level"],
+        "gains_per_level": exe_consts["gains_per_level"],
         "thresholds_is": (
             "thresholds[i] is the XP needed to go from level i+1 to level "
             "i+2, i.e. xp_to_next(i+1). threshold_provenance[i] says where "
@@ -527,7 +584,7 @@ def main():
         "level_up_cases": cases,
         "capture_notes": notes,
     }
-    payload.update(read_exe_constants(ROOT / "orig" / "g.exe"))
+    payload.update(exe_consts)
     args.out.write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
