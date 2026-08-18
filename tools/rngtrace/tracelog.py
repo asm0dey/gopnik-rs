@@ -244,14 +244,28 @@ def check_walk_completed(parsed: dict, walks: int):
     Flow-tier, and independent of anything gdb printed: the turn marker is a
     breakpoint on 1000:ae63.  A guest that stopped progressing mid-drive cannot
     produce them, however healthy the driver's screen looked.
+
+    The bound is `walks + 1`, not `walks`.  The game stops at the prompt once
+    before the first `w` is typed and once after each completed turn, so a
+    healthy run of N walks records N+1 stops -- which all five captured runs
+    do.  Requiring only N would tolerate exactly one lost turn, and there are
+    two ways to spend that slack that every other guard passes: a freeze during
+    the FINAL walk, and a single mis-classified screen where `driver.walk`
+    counts a turn the game never took.  Neither can corrupt logged data (the
+    LCG replay and the final-RandSeed reconciliation still prove no draw that
+    happened is missing), so what leaks is coverage, not correctness -- but a
+    silently short DRIVE is the same class of defect as a silently short trace,
+    and this guard exists to refuse it.
     """
     stops = parsed["prompt_stops"]
-    if stops < walks:
+    if stops < walks + 1:
         raise TraceError(
-            "the driver typed `w` %d times but the guest stopped at the "
-            "top-level ReadLn (1000:ae63) only %d times: it stopped making "
-            "progress while the driver kept typing into a frozen screen.  The "
-            "trace is truncated and must not be published." % (walks, stops))
+            "the driver typed `w` %d times, so the guest should have stopped "
+            "at the top-level ReadLn (1000:ae63) %d times (once before the "
+            "first walk, once after each), but it stopped only %d times: it "
+            "stopped making progress while the driver kept typing into a "
+            "frozen screen.  The trace is truncated and must not be published."
+            % (walks, walks + 1, stops))
     return {"prompt_stops": stops, "walks_requested": walks}
 
 

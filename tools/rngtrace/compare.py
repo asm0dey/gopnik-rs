@@ -253,6 +253,54 @@ def run_record(label, path, run):
     }
 
 
+VERDICT_RANK = {"contradicted": 3, "corroborated": 2, "not observed": 0}
+
+
+def fold(results_by_run):
+    """Merge each run's per-draw results into one verdict per draw ordinal.
+
+    Extracted from `main` and made testable because this is where a per-run
+    field survived into a folded verdict once already: nine `comparison`
+    entries shipped carrying a non-observing run's `why` beside a
+    `corroborated` verdict, because a later run fired the draw and the fold
+    kept the earlier explanation.  `observed_count`, `observed_n`, `detail`
+    and `per_run` are all merged by this same loop, so it gets a direct test
+    rather than only being exercised through a full comparison run.
+
+    `results_by_run` is an ordered sequence of `(run_label, results)`.
+    """
+    folded = {}
+    for lab, res in results_by_run:
+        for entry in res:
+            key = entry["draw_ordinal"]
+            entry = dict(entry, per_run={lab: entry["observed_n"]})
+            prev = folded.get(key)
+            if prev is None:
+                folded[key] = entry
+                continue
+            prev["observed_count"] += entry["observed_count"]
+            prev["observed_n"] = sorted(set(prev["observed_n"]) |
+                                        set(entry["observed_n"]))
+            prev["per_run"].update(entry["per_run"])
+            if VERDICT_RANK[entry["verdict"]] > VERDICT_RANK[prev["verdict"]]:
+                prev["verdict"] = entry["verdict"]
+                prev["detail"] = entry.get("detail", "")
+            elif entry.get("detail") and entry["verdict"] == prev["verdict"]:
+                have = prev.get("detail", "")
+                if entry["detail"] not in have:
+                    prev["detail"] = (have + "; " if have else "") + entry["detail"]
+    for entry in folded.values():
+        entry["per_run"] = {k: v for k, v in entry["per_run"].items() if v}
+        if entry["verdict"] != "not observed":
+            # `why` explains a NON-observation; a run that did not fire the draw
+            # contributes it, and a later run that DID must not keep it.
+            entry.pop("why", None)
+        if not entry.get("detail"):
+            # An empty string is noise in a ground-truth artifact.
+            entry.pop("detail", None)
+    return [folded[k] for k in sorted(folded)]
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -283,8 +331,8 @@ def main(argv=None):
     # district and the class are read out of the guest's own DS:3692 / DS:389c
     # at the end of each run, and the weights are read out of orig/g.exe.
     exe = (REPO / "orig" / "g.exe").read_bytes()
-    order = {"contradicted": 3, "corroborated": 2, "not observed": 0}
-    folded, extra = {}, {}
+    results_by_run = []
+    extra = {}
     contexts = {}
     order_checks = []
     for run, lab in zip(runs, labels):
@@ -305,24 +353,7 @@ def main(argv=None):
         obs = [d for d in merged if d["run"] == lab]
         res, ext = compare(cat, obs, ctx)
         order_checks.append(dict(check_order(cat, obs, label=lab), run=lab))
-        for entry in res:
-            key = entry["draw_ordinal"]
-            entry = dict(entry, per_run={lab: entry["observed_n"]})
-            prev = folded.get(key)
-            if prev is None:
-                folded[key] = entry
-                continue
-            prev["observed_count"] += entry["observed_count"]
-            prev["observed_n"] = sorted(set(prev["observed_n"]) |
-                                        set(entry["observed_n"]))
-            prev["per_run"].update(entry["per_run"])
-            if order[entry["verdict"]] > order[prev["verdict"]]:
-                prev["verdict"] = entry["verdict"]
-                prev["detail"] = entry.get("detail", "")
-            elif entry.get("detail") and entry["verdict"] == prev["verdict"]:
-                have = prev.get("detail", "")
-                if entry["detail"] not in have:
-                    prev["detail"] = (have + "; " if have else "") + entry["detail"]
+        results_by_run.append((lab, res))
         for site, info in ext.items():
             if site in extra:
                 extra[site]["count"] += info["count"]
@@ -330,13 +361,7 @@ def main(argv=None):
                                                  set(info["n_values"]))
             else:
                 extra[site] = dict(info)
-    for entry in folded.values():
-        entry["per_run"] = {k: v for k, v in entry["per_run"].items() if v}
-        if entry["verdict"] != "not observed":
-            # `why` explains a NON-observation; a run that did not fire the draw
-            # contributes it, and a later run that DID must not keep it.
-            entry.pop("why", None)
-    results = [folded[k] for k in sorted(folded)]
+    results = fold(results_by_run)
     context = {
         "note": ("What each run's computed `n` should be, and where every "
                  "operand came from.  Nothing here is assumed."),

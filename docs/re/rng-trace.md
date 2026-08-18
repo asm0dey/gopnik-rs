@@ -343,6 +343,13 @@ corroborated, which is exactly what Task 12 will rely on it to catch. The
 church's draws 15..18 fire nested inside another routine and are outside the
 check.
 
+**A consumer must READ that field.** `check_order` records violations rather
+than raising, so the artifact is still written when order drifts — deliberate,
+because a contradiction is a finding to report, not a crash. The consequence is
+that a run with a drifted order exits 0. **Task 12 must assert on
+`order_check.in_catalogue_order` explicitly**; treating a successful exit as an
+order guarantee would restore exactly the hole this check was added to close.
+
 **Call sites are attributed by offset, and that needs one segment.** Every
 return segment logged across every run was `224b` — the load segment — so every
 one of these is a segment-`1000` offset and reads directly against `docs/re/`.

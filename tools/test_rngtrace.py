@@ -572,6 +572,27 @@ class TestGdbAbortAndWalkGuards(unittest.TestCase):
         parsed = self.short_run(drawn=40, prompts=4)
         self.assertEqual(tracelog.check_walk_completed(parsed, 3)["prompt_stops"], 4)
 
+    def test_walk_guard_rejects_exactly_one_lost_turn(self):
+        """The boundary: `walks` stops for `walks` walks must be REJECTED.
+
+        A healthy run stops once before the first `w` and once after each
+        completed turn, so N walks give N+1 stops -- all five captured runs do.
+        A `>= walks` bound would tolerate exactly one lost turn, and there are
+        two ways to spend that slack that every other guard passes: a freeze
+        during the FINAL walk, and a mis-classified screen where the driver
+        counts a turn the game never took.  Neither corrupts logged data, but a
+        silently short DRIVE is the same defect class as a silently short trace.
+        """
+        parsed = self.short_run(drawn=40, prompts=3)
+        with self.assertRaises(tracelog.TraceError) as cm:
+            tracelog.check_walk_completed(parsed, 3)
+        self.assertIn("only 3 times", str(cm.exception))
+        # And the healthy N+1 case still passes, so the bound is not simply
+        # shifted past every real run.
+        self.assertEqual(
+            tracelog.check_walk_completed(self.short_run(drawn=40, prompts=4),
+                                          3)["prompt_stops"], 4)
+
     def test_command_error_abort_is_an_error(self):
         """The other detector: the abort MESSAGE.  gdb aborts the script on any
         command error, and the harness's own shutdown aborts it too -- so the
@@ -871,6 +892,71 @@ class TestVmLifecycle(unittest.TestCase):
                     self.fail("the body must not run")
             self.assertEqual(killed, [True])
 
+
+
+
+class FoldTest(unittest.TestCase):
+    """`compare.fold` is where a per-run field survived into a folded verdict.
+
+    Nine shipped `comparison` entries carried a non-observing run's `why`
+    beside a `corroborated` verdict.  Every other guard in this harness has a
+    test that fails without it; this fold had none, so it gets one directly
+    rather than only being exercised through a whole comparison run.
+    """
+
+    @staticmethod
+    def entry(ordinal, verdict, **kw):
+        e = {"draw_ordinal": ordinal, "verdict": verdict,
+             "observed_count": kw.pop("observed_count", 0),
+             "observed_n": kw.pop("observed_n", [])}
+        e.update(kw)
+        return e
+
+    def test_a_later_corroboration_drops_the_earlier_runs_why(self):
+        missed = self.entry(9, "not observed",
+                            why="gate never satisfied in these runs: ...")
+        fired = self.entry(9, "corroborated", observed_count=25,
+                           observed_n=[100], detail="fired 25x")
+        [out] = compare.fold([("A", [missed]), ("B", [fired])])
+        self.assertEqual(out["verdict"], "corroborated")
+        self.assertNotIn("why", out)
+        self.assertEqual(out["observed_count"], 25)
+        self.assertEqual(out["per_run"], {"B": [100]})
+
+    def test_a_run_that_never_fires_keeps_its_why(self):
+        missed = self.entry(9, "not observed", why="gate never satisfied")
+        [out] = compare.fold([("A", [missed])])
+        self.assertEqual(out["verdict"], "not observed")
+        self.assertEqual(out["why"], "gate never satisfied")
+
+    def test_counts_and_n_values_merge_across_runs(self):
+        a = self.entry(3, "corroborated", observed_count=25, observed_n=[10])
+        b = self.entry(3, "corroborated", observed_count=61, observed_n=[10, 20])
+        [out] = compare.fold([("A", [a]), ("B", [b])])
+        self.assertEqual(out["observed_count"], 86)
+        self.assertEqual(out["observed_n"], [10, 20])
+        self.assertEqual(out["per_run"], {"A": [10], "B": [10, 20]})
+
+    def test_a_contradiction_outranks_a_corroboration(self):
+        ok = self.entry(5, "corroborated", observed_count=5, observed_n=[2],
+                        detail="fine")
+        bad = self.entry(5, "contradicted", observed_count=1, observed_n=[3],
+                         detail="n was 3, catalogue says 2")
+        [out] = compare.fold([("A", [ok]), ("B", [bad])])
+        self.assertEqual(out["verdict"], "contradicted")
+        self.assertEqual(out["detail"], "n was 3, catalogue says 2")
+
+    def test_empty_detail_is_dropped_not_shipped_as_an_empty_string(self):
+        a = self.entry(4, "not observed", why="never fired")
+        b = self.entry(4, "corroborated", observed_count=2, observed_n=[5])
+        [out] = compare.fold([("A", [a]), ("B", [b])])
+        self.assertNotIn("detail", out)
+
+    def test_runs_that_contributed_nothing_are_dropped_from_per_run(self):
+        a = self.entry(7, "not observed", why="never fired")
+        b = self.entry(7, "corroborated", observed_count=3, observed_n=[9])
+        [out] = compare.fold([("A", [a]), ("B", [b])])
+        self.assertEqual(out["per_run"], {"B": [9]})
 
 
 if __name__ == "__main__":
