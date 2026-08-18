@@ -22,9 +22,16 @@ use crate::text;
 /// checks already degrade for by falling back to plain text — there is
 /// nothing else actionable to do with the error.
 ///
-/// NOTE: the Windows branch is untested on this Linux host. Windows VT
-/// behaviour is delegated to `colored` and has not been verified against a
-/// real Windows console; this is a known gap, not a verified claim.
+/// NOTE: this branch compiles, links and runs — `scripts/check-windows.sh`
+/// cross-builds it for `x86_64-pc-windows-gnu` and exercises it under wine,
+/// where the colour-policy decisions come out byte-identical to the native
+/// build. What is still UNVERIFIED is whether the VT call has its intended
+/// effect: `ENABLE_VIRTUAL_TERMINAL_PROCESSING` changes how a console
+/// *renders* bytes, not which bytes we write, so the same escapes reach a
+/// pipe whether or not `SetConsoleMode` succeeded. No byte-capture test can
+/// settle it — on wine or on real Windows. It needs a human looking at a
+/// `cmd.exe` window on a Windows build that does not enable VT by default
+/// (Windows Terminal does, so a clean run there proves nothing).
 #[cfg(windows)]
 pub fn init() {
     let _ = colored::control::set_virtual_terminal(true);
