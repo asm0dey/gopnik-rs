@@ -86,7 +86,16 @@ Two ways the award does not happen at all:
   path is not established here.
 
 `1000:7fe4`..`1000:7fed` is a third forced level-up (`xp := threshold`, capped
-flag). Its trigger is likewise not established.
+flag). **Its trigger is established by Task 11b (fix wave 1): it is the
+church.** The church event is reached from the wander turn when
+`Random(200)` at `1000:b39e` returns `0` (`call 0x7c67` at `1000:b3a7`), and
+inside the church `Random(5)` at `1000:7f63` returning `0` takes the
+`1000:7f70` arm, whose tail is exactly this block. Because it passes
+`param_1 = 0`, the level-40 cap applies. See `docs/re/wander.md` §
+"The `Random(5) == 0` arm grants a level and spends two more draws" and
+`data/wander.json`'s `nested_routines.church`. **Consequence for the draw
+stream:** the two `Random(sum)` draws at `1000:25fe` are part of the wander
+turn's `Random` sequence whenever this fires.
 
 ## The level-up: `FUN_1000_2526` (`1000:2526`)
 
@@ -130,7 +139,10 @@ rector and endgame kills can push a character past 40.
 `+3`, `+4`, `+5`. So the table is at `DS:0002`, four bytes per class, in
 strength / agility / vitality / luck order. Read out of the image, with the
 rank names from the 256-byte-stride table at `DS:002e` that the same index
-selects (`1000:13dc`):
+selects (`1000:1a36`, `mov di,[0x389c] / mov cl,8 / shl di,cl / add di,0x2e`;
+this used to cite `1000:13dc`, which is the identically shaped lookup on the
+**enemy's** class at `[0x3952]` — corrected in fix wave 1, see
+`docs/re/wander.md`):
 
 | class | rank name | str | agi | vit | luck |
 |---|---|---:|---:|---:|---:|
@@ -232,7 +244,24 @@ On a 0, the first of three one-shot events that has not fired yet fires:
 |---|---|---|---|---|
 | 1 | `DS:38bf` | `0x223` | +1 to each stat, `hpmax`/`hp` +6, `dmg_max` +1, `dmg_min` += `1 - str mod 2` | `1000:532f`..`1000:5361` |
 | 2 | `DS:38c0` | `0x224` | +4 to each stat, `hpmax`/`hp` +24, `dmg_max` +4, `dmg_min` +2 | `1000:538a`..`1000:53b1` |
-| 3 | `DS:38c1` | `0x225` | text only | `1000:53c0`..`1000:53f2` |
+| 3 | `DS:38c1` | `0x225` | no immediate stat change — it grants the **ring "Господи помилуй"**, whose ongoing effect is the per-walk regen | `1000:53c0`..`1000:53f2` |
+
+**Correction, Task 11b.** Event 3's `grants` column used to read "text only".
+That is right about the immediate stat deltas and wrong about the flag: the
+granting text (file `0x53DD`, `^1Восст. жизни - 3, 5% - самозарост переломов`)
+describes an ongoing effect, and `1000:b24a`..`1000:b2cb` in the wander turn is
+exactly it — `[0x38c1] != 0` gates `hp += 3` at `1000:b251` and a `Random(20)`
+at `1000:b272` (1 in 20 = the advertised 5%) that clears one fracture. See
+`docs/re/wander.md` and `data/wander.json`.
+
+**All three of these flags have a second grant site.** The post-kill block
+below is not the only path: the church event reached from the wander turn
+(`1000:7c67`, on `Random(5) == 2`) runs the same first-unfired-gift chain at
+`1000:80c8`..`1000:81c9`, with the flags set at `1000:8134` / `1000:8184` /
+`1000:81c4`. The stat deltas match this table, including event 1's
+`dmg_min += 1 - str mod 2` (`1000:8130` there, `1000:535e` here). The two
+blocks are **byte-identical**: the 56 bytes at `1000:8101` and at `1000:532f`,
+through each block's `c6 06 bf 38 01` flag store, compare equal.
 
 `data/xp.json`'s `post_kill_stat_events` holds these deltas, **decoded out of
 the instructions** by `tools/capture_xp_cases.py` rather than transcribed, so

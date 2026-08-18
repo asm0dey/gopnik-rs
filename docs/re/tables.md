@@ -339,7 +339,7 @@ row. The other three:
 | addr | file off | amount | what |
 |---|---|---|---|
 | `1000:5014` | `0x68e4` | return value of `call 0f78:1131` | **unidentified** |
-| `1000:761d` | `0x8eed` | `byte[20ae:3692] * 50` (district*50) | Рушель Блаво save-game service |
+| `1000:761d` | `0x8eed` | `byte[20ae:3692] * 50` (district*50) | Рушель Блаво save-game service — **but see the note below: the price he quotes is half this** |
 | `1000:e0a8` | `0xf978` | `byte[20ae:3c82]` | **unidentified** (see below) |
 
 `1000:5014` is preceded by `mov di,0x4000 / call 0f78:1111 / call 0f78:1131`,
@@ -358,6 +358,21 @@ loads it is at `1000:7583` (file `0x8e53`), and the affordability guard
 (`cmp ax,[0x38c7] / jng`) is at `1000:760a` -- a reminder that a string's own
 byte address and the address of the instruction that references it are two
 different numbers.
+
+**The quoted price and the charged price differ, in the original.** Task 11b
+found the other half of this pair, and it is not a transcription slip in this
+document -- both numbers are in the binary:
+
+| what | address | bytes | value |
+|---|---|---|---|
+| the price *printed* into `За # рублей...` | `1000:758d` | `ba 19 00` | `district * 25` |
+| the price *checked* against money | `1000:7605` | `ba 32 00` | `district * 50` |
+| the price *debited* | `1000:7618` (`sub` at `1000:761d`) | `ba 32 00` | `district * 50` |
+
+All three are the same `mov al,[0x3692] / xor ah,ah / mov dx,imm / mul dx`
+shape, differing only in the immediate. Рушель Блаво quotes half what he
+takes. Do not "fix" this in the port -- reproduce it. Flow, byte-verified;
+`docs/re/wander.md` § "The mage" has the surrounding control flow.
 
 #### The 11 `sub [money],imm8` sites
 

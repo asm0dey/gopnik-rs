@@ -303,9 +303,9 @@
    "1000:73c3 sets 20ae:3696 on the [20ae:389c]==5 progression reveal",
    "1000:dcf6 sets 20ae:3695 via the gated 'a' token",
    "1000:dcfb sets 20ae:369a via the gated 'a' token",
-   "1000:ae1f sets 20ae:3696 (Den) -- trigger UNVERIFIED",
-   "1000:4aa5 sets 20ae:3696 (Den) -- trigger UNVERIFIED",
-   "1000:52b3 sets 20ae:3696 (Den) -- trigger UNVERIFIED"
+   "1000:ae1f sets 20ae:3696 (Den) on the chapter-5 endgame arm of the district-intro block: 1000:adbf tests chapter == 5; that arm sets 20ae:3c83 (endgame_armed) := 1 at 1000:ae13 and 1000:ae18 immediately tests the byte it just wrote, so the branch is always taken there. Established from flow, Task 11b -- see docs/re/wander.md and data/wander.json den_setters.",
+   "1000:4aa5 sets 20ae:3696 (Den) inside the de-level (flee) penalty routine 1000:4931..1000:4ad9: skipped entirely when [20ae:389c] == 5 (1000:4a87), and otherwise requires level - (chapter-1)*10 to be exactly 3 (jnz at 1000:4aa3), evaluated before the level decrement at 1000:4ac3. Established from flow, Task 11b. NOTE, unresolved: the byte at 1000:4aa5 is c6 06 96 36 01 -- the flag is SET -- while the line printed is the refusal at file 0x4D42 (^4Такого конявого непустят в местный притон!), and the den gate at 1000:d80c reads nothing but this flag. Whether a clear was intended is not answerable from the binary.",
+   "1000:52b3 sets 20ae:3696 (Den) in the post-kill block of FUN_1000_3d11: if flag_den == 0 (1000:5295) and level - (chapter-1)*10 >= 3 (jl skip at 1000:52b1), set it and print file 0x5311. Established from flow, Task 11b."
   ],
   "never_set_by": "a refused entry",
   "setters_implemented_in_port": [

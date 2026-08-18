@@ -135,16 +135,28 @@ side:
 4. `1000:af04` onward: a long run of one-shot flavour/discovery events
    (phone calls, finding the market sign, the silencer's 25-wander counter
    `docs/re/tables.md` already documents at `20ae:3e32`), each gated by its
-   own `Random()` roll and a never-repeat flag. **Not catalogued** -- too
-   many for this task's remaining budget.
-5. `1000:b358` (within the *district-transition* preamble, structurally
-   identical branch shape) rolls `Random(25)+1`, bucketed 1 / 2-4 / 5-9 /
-   10-25 into `DS:3970`. The regular-turn path (`1000:b4e8`..`1000:b5ae`)
-   branches on the same variable via a `cmp al,N` chain (N = 2,3,4,5),
-   strongly suggesting reuse of the same roll -- **the specific `Random`
-   call feeding the regular-turn branch was not found**, so `src/game.rs`
-   reuses the district-transition roll's bucketing as an assumption, not a
-   confirmed fact.
+   own `Random()` roll and a never-repeat flag. **Catalogued in full by
+   Task 11b** -- see `docs/re/wander.md` and `data/wander.json`, which give
+   every site's `n`, gate, bucket boundaries and effect in execution order.
+   (This step used to say "**Not catalogued** -- too many for this task's
+   remaining budget".)
+5. `1000:b353` rolls `Random(25)`; `1000:b358` is the `inc ax` /
+   `mov [0x3971],al` that stores `1..25`, bucketed 1 / 2-4 / 5-9 / 10-25 into
+   `DS:3970`. The regular-turn path (`1000:b4e8`..`1000:b5ae`) branches on
+   that same variable via a `cmp al,N` chain.
+
+   **Corrected by Task 11b.** This step used to place `1000:b358` "within the
+   *district-transition* preamble" and say "the specific `Random` call feeding
+   the regular-turn branch was not found", leaving `src/game.rs`'s bucketing
+   recorded as an assumption. Both halves were wrong. There is exactly one
+   wander path -- `w`/`run` (`1000:ae86`/`1000:ae97`) both jump to
+   `1000:aea1`, which runs straight through `1000:af04`..`1000:b34d` to the
+   roll at `1000:b353` and falls into the dispatch at `1000:b3ba` ->
+   `1000:b3bd` -> `1000:b4e8` -> `1000:b5ae`. `1000:b353` **is** the call
+   feeding the regular-turn branch, and the genuine district-transition block
+   is a different region, `1000:ab75`..`1000:ae18`. The port's behaviour was
+   right; the reasoning recorded for it was not. Established from flow in
+   `docs/re/wander.md`.
 6. `1000:b5ae`: `cmp al,3` -- bucket 3 leads to `1000:b5b8`, `call
    FUN_1000_0d14` (the encounter generator, `docs/re/tables.md` section 3).
 7. `1000:b5c0`: `cmp word[0x3952],8` -- if the rolled enemy's class is 8
