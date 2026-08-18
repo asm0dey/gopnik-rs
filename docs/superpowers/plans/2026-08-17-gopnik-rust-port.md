@@ -31,6 +31,11 @@
 - **Ghidra is driven by Java scripts only.** PyGhidra requires `jpype1`, which does not build on Python 3.14. Do not attempt `pip install pyghidra`.
 - **Python tooling uses the standard library only.** No pip installs, no venv.
 - **Rust dependencies limited to `serde` + `serde_json` + `encoding_rs` + `colored`.**
+  Amended by Task 10c (owner-requested): `serde` and `serde_json` move to
+  `[build-dependencies]` and must not appear in the shipped binary's runtime
+  dependency graph. `build.rs` parses the extracted JSON at compile time and
+  emits `static` tables, so `data::items()`/`shops()`/`enemies()` return
+  `&'static [T]` rather than `Vec<T>` and no JSON parser is linked in.
   Anything else requires explicit sign-off. `encoding_rs` was signed off by the
   owner for Task 7: the owner prefers a crate to a hand-written codepage table.
   The encoding is `encoding_rs::IBM866` — there is no `CP866` constant; IBM866
@@ -3298,6 +3303,166 @@ acknowledged gap, because it stops anyone else from checking.
 ```bash
 git add Cargo.toml Cargo.lock src/term.rs src/main.rs tests/term_output.rs
 git commit -m "feat: cross-platform colour output via colored"
+```
+
+---
+
+### Task 10c: Compile-time table codegen and release-size profile
+
+**Owner-requested (post-plan).** Two asks, one task: stop shipping a JSON
+parser to read data that never changes, and stop leaving free size wins on
+the floor.
+
+Measured before this task: `orig/g.exe` is 88,656 bytes; `target/release/gopnik`
+is 453,608, of which 357,216 remains after `strip` and 267,560 is `.text`. All
+three embedded runtime JSON files together are 8,500 bytes — 1.9% of the
+binary. **The data is not what makes the binary large**; `std`'s formatting and
+panic machinery plus `serde_json`'s parser are. Do not expect to approach
+88 KB: `g.exe` is 16-bit real mode calling DOS through INT 21h, with a
+few-KB Borland RTL. Report the number you actually reach; do not chase a target.
+
+**Files:**
+- Create: `build.rs`
+- Modify: `Cargo.toml`, `src/data.rs`, `src/model.rs` (only if `to_fighter` needs it)
+- Test: `tests/data_load.rs` (existing — must keep passing, adjusted for the new signatures)
+
+**Interfaces:**
+- `data::items() -> &'static [Item]`, `data::shops() -> &'static [ShopEntry]`,
+  `data::enemies() -> &'static [Enemy]` — was `Vec<T>` in each case.
+- `Item`, `ShopEntry`, `Enemy`, `EnemyStats` lose their `Deserialize` derives
+  and change owned fields to borrowed ones:
+  - `Item`: `id`, `name`, `kind` become `&'static str`; `effect` becomes
+    `Option<&'static str>`.
+  - `ShopEntry`: `shop`, `key`, `text` become `&'static str`; `gate` becomes
+    `Option<&'static str>`; `extra_gates` becomes `&'static [&'static str]`.
+  - `Enemy`: `id`, `name` become `&'static str`; `growth_weights` becomes
+    `&'static [u16]`.
+  - `EnemyStats` is all `u16` already and is unchanged apart from the derive.
+- `Enemy::to_fighter` keeps its signature; `self.name.clone()` becomes
+  `self.name.to_string()` because `Fighter::name` stays `String` (a fighter's
+  name is built at runtime for the player).
+
+**Constraint amendments this task carries** (owner-approved by the request
+itself — apply them to the plan's Global Constraints when you touch it):
+- `serde` and `serde_json` move from `[dependencies]` to
+  `[build-dependencies]`. They must not appear in the shipped binary's
+  dependency graph. `encoding_rs` and `colored` stay runtime dependencies.
+- The plan's earlier note that loaders "return an owned `Vec` rather than a
+  `&'static [T]`, because `serde_json` cannot produce a `'static` slice
+  without a `OnceLock`" is superseded — the codegen removes the premise.
+
+- [ ] **Step 1: Write the failing test**
+
+Extend `tests/data_load.rs` with a test that only compiles if the data is
+genuinely static, and that would fail if codegen dropped or reordered rows:
+
+```rust
+#[test]
+fn tables_are_static_and_complete() {
+    // Borrowing into a `'static` binding does not compile against a `Vec`
+    // returned by value -- this is the compile-time half of the assertion.
+    let items: &'static [gopnik::data::Item] = gopnik::data::items();
+    let shops: &'static [gopnik::data::ShopEntry] = gopnik::data::shops();
+    let enemies: &'static [gopnik::data::Enemy] = gopnik::data::enemies();
+
+    // Row counts are pinned to what tools/extract_tables.py extracts.
+    assert_eq!(items.len(), 15, "item row count");
+    assert_eq!(shops.len(), 18, "shop row count");
+    assert_eq!(enemies.len(), 13, "enemy row count");
+
+    // Two calls hand back the same memory: no per-call parse, no allocation.
+    assert!(std::ptr::eq(gopnik::data::items(), gopnik::data::items()));
+}
+```
+
+Confirm those three counts against the current `data/*.json` before pinning
+them — the extractor is the authority, not this brief.
+
+Keep every existing assertion in `tests/data_load.rs`. They are the guarantee
+that codegen produced the same values the JSON held; adjust only what the
+signature change forces (e.g. `&item.name` becomes `item.name`).
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `cargo test --test data_load`
+Expected: FAIL — `items()` returns `Vec<Item>`, which does not coerce to
+`&'static [Item]`.
+
+- [ ] **Step 3: Write `build.rs`**
+
+`build.rs` reads the three runtime JSON files, and writes one Rust source
+file into `OUT_DIR` containing three `static` arrays. Requirements:
+
+- Emit `cargo:rerun-if-changed=data/items.json` (and the other two), so a
+  regenerated table rebuilds the crate. Without this the binary silently
+  keeps stale data — that is the one way this design can be *worse* than
+  runtime parsing, so it is not optional.
+- Parse with `serde_json::Value` rather than mirror structs. Mirror structs
+  would be a second copy of the schema that can drift from `src/data.rs`.
+- A missing field, a wrong type, or an unknown `kind` must `panic!` with the
+  file name and the row's `id`. A build error is the whole point: malformed
+  data should never reach a binary.
+- Write string literals with `{:?}` on the `&str`. Rust's `Debug` for `str`
+  escapes what must be escaped and leaves printable non-ASCII alone, so the
+  Russian text survives verbatim — which the constraint requires. Verify this
+  on a row containing a quote or a backslash if one exists.
+- Do not reformat, translate, or normalise any text. `^N` markup and `#`
+  placeholders in `ShopEntry::text` stay exactly as the JSON holds them.
+
+- [ ] **Step 4: Rewrite `src/data.rs`**
+
+Replace the three `include_str!` statics and the three `serde_json::from_str`
+loaders with `include!(concat!(env!("OUT_DIR"), "/tables.rs"));` and three
+functions returning `&'static [T]`. Drop `use serde::Deserialize;` and every
+`#[derive(..., Deserialize)]` on the four structs (keep `Debug, Clone`).
+
+Update the module doc comment: the paragraph explaining that loaders return
+an owned `Vec` because of `serde_json` is now false and must go. Say instead
+that the tables are generated by `build.rs` at compile time and that the
+JSON is a build input, not a runtime asset. Keep the runtime/provenance
+paragraph — it is still true and still load-bearing.
+
+- [ ] **Step 5: Move the dependencies and set the release profile**
+
+```toml
+[dependencies]
+encoding_rs = "0.8"
+
+[build-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+opt-level = "z"
+strip = true
+```
+
+`colored` is added by Task 10b; if Task 10b has already landed, leave its
+`[dependencies]` line in place. If `serde`'s `derive` feature turns out to be
+unused once mirror structs are gone, drop the feature rather than carrying it.
+
+- [ ] **Step 6: Verify**
+
+Run: `cargo test` — the whole suite, since this changes a type every
+consumer sees.
+Run: `cargo tree -e normal | grep -c serde` — expected `0`. serde must not
+be in the runtime graph.
+Run: `cargo build --release && ls -l target/release/gopnik` and record the
+size next to the 453,608-byte baseline in the commit message.
+
+Then confirm the data actually survived the round trip: pick three rows
+across the three tables (including one with Russian text and one with a
+`None`/`null` field) and check the generated `OUT_DIR/tables.rs` against the
+JSON by eye. Report what you compared.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add Cargo.toml Cargo.lock build.rs src/data.rs tests/data_load.rs
+git commit -m "perf: generate tables at compile time, drop serde_json from the runtime"
 ```
 
 ---
