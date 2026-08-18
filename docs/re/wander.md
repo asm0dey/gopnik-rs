@@ -11,6 +11,19 @@ Do not treat "every address was verified" as a given: one was not, and the
 callout two paragraphs down says which. Per `docs/re/METHODOLOGY.md`, each claim states its
 tier: **established from flow**, **corroborated**, or **unverified**.
 
+> **Tier update (Task 11d): every one of the eighteen draws below has now been
+> observed in the running original.** `tools/rngtrace` breaks on `Random`'s
+> `retf 2` in a qemu guest with `RandSeed` pinned in a patched COPY of the
+> binary; five runs logged 1387 draws. All eighteen fired at the call site
+> catalogued here, with the `n` catalogued here — including the two computed
+> ones, checked at two different districts — and **nothing was contradicted**.
+> Their tier is therefore **established from flow, corroborated by live
+> trace**; the individual "established from flow" labels below are raised by
+> this paragraph rather than being rewritten one by one, because the flow
+> claims themselves are unchanged. Per-draw verdicts: `data/wander.json`'s
+> `live_trace` fields. Method, the seed patch, the guards, and the full
+> comparison: `docs/re/rng-trace.md` and `data/rng_trace.json`.
+
 > **The `0x18d0 + off` shorthand is for segment `1000` only.** Every citation
 > here whose segment is not `1000` — the runtime entry points `0f78:114b`
 > (`Random`), `0f78:06c6` (`ReadLn`), `0f78:0772` (`Rewrite`), `0f78:081e`
@@ -536,7 +549,10 @@ encounter. A mage turn (draw 14 returns `0`) adds none but blocks on input.
   block at `1000:ae1f` really re-runs every turn.
 * The name of the item at `DS:394d`.
 * `unk_38b2`.
-* No live breakpoint was used. Everything above is static flow; a `tools/qemu`
-  run enumerating the fourteen in-range sites in order on a pinned seed — and
-  the church's four when it fires — would corroborate the sequence, and is the
-  obvious next step for Task 12.
+* ~~No live breakpoint was used.~~ **Done in Task 11d** — `tools/rngtrace`,
+  `docs/re/rng-trace.md`, `data/rng_trace.json`. The fourteen in-range sites
+  were observed in order on a pinned seed, and the church's four when it fired.
+  What that pass did NOT settle is listed there: the probabilities still come
+  from the comparison constants and never from counting observed outcomes, the
+  fight-flow questions below are untouched, bucket 2's `y` path was never
+  taken, and only districts 1 and 3 were visited.

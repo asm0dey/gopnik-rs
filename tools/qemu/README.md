@@ -1,15 +1,23 @@
-# qemu + gdb guest debugger (PROTOTYPE — not yet reviewed)
+# qemu + gdb guest debugger (SUPERSEDED prototype — use `tools/rngtrace`)
+
+> **Superseded by `tools/rngtrace` (Task 11d).** The productionised harness
+> lives there: one non-interactive command boots the guest, derives the load
+> base, verifies the code at the breakpoint address, pins `RandSeed` in a
+> patched COPY of the binary, logs every `Random` draw, and fails loudly rather
+> than emitting a short trace. Run it with
+> `python3 tools/rngtrace/run.py --boot-img <freedos.img> --walks N`, and see
+> `docs/re/rng-trace.md`. `tools/oracle/capture.py` remains the sanctioned
+> DOSBox-X screen-capture path; the two are separate.
+>
+> The files here are kept only as the record of how the approach was proved.
+> **Do not extend them** — three things they get wrong are fixed in
+> `tools/rngtrace` and documented below under "What the prototype got wrong".
 
 Runs `orig/g.exe` under FreeDOS in qemu with gdb attached to the *guest*, so
 breakpoints can be set on the game's own 16-bit code and its `Random` draws
 observed at runtime. More capable than the DOSBox-X oracle: it needs no
 guest-side TSR, and it can prove a negative ("this verb reaches no branch"),
 which static reading can only suggest.
-
-**Status: prototype.** These scripts proved the approach end to end and are
-committed so the working invocation is not lost with the session scratchpad.
-They are not a reviewed harness — `tools/oracle/capture.py` remains the
-sanctioned capture path until a proper task replaces this.
 
 ## Proven
 
@@ -59,24 +67,18 @@ https://github.com/mohitmishra786/low-level-dev-skills (C/C++ userspace
 oriented; the parts below are the ones that survive the jump to a symbol-less
 16-bit guest over a remote stub).
 
-**Auto-logging breakpoints — the core of the Random tracer.** A breakpoint that
-prints and resumes itself turns one gdb session into a trace, while the qemu
-monitor drives input from another process:
-
-    set logging file rnd.log
-    set logging enabled on
-    break *ADDR
-    commands
-      silent
-      printf "site=%x n=%x\n", *(unsigned short*)($ss*16+$sp), \
-                               *(unsigned short*)($ss*16+$sp+4)
-      continue
-    end
-    continue
+**Auto-logging breakpoints — the core of the Random tracer.** The stack layout
+below is right and `tools/rngtrace` uses it; the `commands` sketch is **wrong**
+and is kept only because the reason it fails is worth knowing (see "What the
+prototype got wrong"). The working form is in
+`tools/rngtrace/gdbsession.py`.
 
 At a Borland far-call entry the stack holds `[sp]`=return offset,
 `[sp+2]`=return segment, `[sp+4]`=the pushed argument. The return offset IS the
-Ghidra call-site offset, so the log reads directly against `docs/re/`.
+Ghidra call-site offset, so the log reads directly against `docs/re/`. The same
+frame is still intact at the `retf 2`, where `ax` additionally holds the
+result, so `tools/rngtrace` breaks there instead and gets site, `n` and result
+from one stop.
 
 **Conditional breakpoints** narrow a hot routine to one caller without stopping
 on every draw:
@@ -95,3 +97,34 @@ it in a finding.
 **Not applicable:** `rbreak` and anything symbol-driven (no symbols),
 `break foo if x > 10` by variable name (no debug info), and the skill's
 crash/core-dump material (a DOS guest produces none).
+
+## What the prototype got wrong
+
+All three were found by running it, and all three are fixed in
+`tools/rngtrace`. Each fails in the same direction — a plausible SHORT trace,
+which reads as evidence that draws did not happen.
+
+1. **Breakpoint `commands` never run.** qemu's i386 gdbstub reports `$pc` as
+   the raw 16-bit `eip`, while the breakpoint sits at the LINEAR address
+   (`cs_base + eip`). gdb cannot match the stop to its own breakpoint, reports
+   a bare `SIGTRAP`, and skips the `commands` block. Observed: a stop inside
+   `Random` printed `0x0000114b in ?? ()` against a breakpoint recorded at
+   `0x32d7b`. The tracer must dispatch on `$pc` itself, from an explicit gdb
+   `while` loop.
+2. **Resuming re-traps forever.** For the same reason gdb never does its
+   remove/single-step/reinsert dance, so qemu stops again on the very same
+   instruction. Measured: 833654 bytes of stops, every one at `$pc = ae63`,
+   with the guest making no progress at all — while its screen stayed put, so
+   a screen-driven driver went on typing into a frozen game. `hbreak` behaves
+   identically. The loop must step over by hand: `disable`, `stepi`, `enable`.
+3. **The VM leaks and the log is lost.** `boot.start()` leaves qemu running on
+   any exception, and gdb, busy in its script loop, never reads `quit` from
+   stdin. `tools/rngtrace` kills the VM on every exit path, and kills it
+   *first* — the failing `continue` drops gdb to a prompt where `quit` is read
+   and its output is flushed.
+
+`tools/rngtrace` additionally derives the load base by verifying all 1580 MZ
+relocations against the candidate segment (not by one banner match), checks the
+bytes at the breakpoint address against the file before installing it, and
+replays the whole draw stream against the pinned seed — a missed draw
+desynchronises the LCG and fails the run.

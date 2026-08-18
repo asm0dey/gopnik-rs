@@ -2,6 +2,15 @@
   "schema_version": 1,
   "task": "11b",
   "source": "orig/g.exe",
+  "live_trace": {
+    "note": "Task 11d ran orig/g.exe under qemu+gdb with RandSeed pinned in a patched COPY and logged every Random draw at the `retf 2` of 0f78:1165. All eighteen draws below were observed at the catalogued site with the catalogued n; none was contradicted. Per-draw verdicts are each draw's `live_trace` field; the observed stream, the guards the runs passed and the full comparison are in data/rng_trace.json. Method and addresses: docs/re/rng-trace.md. TIER LABELS AND TRACE CITATIONS ONLY -- no flow claim in this file was re-derived or rewritten.",
+    "harness": "tools/rngtrace",
+    "artifact": "data/rng_trace.json",
+    "document": "docs/re/rng-trace.md",
+    "corroborated": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18],
+    "not_observed": [],
+    "contradicted": []
+  },
   "address_convention": {
     "image_base": "0x18d0",
     "rule": "file_off = 0x18d0 + (seg - 0x1000) * 16 + off; a 1000:XXXX code address is file offset 0x18d0 + XXXX",
@@ -87,7 +96,8 @@
         { "range": "0", "p": "1/20", "effect": "set den_errand_1_pending := 1 (1000:af71) UNCONDITIONALLY, then print the phone call (files 0x9DDB + player name + 0x9DEA) only if flag_den (1000:af76) and has_mobile (1000:af7d)" },
         { "range": "1..19", "p": "19/20", "effect": "nothing" }
       ],
-      "tier": "flow",
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 69, "observed_n": [20], "observed_n_by_run": {"A": [20], "B": [20], "C": [20], "D": [20], "E": [20]}},
       "note": "the one-shot flag is set before the flag_den/has_mobile checks, so the errand slot is burned even when nothing is printed"
     },
 
@@ -98,7 +108,8 @@
         { "range": "0", "p": "1/20", "effect": "set den_errand_2_pending := 1 (1000:afd0) UNCONDITIONALLY, then print the phone call (files 0x9DDB + player name + 0x9E1A) only if flag_den (1000:afd5) and pontovost_street >= 100 (1000:afdc) and has_mobile (1000:afe3)" },
         { "range": "1..19", "p": "19/20", "effect": "nothing" }
       ],
-      "tier": "flow"
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 46, "observed_n": [20], "observed_n_by_run": {"A": [20], "B": [20], "C": [20], "D": [20], "E": [20]}}
     },
 
     { "seq": 7, "kind": "draw", "draw_ordinal": 3, "at": "1000:b030", "bytes": "9a 4b 11 78 0f", "n": 200, "n_at": "1000:b02c", "n_bytes": "b8 c8 00 50",
@@ -108,7 +119,8 @@
         { "range": "0", "p": "1/200", "effect": "the wrong-number gag: prints files 0x9E44, 0x9E58 + name + 0x9E63, 0x9E65, 0x9E7D with a delay (0f16:031a) between them. No state change." },
         { "range": "1..199", "p": "199/200", "effect": "nothing" }
       ],
-      "tier": "flow"
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 25, "observed_n": [200], "observed_n_by_run": {"E": [200]}}
     },
 
     { "seq": 8, "kind": "draw", "draw_ordinal": 4, "at": "1000:b0dc", "bytes": "9a 4b 11 78 0f", "n": 100, "n_at": "1000:b0d8", "n_bytes": "b8 64 00 50",
@@ -118,7 +130,8 @@
         { "range": "0", "p": "1/100", "effect": "if flag_girl (1000:b0e5) print files 0x9EAE and 0x9EEC. No state change." },
         { "range": "1..99", "p": "99/100", "effect": "nothing" }
       ],
-      "tier": "flow"
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 25, "observed_n": [100], "observed_n_by_run": {"E": [100]}}
     },
 
     { "seq": 9, "kind": "message", "at": "1000:b11e", "bytes": "80 3e 76 3b 01", "what": "if market_ban_countdown == 1 and flag_den, print file 0x9F05 (the cops have left the market)", "tier": "flow", "note": "reached only on the has_mobile path" },
@@ -132,7 +145,8 @@
         { "range": "0", "p": "1/10", "effect": "if flag_vet == 0 (1000:b18f) set flag_vet := 1 (1000:b196) and print file 0x9F8B" },
         { "range": "1..9", "p": "9/10", "effect": "nothing" }
       ],
-      "tier": "flow"
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 86, "observed_n": [10], "observed_n_by_run": {"A": [10], "B": [10], "C": [10], "D": [10], "E": [10]}}
     },
     { "seq": 13, "kind": "draw", "draw_ordinal": 6, "at": "1000:b1b8", "bytes": "9a 4b 11 78 0f", "n": 10, "n_at": "1000:b1b4", "n_bytes": "b8 0a 00 50",
       "gate": null,
@@ -141,7 +155,8 @@
         { "range": "0", "p": "1/10", "effect": "if flag_market == 0 (1000:b1c1) set flag_market := 1 (1000:b1c8) and print file 0x9FB2" },
         { "range": "1..9", "p": "9/10", "effect": "nothing" }
       ],
-      "tier": "flow"
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 86, "observed_n": [10], "observed_n_by_run": {"A": [10], "B": [10], "C": [10], "D": [10], "E": [10]}}
     },
     { "seq": 14, "kind": "draw", "draw_ordinal": 7, "at": "1000:b1ea", "bytes": "9a 4b 11 78 0f", "n": 100, "n_at": "1000:b1e6", "n_bytes": "b8 64 00 50",
       "gate": null,
@@ -150,7 +165,8 @@
         { "range": "0", "p": "1/100", "effect": "if flag_club == 0 (1000:b1f3) set flag_club := 1 (1000:b1fa) and print file 0x9FC4" },
         { "range": "1..99", "p": "99/100", "effect": "nothing" }
       ],
-      "tier": "flow"
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 86, "observed_n": [100], "observed_n_by_run": {"A": [100], "B": [100], "C": [100], "D": [100], "E": [100]}}
     },
     { "seq": 15, "kind": "draw", "draw_ordinal": 8, "at": "1000:b21c", "bytes": "9a 4b 11 78 0f", "n": 100, "n_at": "1000:b218", "n_bytes": "b8 64 00 50",
       "gate": null,
@@ -159,7 +175,8 @@
         { "range": "0", "p": "1/100", "effect": "if flag_gym == 0 (1000:b225) set flag_gym := 1 (1000:b22c) and print file 0x9FFE" },
         { "range": "1..99", "p": "99/100", "effect": "nothing" }
       ],
-      "tier": "flow"
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 86, "observed_n": [100], "observed_n_by_run": {"A": [100], "B": [100], "C": [100], "D": [100], "E": [100]}}
     },
 
     { "seq": 16, "kind": "state", "at": "1000:b251", "bytes": "a1 ac 38 3b 06 ae 38", "what": "the ring's regen: if hp < hpmax then hp += 3 (1000:b25a), clamped to hpmax (1000:b268)", "gate": { "at": "1000:b24a", "bytes": "80 3e c1 38 00", "cond": "ring_gospodi_pomilui != 0", "skip_target": "1000:b2cc" }, "tier": "flow" },
@@ -171,7 +188,8 @@
         { "range": "0", "p": "1/20", "effect": "the ring's 5% fracture self-heal. If injury_jaw == 0 (1000:b27b) and injury_leg != 0 (1000:b282): clear injury_leg (1000:b289) and print file 0xA043. Then if injury_jaw != 0 (1000:b2a7): clear injury_jaw (1000:b2ae) and print file 0xA06B." },
         { "range": "1..19", "p": "19/20", "effect": "nothing" }
       ],
-      "tier": "flow",
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 25, "observed_n": [20], "observed_n_by_run": {"E": [20]}},
       "note": "1/20 = the 5% the ring's own description string (file 0x53DD) advertises"
     },
 
@@ -186,7 +204,8 @@
         { "range": "0 .. luck", "effect": "theft succeeds -> draw 11" },
         { "range": "luck+1 .. chapter*20-1", "effect": "theft fails, nothing printed" }
       ],
-      "tier": "flow",
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 50, "observed_n": [20, 60], "observed_n_by_run": {"B": [20], "E": [60]}},
       "note": "this is the 'Бонус - Воровство' the creation menu advertises (file 0x8059)"
     },
     { "seq": 22, "kind": "draw", "draw_ordinal": 11, "at": "1000:b321", "bytes": "9a 4b 11 78 0f", "n_expr": "chapter * 5", "n_at": "1000:b313", "n_bytes": "a0 92 36 30 e4 8b f0 d1 e0 d1 e0 01 f0 50",
@@ -195,7 +214,8 @@
       "buckets": [
         { "range": "0 .. chapter*5-1", "effect": "theft_amount := result + 1 (1000:b326); money += theft_amount (1000:b32a..1000:b32d); print file 0xA096 with theft_amount" }
       ],
-      "tier": "flow"
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 16, "observed_n": [5, 15], "observed_n_by_run": {"B": [5], "E": [15]}}
     },
 
     { "seq": 23, "kind": "draw", "draw_ordinal": 12, "at": "1000:b353", "bytes": "9a 4b 11 78 0f", "n": 25, "n_at": "1000:b34d", "n_bytes": "b8 05 00 f7 e8 50",
@@ -209,7 +229,8 @@
         { "range": "10..25", "p": "16/25", "wander_bucket": 4, "at": "1000:b35c/1000:b363", "effect": "flavour only: branches on buff_countdown and writes name-keyed flavour (1000:b836..)" }
       ],
       "note": "the immediate is built as `mov ax,5 / imul ax`, i.e. AX*AX = 25 -- Random(25). The comparison chain runs highest boundary first; a value that matches no arm would leave wander_bucket unchanged, which the church routine exploits (see draw 13).",
-      "tier": "flow"
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 86, "observed_n": [25], "observed_n_by_run": {"A": [25], "B": [25], "C": [25], "D": [25], "E": [25]}}
     },
 
     { "seq": 24, "kind": "draw", "draw_ordinal": 13, "at": "1000:b39e", "bytes": "9a 4b 11 78 0f", "n": 200, "n_at": "1000:b39a", "n_bytes": "b8 c8 00 50",
@@ -219,7 +240,8 @@
         { "range": "0", "p": "1/200", "effect": "call 1000:7c67 -- the church event. See `nested_routines.church`. It spends 1, 2 or 3 further draws (draw 15 always; plus draw 16 on the `== 1` arm; plus draws 17 and 18, inside the level-up routine 1000:2526, on the `== 0` arm below level 40) and ALWAYS clears wander_bucket, so no encounter happens this turn." },
         { "range": "1..199", "p": "199/200", "effect": "nothing" }
       ],
-      "tier": "flow"
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 86, "observed_n": [200], "observed_n_by_run": {"A": [200], "B": [200], "C": [200], "D": [200], "E": [200]}}
     },
     { "seq": 25, "kind": "draw", "draw_ordinal": 14, "at": "1000:b3ae", "bytes": "9a 4b 11 78 0f", "n": 100, "n_at": "1000:b3aa", "n_bytes": "b8 64 00 50",
       "gate": null,
@@ -228,7 +250,8 @@
         { "range": "0", "p": "1/100", "effect": "call 1000:7538 -- the wandering mage's paid save. Spends NO draws, does not touch wander_bucket, but does block on a ReadLn. See `nested_routines.mage`." },
         { "range": "1..99", "p": "99/100", "effect": "nothing" }
       ],
-      "tier": "flow"
+      "tier": "flow, corroborated by live trace",
+      "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 86, "observed_n": [100], "observed_n_by_run": {"A": [100], "B": [100], "C": [100], "D": [100], "E": [100]}}
     },
 
     { "seq": 26, "kind": "dispatch", "at": "1000:b3ba", "bytes": "a0 70 39", "what": "al := wander_bucket, then the cmp chain 1 (1000:b3bd) -> 2 (1000:b4e8) -> 3 (1000:b5ae) -> otherwise bucket 4 (1000:b836)", "tier": "flow" }
@@ -255,7 +278,8 @@
             { "range": "3", "p": "1/5", "effect": "unk_38b2 += 1 (1000:81e9), message file 0x9476" },
             { "range": "4", "p": "1/5", "effect": "pontovost_street += chapter*50 + 50 (1000:820d..1000:821a), message files 0x9493 and 0x94CC" }
           ],
-          "tier": "flow" },
+          "tier": "flow, corroborated by live trace",
+          "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 2, "observed_n": [5], "observed_n_by_run": {"C": [5], "D": [5]}} },
         { "draw_ordinal": 16, "at": "1000:7fff", "bytes": "9a 4b 11 78 0f", "n": 4, "n_at": "1000:7ffb", "n_bytes": "b8 04 00 50",
           "gate": { "at": "1000:7ff3", "bytes": "3d 01 00 74 03", "cond": "draw 15 returned exactly 1", "note": "the first draft cited 1000:7f68 (`3d 00 00 74 03`) here. That instruction is `cmp ax,0x0 / jz 0x7f70` -- the ZERO arm, which is the forced level-up above, not this one. The `== 1` test is 1000:7ff3 `cmp ax,0x1` followed by 1000:7ff6 `jz 0x7ffb`; the fall-through at 1000:7ff8 is `jmp 0x80c0`, the `== 2` test." },
           "buckets": [
@@ -264,20 +288,23 @@
             { "range": "2", "p": "1/4", "effect": "vitality +1, hpmax +5, hp +5 (1000:808b..1000:8094)" },
             { "range": "3", "p": "1/4", "effect": "luck +1 (1000:80b9)" }
           ],
-          "tier": "flow" },
+          "tier": "flow, corroborated by live trace",
+          "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 1, "observed_n": [4], "observed_n_by_run": {"D": [4]}} },
         { "draw_ordinal": 17, "at": "1000:25fe", "bytes": "9a 4b 11 78 0f", "n_expr": "sum of the four class growth weights: byte[DS: class*4 + 2] + byte[DS: class*4 + 3] + byte[DS: class*4 + 4] + byte[DS: class*4 + 5], computed at 1000:25aa..1000:25ee into [bp-0x6]", "n_at": "1000:25fb", "n_bytes": "ff 76 fa",
           "gate": { "at": "1000:7f68", "cond": "draw 15 returned exactly 0 (1000:7f68 `cmp ax,0x0` / 1000:7f6b `jz 0x7f70`) AND, inside 1000:2526, level [0x38a6] != 40 (1000:2580 `cmp word [0x38a6],0x28` / 1000:2585 `jnz 0x258a`; reached because the church pushes param 0, tested at 1000:257a `cmp byte [bp+0x4],0x0`). At level 40 the routine jumps to 1000:28a0 and spends NO draw." },
           "buckets": [
             { "range": "0 .. weight_sum-1", "effect": "result+1 (1000:2603 `inc ax`, stored at [bp-0xa]) is compared against each class weight in turn (first at 1000:2607..1000:2618) to pick which stat gains a point; the chosen stat is incremented and a growth line printed" }
           ],
-          "tier": "flow",
+          "tier": "flow, corroborated by live trace",
+          "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 2, "observed_n": [12], "observed_n_by_run": {"C": [12]}},
           "note": "reached only through 1000:7fed `call 0x2526` -- the ONLY near call inside the church routine (a linear sweep of 1000:7c67..1000:82b2 that lands exactly on the epilogue finds `call 0x2526` at 1000:7fed and no other near call). 1000:25fe is the same site the whole-image byte scan for `9a 4b 11 78 0f` already reports." },
         { "draw_ordinal": 18, "at": "1000:25fe", "bytes": "9a 4b 11 78 0f", "n_expr": "same weight_sum as draw 17 -- [bp-0x6] is not recomputed between iterations", "n_at": "1000:25fb", "n_bytes": "ff 76 fa",
           "gate": { "at": "1000:287d", "bytes": "83 7e f8 02", "cond": "same gate as draw 17. The inner loop counter [bp-0x8] is initialised to 1 at 1000:25f1 (`c7 46 f8 01 00`), incremented at 1000:25f8, and the bound at 1000:287d is `cmp word [bp-0x8],0x2` / 1000:2881 `jz 0x2886` / 1000:2883 `jmp 0x25f8` -- exactly two iterations, so exactly two draws per level gained." },
           "buckets": [
             { "range": "0 .. weight_sum-1", "effect": "second stat point, same selection chain" }
           ],
-          "tier": "flow",
+          "tier": "flow, corroborated by live trace",
+          "live_trace": {"artifact": "data/rng_trace.json", "verdict": "corroborated", "observed_count": 2, "observed_n": [12], "observed_n_by_run": {"C": [12]}},
           "note": "the outer loop at 1000:2895 (`mov ax,[bp-0x4] / cmp ax,[bp-0xc] / jz 0x28a0`) repeats the pair once per level gained. The church always makes exactly one level ([bp-0xc] == 1), because 1000:7fe7 sets xp exactly equal to the threshold and the xp loop at 1000:2546..1000:255f therefore runs exactly once. So a church level-up is exactly TWO draws, never more." }
       ],
       "draw_ordinal_note": "ordinals 15..18 are labels, not positions in one linear stream. 15 always fires once the church is entered. 16 fires only on the `== 1` arm; 17 and 18 fire only on the `== 0` arm. The two arms are mutually exclusive, so a church turn spends 1 draw (arm 2/3/4, or arm 0 at level 40), 2 draws (arm 1), or 3 draws (arm 0 below level 40).",

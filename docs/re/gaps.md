@@ -374,11 +374,15 @@ The wander preamble is now fully catalogued as one ordered sequence, so the
 port's divergence there is a known quantity rather than an unknown one. These
 are the questions that pass left open, and the ones it created.
 
-* **The whole sequence is static-only.** Every one of the eighteen draws is
-  **established from flow** from the disassembly; **none** has been corroborated
-  by a live breakpoint. A `tools/qemu` run on a pinned seed that logs the
-  fourteen in-range sites in order — and the church's four when it fires — would
-  raise the whole catalogue a tier, and is the natural first step of Task 12.
+* ~~**The whole sequence is static-only.**~~ **Closed by Task 11d.** All
+  eighteen draws were observed in the running original — `tools/rngtrace`,
+  `docs/re/rng-trace.md`, `data/rng_trace.json`. Five runs, 1387 draws, each
+  fired at the catalogued site with the catalogued `n` (the two computed ones
+  checked at two districts), in the catalogued order, and **nothing was
+  contradicted**. The catalogue's tier is now **flow, corroborated by live
+  trace**. What that pass did *not* raise: probabilities still come from the
+  comparison constants and never from counting outcomes, and the fight-flow
+  questions below are untouched.
 * **`unk_38b2`.** `1000:81e9` increments this byte under
   `^1Накладываю на тебя защиту!` (file `0x9476`). No consumer was located.
   The name in `data/wander.json` stays `unk_38b2`.
@@ -397,6 +401,24 @@ are the questions that pass left open, and the ones it created.
   `[0x3c83]` — its only writes are `1000:7364` and `1000:ae13`. So on the face
   of the flow, once chapter 5 is reached the rector fight and the endgame fight
   run every turn. Whether `FUN_1000_3d11(4)` returns at all was not traced.
+* **Bucket 2's `Random(2)` is behind a typed `y`, and the port may not know
+  that.** New in Task 11d, **established from flow** and corroborated by a
+  breakpoint that did not fire. `1000:b4e8`'s arm is gated twice before it
+  reaches the draw at `1000:b54e`: `1000:b4ef` `cmp byte [0x3697],0x0` (skip
+  when the girl is already known, printing file `0xA24C`), and then a `ReadLn`
+  at `1000:b520` whose input is compared against the token `y` (file `0x9BF3`)
+  at `1000:b543`, with `1000:b548` `jnz 0xb590` skipping the draw when it does
+  not match. The live trace saw fourteen bucket-2 turns — seven of them with
+  the girl flag still clear — and `1000:b54e` never fired, because the harness
+  declines every question. `docs/re/METHODOLOGY.md`'s worked example describes
+  the `y` path correctly but does not mention either gate. **Open question for
+  the wander implementation:** `Game::wander_girl` spends a draw here; whether
+  it spends it on the same condition the original does was not checked by this
+  pass, and a draw spent unconditionally where the original spends it only
+  after a `y` puts the whole sequence out of step.
+* **The `y` path of bucket 2 was never driven**, so the `Random(2)` at
+  `1000:b54e` and the flag store at `1000:b570` are still static-only. One
+  `tools/rngtrace` run whose driver answers `y` would close it.
 * ~~**The mage's printed price disagrees with the charged price.**~~
   **Folded back in fix wave 1.** `docs/re/tables.md`'s "Other price sources"
   now records both halves — printed `chapter*25` at `1000:758d`, checked and
