@@ -29,8 +29,66 @@ the start instead of having ~20 `println!` sites rewritten afterwards.
 | 8 — RNG recovered and ported | complete, approved (1 fix wave) | `74adfdc`, `8fe47cc` |
 | 9 — combat math recovered + ported | complete, approved (2 fix waves) | `ab6b8d3`, `11eeea8`, `002c674` |
 | 9b — XP thresholds + stat growth | complete, approved (2 fix waves) | `e699366`, `faf55fe`, `c90e73b` |
+| 10 — item/shop/enemy tables | implemented + approved; 2 fix waves AWAITING RE-REVIEW | `17a23a0`, `0f83d5d`, `1b2b797` |
 
-**NEXT: Task 10** (item, shop and enemy tables).
+**NEXT: re-review Task 10's two fix waves, then Task 10b, then Task 11.**
+
+### RESUME HERE — exact state
+
+Task 10 is IMPLEMENTED and was APPROVED on first review, then had two fix waves
+applied which have NOT yet been re-reviewed:
+- `17a23a0` implementation (approved: no Critical/Important; every price, gate,
+  boss immediate and class weight re-derived from the binary by the reviewer,
+  and the artifacts regenerate byte-identically in a tree containing no Rust)
+- `0f83d5d` fix wave 1 — 2 Important + 6 Minor doc/consistency findings
+- `1b2b797` fix wave 2 — owner-directed runtime/provenance split
+
+**To resume:** `scripts/review-package 16b8171 HEAD` and dispatch a task
+reviewer over the whole range, or `0f83d5d^..HEAD` for just the two waves.
+
+### Task 10 outcome
+
+Items 15 · shops 18 (2 shops x 9) · enemies 13 (11 rank classes + 2 scripted
+bosses). Prices are NOT immediates — a 19-byte const array at `20ae:0b2e`,
+bounded by `ranks` ending exactly there and `krutizna` starting at `0b42`,
+read via `mov al,[20ae:0b2e+n]`. The Ghidra decompiler mangles the 16-bit
+far-call argument order, so rows were read from a real `ndisasm` disassembly.
+
+**There is NO enemy stat table and none was invented.** `FUN_1000_0d14` rolls
+classes 0..9 from the class-weight array at `20ae:0002`, so those 11 rows carry
+`level: null, stats: null`. The only fixed stat blocks are the two scripted
+Ректор НГУ fights at `FUN_1000_11c2`. Proven as a negative by an
+immediate-store scan: `C7 06 <5439|5639|5839|5A39>` occurs at exactly two
+sites, both inside `1000:11c2`.
+
+**An original bug is reproduced, not fixed:** `bmar` row 9 prints `[20ae:0b3f]`
+(70) but charges `[20ae:0b40]` (60). Both values are runtime fields; a test
+pins the asymmetry; an oracle screen shows `Бабки 970 -> 910`.
+
+**Runtime/provenance split (owner-directed, done in `1b2b797`).** The game
+binary embeds ONLY runtime fields. Addresses live in
+`data/{items,shops,enemies}.provenance.json`, keyed by `id` (shops by
+`"<shop>:<key>"`, e.g. `"bmar:9"`). `charged` was judged provenance — it is a
+cross-check, always true for all 18 rows, and no gameplay branch reads it.
+`code_off`/`prefix_off`/`text_off` were never on the struct at all; serde was
+silently dropping them.
+
+**13 of 15 items have `price: null`, split into two distinct cases** — `sold:
+false` for loot-only items (`Тесак`, `Нож`, `Крестик`, the rings, verified
+against the wandering-encounter find table) and pending for the suits/jackets
+sold under paraphrased names. Only `Кастет` (25) and `Дубинка` (50) are priced.
+The boots ambiguity is the one genuinely undecidable case.
+
+**Two Ghidra citations were file offsets wearing a segment prefix** — the
+classic `0x2af8 - 0x18d0 = 0x1228` confusion. Both fixed, and an audit of every
+other paired citation found one more (`1000:aeb1`/`aebd` -> `1000:ae27`/`ae33`).
+`file_off = 0x18d0 + (seg - 0x1000)*16 + off`. **Watch for this.**
+
+**`data/other_price_sites.json` records 11 further price sites** (Клуб rows at
+15 and 22, a computed `district*50` save charge at `1000:761d`, and 9 still
+unidentified). Task 11 should start there rather than rediscovering them. NOTE:
+it is hand-verified rather than script-generated, unlike every other
+`data/*.json` — flag for the final review.
 
 ### Task 9b outcome
 
