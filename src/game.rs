@@ -249,10 +249,24 @@ impl Game {
     /// `20ae:3694`..`20ae:369a` (see [`Game::undiscovered_line`]).
     ///
     /// A refused entry only prints. It does **not** discover the place: the
-    /// original's flags are set elsewhere (`girl` sets the club's flag at
-    /// `1000:d751`; the wander path sets the den's at `1000:b575`), never by
-    /// a failed entry. This port does not yet implement any discovery path,
-    /// so the flags stay clear -- an honest gap, not a substituted mechanic.
+    /// original's flags are set elsewhere, never by a failed entry.
+    ///
+    /// Two of those setters are implemented here, both established from
+    /// flow and both re-derived from `orig/g.exe`:
+    ///
+    /// * `1000:d751` `c6 06 99 36 01` -- `mov byte [0x3699],1`, the
+    ///   **club's** flag, set by `girl` ([`Game::visit_girl`]).
+    /// * `1000:b570` `c6 06 97 36 01` -- `mov byte [0x3697],1`, the
+    ///   **girl's** flag, set by the wander path's bucket 2
+    ///   ([`Game::wander_girl`]). `1000:b575` is the `eb 19` `jmp` that
+    ///   follows the store, not the store; and `0x3697` is the girl's flag,
+    ///   not the den's -- the den is `0x3696` (gate `1000:d80c`), the girl
+    ///   `0x3697` (gate `1000:d6f7`). An earlier revision of this comment
+    ///   got both wrong.
+    ///
+    /// So `w` -> girl -> club is a real, reachable chain. The remaining five
+    /// flags are set by wander events this port does not model; they are
+    /// listed with their addresses in `docs/re/gaps.md`.
     fn enter_shop(&mut self, loc: Location) {
         if !self.places.is_found(loc) {
             term::println(Self::undiscovered_line(loc));
@@ -594,17 +608,35 @@ impl Game {
     ///   25-wander counter `docs/re/tables.md` already documents at
     ///   `20ae:3e32`), each gated by its own `Random()` roll and a
     ///   never-repeat flag. **Not reproduced** -- there are too many to
-    ///   catalogue in this task's remaining budget; see task-11-report.md.
-    /// * `1000:b358` (within the *district-transition* preamble, a
-    ///   structurally identical branch) rolls `Random(25)+1` bucketed into
-    ///   1/2-4/5-9/10-25. The regular-turn path (`1000:b4e8`..`1000:b5ae`)
-    ///   branches on the same four-way value read from the same variable
-    ///   (`DS:3970`) via a chain of `cmp al,N` checks, strongly suggesting
-    ///   it reuses the same roll -- **this task did not find the specific
-    ///   `Random` call feeding the regular-turn branch**, so reusing the
-    ///   district-transition roll's bucketing here is an assumption, not a
-    ///   confirmed fact. Bucket 3 (`1000:b5ae`, `cmp al,3`) is the one that
-    ///   leads into `FUN_1000_0d14` (the encounter generator).
+    ///   catalogue in this task's remaining budget; see
+    ///   `docs/re/gaps.md`, "Wander preamble".
+    /// * **The four-way bucket roll -- established from flow.** Earlier
+    ///   revisions of this doc called the roll an assumption ("the specific
+    ///   `Random` call feeding the regular-turn branch was not found"). It
+    ///   has now been found, and it is the same one: `1000:b34d`
+    ///   `mov ax,5` / `1000:b350` `f7 e8` `imul ax` (`DX:AX := AX*AX`, i.e.
+    ///   **25**) / `1000:b352` `push ax` / `1000:b353` `call Random` /
+    ///   `1000:b358` `inc ax` / `1000:b359` `mov [0x3971],al`. The result is
+    ///   then bucketed into `DS:3970` by four independent compares:
+    ///   `1000:b35c` (`>= 0x0a` gives bucket 4), `1000:b368` with
+    ///   `1000:b36f` (`5..=9` gives 3), `1000:b37b` with `1000:b382`
+    ///   (`2..=4` gives 2), `1000:b38e` (`== 1` gives 1). It is dispatched
+    ///   at `1000:b3ba` (`mov al,[0x3970]`) through `cmp al,1`
+    ///   (`1000:b3bd`), `cmp al,2` (`1000:b4e8`), `cmp al,3` (`1000:b5ae`)
+    ///   and `cmp al,4` (`1000:b82f`). `1000:b34d` is reached
+    ///   unconditionally on the walk path: every arm of the preceding
+    ///   `[0x389c]` switch converges on it (`1000:b2e1` and `1000:b2e8`
+    ///   `jmp 0xb34d`, `1000:b2ed` `jnz 0xb34d`, and the `== 6` arm falls
+    ///   through it at `1000:b34b`).
+    /// * **Bucket 1** (`1000:b3c4`) toggles `[0x3693]` and writes one
+    ///   district-keyed flavour line from either of two sets
+    ///   (`1000:b3db`.. and `1000:b465`..). Sets no discovery flag; not
+    ///   modelled -- see `docs/re/gaps.md`.
+    /// * **Bucket 2** (`1000:b4ef`) is the girl encounter, implemented by
+    ///   [`Game::wander_girl`].
+    /// * **Bucket 3** (`1000:b5b5`) is the fight encounter, below.
+    /// * **Bucket 4** (`1000:b836`) is the stoned-counter (`[0x38cd]`)
+    ///   flavour path; sets no discovery flag, not modelled.
     /// * `1000:b5b8` -- `call FUN_1000_0d14` (rolls the enemy).
     /// * `1000:b6a6`..`1000:b6dd` -- writes `^6Идет ` (file `0xA267`), the
     ///   rank name, and ` # уровня, ищущий кого отпинать. Хочешь наехать?`
@@ -637,8 +669,8 @@ impl Game {
     /// the rolled enemy's class via `1000:b5fc`, which this task did not
     /// trace. This port always takes the `Random(2)` branch.
     fn walk(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
-        // 1000:b358's roll, reused here per the doc above (unverified for
-        // this exact call site).
+        // 1000:b34d..1000:b359: Random(5*5) + 1, bucketed at 1000:b35c..
+        // 1000:b393 and dispatched at 1000:b3ba.
         let roll = self.rng.below(25) + 1;
         let bucket = if roll == 1 {
             1
@@ -649,8 +681,12 @@ impl Game {
         } else {
             4
         };
-        if bucket != 3 {
-            return Ok(());
+        match bucket {
+            2 => return self.wander_girl(lines),
+            3 => {}
+            // Buckets 1 (1000:b3c4) and 4 (1000:b836) are flavour-only and
+            // are not modelled; see this function's doc and docs/re/gaps.md.
+            _ => return Ok(()),
         }
 
         let enemy = self.pick_enemy();
@@ -672,6 +708,69 @@ impl Game {
             self.run_combat(enemy, lines)?;
         } else {
             term::println("^2Ты смылся.");
+        }
+        Ok(())
+    }
+
+    /// Wander bucket 2 -- **the girl discovery event**, and the only
+    /// discovery path this port implements. Established from flow, every
+    /// instruction of `1000:b4e8`..`1000:b5ab` re-derived from `orig/g.exe`:
+    ///
+    /// * `1000:b4e8` `3c 02` -- `cmp al,2`, the bucket test; `1000:b4ea`
+    ///   `jz 0xb4ef` selects this branch.
+    /// * `1000:b4ef` `80 3e 97 36 00` -- `cmp byte [0x3697],0`, the
+    ///   **girl's** discovery flag (the gate `girl` itself reads at
+    ///   `1000:d6f7`; the den is `0x3696`, gate `1000:d80c`). Non-zero --
+    ///   already found -- jumps to `1000:b592`, which writes
+    ///   `Совсем ничё не происходит.` (file `0xA24C`) and ends the turn.
+    /// * `1000:b4f9` -- writes `^5Идет типа клёвая цыпа. Хочешь её
+    ///   зацепить?` (file `0xA19E`).
+    /// * `1000:b512`..`1000:b52a` -- `ReadLn` into `DS:3a72`, the same
+    ///   second input variable the fight encounter and the locations use,
+    ///   **not** the line-level `DS:3972`.
+    /// * `1000:b534` -- `call 0eed:0216`, the case-fold `entry` applies to
+    ///   every typed line, so the answer is case-insensitive.
+    /// * `1000:b543`/`1000:b548` -- compared against the literal `"y"`
+    ///   (file `0x9BF3`, `01 79`); `75 46` (`jnz 0xb590`) means **any other
+    ///   answer writes nothing at all** and ends the turn -- there is no
+    ///   decline message on this branch, unlike the fight encounter's.
+    /// * `1000:b54a`..`1000:b553` -- `Random(2)`, then `09 c0` (`or ax,ax`)
+    ///   and `75 20` (`jnz 0xb577`).
+    ///   * `ax == 0` falls through to `1000:b557`: writes `^5Ты такой
+    ///     подкатываешь, а она:"Глянулся ты мне парниша"` (file `0xA1CB`)
+    ///     and then `1000:b570` `c6 06 97 36 01` -- `mov byte [0x3697],1`,
+    ///     the flag being **set**. (`1000:b575` is the `eb 19` `jmp` after
+    ///     it, not the setter.)
+    ///   * `ax != 0` jumps to `1000:b577`: writes `^4Ты ещё подкатить
+    ///     неуспел - а она:"Отдыхай урод". - Тебя обломали кент` (file
+    ///     `0xA204`) and leaves the flag clear.
+    ///
+    /// Exactly one `Random` draw on the `"y"` path and none on any other,
+    /// matching the single `call` at `1000:b54e`.
+    fn wander_girl(
+        &mut self,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<()> {
+        if self.places.is_found(Location::Girl) {
+            term::println("Совсем ничё не происходит.");
+            return Ok(());
+        }
+        term::println("^5Идет типа клёвая цыпа. Хочешь её зацепить?");
+        let Some(line) = lines.next() else {
+            self.running = false;
+            return Ok(());
+        };
+        let answer = line?;
+        if !answer.trim().eq_ignore_ascii_case("y") {
+            return Ok(());
+        }
+        if self.rng.below(2) == 0 {
+            term::println("^5Ты такой подкатываешь, а она:\"Глянулся ты мне парниша\"");
+            self.places.mark_found(Location::Girl);
+        } else {
+            term::println(
+                "^4Ты ещё подкатить неуспел - а она:\"Отдыхай урод\". - Тебя обломали кент",
+            );
         }
         Ok(())
     }
@@ -1558,6 +1657,14 @@ mod tests {
     /// Replays `walk`'s draws for `seed` and reports the `Random(2)` the
     /// decline branch would see, or `None` when the wander roll does not
     /// produce an encounter at all.
+    ///
+    /// **What this can and cannot catch.** It re-runs the same draw sequence
+    /// `walk` runs, so it pins which *arm* a given roll takes and would fail
+    /// if the branch were inverted -- but it is not an independent oracle
+    /// for the draws themselves. If `walk` gained, lost or reordered a
+    /// `Random` call, this helper would drift with it and stay green. Only
+    /// the disassembly (and a live trace of the `Random` call sites) settles
+    /// the draw count and order.
     fn decline_roll_for(seed: u32) -> Option<u16> {
         let mut g = Game::new(player(), Progress::new(), seed);
         let roll = g.rng.below(25) + 1;
@@ -1618,6 +1725,110 @@ mod tests {
         let mut g = Game::new(player(), Progress::new(), seed);
         g.walk(&mut input(&["Y"])).unwrap(); // 0eed:0216 case-folds first
         assert!(!g.running, "an accepted encounter must enter combat");
+    }
+
+    /// The first seed whose wander roll lands in bucket 2 (`2..=4`, the
+    /// girl event) and whose following `Random(2)` equals `want`. Same
+    /// caveat as [`decline_roll_for`]: it replays `walk`'s own draws, so it
+    /// pins the branch, not the draw sequence.
+    fn girl_seed_with_roll(want: u16) -> u32 {
+        (1u32..40_000)
+            .find(|&seed| {
+                let mut g = Game::new(player(), Progress::new(), seed);
+                let roll = g.rng.below(25) + 1;
+                (2..=4).contains(&roll) && g.rng.below(2) == want
+            })
+            .unwrap_or_else(|| panic!("no seed produced a girl event with Random(2) == {want}"))
+    }
+
+    /// **CRITICAL.** `1000:b54e`'s `Random(2)` returning **0** reaches
+    /// `1000:b570` (`c6 06 97 36 01`), which sets the *girl's* flag
+    /// `20ae:3697`. This is the only discovery path the port implements and
+    /// the only reason any location is reachable in a real session.
+    #[test]
+    fn wander_bucket_two_discovers_the_girl_on_roll_zero() {
+        let seed = girl_seed_with_roll(0);
+        let mut g = Game::new(player(), Progress::new(), seed);
+        assert!(!g.places.is_found(Location::Girl));
+        g.walk(&mut input(&["y"])).unwrap();
+        assert!(
+            g.places.is_found(Location::Girl),
+            "Random(2) == 0 must set 20ae:3697 (seed {seed})"
+        );
+        // The flag is the girl's, not the den's: 0x3696 stays clear.
+        assert!(!g.places.is_found(Location::Den));
+        assert!(g.running, "the girl event never enters combat");
+    }
+
+    /// A non-zero `Random(2)` jumps to `1000:b577`, writes the brush-off and
+    /// leaves `20ae:3697` clear.
+    #[test]
+    fn wander_bucket_two_leaves_the_flag_clear_on_a_non_zero_roll() {
+        let seed = girl_seed_with_roll(1);
+        let mut g = Game::new(player(), Progress::new(), seed);
+        g.walk(&mut input(&["y"])).unwrap();
+        assert!(
+            !g.places.is_found(Location::Girl),
+            "Random(2) != 0 must not set 20ae:3697 (seed {seed})"
+        );
+    }
+
+    /// `1000:b548` `75 46`: any answer but `y` skips the `Random(2)`
+    /// entirely and ends the turn, so declining must neither discover the
+    /// girl nor consume a draw.
+    #[test]
+    fn declining_the_girl_sets_nothing_and_spends_no_draw() {
+        let seed = girl_seed_with_roll(0);
+        let mut g = Game::new(player(), Progress::new(), seed);
+        g.walk(&mut input(&["n"])).unwrap();
+        assert!(!g.places.is_found(Location::Girl));
+        // The declined turn spent only the bucket roll, so the next draw is
+        // still the Random(2) the accepted turn would have seen.
+        assert_eq!(g.rng.below(2), 0, "the decline branch must not draw");
+    }
+
+    /// `1000:b4ef`'s non-zero arm (`1000:b592`) writes
+    /// `Совсем ничё не происходит.` and reads no input at all -- so an
+    /// already-discovered girl must not consume a line from the script.
+    #[test]
+    fn wander_bucket_two_reads_no_input_once_the_girl_is_known() {
+        let seed = girl_seed_with_roll(0);
+        let mut g = Game::new(player(), Progress::new(), seed);
+        g.places.mark_found(Location::Girl);
+        let mut lines = input(&["y"]);
+        g.walk(&mut lines).unwrap();
+        assert!(g.running);
+        assert!(
+            lines.next().is_some(),
+            "the already-found arm must not ReadLn"
+        );
+    }
+
+    /// The chain the CRITICAL finding was about: wander discovers the girl,
+    /// `girl` then discovers the club. Both flags come from real setters
+    /// (`1000:b570`, `1000:d751`).
+    #[test]
+    fn wander_then_girl_makes_the_club_reachable() {
+        let seed = girl_seed_with_roll(0);
+        let mut g = Game::new(player(), Progress::new(), seed);
+        g.player.money = 100;
+        g.walk(&mut input(&["y"])).unwrap();
+        assert!(g.places.is_found(Location::Girl));
+        // visit_girl's own Random(2) must come up 0 for the club reveal;
+        // drive it until it does, which the player can do by revisiting.
+        for _ in 0..40 {
+            if g.places.is_found(Location::Club) {
+                break;
+            }
+            g.player.money = 100;
+            g.dispatch(Command::Girl, &mut no_input()).unwrap();
+        }
+        assert!(
+            g.places.is_found(Location::Club),
+            "girl must be able to reveal the club (seed {seed})"
+        );
+        g.dispatch(Command::Club, &mut no_input()).unwrap();
+        assert_eq!(g.mode, Mode::Shop(Location::Club));
     }
 
     /// I7: a dead player ends the game (`1000:5053` -> `FUN_1000_074b(0)`,
