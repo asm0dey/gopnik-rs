@@ -102,13 +102,66 @@ on a SIGTERM). `capture.py` fails with `OracleError` rather than hanging:
 
 ## Determinism
 
-Three consecutive runs of the intro script, and two more including a `w`
-(wander) command whose outcome is drawn by the game's RNG, produced
-byte-identical `SCREEN.BIN` files (`md5 4447e10a…` and `1c9a769c…`
-respectively). The smoke test re-checks this on every run by capturing the
-same script twice and comparing the raw bytes. Nothing has yet been observed
-to vary between runs — noteworthy because a `Randomize` seeded from the
-timer would have shown up here immediately.
+**Correction (fix wave 1, 2026-08-18):** this section previously claimed
+that repeated runs including a `w` (wander) command — RNG-driven — came
+back byte-identical, and read that as proof the emulator's `Randomize` seed
+does not vary between runs. That was wrong, and has been checked directly:
+see "Determinism under the emulator" in `docs/re/rng.md` for the full
+evidence. The short version, because it matters for anything built on this
+file: **two different things were being called "determinism", and only one
+of them is actually true.**
+
+- **Deterministic by construction, and true:** key delivery itself (the
+  Nth scripted key always answers the Nth blocking read, at any emulator
+  speed — see "Key injection" above), and any script whose printed text
+  never depends on a value `Random`/`@Rand` produced after the game's own
+  `Randomize` call. The intro-to-prompt walk (`capture.INTRO_KEYS +
+  "e\n\n"`, what `test_oracle_smoke.py::test_capture` actually exercises)
+  is one such script — every screen on that path is either a scripted
+  prompt or fixed flavour text, so of course it reproduces: there is
+  nothing in it that RNG state could change. Confirmed again for this fix,
+  with real 20-second gaps between runs (not just back-to-back, which is
+  all the smoke test itself does): three runs, one hash,
+  `4447e10ac1c3f02a0519f5d833d85054`.
+- **Not deterministic, and was wrongly reported as if it were:** any screen
+  whose content is drawn from `Random` after `Randomize` has run — which
+  is every real run, since `Randomize` reseeds from `INT 21h/AH=2Ch` (the
+  live system clock, confirmed to track real wall-clock time under this
+  DOSBox-X config and version) once per run, unconditionally. A script
+  that actually reaches this territory — `capture.INTRO_KEYS` followed by
+  fifty `w\n` wander commands — produced three *different* `SCREEN.BIN`
+  captures across three runs with real ~15-second gaps between them,
+  diverging as early as frame 18 of 114, with a different enemy type and
+  level generated on the first encounter each time. Full md5s and frame
+  detail are in `docs/re/rng.md`.
+
+The old note's `w`-inclusive test used a single `w` per run (not fifty),
+which mostly draws the low-probability "nothing happens" branch regardless
+of seed, and it is not recorded whether those two runs had any real
+wall-clock gap between them at all — both are exactly the conditions under
+which a genuinely varying seed can still produce "byte-identical" output by
+chance. That old script and its `1c9a769c…` hash were never committed, so
+this cannot be re-run to confirm the guess, but the walking-script result
+above is sufficient on its own to overturn the "would have shown up here
+immediately" conclusion.
+
+The smoke test's own repeat-same-script check (capturing `SCRIPT` — the
+intro-only script — twice and comparing raw bytes) is still valid and still
+passes; it demonstrates the key-delivery mechanism is reproducible, which is
+what it was actually built to prove. It does not, and was never positioned
+to, prove anything about the RNG.
+
+**Consequence for Task 12:** a differential test cannot compare raw oracle
+output for any screen that depends on an RNG draw taken after `Randomize`
+runs — under this DOSBox-X config, every fresh emulator invocation reseeds
+from the live clock, so such a screen will not even reproduce against
+*itself* run to run, let alone against the Rust port's output for a chosen
+seed. Task 12 will need one of: restrict comparisons to RNG-independent
+screens/quantities; patch a copy of `orig/g.exe` in the oracle workdir to
+skip the `call` at `1000:6a0d` that reaches `Randomize` so `RandSeed` stays
+at its load-image value on the oracle side, and seed the Rust port to match;
+or find and pin an emulator-level clock override (not attempted here). This
+file does not choose between those — that decision belongs to Task 12.
 
 ## Key scripts
 

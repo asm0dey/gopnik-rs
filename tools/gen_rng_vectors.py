@@ -77,6 +77,11 @@ class Cpu:
         self.r[reg] = t & 0xFFFF
 
     def mul16(self, src):
+        # NOTE: unlike add16, this does not touch self.cf, and neither do the
+        # shifts or the set_hi-based byte adds below -- cf is stale after all
+        # of them. Harmless here (every `adc dx,0` in these two routines is
+        # immediately preceded by an `add`, so cf is always fresh when read),
+        # but a trap if this interpreter is ever reused for another routine.
         p = self.r["ax"] * src
         self.r["ax"] = p & 0xFFFF
         self.r["dx"] = (p >> 16) & 0xFFFF
@@ -195,29 +200,43 @@ def main():
         "RandSeed is not zero in the load image"
     )
 
-    seed = 0
-    cpu = Cpu(data, base)
-    cpu.seed(seed)
-    raw = [cpu.next_u32() for _ in range(96)]
+    # Two seeds: 0 is arbitrary (any seed is as valid as any other for an
+    # LCG -- see docs/re/rng.md); 0xFFFFFFFF is not arbitrary, it pins the
+    # wrapping_mul boundary (the multiply's top bits are all set going in)
+    # on the Rust side directly, from the original's own bytes, instead of
+    # relying on Rust's wrapping-arithmetic semantics matching the 8086's
+    # unverified.
+    seeds = [0, 0xFFFFFFFF]
+    entries = []
+    for seed in seeds:
+        cpu = Cpu(data, base)
+        cpu.seed(seed)
+        raw = [cpu.next_u32() for _ in range(96)]
 
-    # Independent algebraic cross-check of the same bytes: the interpreter
-    # result must equal the closed form read off the disassembly. A mismatch
-    # means one of the two readings is wrong -- fail loudly rather than emit.
-    s = seed
-    for i, got in enumerate(raw):
-        s = (s * 0x08088405 + 1) & 0xFFFFFFFF
-        if s != got:
-            sys.exit(f"interpreter/closed-form mismatch at index {i}: {got:#010x} != {s:#010x}")
+        # Independent algebraic cross-check of the same bytes: the interpreter
+        # result must equal the closed form read off the disassembly. A
+        # mismatch means one of the two readings is wrong -- fail loudly
+        # rather than emit.
+        s = seed
+        for i, got in enumerate(raw):
+            s = (s * 0x08088405 + 1) & 0xFFFFFFFF
+            if s != got:
+                sys.exit(
+                    f"seed {seed:#010x}: interpreter/closed-form mismatch at "
+                    f"index {i}: {got:#010x} != {s:#010x}"
+                )
 
-    # Moduli that appear as literal Random(n) arguments in the game code.
-    # 100 -> FUN_1000_3d11:245, 51 -> FUN_1000_0d14:22, 10 -> FUN_1000_3d11:143,
-    # 6   -> FUN_1000_0d14:118, 3  -> FUN_1000_3d11:259, 2 -> FUN_1000_0d14:54.
-    moduli = [100, 51, 10, 6, 3, 2]
-    below = []
-    for n in moduli:
-        c = Cpu(data, base)
-        c.seed(seed)
-        below.append({"n": n, "expected": [c.below(n) for _ in range(64)]})
+        # Moduli that appear as literal Random(n) arguments in the game code.
+        # 100 -> FUN_1000_3d11:245, 51 -> FUN_1000_0d14:22, 10 -> FUN_1000_3d11:143,
+        # 6   -> FUN_1000_0d14:118, 3  -> FUN_1000_3d11:259, 2 -> FUN_1000_0d14:54.
+        moduli = [100, 51, 10, 6, 3, 2]
+        below = []
+        for n in moduli:
+            c = Cpu(data, base)
+            c.seed(seed)
+            below.append({"n": n, "expected": [c.below(n) for _ in range(64)]})
+
+        entries.append({"seed": seed, "next_u32": raw, "below": below})
 
     OUT.write_text(
         json.dumps(
@@ -227,18 +246,22 @@ def main():
                     "tools/gen_rng_vectors.py, which decodes and interprets the "
                     "instruction bytes of @Rand (1f78:11a8) and Random(Word) "
                     "(1f78:114b) directly out of orig/g.exe. NOT generated from "
-                    "src/rng.rs. See docs/re/rng.md."
+                    "src/rng.rs. See docs/re/rng.md. Two seeds are covered: 0 "
+                    "(arbitrary) and 0xFFFFFFFF (pins wrapping_mul boundary "
+                    "behaviour)."
                 ),
                 "source": "orig/g.exe md5 10eb0af07a2d2f5e9da790df7058891c",
-                "seed": seed,
-                "next_u32": raw,
-                "below": below,
+                "seeds": entries,
             },
             indent=2,
         )
         + "\n"
     )
-    print(f"wrote {OUT} ({len(raw)} next_u32, {len(below)} below cases)")
+    print(
+        f"wrote {OUT} ({len(entries)} seeds, "
+        f"{sum(len(e['next_u32']) for e in entries)} next_u32, "
+        f"{sum(len(e['below']) for e in entries)} below cases)"
+    )
 
 
 if __name__ == "__main__":

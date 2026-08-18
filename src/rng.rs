@@ -12,6 +12,7 @@
 //! load image ships `RandSeed` (`20ae:367e`) as `0`.
 
 /// The original's `System.RandSeed`, stepped by the Borland Pascal LCG.
+#[derive(Debug, Clone)]
 pub struct Rng {
     state: u32,
 }
@@ -19,6 +20,18 @@ pub struct Rng {
 impl Rng {
     pub fn new(seed: u32) -> Rng {
         Rng { state: seed }
+    }
+
+    /// The current `RandSeed` value, e.g. to snapshot a generator for later
+    /// restoration (`state` / `set_state` round-trip).
+    pub fn state(&self) -> u32 {
+        self.state
+    }
+
+    /// Restore a previously read `state()`, e.g. to reset a generator to a
+    /// known point without allocating a new one.
+    pub fn set_state(&mut self, state: u32) {
+        self.state = state;
     }
 
     /// One step of `@Rand` (`1f78:11a8`):
