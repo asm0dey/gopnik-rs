@@ -1,0 +1,62 @@
+{
+ "krestik": {
+  "price_src": null,
+  "src_off": 12210
+ },
+ "kolco_gs": {
+  "price_src": null,
+  "src_off": 12231
+ },
+ "kolco_pg": {
+  "price_src": null,
+  "src_off": 12272
+ },
+ "mega_kolco": {
+  "price_src": null,
+  "src_off": 12295
+ },
+ "kolco_gp": {
+  "price_src": null,
+  "src_off": 12318
+ },
+ "butsy": {
+  "price_src": null,
+  "src_off": 12542
+ },
+ "pontovye_butsy": {
+  "price_src": null,
+  "src_off": 12564
+ },
+ "kastet": {
+  "price_src": "bmar:5 20ae:0b3c",
+  "src_off": 12590
+ },
+ "dubinka": {
+  "price_src": "bmar:6 20ae:0b3d",
+  "src_off": 12614
+ },
+ "nozh": {
+  "price_src": null,
+  "src_off": 12641
+ },
+ "tesak": {
+  "price_src": null,
+  "src_off": 12659
+ },
+ "kostyum_adidas": {
+  "price_src": null,
+  "src_off": 12862
+ },
+ "kostyum_abibas": {
+  "price_src": null,
+  "src_off": 12883
+ },
+ "krutaya_kozhanka": {
+  "price_src": null,
+  "src_off": 12915
+ },
+ "kozhanka": {
+  "price_src": null,
+  "src_off": 12937
+ }
+}

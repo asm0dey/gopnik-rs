@@ -3,9 +3,14 @@
 //! Nothing in this module *derives* anything: `data/items.json`,
 //! `data/shops.json` and `data/enemies.json` are produced by
 //! `tools/extract_tables.py` reading the original binary, and this file only
-//! deserialises them. See `docs/re/tables.md` for every Ghidra address and
-//! for the DOSBox-X oracle runs that confirmed the prices and the boss stat
-//! blocks on the original's own screens.
+//! deserialises them. These are the *runtime* files -- exactly the fields
+//! gameplay reads. `tools/extract_tables.py` also writes a sibling
+//! `data/{items,shops,enemies}.provenance.json` per table, recording which
+//! byte of `orig/g.exe` each fact came from; this module never reads those,
+//! deliberately, so a game loop can never see a Ghidra address. See
+//! `docs/re/tables.md`, "Runtime vs. provenance" for which file answers
+//! which question, and for the DOSBox-X oracle runs that confirmed the
+//! prices and the boss stat blocks on the original's own screens.
 //!
 //! Each loader returns an owned `Vec` rather than a `&'static [T]`, because
 //! `serde_json` cannot produce a `'static` slice without a `OnceLock`; add
@@ -36,8 +41,6 @@ pub struct Item {
     pub bonus: i32,
     pub effect: Option<String>,
     pub price: Option<i32>,
-    /// Where the shop price came from, when there is one.
-    pub price_src: Option<String>,
     /// `false` for the seven items the original only ever hands out as loot
     /// (a wandering-encounter find, not a purchase) -- these will never have
     /// a `price`, because nothing sells them. `true` for everything else,
@@ -45,8 +48,6 @@ pub struct Item {
     /// row uses a paraphrased name Task 10's verbatim match does not catch;
     /// see `docs/re/tables.md`, "Prices are deliberately null...".
     pub sold: bool,
-    /// File offset of the item's display string in `orig/g.exe`.
-    pub src_off: u32,
 }
 
 /// One line of a shop menu.
@@ -63,17 +64,11 @@ pub struct ShopEntry {
     /// The row's source text, `^N` markup and `#` placeholders intact.
     pub text: String,
     pub price: i32,
-    pub price_addr: String,
     pub displayed_price: i32,
-    pub displayed_price_addr: String,
-    /// True when a `sub [money],price` site in the original reads
-    /// `price_addr`, i.e. the row is really charged what this field says.
-    pub charged: bool,
     /// District requirement, e.g. `district>2`, or `None` when ungated.
     pub gate: Option<String>,
     /// Further conditions guarding the row, as raw memory comparisons.
     pub extra_gates: Vec<String>,
-    pub code_addr: String,
 }
 
 /// The stat block of a scripted (non-random) enemy.
@@ -107,7 +102,6 @@ pub struct Enemy {
     pub growth_weights: Vec<u16>,
     /// True when the original rolls this enemy rather than scripting it.
     pub generated: bool,
-    pub source: String,
 }
 
 impl Enemy {

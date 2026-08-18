@@ -11,8 +11,7 @@
    1,
    2
   ],
-  "generated": true,
-  "source": "1000:0d14 rolls stats from the weights at 20ae:0002; name from the `ranks` string table at 20ae:002e."
+  "generated": true
  },
  {
   "id": "nefor",
@@ -26,8 +25,7 @@
    2,
    3
   ],
-  "generated": true,
-  "source": "1000:0d14 rolls stats from the weights at 20ae:0006; name from the `ranks` string table at 20ae:002e."
+  "generated": true
  },
  {
   "id": "nark",
@@ -41,8 +39,7 @@
    2,
    2
   ],
-  "generated": true,
-  "source": "1000:0d14 rolls stats from the weights at 20ae:000a; name from the `ranks` string table at 20ae:002e."
+  "generated": true
  },
  {
   "id": "podtsan",
@@ -56,8 +53,7 @@
    3,
    3
   ],
-  "generated": true,
-  "source": "1000:0d14 rolls stats from the weights at 20ae:000e; name from the `ranks` string table at 20ae:002e."
+  "generated": true
  },
  {
   "id": "otmorozok",
@@ -71,8 +67,7 @@
    4,
    1
   ],
-  "generated": true,
-  "source": "1000:0d14 rolls stats from the weights at 20ae:0012; name from the `ranks` string table at 20ae:002e."
+  "generated": true
  },
  {
   "id": "gopnik",
@@ -86,8 +81,7 @@
    3,
    2
   ],
-  "generated": true,
-  "source": "1000:0d14 rolls stats from the weights at 20ae:0016; name from the `ranks` string table at 20ae:002e."
+  "generated": true
  },
  {
   "id": "vor",
@@ -101,8 +95,7 @@
    2,
    4
   ],
-  "generated": true,
-  "source": "1000:0d14 rolls stats from the weights at 20ae:001a; name from the `ranks` string table at 20ae:002e."
+  "generated": true
  },
  {
   "id": "bespredelschik",
@@ -116,8 +109,7 @@
    4,
    2
   ],
-  "generated": true,
-  "source": "1000:0d14 rolls stats from the weights at 20ae:001e; name from the `ranks` string table at 20ae:002e."
+  "generated": true
  },
  {
   "id": "ment",
@@ -131,8 +123,7 @@
    5,
    5
   ],
-  "generated": true,
-  "source": "1000:0d14 rolls stats from the weights at 20ae:0022; name from the `ranks` string table at 20ae:002e."
+  "generated": true
  },
  {
   "id": "manyachok",
@@ -146,8 +137,7 @@
    8,
    3
   ],
-  "generated": true,
-  "source": "1000:0d14 rolls stats from the weights at 20ae:0026; name from the `ranks` string table at 20ae:002e."
+  "generated": true
  },
  {
   "id": "rektor_ngu",
@@ -161,8 +151,7 @@
    0,
    0
   ],
-  "generated": false,
-  "source": "1000:0d9a clamps the rolled class to 9, so 1000:0d14 never produces this class and never reads the weights at 20ae:002a; name from the `ranks` string table at 20ae:002e, stats from the two scripted `_v0`/`_v1` rows below."
+  "generated": false
  },
  {
   "id": "rektor_ngu_v0",
@@ -186,8 +175,7 @@
    0,
    0
   ],
-  "generated": false,
-  "source": "1000:11c2 (file 0x2aac), param_1 == 0"
+  "generated": false
  },
  {
   "id": "rektor_ngu_v1",
@@ -211,7 +199,6 @@
    0,
    0
   ],
-  "generated": false,
-  "source": "1000:11c2 (file 0x2ad5), param_1 == 1"
+  "generated": false
  }
 ]

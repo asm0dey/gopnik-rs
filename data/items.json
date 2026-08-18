@@ -6,9 +6,7 @@
   "bonus": 2,
   "effect": "luck",
   "price": null,
-  "price_src": null,
-  "sold": false,
-  "src_off": 12210
+  "sold": false
  },
  {
   "id": "kolco_gs",
@@ -17,9 +15,7 @@
   "bonus": 1,
   "effect": "luck",
   "price": null,
-  "price_src": null,
-  "sold": false,
-  "src_off": 12231
+  "sold": false
  },
  {
   "id": "kolco_pg",
@@ -28,9 +24,7 @@
   "bonus": 1,
   "effect": "all",
   "price": null,
-  "price_src": null,
-  "sold": false,
-  "src_off": 12272
+  "sold": false
  },
  {
   "id": "mega_kolco",
@@ -39,9 +33,7 @@
   "bonus": 4,
   "effect": "all",
   "price": null,
-  "price_src": null,
-  "sold": false,
-  "src_off": 12295
+  "sold": false
  },
  {
   "id": "kolco_gp",
@@ -50,9 +42,7 @@
   "bonus": 0,
   "effect": "regen",
   "price": null,
-  "price_src": null,
-  "sold": false,
-  "src_off": 12318
+  "sold": false
  },
  {
   "id": "butsy",
@@ -61,9 +51,7 @@
   "bonus": 1,
   "effect": null,
   "price": null,
-  "price_src": null,
-  "sold": true,
-  "src_off": 12542
+  "sold": true
  },
  {
   "id": "pontovye_butsy",
@@ -72,9 +60,7 @@
   "bonus": 2,
   "effect": "damage",
   "price": null,
-  "price_src": null,
-  "sold": true,
-  "src_off": 12564
+  "sold": true
  },
  {
   "id": "kastet",
@@ -83,9 +69,7 @@
   "bonus": 2,
   "effect": null,
   "price": 25,
-  "price_src": "bmar:5 20ae:0b3c",
-  "sold": true,
-  "src_off": 12590
+  "sold": true
  },
  {
   "id": "dubinka",
@@ -94,9 +78,7 @@
   "bonus": 4,
   "effect": null,
   "price": 50,
-  "price_src": "bmar:6 20ae:0b3d",
-  "sold": true,
-  "src_off": 12614
+  "sold": true
  },
  {
   "id": "nozh",
@@ -105,9 +87,7 @@
   "bonus": 6,
   "effect": null,
   "price": null,
-  "price_src": null,
-  "sold": false,
-  "src_off": 12641
+  "sold": false
  },
  {
   "id": "tesak",
@@ -116,9 +96,7 @@
   "bonus": 9,
   "effect": "damage",
   "price": null,
-  "price_src": null,
-  "sold": false,
-  "src_off": 12659
+  "sold": false
  },
  {
   "id": "kostyum_adidas",
@@ -127,9 +105,7 @@
   "bonus": 2,
   "effect": null,
   "price": null,
-  "price_src": null,
-  "sold": true,
-  "src_off": 12862
+  "sold": true
  },
  {
   "id": "kostyum_abibas",
@@ -138,9 +114,7 @@
   "bonus": 1,
   "effect": null,
   "price": null,
-  "price_src": null,
-  "sold": true,
-  "src_off": 12883
+  "sold": true
  },
  {
   "id": "krutaya_kozhanka",
@@ -149,9 +123,7 @@
   "bonus": 4,
   "effect": null,
   "price": null,
-  "price_src": null,
-  "sold": true,
-  "src_off": 12915
+  "sold": true
  },
  {
   "id": "kozhanka",
@@ -160,8 +132,6 @@
   "bonus": 2,
   "effect": null,
   "price": null,
-  "price_src": null,
-  "sold": true,
-  "src_off": 12937
+  "sold": true
  }
 ]

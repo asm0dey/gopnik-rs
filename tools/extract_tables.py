@@ -22,6 +22,13 @@ never the Rust port:
 
 Every address in this file is documented in docs/re/tables.md.
 
+Each table is written as two files: `data/<table>.json` carries only what
+the game reads to play (the runtime file `src/data.rs` embeds), and
+`data/<table>.provenance.json` carries only where each fact came from in
+`orig/g.exe` -- addresses, file offsets, and the cross-checks that
+confirmed them. See docs/re/tables.md, "Runtime vs. provenance" for which
+file to read for what.
+
 Regenerate:  python3 tools/extract_tables.py
 Check:       python3 tools/test_extract_tables.py
 """
@@ -36,6 +43,9 @@ STRING_TABLES = ROOT / "data" / "string_tables.json"
 OUT_ITEMS = ROOT / "data" / "items.json"
 OUT_SHOPS = ROOT / "data" / "shops.json"
 OUT_ENEMIES = ROOT / "data" / "enemies.json"
+OUT_ITEMS_PROV = ROOT / "data" / "items.provenance.json"
+OUT_SHOPS_PROV = ROOT / "data" / "shops.provenance.json"
+OUT_ENEMIES_PROV = ROOT / "data" / "enemies.provenance.json"
 
 # ---------------------------------------------------------------------------
 # Segment arithmetic.
@@ -516,6 +526,98 @@ def parse_enemies(blob: bytes, ranks: list) -> list:
     return enemies
 
 
+# ---------------------------------------------------------------------------
+# Runtime / provenance split.
+#
+# Each table's own parser above still produces one row per item that mixes
+# what the game needs to play (name, price, stats...) with where in
+# orig/g.exe that fact was read (an address, a file offset, a cross-check
+# flag). The game has no business seeing the second kind -- see
+# docs/re/tables.md, "Runtime vs. provenance". These three `split_*`
+# functions are the only place that boundary is drawn; everything above them
+# still deals in one combined row per item, the way the original scans work
+# out most naturally.
+#
+# The provenance file for each table is a JSON object keyed by the row's
+# natural key -- `id` for items and enemies, `"<shop>:<key>"` for shop rows,
+# which have no `id` -- so any runtime row can be traced back to its bytes
+# with a single lookup.
+
+
+def split_items(items: list) -> tuple:
+    runtime = []
+    provenance = {}
+    for it in items:
+        runtime.append(
+            {
+                "id": it["id"],
+                "name": it["name"],
+                "kind": it["kind"],
+                "bonus": it["bonus"],
+                "effect": it["effect"],
+                "price": it["price"],
+                "sold": it["sold"],
+            }
+        )
+        provenance[it["id"]] = {
+            "price_src": it["price_src"],
+            "src_off": it["src_off"],
+        }
+    return runtime, provenance
+
+
+def split_shops(shops: list) -> tuple:
+    runtime = []
+    provenance = {}
+    for row in shops:
+        runtime.append(
+            {
+                "shop": row["shop"],
+                "key": row["key"],
+                "text": row["text"],
+                "price": row["price"],
+                "displayed_price": row["displayed_price"],
+                "gate": row["gate"],
+                "extra_gates": row["extra_gates"],
+            }
+        )
+        key = f'{row["shop"]}:{row["key"]}'
+        provenance[key] = {
+            "price_addr": row["price_addr"],
+            "displayed_price_addr": row["displayed_price_addr"],
+            # See docs/re/tables.md, "The row idiom": `charged` records
+            # whether *some* debit site in the binary reads `price_addr`,
+            # i.e. it is a cross-check on the extraction, not a fact the
+            # game reads to decide whether to charge -- every row is always
+            # charged its `price` when bought.
+            "charged": row["charged"],
+            "code_off": row["code_off"],
+            "code_addr": row["code_addr"],
+            "prefix_off": row["prefix_off"],
+            "text_off": row["text_off"],
+        }
+    return runtime, provenance
+
+
+def split_enemies(enemies: list) -> tuple:
+    runtime = []
+    provenance = {}
+    for e in enemies:
+        runtime.append(
+            {
+                "id": e["id"],
+                "name": e["name"],
+                "class": e["class"],
+                "level": e["level"],
+                "stats": e["stats"],
+                "growth_weights": e["growth_weights"],
+                "generated": e["generated"],
+            }
+        )
+        provenance[e["id"]] = {"source": e["source"]}
+    return runtime, provenance
+
+
 def write_json(path: pathlib.Path, payload) -> None:
     path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
@@ -533,12 +635,19 @@ def main() -> None:
     link_item_prices(items, shops)
     enemies = parse_enemies(blob, ranks)
 
-    write_json(OUT_ITEMS, items)
-    write_json(OUT_SHOPS, shops)
-    write_json(OUT_ENEMIES, enemies)
+    items_runtime, items_prov = split_items(items)
+    shops_runtime, shops_prov = split_shops(shops)
+    enemies_runtime, enemies_prov = split_enemies(enemies)
+
+    write_json(OUT_ITEMS, items_runtime)
+    write_json(OUT_ITEMS_PROV, items_prov)
+    write_json(OUT_SHOPS, shops_runtime)
+    write_json(OUT_SHOPS_PROV, shops_prov)
+    write_json(OUT_ENEMIES, enemies_runtime)
+    write_json(OUT_ENEMIES_PROV, enemies_prov)
     print(
-        f"wrote {len(items)} items, {len(shops)} shop rows, "
-        f"{len(enemies)} enemy rows"
+        f"wrote {len(items_runtime)} items, {len(shops_runtime)} shop rows, "
+        f"{len(enemies_runtime)} enemy rows (+3 provenance files)"
     )
 
 

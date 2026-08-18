@@ -2,6 +2,13 @@
 //! extracted from `orig/g.exe`. The expected values here are the ones the
 //! DOSBox-X oracle printed on the original's own screens -- see the
 //! "Oracle cross-checks" section of `docs/re/tables.md` for the runs.
+//!
+//! These tests exercise only runtime fields -- `Item`, `ShopEntry` and
+//! `Enemy` no longer carry a Ghidra address or file offset at all (see
+//! `docs/re/tables.md`, "Runtime vs. provenance"), so there is nothing
+//! provenance-shaped left here to assert on or to move to a
+//! `data/*.provenance.json` read; that split lives entirely in
+//! `tools/test_extract_tables.py`, which checks both files.
 
 use gopnik::data;
 use gopnik::progress::CLASS_WEIGHTS;

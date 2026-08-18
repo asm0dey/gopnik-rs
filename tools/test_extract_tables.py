@@ -7,6 +7,10 @@ reading of the same source* the extractor reads, not an independent oracle --
 their job is to stop the extractor drifting, and to fail loudly if a pattern
 scan silently stops matching.  The genuinely independent checks are the
 DOSBox-X oracle screens recorded in docs/re/tables.md.
+
+Each table checks two files: `data/<table>.json` (runtime -- exactly what
+the game reads) and `data/<table>.provenance.json` (where each runtime row's
+facts came from in orig/g.exe, keyed by the row's natural key).
 """
 import json
 import pathlib
@@ -18,6 +22,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 def test_items():
     items = json.loads((ROOT / "data" / "items.json").read_text(encoding="utf-8"))
+    prov = json.loads(
+        (ROOT / "data" / "items.provenance.json").read_text(encoding="utf-8")
+    )
 
     names = {i["name"] for i in items}
     for expected in ["Тесак", "Кастет", "Дубинка", "Нож", "Бутсы",
@@ -34,11 +41,21 @@ def test_items():
     ids = [i["id"] for i in items]
     assert len(set(ids)) == len(ids), "item ids must be unique"
 
+    # The runtime file must carry nothing provenance-shaped.
     for i in items:
         assert i["kind"] in {"weapon", "armor", "suit", "charm", "consumable", "misc"}
         assert isinstance(i["price"], int) or i["price"] is None
         # `^N` markup must never reach a name.
         assert "^" not in i["name"], i["name"]
+        assert "price_src" not in i, i
+        assert "src_off" not in i, i
+
+    # Every runtime row traces back to exactly one provenance entry, keyed
+    # by id, and nothing is lost in the split.
+    assert set(prov) == set(ids), "provenance ids must match runtime ids exactly"
+    for i in prov.values():
+        assert set(i) == {"price_src", "src_off"}, i
+        assert isinstance(i["src_off"], int)
 
     # The whole equipment set the status screen can display: 15 rows, no
     # more (the pattern scan is not allowed to invent one) and no fewer.
@@ -48,6 +65,12 @@ def test_items():
     # same bonus carry a price; everything else stays null.
     priced = {i["name"]: i["price"] for i in items if i["price"] is not None}
     assert priced == {"Кастет": 25, "Дубинка": 50}, priced
+
+    # The provenance file is where that link is recorded.
+    kastet_id = by_name["Кастет"]["id"]
+    dubinka_id = by_name["Дубинка"]["id"]
+    assert prov[kastet_id]["price_src"] == "bmar:5 20ae:0b3c"
+    assert prov[dubinka_id]["price_src"] == "bmar:6 20ae:0b3d"
 
     # `sold` splits the thirteen null prices: loot-only items never have a
     # price to find (docs/re/tables.md, "Prices are deliberately null...").
@@ -60,12 +83,27 @@ def test_items():
         if not i["sold"]:
             assert i["price"] is None, i
 
-    print(f"OK {len(items)} items extracted")
+    print(f"OK {len(items)} items extracted ({len(prov)} provenance rows)")
 
 
 def test_shops():
     shops = json.loads((ROOT / "data" / "shops.json").read_text(encoding="utf-8"))
+    prov = json.loads(
+        (ROOT / "data" / "shops.provenance.json").read_text(encoding="utf-8")
+    )
     assert len(shops) == 18, f"expected 18 shop rows, got {len(shops)}"
+
+    def key(row):
+        return f'{row["shop"]}:{row["key"]}'
+
+    # Shop rows have no `id`; the provenance file is keyed by "<shop>:<key>",
+    # and every runtime row must trace back to exactly one such entry.
+    assert set(prov) == {key(r) for r in shops}, "provenance keys must match rows exactly"
+    for p in prov.values():
+        assert set(p) == {
+            "price_addr", "displayed_price_addr", "charged",
+            "code_off", "code_addr", "prefix_off", "text_off",
+        }, p
 
     by_shop = {}
     for row in shops:
@@ -87,27 +125,41 @@ def test_shops():
     assert "Глушитель" in silencer["text"]
     assert silencer["price"] == 60
     assert silencer["displayed_price"] == 70
-    assert silencer["price_addr"] != silencer["displayed_price_addr"]
+    silencer_prov = prov[key(silencer)]
+    assert silencer_prov["price_addr"] != silencer_prov["displayed_price_addr"]
 
     for row in shops:
         assert isinstance(row["price"], int)
-        assert row["charged"] is True, row
-        assert row["price_addr"].startswith("20ae:")
         assert row["text"].startswith("#")
+        assert "price_addr" not in row, row
+        assert "code_addr" not in row, row
+    for p in prov.values():
+        assert p["charged"] is True, p
+        assert p["price_addr"].startswith("20ae:")
 
     # Availability gates, as read at 1000:b9b3.. and 1000:c51e...
     assert [r["gate"] for r in by_shop["mar"]] == [
         None, None, None, None, None,
         "district>1", "district>1", "district>2", "district>3",
     ]
-    print(f"OK {len(shops)} shop rows extracted")
+    print(f"OK {len(shops)} shop rows extracted ({len(prov)} provenance rows)")
 
 
 def test_enemies():
     enemies = json.loads((ROOT / "data" / "enemies.json").read_text(encoding="utf-8"))
+    prov = json.loads(
+        (ROOT / "data" / "enemies.provenance.json").read_text(encoding="utf-8")
+    )
     assert len(enemies) == 13, f"expected 13 enemy rows, got {len(enemies)}"
 
     by_id = {e["id"]: e for e in enemies}
+    ids = [e["id"] for e in enemies]
+    assert set(prov) == set(ids), "provenance ids must match runtime ids exactly"
+    for p in prov.values():
+        assert set(p) == {"source"}, p
+    for e in enemies:
+        assert "source" not in e, e
+
     names = [e["name"] for e in enemies]
     assert names[:11] == [
         "Дохляк", "Нефор", "Нарк", "Подтсан", "Отморозок", "Гопник",
@@ -143,7 +195,8 @@ def test_enemies():
         "strength": 50, "agility": 60, "vitality": 188, "luck": 32,
         "dmg_min": 25, "dmg_max": 50, "hp": 1000, "hpmax": 1000, "armor": 80,
     }
-    print(f"OK {len(enemies)} enemy rows extracted")
+    assert prov["rektor_ngu_v0"]["source"].startswith("1000:11c2")
+    print(f"OK {len(enemies)} enemy rows extracted ({len(prov)} provenance rows)")
 
 
 if __name__ == "__main__":

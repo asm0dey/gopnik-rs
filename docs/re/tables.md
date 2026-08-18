@@ -11,6 +11,40 @@ Every address below is a Ghidra address in the load layout Task 4 used:
 `0x18D0 + (seg - 0x1000) * 16 + off`, the same formula
 `data/string_pointers.json` documents.
 
+## Runtime vs. provenance
+
+Each table is two files, not one:
+
+* **`data/items.json`, `data/shops.json`, `data/enemies.json`** --
+  **runtime**. Exactly the fields the game needs to play: names, prices,
+  gates, stat blocks, the `sold`/`generated` booleans that change what the
+  game does. `src/data.rs` embeds and deserialises only these three;
+  `Item`, `ShopEntry` and `Enemy` in that file carry no address, no file
+  offset, no "which byte of `orig/g.exe`" field at all. If you are writing
+  gameplay code (Task 11 and later), this is the file, and the struct, you
+  want.
+* **`data/items.provenance.json`, `data/shops.provenance.json`,
+  `data/enemies.provenance.json`** -- **provenance**. Where each runtime
+  fact was read: Ghidra addresses, file offsets, and the cross-checks that
+  confirmed them (e.g. `shops.provenance.json`'s `charged`, which records
+  that *some* debit site in the binary reads the row's `price_addr`; see
+  "The row idiom" below). If you are auditing a value, chasing a citation,
+  or extending the extractor, this is the file you want. Nothing in `src/`
+  reads these; they exist so every fact below still traces back to a byte
+  of `orig/g.exe`, per this project's rule that an RE finding lands both in
+  a `docs/re/` note and in a `data/` artifact.
+
+A provenance file is a JSON object keyed by the runtime row's natural key --
+`id` for items and enemies, which already have one, and `"<shop>:<key>"`
+(e.g. `"bmar:9"`) for shop rows, which do not -- so any runtime row can be
+traced back to its bytes with one lookup: read the row's key out of the
+runtime file, then look that key up in the sibling `.provenance.json`.
+
+Both files for a table come out of the same extractor run and describe the
+same rows; splitting them changed no extracted value; see
+`.superpowers/sdd/task-10-report.md`, "Fix wave 2" for the field-by-field
+diff that confirmed it.
+
 ---
 
 ## 1. Items
@@ -18,7 +52,12 @@ Every address below is a Ghidra address in the load layout Task 4 used:
 The equipment set is not a table in the binary at all -- it is fifteen
 bonus-carrying display strings, each of which states its own bonus (the same
 `^1`-prefixed status-screen block also has seven further possession/state
-strings that are not equipment; see the end of this section):
+strings that are not equipment; see the end of this section). The `file off`
+column below is `src_off`, and lives in `data/items.provenance.json` (keyed
+by `id`), not in `data/items.json`; likewise the price row's *source*
+(`price_src`, "which shop row and address this item's price was linked
+from") below is provenance, while the linked `price` value itself is
+runtime:
 
 | file off | text | kind | bonus | effect |
 |---|---|---|---|---|
@@ -173,21 +212,32 @@ A0 lo hi        mov al,[price]          ; the price that is PRINTED
 
 The debit site is a second, equally rigid idiom,
 `A0 lo hi / 30 E4 / 29 06 C7 38` (`sub [money],ax`). The extractor collects
-every address any such site debits into a single file-wide set, and sets
-`charged: true` on a row when the address its affordability test reads is a
-member of that set -- i.e. *some* debit site in the binary reads the same
-address, not that *this row's own* purchase handler is the one that debits
-it. That is sound for these 18 rows because every address in the set is
-debited exactly once (checked by hand against the disassembly), so
-membership and row-specific debit happen to coincide here; a row that shared
-its price address with another row's debit site would pass this check
-without actually being charged. All 18 rows are `charged: true`.
+every address any such site debits into a single file-wide set, and records
+`charged: true` in `data/shops.provenance.json` on a row when the address
+its affordability test reads is a member of that set -- i.e. *some* debit
+site in the binary reads the same address, not that *this row's own*
+purchase handler is the one that debits it. That is sound for these 18 rows
+because every address in the set is debited exactly once (checked by hand
+against the disassembly), so membership and row-specific debit happen to
+coincide here; a row that shared its price address with another row's debit
+site would pass this check without actually being charged. All 18 rows are
+`charged: true`. `charged` is provenance, not a runtime field: it is a
+cross-check on the extraction (does *some* debit site read this address?),
+not something a game loop consults -- every row is always charged its
+`price` when bought, so there is no decision left for the game to make with
+it.
 
 Rows are attributed to a shop by the last short all-lowercase-ASCII string
 the code loads before the menu -- `mar` at file `0xD215`, `bmar` at
 `0xDD89`.
 
 ### The table
+
+The `addr` column below is `price_addr` -- provenance, recorded in
+`data/shops.provenance.json` keyed by `"<shop>:<key>"`, not in
+`data/shops.json`. `code_off`/`code_addr`/`prefix_off`/`text_off` (the row's
+own location in the code segment, unused by anything in `src/`) live there
+too.
 
 `district` is the byte at `20ae:3692`, 1..5, raised at file `0xC462`
 (`1000:ab92`, `inc byte [0x3692]`) once понтовость reaches `district * 10`. Gates come from
@@ -293,6 +343,13 @@ formula -- and nothing invented beyond it.
 ## 3. Enemies
 
 **There is no table of enemy stat blocks, and inventing one would be a lie.**
+The prose citations below (`1000:0d14 rolls stats from the weights at
+...`, etc.) are each row's `source` string, kept in
+`data/enemies.provenance.json` (keyed by `id`) rather than in
+`data/enemies.json`; `generated` (does the game roll this enemy, or is it
+scripted?) is the one boolean of the two the game actually branches on, so
+it stays runtime.
+
 `FUN_1000_0d14` (`1000:0d14`) generates a random encounter:
 
 1. picks a class index into `20ae:3952` from `Random(0x33)` folded through a
