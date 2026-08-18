@@ -70,3 +70,20 @@ or manual trace-through in Tasks 8/9. Recorded here as the starting point:
   fact both: the whole battle sub-loop, prompt through XP award). See
   `docs/re/combat.md` ("How the function was identified") for the string
   cross-reference that confirms `1000:3d11` and rules out these three.
+
+## Named by Task 10 (tables)
+
+- **`FUN_1000_0d14` (1000:0d14, 1196 bytes)** — the random-encounter
+  generator. Rolls the enemy's class index into `20ae:3952`, then distributes
+  stat points over `20ae:3954`..`20ae:395a` using the class-weight array at
+  `20ae:0002`, and derives damage and HP. This is why `data/enemies.json` has
+  no stat block for classes 0..9.
+- **`FUN_1000_11c2` (1000:11c2, 178 bytes)** — the scripted-enemy setup, the
+  only place a fixed stat block is written. Called twice from `entry`, at
+  file `0xC6F7`/`0xC703`, with `param_1` 0 then 1: the two endgame Ректор НГУ
+  fights.
+- The two shop menus are **inlined into `entry`**, not separate functions:
+  `mar` (Базар) from file `0xD215` and `bmar` (Барыги) from file `0xDD89`,
+  each a menu-draw block followed by its purchase handlers.
+
+Details and the byte-level idioms: `docs/re/tables.md`.

@@ -1,0 +1,152 @@
+[
+ {
+  "id": "krestik",
+  "name": "Крестик",
+  "kind": "charm",
+  "bonus": 2,
+  "effect": "luck",
+  "price": null,
+  "price_src": null,
+  "src_off": 12210
+ },
+ {
+  "id": "kolco_gs",
+  "name": "Кольцо \"Гс\"",
+  "kind": "charm",
+  "bonus": 1,
+  "effect": "luck",
+  "price": null,
+  "price_src": null,
+  "src_off": 12231
+ },
+ {
+  "id": "kolco_pg",
+  "name": "Кольцо \"Пг\"",
+  "kind": "charm",
+  "bonus": 1,
+  "effect": "all",
+  "price": null,
+  "price_src": null,
+  "src_off": 12272
+ },
+ {
+  "id": "mega_kolco",
+  "name": "Мега Кольцо",
+  "kind": "charm",
+  "bonus": 4,
+  "effect": "all",
+  "price": null,
+  "price_src": null,
+  "src_off": 12295
+ },
+ {
+  "id": "kolco_gp",
+  "name": "Кольцо \"Гп\"",
+  "kind": "charm",
+  "bonus": 0,
+  "effect": "regen",
+  "price": null,
+  "price_src": null,
+  "src_off": 12318
+ },
+ {
+  "id": "butsy",
+  "name": "Бутсы",
+  "kind": "weapon",
+  "bonus": 1,
+  "effect": null,
+  "price": null,
+  "price_src": null,
+  "src_off": 12542
+ },
+ {
+  "id": "pontovye_butsy",
+  "name": "Понтовые бутсы",
+  "kind": "weapon",
+  "bonus": 2,
+  "effect": "damage",
+  "price": null,
+  "price_src": null,
+  "src_off": 12564
+ },
+ {
+  "id": "kastet",
+  "name": "Кастет",
+  "kind": "weapon",
+  "bonus": 2,
+  "effect": null,
+  "price": 25,
+  "price_src": "bmar:5 20ae:0b3c",
+  "src_off": 12590
+ },
+ {
+  "id": "dubinka",
+  "name": "Дубинка",
+  "kind": "weapon",
+  "bonus": 4,
+  "effect": null,
+  "price": 50,
+  "price_src": "bmar:6 20ae:0b3d",
+  "src_off": 12614
+ },
+ {
+  "id": "nozh",
+  "name": "Нож",
+  "kind": "weapon",
+  "bonus": 6,
+  "effect": null,
+  "price": null,
+  "price_src": null,
+  "src_off": 12641
+ },
+ {
+  "id": "tesak",
+  "name": "Тесак",
+  "kind": "weapon",
+  "bonus": 9,
+  "effect": "damage",
+  "price": null,
+  "price_src": null,
+  "src_off": 12659
+ },
+ {
+  "id": "kostyum_adidas",
+  "name": "Костюм Adidas",
+  "kind": "suit",
+  "bonus": 2,
+  "effect": null,
+  "price": null,
+  "price_src": null,
+  "src_off": 12862
+ },
+ {
+  "id": "kostyum_abibas",
+  "name": "Костюм Abibas",
+  "kind": "suit",
+  "bonus": 1,
+  "effect": null,
+  "price": null,
+  "price_src": null,
+  "src_off": 12883
+ },
+ {
+  "id": "krutaya_kozhanka",
+  "name": "Крутая кожанка",
+  "kind": "armor",
+  "bonus": 4,
+  "effect": null,
+  "price": null,
+  "price_src": null,
+  "src_off": 12915
+ },
+ {
+  "id": "kozhanka",
+  "name": "Кожанка",
+  "kind": "armor",
+  "bonus": 2,
+  "effect": null,
+  "price": null,
+  "price_src": null,
+  "src_off": 12937
+ }
+]

@@ -1,0 +1,352 @@
+# Item, shop and enemy tables (Task 10)
+
+Machine-readable form: `data/items.json`, `data/shops.json`,
+`data/enemies.json`. Regenerate with `python3 tools/extract_tables.py`;
+check with `python3 tools/test_extract_tables.py` and `cargo test --test
+data_load`.
+
+Every address below is a Ghidra address in the load layout Task 4 used:
+`CODE_0` at `1000:0000` (file `0x18D0`), the const/data segment at
+`20ae:0000` (file `0x123B0`). File offset of `seg:off` is
+`0x18D0 + (seg - 0x1000) * 16 + off`, the same formula
+`data/string_pointers.json` documents.
+
+---
+
+## 1. Items
+
+The equipment set is not a table in the binary at all -- it is fifteen
+display strings, each of which states its own bonus:
+
+| file off | text | kind | bonus | effect |
+|---|---|---|---|---|
+| `0x2FB2` | `^1Крестик(Удача +2) ` | charm | 2 | luck |
+| `0x2FC7` | `^1Кольцо "Гс"(Удача +1) ` | charm | 1 | luck |
+| `0x2FF0` | `^1Кольцо "Пг"(Всё +1) ` | charm | 1 | all |
+| `0x3007` | `^1Мега Кольцо(Всё +4) ` | charm | 4 | all |
+| `0x301E` | `^1Кольцо "Гп"(Самолечение) ` | charm | 0 | regen |
+| `0x30FE` | `^1Бутсы(+1) ` | weapon | 1 | — |
+| `0x3114` | `^1Понтовые бутсы(Урон+2) ` | weapon | 2 | damage |
+| `0x312E` | `^1Кастет(+2) ` | weapon | 2 | — |
+| `0x3146` | `^1Дубинка(+4)  ` | weapon | 4 | — |
+| `0x3161` | `^1Нож(+6) ` | weapon | 6 | — |
+| `0x3173` | `^1Тесак(Урон+9) ` | weapon | 9 | damage |
+| `0x323E` | `^1Костюм Adidas(+2) ` | suit | 2 | — |
+| `0x3253` | `^1Костюм Abibas(+1) ` | suit | 1 | — |
+| `0x3273` | `^1Крутая кожанка(+4) ` | armor | 4 | — |
+| `0x3289` | `^1Кожанка(+2) ` | armor | 2 | — |
+
+`tools/extract_tables.py` recovers them by pattern, not by that list: it
+scans `data/strings.json` for strings that start with the `^1` directive and
+whose text ends in one of the five bonus forms. The `^1` restriction is what
+keeps the shop menu out -- `#^7 руб. Понтовёйшие бутсы(Урон+2)` (`0xA63D`)
+matches the `(Урон+N)` form perfectly well and would otherwise arrive as an
+item named `# руб. Понтовёйшие бутсы`. The scan finds exactly these fifteen
+and nothing else.
+
+`kind` for the bare `(+N)` forms comes from `BARE_KIND` in the extractor, a
+name->slot map; a name not in it falls through to `misc` rather than being
+guessed. `effect` is only what the suffix literally names, so it is null for
+every bare `(+N)`.
+
+**Prices are deliberately null for thirteen of the fifteen.** The only price
+source in the binary is the shop rows (section 2), and their text is not the
+same string as the inventory text. Two rows name their item verbatim *and*
+agree on the bonus -- `#^7 руб. Кастет(урон+2)` and
+`#^7 руб. Дубинка(урон+4), заменяет кастет` -- and only those two get a
+price (25 and 50). Everything else is genuinely ambiguous. The worst case is
+boots: the inventory has one line, `Понтовые бутсы(Урон+2)`, while the market
+sells `Понтовые бутсы(Увеличивают урон)` for 15 and `Понтовёйшие
+бутсы(Урон+2)` for 30. **UNVERIFIED: which market row produces the inventory
+line `Понтовые бутсы(Урон+2)`.** Deciding it needs the purchase handlers'
+effects read, which is Task 11's job; a guess here would be an invention.
+
+---
+
+## 2. Shops
+
+There are two shops, named by the original's own location tags: `mar`
+(`0xA42C`, "Базар") and `bmar` (`0xAA24`, "Барыги"). Nine rows each.
+
+### Where the prices live
+
+Prices are **not** immediates. Every row reads a byte out of a 19-entry const
+array at `20ae:0b2e` (file `0x12EDE`). Its extent is pinned on both sides by
+neighbours that were established earlier: the `ranks` string table occupies
+`20ae:002e` for 11 * 256 = `0xB00` bytes, ending exactly at `20ae:0b2e`, and
+the `krutizna` table starts at `20ae:0b42` (`docs/re/string-tables.md`). The
+20 bytes between them are:
+
+```
+20ae:0b2e  02 05 0a 0f 0f 19 1e 1e 32 00 0f 1e 14 0a 19 32 96 46 3c 00
+```
+
+`20ae:0b37` (`0x00`) is referenced by nothing in the binary and
+`20ae:0b41` (`0x00`) is the pad before `krutizna`. **UNVERIFIED: what
+`20ae:0b37` was meant to be.** It sits exactly between the two shops' price
+runs and is left as an unknown zero rather than assigned to a row.
+
+### The row idiom
+
+Each menu row compiles to one rigid sequence; the first is at file `0xD283`
+(`1000:b9b3`). `tools/extract_tables.py` scans for this pattern, so the row
+count and the price->row mapping fall out of the bytes:
+
+```
+A0 lo hi        mov al,[price]          ; 20ae:0b2e..0b40
+30 E4           xor ah,ah
+3B 06 C7 38     cmp ax,[0x38c7]         ; 20ae:38c7 = the player's money
+7E 07           jng +7
+C6 06 7A 3B 34  mov byte [0x3b7a],'4'   ; red   - cannot afford
+EB 05           jmp +5
+C6 06 7A 3B 30  mov byte [0x3b7a],'0'   ; black - can afford
+8D BE dd dd     lea di,[bp+disp]
+16 57           push ss / push di
+BF lo hi        mov di,<prefix>         ; "^61^7 - ^" -- carries the hotkey
+0E 57           push cs / push di
+9A E7 0A 78 0F  call 0f78:0ae7
+8D BE dd dd / 16 57 / A0 7A 3B / 50
+9A 03 0C 78 0F  call 0f78:0c03          ; append the colour digit
+9A 66 0B 78 0F  call 0f78:0b66
+BF lo hi        mov di,<row text>       ; "#^7 руб. ..."
+0E 57
+9A 66 0B 78 0F  call 0f78:0b66
+A0 lo hi        mov al,[price]          ; the price that is PRINTED
+30 E4 / 50
+```
+
+The debit site is a second, equally rigid idiom,
+`A0 lo hi / 30 E4 / 29 06 C7 38` (`sub [money],ax`). The extractor collects
+every such site and sets `charged: true` on a row when the address its
+affordability test reads is also debited somewhere. All 18 rows are
+`charged: true`.
+
+Rows are attributed to a shop by the last short all-lowercase-ASCII string
+the code loads before the menu -- `mar` at file `0xD215`, `bmar` at
+`0xDD89`.
+
+### The table
+
+`district` is the byte at `20ae:3692`, 1..5, raised at file `0xC462`
+(`1000:ab92`, `inc byte [0x3692]`) once понтовость reaches `district * 10`. Gates come from
+`cmp byte [x],n` + conditional jump, read at block scope: a gate applies to
+every row between it and its jump target, which is why `mar` rows 6 and 7
+share one.
+
+#### `mar` -- Базар
+
+| key | price | addr | gate | text |
+|---|---|---|---|---|
+| 1 | 2 | `20ae:0b2e` | — | `#^7 руб.  Хотдог(3-4 з)` |
+| 2 | 5 | `20ae:0b2f` | — | `#^7 руб.  Пиво(#з)` |
+| 3 | 10 | `20ae:0b30` | — | `#^7 руб. Затемнённые очки(Чтоб менты не узнали)` |
+| 4 | 15 | `20ae:0b31` | — | `#^7 руб. Реальный спортивный костюм abibas(Смягчает пинок на 1)` |
+| 5 | 15 | `20ae:0b32` | — | `#^7 руб. Понтовые бутсы(Увеличивают урон)` |
+| 6 | 25 | `20ae:0b33` | district>1 | `#^7 руб. Реальную кожанку(Дополнительная защита от случайностей на 2)` |
+| 7 | 30 | `20ae:0b34` | district>1 | `#^7 руб. Реальный спортивный костюм adidas(Смягчает пинок на 2)` |
+| 8 | 30 | `20ae:0b35` | district>2 | `#^7 руб. Понтовёйшие бутсы(Урон+2)` |
+| 9 | 50 | `20ae:0b36` | district>3 | `#^7 руб. Ваще крутую кожанку(Броня +4)` |
+
+The second `#` of row 2 is a literal `5` pushed at file `0xD32A`
+(`mov ax,5 / push ax`), which is why the screen reads `Пиво(5з)`.
+
+#### `bmar` -- Барыги
+
+| key | price | addr | gate | text |
+|---|---|---|---|---|
+| 1 | 15 | `20ae:0b38` | — | `#^7 руб. Косяк` |
+| 2 | 30 | `20ae:0b39` | — | `#^7 руб. Краденый мобильник(Подмога быстрее приходит)` |
+| 3 | 20 | `20ae:0b3a` | — | `#^7 руб. Офигенный косяк(Очко прокачки)` |
+| 4 | 10 | `20ae:0b3b` | — | `#^7 руб. Сделать типа зоновскую наколку(...)` |
+| 5 | 25 | `20ae:0b3c` | district>1 | `#^7 руб. Кастет(урон+2)` |
+| 6 | 50 | `20ae:0b3d` | district>2 | `#^7 руб. Дубинка(урон+4), заменяет кастет` |
+| 7 | 150 | `20ae:0b3e` | district>3 | `#^7 руб. Самопальный пистолет (...)` |
+| 8 | 70 | `20ae:0b3f` | district>3 | `#^7 руб. Патроны - 6.` |
+| 9 | **60** | `20ae:0b40` | district>3, `byte[20ae:394d]!=0`, `byte[20ae:3e32]==25` | `#^7 руб. Глушитель.` |
+
+### The silencer bug -- reproduce it, do not fix it
+
+Row 9 of `bmar` prints the **wrong** price. At file `0xE102` the affordability
+colour test reads `[20ae:0b40]` (60) and at `0xE6DE`/`0xE709` the purchase
+compares and debits `[20ae:0b40]` (60) -- but at `0xE147` the value pushed
+into the row's `#` placeholder is `[20ae:0b3f]` (70), the *ammunition* price
+from the row above. So the menu advertises 70 руб. and the till takes 60.
+Confirmed on the original's own screen; see section 4.
+
+`data/shops.json` keeps both: `price` (60, what is charged) and
+`displayed_price` (70, what is printed). A port that renders `price` on the
+menu is wrong.
+
+Row 9's extra gates: `20ae:394d` is the "owns a pistol" flag set at `0xE5D5`;
+`20ae:3e32` is a counter incremented once per `w`/`run` command at `0xC802`,
+but only while the player knows `bmar` and owns a pistol, and it stops at 25
+(`0xC7FB`). So the silencer appears 25 wanders after the pistol is bought.
+
+---
+
+## 3. Enemies
+
+**There is no table of enemy stat blocks, and inventing one would be a lie.**
+`FUN_1000_0d14` (`1000:0d14`) generates a random encounter:
+
+1. picks a class index into `20ae:3952` from `Random(0x33)` folded through a
+   triangular walk, plus `Random(district)`, clamped to 9 (`1000:0d6a`..);
+2. zeroes strength/agility/vitality/luck (`20ae:3954`..`20ae:395a`);
+3. distributes `(w0+w1+w2+w3) + крутизна*2` points over the four stats by
+   repeated `Random(sum)`, in proportion to the four weight bytes at
+   `20ae:0002 + class*4` -- the same array Task 9b recovered as
+   `progress::CLASS_WEIGHTS`;
+4. derives `dmg_min = strength div 2`, `dmg_max = strength`,
+   `hpmax = vitality*5 + strength + 10`, `hp = hpmax`.
+
+So `data/enemies.json` carries, for classes 0..9, the class name and its
+weight row and nothing else (`generated: true`, `level: null`,
+`stats: null`). Names come from the `ranks` string table at `20ae:002e`
+(`docs/re/string-tables.md`).
+
+| class | name | weights (str/agi/vit/luck) |
+|---|---|---|
+| 0 | Дохляк | 1 2 1 2 |
+| 1 | Нефор | 2 2 2 3 |
+| 2 | Нарк | 2 2 2 2 |
+| 3 | Подтсан | 3 3 3 3 |
+| 4 | Отморозок | 5 2 4 1 |
+| 5 | Гопник | 4 3 3 2 |
+| 6 | Вор | 3 3 2 4 |
+| 7 | Беспредельщик | 5 3 4 2 |
+| 8 | Мент | 5 5 5 5 |
+| 9 | Маньячок | 5 6 8 3 |
+| 10 | Ректор НГУ | 0 0 0 0 |
+
+Class 10 is clamped out of the random roll, so its rank row also carries no
+stats. Its two stat blocks are scripted.
+
+### The two scripted bosses
+
+`FUN_1000_11c2` (`1000:11c2`, file `0x2A92`) is the only place a fixed enemy
+is written, and it is called twice back to back at file `0xC6F7`
+(`1000:ae27`) and `0xC703` (`1000:ae33`) with `param_1` 0 then 1, each
+followed by a call to the combat routine `FUN_1000_3d11` -- the endgame
+double fight. The stores are literal
+immediates:
+
+```
+C7 06 5C 39 imm   mov word [20ae:395c],imm   ; крутизна / level
+C7 06 54 39 imm   mov word [20ae:3954],imm   ; strength
+C7 06 56 39 imm   mov word [20ae:3956],imm   ; agility
+C7 06 58 39 imm   mov word [20ae:3958],imm   ; vitality
+C7 06 5A 39 imm   mov word [20ae:395a],imm   ; luck
+C6 06 68 39 imm   mov byte [20ae:3968],imm   ; armor
+```
+
+and `1000:2af8`..`1000:2b22` then derives the same three quantities the
+random path does.
+
+| id | level | str | agi | vit | luck | dmg | hp/hpmax | armor |
+|---|---|---|---|---|---|---|---|---|
+| `rektor_ngu_v0` | 125 | 41 | 50 | 123 | 36 | 20-41 | 666 | 60 |
+| `rektor_ngu_v1` | 160 | 50 | 60 | 188 | 32 | 25-50 | 1000 | 80 |
+
+Both are named "Ректор НГУ"; in play the first turns out to be the проректор
+СУНЦа and the second is the real one.
+
+---
+
+## 4. Cross-checks
+
+### Against `data/combat_vectors.json` (Task 9)
+
+Those 295 cases carry real enemy stat blocks read out of the guest's own data
+segment during real fights, so they are independent of anything here. Every
+one of the 295 enemy records satisfies the three derived-stat rules used for
+the boss rows:
+
+```
+hpmax == vitality*5 + strength + 10 ,  dmg_min == strength div 2 ,  dmg_max == strength
+295 matching, 0 mismatching
+```
+
+### Against the DOSBox-X oracle
+
+Prices and boss stats were read off the original's own screens. All runs go
+through `tools/oracle/capture.py` (never a bare `dosbox-x`), and none of them
+patches the binary.
+
+1. **`mar`, all nine rows.** `\n4\n` then 25 `w\n` (to find the market) then
+   `mar\n`:
+
+   ```
+   1 - 2 руб.  Хотдог(3-4 з)
+   2 - 5 руб.  Пиво(5з)
+   3 - 10 руб. Затемнённые очки(Чтоб менты не узнали)
+   4 - 15 руб. Реальный спортивный костюм abibas(Смягчает пинок на 1)
+   5 - 15 руб. Понтовые бутсы(Увеличивают урон)
+   6 - 25 руб. Реальную кожанку(Дополнительная защита от случайностей на 2)
+   7 - 30 руб. Реальный спортивный костюм adidas(Смягчает пинок на 2)
+   8 - 30 руб. Понтовёйшие бутсы(Урон+2)
+   9 - 50 руб. Ваще крутую кожанку(Броня +4)
+   ```
+
+   Matches `data/shops.json` exactly, including the literal `5` of `Пиво(5з)`.
+
+2. **`bmar`, rows 1..8.** Loading the player's own save (key `0`) also loads
+   `PLACES.SAV`, which has all seven location flags set, so both shops are
+   reachable immediately. `SAVE_R0` is only понтовость 15, i.e. district 2,
+   which shows rows 1..5; to get district 4 the run was repeated with a
+   *staged corpus* -- a scratch copy of `orig/` with `SAVE_R4.SAV` copied
+   over `SAVE_R0.SAV`, driven by pointing `capture.ORIG` at that directory.
+   `orig/` itself is never written. Result: 15, 30, 20, 10, 25, 50, 150, 70.
+
+3. **The silencer, and its bug.** Same staged corpus, script
+   `\n0\n bmar\n 7\n w\n` + 40 x `run\n` + `s\n bmar\n 9\n w\n s\n` (buy the
+   pistol, let the 25-turn counter run out, look at the money, buy the
+   silencer, look again):
+
+   ```
+   9 - 70 руб. Глушитель.      <- displayed_price, from 20ae:0b3f
+   Бабки 970                    <- before
+   Бабки 910                    <- after: 60 charged, from 20ae:0b40
+   ```
+
+   The 10-ruble gap between what the menu says and what the purchase costs is
+   the bug, observed rather than inferred.
+
+4. **Boss v0.** `\n5\n` (start at district 5, which goes straight to the
+   endgame) then `sv` in the fight:
+
+   ```
+   Это Ректор НГУ 125 уровня
+   Сл:41 Лв:50 Жв:123 Уд:36
+   Урон 20-41
+   Здоровье 666/666
+   Броня 60
+   ```
+
+5. **Boss v1.** Same start, `k\nsv\n` x 25 to kill v0 and inspect v1:
+
+   ```
+   Это Ректор НГУ 160 уровня
+   Сл:50 Лв:60 Жв:188 Уд:32
+   Урон 25-50
+   Здоровье 701/1000  Сломана челюсть
+   Броня 80
+   ```
+
+6. **Nine of the fifteen item strings**, off the `s` (status) screen of a
+   finished game: `Крестик(Удача +2) Кольцо "Гс"(Удача +1)`,
+   `Кольцо "Пг"(Всё +1) Мега Кольцо(Всё +4) Кольцо "Гп"(Самолечение)`,
+   `Понтовые бутсы(Урон+2) Нож(+6)`, `Костюм Adidas(+2) Крутая кожанка(+4)`.
+   The other six (`Бутсы`, `Кастет`, `Дубинка`, `Тесак`, `Костюм Abibas`,
+   `Кожанка`) are the same fifteen-string block and the same code path, but
+   **were not observed on an oracle screen** -- they need a character carrying
+   that particular item.
+
+### What is still unverified
+
+- `20ae:0b37` -- an unreferenced zero byte inside the price array.
+- Which market boots row corresponds to the inventory line
+  `Понтовые бутсы(Урон+2)`, hence the null price on that item.
+- Six of the fifteen item strings were not seen on an oracle screen (above).
+- The class-weight rows agree with `progress::CLASS_WEIGHTS` (Task 9b), but
+  that is a *second reading of the same bytes*, not an independent check. The
+  independent evidence for the weights is Task 9b's own oracle work.
