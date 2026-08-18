@@ -30,7 +30,7 @@
 - **All Russian game text is preserved verbatim.** No translation, no censoring, no rewording. The game contains deliberate crude slang; that is the content.
 - **Ghidra is driven by Java scripts only.** PyGhidra requires `jpype1`, which does not build on Python 3.14. Do not attempt `pip install pyghidra`.
 - **Python tooling uses the standard library only.** No pip installs, no venv.
-- **Rust dependencies limited to `serde` + `serde_json` + `encoding_rs` + `anstream`.**
+- **Rust dependencies limited to `serde` + `serde_json` + `encoding_rs` + `colored`.**
   Anything else requires explicit sign-off. `encoding_rs` was signed off by the
   owner for Task 7: the owner prefers a crate to a hand-written codepage table.
   The encoding is `encoding_rs::IBM866` — there is no `CP866` constant; IBM866
@@ -44,11 +44,11 @@
   `EncoderResult::Unmappable(char)` naming the offending character, and
   `decode_without_bom_handling_and_without_replacement` on the way in.
 
-  `anstream` was signed off by the owner for Task 10b (cross-platform colour).
-  `text::render` emits ANSI unconditionally; `anstream::stdout()` enables Windows
-  VT processing, strips ANSI where it cannot be displayed, and honours
-  `NO_COLOR`/`CLICOLOR_FORCE`. Windows needs a `SetConsoleMode` FFI call that
-  Rust's `std` cannot make, which is why a crate is unavoidable there. No second
+  `colored` was signed off by the owner for Task 10b (cross-platform colour). It
+  is used as a policy oracle only — `SHOULD_COLORIZE.should_colorize()` for the
+  decision and `set_virtual_terminal(true)` for the Windows `SetConsoleMode` FFI
+  call that Rust's `std` cannot make — NOT as a styling API. `text::render` stays
+  pure and unconditional; `term` picks between `render` and `strip`. No second
   terminal crate: the game is line-based and needs no cursor control or raw mode.
 - **Never modify files under `orig/`.** They are the reference corpus and are checked in read-only.
 - **Every RE finding lands in two places:** a human-readable note under `docs/re/` citing the Ghidra address, and a machine-readable artifact under `data/`. A finding that exists only in a commit message does not count.
@@ -3020,22 +3020,26 @@ git commit -m "feat: extract item/shop/enemy tables from g.exe"
 
 **Files:**
 - Create: `src/term.rs`
-- Modify: `Cargo.toml` (add `anstream`), `src/main.rs` (add `mod term;`)
+- Modify: `Cargo.toml` (add `colored`), `src/main.rs` (add `mod term;`)
 - Test: `src/term.rs` (inline `#[cfg(test)] mod tests`), `tests/term_output.rs`
 
 **Interfaces:**
 - Produces:
   ```rust
-  /// Render `^N` markup and write one line to stdout, adapting to what the
-  /// destination can actually display. This is the ONLY way the game writes
-  /// user-visible text; `println!` on a rendered string is a bug after this task.
+  /// Write one line of game text to stdout, with `^N` markup rendered as
+  /// colour when the destination can display it and stripped when it cannot.
+  /// This is the ONLY way the game writes user-visible text; calling
+  /// `println!` on a rendered string is a bug after this task.
   pub fn println(src: &str);
   /// Same, without the trailing newline (for prompts). Flushes.
   pub fn print(src: &str);
+  /// Enable Windows VT processing. Call once at startup, before any output.
+  pub fn init();
   ```
-- Consumes: `text::render` (Task 6), unchanged.
+- Consumes: `text::render` and `text::strip` (Task 6), **both unchanged**.
 - Task 11's game loop calls `term::println`/`term::print` everywhere it would
-  otherwise have called `println!("{}", text::render(...))`.
+  otherwise have called `println!("{}", text::render(...))`, and calls
+  `term::init()` once at the top of `main`.
 
 **Why this task exists:** `text::render` emits raw ANSI SGR escapes
 unconditionally. That is correct on Unix terminals and wrong everywhere else:
@@ -3044,26 +3048,54 @@ unconditionally. That is correct on Unix terminals and wrong everywhere else:
   calls `SetConsoleMode` with `ENABLE_VIRTUAL_TERMINAL_PROCESSING`. Without it
   the player sees literal `←[31m` garbage interleaved with the text. Windows
   Terminal enables VT by default; `cmd.exe` on older Windows 10 builds does not,
-  and there is no way to enable it from Rust's `std` — it requires a Win32 FFI
+  and there is no way to enable it from Rust's `std` — it needs a Win32 FFI
   call. This is the specific reason a crate is unavoidable here.
-- **Redirected output.** `gopnik > log.txt` currently embeds escape bytes in the
-  file.
-- **`NO_COLOR`.** The convention (https://no-color.org) says an app must not emit
-  colour when `NO_COLOR` is set to any non-empty value.
+- **Redirected output.** `gopnik > log.txt` currently embeds escape bytes.
+- **`NO_COLOR`.** The convention (https://no-color.org) says an app must not
+  emit colour when `NO_COLOR` is set to any non-empty value.
 - **Dumb terminals.** `TERM=dumb` cannot render SGR.
 
-**Dependency sign-off:** `anstream` is approved for this task (owner asked for a
-crate rather than hand-rolled colour handling). It is the purpose-built solution:
-it enables Windows VT when possible, strips ANSI when the destination cannot
-display it, and honours `NO_COLOR`/`CLICOLOR_FORCE`/tty detection. Do NOT
-hand-roll any of this, and do NOT add a second terminal crate (`crossterm`,
-`termion`, `colored`) — the game needs no cursor control, no raw mode, and no
-keypress handling; it is line-based (`stdin().read_line()`).
+**Dependency sign-off:** `colored` is approved for this task (owner's choice).
+Do NOT add a second terminal crate (`crossterm`, `termion`, `anstream`) — the
+game needs no cursor control, no raw mode and no keypress handling; it is
+line-based (`stdin().read_line()`).
 
-**Design constraint — keep the decision out of our code.** Do not write
-`if should_colour() { render(s) } else { strip(s) }`. `text::render` always emits
-ANSI; `anstream::stdout()` decides what survives. One code path, no conditional
-rendering, and the strip logic stays the crate's problem, not ours.
+**Design — `colored` is used as a policy oracle, not as a styling API.**
+
+The usual way to use `colored` is `"foo".red()`, deciding colour at the call
+site. That does not fit: our colour comes from the game's own `^N` markup,
+already parsed into spans by `text::render`, and we never choose a colour in
+Rust. So use exactly two things from the crate:
+
+1. `colored::control::SHOULD_COLORIZE.should_colorize()` — the decision. It
+   already implements the precedence `CLICOLOR_FORCE` > `NO_COLOR` >
+   `CLICOLOR` + tty check (`control.rs:100-108` in 2.1.0), which is what we
+   want; do not reimplement it and do not read those env vars yourself.
+2. `colored::control::set_virtual_terminal(true)` — the Windows VT call, from
+   `term::init()`. **Verified from the crate source: nothing in `colored` calls
+   this internally, and it is `#[cfg(windows)]`-gated.** So `init()` needs its
+   own `#[cfg(windows)]` block, and on every other platform it is a no-op.
+   Ignore its `Result` deliberately (a failure means the console is not a VT
+   console, which the `should_colorize` check already handles) — but say so in
+   a comment rather than silently discarding it.
+
+Then the whole rendering decision is one line, selecting between two pure
+functions that Task 6 already tests:
+
+```rust
+let out = if colored::control::SHOULD_COLORIZE.should_colorize() {
+    text::render(src)
+} else {
+    text::strip(src)
+};
+```
+
+**Do not** build `ColoredString`s per span, and **do not** change
+`text::render`. Keeping `render` pure and unconditional is what keeps Task 6's
+16 unit tests deterministic; moving the colour decision inside it would make a
+pure function depend on global state and on whether `cargo test` has a tty.
+We never need to strip ANSI from an already-rendered string, because we always
+hold the source markup — `text::strip` covers it.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3074,18 +3106,17 @@ subprocess with a piped (non-tty) stdout, and assert on the raw bytes:
   `\x1b[` bytes, and the plain text survives intact (compare against
   `text::strip` of the same source).
 - With `CLICOLOR_FORCE=1`: output **does** contain the expected SGR sequence.
-  This case matters beyond politeness — Task 12's differential harness pipes our
-  stdout, so without a force switch the port's colour output can never be
+  This matters beyond politeness — Task 12's differential harness pipes our
+  stdout, so without a force switch the port's colour output could never be
   compared against the DOSBox oracle at all.
-- With `NO_COLOR=1` **and** `CLICOLOR_FORCE=1` both set: assert whichever
-  precedence `anstream` actually implements, having first read its source or
-  docs to establish which wins. Do not guess, and do not write the assertion by
-  running the binary and pasting what came out — determine the intended
-  precedence first, then assert it. If `anstream`'s behaviour contradicts the
-  `NO_COLOR` spec, report that rather than silently encoding it.
-
-Inline unit tests in `src/term.rs` cover whatever pure decision logic remains
-(there should be very little — see the design constraint above).
+- With `NO_COLOR=1` **and** `CLICOLOR_FORCE=1`: `colored` documents
+  `CLICOLOR_FORCE` as winning. Assert that, and note in a comment that it
+  contradicts a strict reading of the `NO_COLOR` spec — we follow the crate's
+  precedence deliberately rather than fighting it.
+- Inline tests in `src/term.rs` use `colored::control::set_override(true)` /
+  `unset_override()` to pin the decision, so they do not depend on whether the
+  test harness has a tty. Do not skip this — without the override these tests
+  pass or fail based on how `cargo test` was invoked.
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -3094,20 +3125,20 @@ Expected: FAIL — `src/term.rs` does not exist.
 
 - [ ] **Step 3: Implement `src/term.rs`**
 
-Thin wrapper over `anstream::stdout()` and `text::render`. Expect this file to
-be well under 50 lines; if it is growing past that, the decision logic that
-belongs to `anstream` is leaking into it.
+Expect well under 50 lines. If it is growing past that, policy that belongs to
+`colored` is leaking into it.
 
-Errors: a write failure to stdout (closed pipe, e.g. `gopnik | head`) must not
-panic or abort — `Cargo.toml` sets `panic = "abort"` for release, so a panic
-kills the process. Decide deliberately whether a broken pipe should exit quietly
-or propagate, and state the reasoning in `docs/re/`-adjacent comments.
+A write failure to stdout (closed pipe, e.g. `gopnik | head`) must not panic —
+`Cargo.toml` sets `panic = "abort"` for release, so a panic kills the process.
+Decide deliberately whether a broken pipe exits quietly or propagates, and
+state the reasoning in a comment.
 
 - [ ] **Step 4: Route Task 11's output through it**
 
 If Task 11 already exists when this runs, replace every
-`println!("{}", text::render(...))` with `term::println(...)`. If this task runs
-first (the intended order), Task 11 is written against `term::` from the start.
+`println!("{}", text::render(...))` with `term::println(...)` and add the
+`term::init()` call to `main`. If this task runs first (the intended order),
+Task 11 is written against `term::` from the start.
 
 - [ ] **Step 5: Verify on Windows — or state plainly that it was not**
 
@@ -3117,10 +3148,11 @@ on this Linux host.** Either:
 - verify it for real (the `superpowers-lab:windows-vm` skill can provision a
   headless Windows 11 VM with SSH; build and run the binary in `cmd.exe` and in
   Windows Terminal, and record what was observed), **or**
-- state explicitly in the report and in `docs/re/` that Windows behaviour is
-  **delegated to `anstream` and untested here**, naming it as a known gap.
+- state explicitly in the report and in a comment in `src/term.rs` that Windows
+  behaviour is **delegated to `colored` and untested here**, naming it as a
+  known gap.
 
-Do NOT claim cross-platform correctness on the strength of `anstream`'s
+Do NOT claim cross-platform correctness on the strength of `colored`'s
 documentation alone. An untested claim of Windows support is worse than an
 acknowledged gap, because it stops anyone else from checking.
 
@@ -3128,7 +3160,7 @@ acknowledged gap, because it stops anyone else from checking.
 
 ```bash
 git add Cargo.toml Cargo.lock src/term.rs src/main.rs tests/term_output.rs
-git commit -m "feat: cross-platform colour output via anstream"
+git commit -m "feat: cross-platform colour output via colored"
 ```
 
 ---
