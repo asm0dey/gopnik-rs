@@ -2421,7 +2421,40 @@ Every formula gets its address cited. Anything not fully understood is written d
 
 - [ ] **Step 3: Capture combat vectors from the oracle**
 
-Using the fixed-seed technique from Task 8, run scripted fights and record, per blow: attacker/defender stats before, RNG call count, hit/miss, damage, resulting HP. Write `data/combat_vectors.json`:
+**Amended after Task 8 (owner-approved).** The original wording said "using the
+fixed-seed technique from Task 8", which does not exist — Task 8 deliberately
+did not port `Randomize` and did not pin the seed; it only named pinning as an
+option. It also asked for fields the oracle cannot observe.
+
+**First build guest-side seed pinning.** Task 8 established that the game is
+genuinely clock-seeded (`Randomize` at `1f78:11e0` reads `INT 21h/AH=2Ch`) and
+that runs diverge — three runs of a walking script gave three different
+captures. So a scripted fight is not reproducible until the seed is pinned.
+Pin it in the guest (patch out the `Randomize` call, or set `RandSeed` at
+`20ae:367e` directly — Task 8 recovered both the location and the formula).
+
+**Pinning MUST be reversible, and must not leak into the port.** It is a
+capture-time affordance only:
+- Never modify `orig/g.exe`. Patch a scratch copy, exactly as the oracle
+  already copies the binary before mounting it.
+- Never commit a pinned binary as an artifact.
+- The Rust port keeps normal clock seeding for real play. A fixed seed is
+  reachable only through a test/CLI affordance (`Rng::new(seed)` already
+  provides it), never as the default.
+- `docs/re/combat.md` states plainly how to apply the pin AND how to remove it,
+  so a later task can run unpinned when it needs real-game behaviour.
+
+Task 12 needs this same pinning for its differential test, so build it once,
+here, in a form that task can reuse.
+
+**Record only what is actually observable.** The oracle captures the 80x25 text
+screen at each blocking key read. Per blow, record hit/miss, damage, and
+resulting HP — these are printed. **Drop the `RNG call count` field**: it is
+never on screen and cannot be captured. Record attacker/defender stats only to
+the extent the game actually prints them; anything not printed is derived from
+the save file (Task 5/7 decode it) or marked unknown, never guessed.
+
+Write `data/combat_vectors.json`:
 
 ```json
 {
@@ -2441,7 +2474,19 @@ Using the fixed-seed technique from Task 8, run scripted fights and record, per 
 }
 ```
 
-At minimum 20 cases spanning: zero armour and high armour, broken jaw, broken leg, large agility gap in both directions, and a level-1 vs a level-6 fighter.
+Aim for 20 cases spanning: zero armour and high armour, broken jaw, broken leg,
+large agility gap in both directions, and a level-1 vs a level-6 fighter.
+
+**Coverage is limited to states reachable by scripted play.** Some of those
+combinations may not be reachable at all. Do NOT fabricate a vector to fill a
+row in that list. For every combination you cannot reach, record the formula's
+predicted behaviour in `docs/re/combat.md` derived from the disassembly, and
+mark it explicitly **UNVERIFIED — not reachable by scripted play**. An honest
+gap is required; a fabricated vector would silently become ground truth for a
+formula nobody checked.
+
+If fewer than 20 cases are reachable, that is an acceptable outcome — report
+the number and the gaps rather than padding.
 
 - [ ] **Step 4: Write the failing test**
 
