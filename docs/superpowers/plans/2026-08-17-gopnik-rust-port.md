@@ -16,7 +16,7 @@
   JSON. The Rust crate handles UTF-8 only, with ONE exception: **save file I/O**,
   where CP866 is the live on-disk encoding and no extraction-time conversion can
   apply, because the bytes are produced at runtime from a player-typed name.
-  That conversion uses the `oem_cp` crate and is confined to `src/save.rs`.
+  That conversion uses the `encoding_rs` crate and is confined to `src/save.rs`.
   (Owner-approved amendment, Task 7. The original wording forbade CP866 anywhere
   in the crate, which `Save::parse`/`Save::to_bytes` cannot satisfy.)
 - **`^0`–`^7` are markup, not content.** They are colour-change directives in
@@ -30,13 +30,19 @@
 - **All Russian game text is preserved verbatim.** No translation, no censoring, no rewording. The game contains deliberate crude slang; that is the content.
 - **Ghidra is driven by Java scripts only.** PyGhidra requires `jpype1`, which does not build on Python 3.14. Do not attempt `pip install pyghidra`.
 - **Python tooling uses the standard library only.** No pip installs, no venv.
-- **Rust dependencies limited to `serde` + `serde_json` + `oem_cp`.** Anything
-  else requires explicit sign-off. `oem_cp` was signed off by the owner for Task
-  7: the owner prefers a crate to a hand-written codepage table. It is preferred
-  over `encoding_rs` because its `encode_string_checked` returns `None` on an
-  unmappable char, whereas `encoding_rs::IBM866.encode` silently substitutes an
-  HTML numeric character reference (`&#28450;`) into the byte stream — verified
-  empirically, and a landmine for byte-exact save writing.
+- **Rust dependencies limited to `serde` + `serde_json` + `encoding_rs`.**
+  Anything else requires explicit sign-off. `encoding_rs` was signed off by the
+  owner for Task 7: the owner prefers a crate to a hand-written codepage table.
+  The encoding is `encoding_rs::IBM866` — there is no `CP866` constant; IBM866
+  is the WHATWG label for the same codepage.
+
+  **Use the strict APIs, not the convenience ones.** `IBM866.encode()` is lossy
+  by WHATWG mandate: an unmappable char is silently replaced with an HTML
+  numeric character reference (verified — `漢` encodes to the bytes `&#28450;`),
+  which would write a corrupt save that still round-trips. Use
+  `new_encoder()` + `encode_from_utf8_without_replacement`, which returns
+  `EncoderResult::Unmappable(char)` naming the offending character, and
+  `decode_without_bom_handling_and_without_replacement` on the way in.
 - **Never modify files under `orig/`.** They are the reference corpus and are checked in read-only.
 - **Every RE finding lands in two places:** a human-readable note under `docs/re/` citing the Ghidra address, and a machine-readable artifact under `data/`. A finding that exists only in a commit message does not count.
 - **Unknown means unknown.** If a field's meaning is not established, name it `unk_<hex_offset>` and preserve its bytes. Never guess a semantic name to make a table look finished.
