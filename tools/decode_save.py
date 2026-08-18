@@ -3,14 +3,30 @@
 
 Layout (694 bytes total), established from the five reference saves:
 
-    0x000  string[255]  magic  -- version banner, constant
-    0x100  string[255]  name   -- player name, colour-prefixed
-    0x200  u16 x 8             -- stat block, semantics TBD (Task 9)
+    0x000  string[255]  magic       -- version banner, constant
+    0x100  string[255]  name        -- player name, colour-prefixed
+    0x200  u16          rank_index  -- indexes the DS:002e name table; the
+                                       class-choice -> value mapping is not
+                                       established (Task 9b)
+    0x202  u16          strength
+    0x204  u16          agility
+    0x206  u16          vitality
+    0x208  u16          luck
+    0x20a  u16          level       -- "понтовость", 0..40 (Task 9)
+    0x20c  u16          dmg_min
+    0x20e  u16          dmg_max
     0x210  u16          hp
     0x212  u16          hpmax
-    0x214  ...                 -- flags, counters, and a run of
-                                  Pascal string[2] records; not yet
-                                  segmented, preserved verbatim.
+    0x214  ...                      -- flags, counters, and a run of
+                                        Pascal string[2] records; not yet
+                                        segmented, preserved verbatim.
+
+Field names and offsets 0x200..0x20f are pinned by Task 9: the player's
+694-byte record in memory (DS:369c) is byte-identical to the .SAV file, and
+that same record is what tools/capture_combat_vectors.py reads via
+FIELDS_U16 to build every combat_vectors.json case -- 314 (now 352) blows
+matched the original with these fields at these offsets. See
+docs/re/combat.md ("The fighter record") and docs/re/save-format.md.
 
 Everything past 0x214 is carried as opaque bytes so that round-trip is
 exact. Task 9 replaces the opaque tail with named fields as they are
@@ -83,13 +99,29 @@ def encode(rec: dict) -> bytes:
     return bytes(buf)
 
 
+# Names for the eight stat words at 0x200..0x20f, pinned by Task 9 (see the
+# module docstring). `rank_index` is the one entry whose own semantics are
+# still not fully pinned down -- it is known to select a name-table row, but
+# the class-choice -> value mapping is Task 9b's territory -- so it keeps a
+# name that says what it is rather than inventing more than is known.
+STAT_NAMES = [
+    "rank_index",
+    "strength",
+    "agility",
+    "vitality",
+    "luck",
+    "level",
+    "dmg_min",
+    "dmg_max",
+]
+
 LAYOUT = {
     "size": SIZE,
     "fields": [
         {"name": "magic", "off": OFF_MAGIC, "kind": "pstring", "len": 256},
         {"name": "name", "off": OFF_NAME, "kind": "pstring", "len": 256},
         *[
-            {"name": f"unk_stat{i}", "off": OFF_STATE + 2 * i, "kind": "u16", "len": 2}
+            {"name": STAT_NAMES[i], "off": OFF_STATE + 2 * i, "kind": "u16", "len": 2}
             for i in range(8)
         ],
         {"name": "hp", "off": OFF_HP, "kind": "u16", "len": 2},

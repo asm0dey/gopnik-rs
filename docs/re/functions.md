@@ -61,6 +61,12 @@ or manual trace-through in Tasks 8/9. Recorded here as the starting point:
 
 - Main loop candidate: `1000:3d11` (entry point of the Rust port's game loop
   reimplementation, Task 8).
-- Combat routine candidates, in order of function size: `1000:1a03`,
-  `1000:6a0d`, `1000:7c67` (starting point for Task 9; confirm by
-  cross-referencing string pointers once Task 4b/2b land).
+- ~~Combat routine candidates, in order of function size: `1000:1a03`,
+  `1000:6a0d`, `1000:7c67`~~ — **retracted by Task 9.** The
+  cross-reference this section called for was run: none of the five combat
+  strings' referencing instructions falls inside any of these three
+  functions' address ranges. `1000:3d11` — the function this document
+  guessed was the *main loop* — turned out to be combat instead (it is in
+  fact both: the whole battle sub-loop, prompt through XP award). See
+  `docs/re/combat.md` ("How the function was identified") for the string
+  cross-reference that confirms `1000:3d11` and rules out these three.

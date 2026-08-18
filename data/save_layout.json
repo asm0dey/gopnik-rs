@@ -14,49 +14,49 @@
    "len": 256
   },
   {
-   "name": "unk_stat0",
+   "name": "rank_index",
    "off": 512,
    "kind": "u16",
    "len": 2
   },
   {
-   "name": "unk_stat1",
+   "name": "strength",
    "off": 514,
    "kind": "u16",
    "len": 2
   },
   {
-   "name": "unk_stat2",
+   "name": "agility",
    "off": 516,
    "kind": "u16",
    "len": 2
   },
   {
-   "name": "unk_stat3",
+   "name": "vitality",
    "off": 518,
    "kind": "u16",
    "len": 2
   },
   {
-   "name": "unk_stat4",
+   "name": "luck",
    "off": 520,
    "kind": "u16",
    "len": 2
   },
   {
-   "name": "unk_stat5",
+   "name": "level",
    "off": 522,
    "kind": "u16",
    "len": 2
   },
   {
-   "name": "unk_stat6",
+   "name": "dmg_min",
    "off": 524,
    "kind": "u16",
    "len": 2
   },
   {
-   "name": "unk_stat7",
+   "name": "dmg_max",
    "off": 526,
    "kind": "u16",
    "len": 2

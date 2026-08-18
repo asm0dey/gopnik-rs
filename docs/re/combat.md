@@ -52,6 +52,12 @@ directly against `SAVE_R2.SAV` by dumping guest memory (see "Capturing the
 vectors" below) — `mem[0x369c:0x389c] == save[0x000:0x200]` and
 `mem[0x38b0:0x3952] == save[0x214:0x2ba]`, both `True`.
 
+This pins `docs/re/save-format.md`'s layout too, not just this document —
+the eight `.SAV` stat words at `0x200`..`0x20f` are this same table's
+`+0x00`..`+0x0e` rows. (Fix wave 1: that finding did not originally land in
+`data/save_layout.json`/`docs/re/save-format.md`; it now does, under the
+same names as this table.)
+
 | record offset | `.SAV` offset | player | enemy | meaning |
 |---|---|---|---|---|
 | `+0x00` | `0x200` | `DS:389c` | `DS:3952` | rank/class name index — **not** the level |
@@ -409,13 +415,16 @@ draw count or the mirrored formula were wrong, every one of them would fail.
 ### What was captured
 
 18 runs across all six starting districts (a fresh character and the five
-reference saves), on 15 distinct pinned seeds. **295 cases, 314 blows** — 200 with the
-player attacking, 95 with the enemy attacking.
+reference saves), on 15 distinct pinned seeds. **295 cases, 352 blows** — 200 with the
+player attacking, 95 with the enemy attacking. (Fix wave 1 regenerated this
+file after removing the truncation described below; the case count is
+unchanged, the blow count grew from 314 because every blow of every round is
+now recorded, not just the leading run at the opening accuracy.)
 
 | dimension | values reached |
 |---|---|
 | attacker agility | 1, 2, 3, 4, 13, 15, 19, 20, 25, 45, 120, 121 |
-| defender agility | 1..15, 19, 20, 27, 31, 50, 60 |
+| defender agility | 1, 2, 3, 4, 6, 7, 9, 10, 11, 13, 15, 19, 20, 27, 31, 50, 60 |
 | attacker armour | 0, 1, 2, 3, 4, 10, 26 |
 | defender armour | 0, 1, 2, 3, 4, 8, 12, 13, 31, 33, 60, 80 |
 | attacker luck | 1..8, 10, 17, 31, 49, 50, 52 |
@@ -425,7 +434,8 @@ player attacking, 95 with the enemy attacking.
 | opening accuracy | 25, 30, 35, 40, 50, 55, 85, 90 % |
 | blows in a round | 1, 2, 3, 4, 5 |
 | broken jaw / leg | all four combinations, on both attacker and defender |
-| outcomes | 147 hits, 167 misses |
+| outcomes | 161 hits, 191 misses |
+| blow index within a round | 0, 1, 2, 3, 4 (every index now has ground truth — see below) |
 
 The brief's target list is covered as follows: zero armour ✔, high armour ✔
 (up to 80), broken jaw ✔, broken leg ✔, large agility gap in both directions
@@ -433,13 +443,60 @@ The brief's target list is covered as follows: zero armour ✔, high armour ✔
 level 1 vs level 6 ✔ and far beyond (level 0 against level 160) — though see
 the next section: level does not enter the combat math at all.
 
-### `expected_blows` is truncated deliberately
+### `expected_blows` covers the whole round (fix wave 1)
 
-`resolve_blow` answers for one blow at the round's *opening* accuracy. Later
-blows in the same round are drawn at a budget 18 lower, so a case records
-only the leading run of blows whose effective accuracy is unchanged; the full
-count is kept in `blows_in_round` and every truncation is listed in
-`capture_notes`. Use `resolve_blow_nth` for later blows.
+`resolve_blow` answers for one blow at the round's *opening* accuracy; later
+blows in the same round are drawn at a budget 18 lower, via
+`resolve_blow_nth(rng, attacker, defender, blow_index)`. The original capture
+truncated `expected_blows` to the leading run whose effective accuracy
+matched the opening one — exactly what repeated `resolve_blow` calls model —
+and left `resolve_blow_nth` at `blow_index > 0` with zero ground truth, since
+every case that survived truncation happened to sit at the capped 90%
+accuracy where later-blow budget differences are invisible. This was a fifth
+UNVERIFIED gap that the "Not verified" list below never recorded — until
+fix wave 1, `resolve_blow_nth`/`budget_at` at `blow_index > 0` had zero
+ground-truth coverage despite being the API Task 11 needs.
+
+**Closed by regenerating the vectors.** `tools/capture_combat_vectors.py` no
+longer truncates: `expected_blows` is every blow of the round, in the order
+the screen printed it, and `tests/combat_vectors.rs` asserts entry `i`
+against `resolve_blow_nth(rng, attacker, defender, i)` — the real per-blow
+index, not always 0 — drawing from one shared `Rng` across the whole round.
+That is ground truth for `resolve_blow_nth` at every index a capture reached
+(0 through 4), not just the opening one. Confirmed by mutation: perturbing
+`budget_at`'s index term (`PER_BLOW.wrapping_mul(blow_index as i16)` →
+`(PER_BLOW - 1).wrapping_mul(blow_index as i16)`) now fails
+`combat_matches_original` at case 273, blow 1 — a mutant the truncated data
+could never have caught, because no captured case reached `blow_index > 0`
+under the old truncation.
+
+`blows_in_round` is kept as a separate field precisely equal to
+`expected_blows.len()`; it exists because it is read off the screen
+independently of `resolve_blow_nth`, and `tests/combat_vectors.rs` also
+checks it against `blows_per_round(attacker, defender)` — see the next
+section.
+
+### `blows_in_round` is now asserted against `blows_per_round` (fix wave 1)
+
+`blows_in_round` was captured from the very first version of this tool but
+was never deserialised or checked by `tests/combat_vectors.rs` — a free,
+independent check of the blow-count formula went unused. It now is.
+`blows_per_round(attacker, defender)` (the formula, `ceil(budget / 18)`) is
+never less than the screen-counted `blows_in_round`: across all 295 cases,
+they are equal in 287 and `blows_per_round` is strictly greater in the other
+8, every one of which is a round the defender did not survive — the printed
+damage of the recorded blows already sums to at least the defender's
+starting HP, i.e. the loop at `1000:4629`/`1000:48c6` broke out early on a
+kill rather than swinging the full budgeted count. `tests/combat_vectors.rs`
+asserts `blows_per_round(a, d) >= case.blows_in_round` unconditionally, and
+`==` specifically when the recorded damage total is less than the
+defender's starting HP (i.e. the round could not have ended in a kill).
+
+`opening_accuracy_pct` in `data/combat_vectors.json` is **not** asserted, and
+must not be: it is computed in Python from the captured agility values using
+the same formula `src/combat.rs` implements, so checking it against the Rust
+port would just be checking the formula against itself. It is retained as a
+reading aid only, and the payload's `opening_accuracy_pct_is` note says so.
 
 ## Not verified — UNVERIFIED, not reachable by scripted play
 
@@ -500,6 +557,30 @@ constrain it.
   `Random(0x12)` (`1000:4141`) picks one of 18 lines to print — *before* the command is read. Task
   11 must reproduce this to keep a whole battle in sync; it is outside a
   single blow and so outside `src/combat.rs`.
+* **Twelve more `Random` call sites inside `FUN_1000_3d11` are recorded here
+  but not mapped.** (fix wave 1) Of the function's 27 `call 1f78:114b`
+  (`System.Random`) sites, the blow loops and the spectator taunt block above
+  account for 15; these 12 do not, and a whole-battle differential replay
+  (Task 12) will desynchronise on every one of them unless they are
+  reproduced. Confirmed as real `call word 0xf78:0x114b` instructions by
+  disassembling each address (`ndisasm`, file offset `0x18D0 + addr`), not
+  assumed from the address list alone:
+  * Flee/other command handlers: `1000:4db7` (argument is a shifted
+    variable, `shl ax,1` twice, not a literal), `1000:4e16` (`Random(2)`),
+    `1000:4ef5` (`Random(0x32)`), `1000:4f18` (`Random(0xa)`).
+  * Post-kill loot/stat-gain, after the XP award: `1000:52d5`
+    (`Random(0x1e)`), `1000:5402` (argument is `ax` after `mul dx` with
+    `dx = 0x19`, not a literal), `1000:5427` (`Random(3)`), `1000:5454`
+    (argument is `ax` after `mul dx` with `dx = 0x28`, not a literal),
+    `1000:5482` (`Random(3)`), `1000:5530` (`Random(2)`), `1000:5617`
+    (`Random(2)`), `1000:5681` (`Random(2)`).
+  * Arguments are given where the instructions immediately before the call
+    make the pushed value unambiguous (a literal `mov ax,N` or a `mul` by a
+    literal); three (`4db7`, `5402`, `5454`) push a value computed from a
+    variable this reading did not trace back further, and are noted as such
+    rather than guessed. Mapping what any of these twelve actually do is out
+    of scope here — this is only the inventory Task 12 needs to know what it
+    has to reproduce.
 
 ## Harness changes made for this task
 

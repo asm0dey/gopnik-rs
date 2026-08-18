@@ -99,6 +99,23 @@ fn cp866_encode(s: &str) -> Result<Vec<u8>, SaveError> {
 pub struct Save {
     pub magic: String,
     pub name: String,
+    /// The eight words at `OFF_STATE`. Named by index rather than split into
+    /// eight struct fields because they are the same 16-byte block
+    /// `tools/capture_combat_vectors.py`'s `FIELDS_U16` reads out of the
+    /// live fighter record (`docs/re/combat.md`, "The fighter record") --
+    /// keeping one array here mirrors that layout instead of inventing a
+    /// second one. Index -> meaning, pinned by Task 9
+    /// (`docs/re/save-format.md`):
+    ///
+    /// 0. `rank_index` -- selects a name-table row; the class-choice value
+    ///    mapping itself is still open (Task 9b).
+    /// 1. `strength`
+    /// 2. `agility`
+    /// 3. `vitality`
+    /// 4. `luck`
+    /// 5. `level` ("понтовость", 0..40)
+    /// 6. `dmg_min`
+    /// 7. `dmg_max`
     pub stats: [u16; 8],
     pub hp: u16,
     pub hpmax: u16,

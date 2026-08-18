@@ -21,9 +21,10 @@ CHK_OFF_STATE = 0x200
 CHK_OFF_HP = 0x210
 CHK_OFF_HPMAX = 0x212
 
-# Established by inspection of all five saves. hp/hpmax are the only
-# semantically confirmed words at this stage; the rest stay unk_* until
-# Task 9 pins them from the disassembly.
+# Established by inspection of all five saves. Task 9 additionally pinned
+# the eight stat words at 0x200-0x20f from the disassembly (see
+# docs/re/save-format.md); this dict only carries the values this test
+# checks directly (name/hp/hpmax), unrelated to that later confirmation.
 EXPECT = {
     "SAVE_R0.SAV": {"name": "^7 adg", "hp": 118, "hpmax": 129},
     "SAVE_R2.SAV": {"name": "^7 vor", "hp": 84, "hpmax": 99},

@@ -1,47 +1,19 @@
 {
   "note": "Captured from orig/g.exe under DOSBox-X with RandSeed pinned in a scratch copy of the binary. Blow lines come from the 80x25 text screen; each fighter's stats and the seed come from the guest's own data segment (scrhook.com's STATE.BIN window). Nothing here was produced by the Rust port. Method and addresses: docs/re/combat.md. Regenerate: python3 tools/capture_combat_vectors.py",
   "seed_is": "RandSeed as read from DS:367Eh at the Enter that completed the `k` command, i.e. the state the round's first Random(100) steps.",
-  "expected_blows_is": "The attacker's blows at the head of the round, truncated to the leading run whose effective accuracy equals the round's opening accuracy -- that is exactly what repeated resolve_blow() calls model. blows_in_round records the full count.",
+  "expected_blows_is": "Every blow of the round, attacker's side, in the order the screen printed them. Entry i is asserted against resolve_blow_nth(rng, attacker, defender, i), which draws from the generator in sequence and uses budget_at(budget, i) for that blow's accuracy, exactly as the original's blow loop does. blows_in_round equals len(expected_blows) here; kept as a separate field because it is read off the screen independently of resolve_blow_nth and is also compared against blows_per_round(attacker, defender).",
+  "opening_accuracy_pct_is": "NOT an original-program value -- derived here in Python from the captured attacker/defender agility via the same blow-budget formula src/combat.rs implements (accuracy(budget) above). Provided as a diagnostic for reading the file; do not assert it against the Rust port, since that would just be checking the formula against itself.",
   "capture_notes": [
-    "d2_seed5: frame 145 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed5: frame 147 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed5: frame 149 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed5: frame 151 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d3_seed11: frame 49 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 55%, not 90%)",
     "d3_seed12345: frame 99 enemy half skipped, player owns the зубная защита (extra Random(4) at 1000:47fa is not modelled)",
     "d3_seed12345: frame 101 enemy half skipped, player owns the зубная защита (extra Random(4) at 1000:47fa is not modelled)",
     "d3_seed12345: frame 103 enemy half skipped, player owns the зубная защита (extra Random(4) at 1000:47fa is not modelled)",
     "d3_seed12345: frame 105 enemy half skipped, player owns the зубная защита (extra Random(4) at 1000:47fa is not modelled)",
     "d3_seed12345: frame 113 enemy half skipped, player owns the зубная защита (extra Random(4) at 1000:47fa is not modelled)",
     "d3_seed12345: frame 115 enemy half skipped, player owns the зубная защита (extra Random(4) at 1000:47fa is not modelled)",
-    "d5_seed0: frame 17 round had 5 blows, kept 4 (blow 5 is drawn at accuracy 80%, not 90%)",
-    "d5_seed0: frame 27 round had 4 blows, kept 3 (blow 4 is drawn at accuracy 85%, not 90%)",
-    "d5_seed0: frame 33 round had 4 blows, kept 3 (blow 4 is drawn at accuracy 85%, not 90%)",
-    "d5_seed99: frame 17 round had 5 blows, kept 4 (blow 5 is drawn at accuracy 80%, not 90%)",
-    "d5_seed99: frame 27 round had 4 blows, kept 3 (blow 4 is drawn at accuracy 80%, not 90%)",
-    "d5_seed99: frame 33 round had 4 blows, kept 3 (blow 4 is drawn at accuracy 80%, not 90%)",
-    "d5_seed99: frame 35 round had 4 blows, kept 3 (blow 4 is drawn at accuracy 80%, not 90%)",
-    "d2_seed13: frame 17 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed13: frame 19 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed13: frame 49 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed13: frame 51 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed13: frame 53 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed13: frame 55 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed13: frame 57 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed13: frame 59 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed777: frame 81 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed777: frame 83 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed777: frame 85 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed777: frame 87 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed777: frame 89 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed777: frame 91 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
-    "d2_seed777: frame 97 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 5%, not 90%)",
     "d3_seed4: frame 65 enemy half skipped, player owns the зубная защита (extra Random(4) at 1000:47fa is not modelled)",
     "d3_seed4: frame 69 enemy half skipped, player owns the зубная защита (extra Random(4) at 1000:47fa is not modelled)",
     "d3_seed4: frame 75 enemy half skipped, player owns the зубная защита (extra Random(4) at 1000:47fa is not modelled)",
-    "d3_seed4: frame 83 enemy half skipped, player owns the зубная защита (extra Random(4) at 1000:47fa is not modelled)",
-    "d4_seed4: frame 97 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 65%, not 90%)",
-    "d4_seed4: frame 99 round had 2 blows, kept 1 (blow 2 is drawn at accuracy 65%, not 90%)"
+    "d3_seed4: frame 83 enemy half skipped, player owns the зубная защита (extra Random(4) at 1000:47fa is not modelled)"
   ],
   "cases": [
     {
@@ -374,6 +346,10 @@
         {
           "hit": true,
           "damage": 1
+        },
+        {
+          "hit": true,
+          "damage": 2
         }
       ],
       "blows_in_round": 2,
@@ -458,6 +434,10 @@
         {
           "hit": true,
           "damage": 4
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -539,6 +519,10 @@
         "broken_leg": false
       },
       "expected_blows": [
+        {
+          "hit": false,
+          "damage": 0
+        },
         {
           "hit": false,
           "damage": 0
@@ -668,6 +652,10 @@
         {
           "hit": true,
           "damage": 11
+        },
+        {
+          "hit": true,
+          "damage": 1
         }
       ],
       "blows_in_round": 2,
@@ -752,6 +740,10 @@
         {
           "hit": true,
           "damage": 5
+        },
+        {
+          "hit": true,
+          "damage": 4
         }
       ],
       "blows_in_round": 2,
@@ -836,6 +828,10 @@
         {
           "hit": true,
           "damage": 5
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -1088,6 +1084,10 @@
         {
           "hit": true,
           "damage": 6
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -1169,6 +1169,10 @@
         "broken_leg": false
       },
       "expected_blows": [
+        {
+          "hit": true,
+          "damage": 2
+        },
         {
           "hit": true,
           "damage": 2
@@ -1256,6 +1260,10 @@
         {
           "hit": true,
           "damage": 6
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -5456,6 +5464,10 @@
         {
           "hit": true,
           "damage": 10
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -5498,6 +5510,10 @@
         {
           "hit": true,
           "damage": 28
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -5540,6 +5556,10 @@
         {
           "hit": true,
           "damage": 27
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -5582,6 +5602,10 @@
         {
           "hit": true,
           "damage": 13
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -5666,6 +5690,10 @@
         {
           "hit": true,
           "damage": 64
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -6144,6 +6172,10 @@
         {
           "hit": true,
           "damage": 134
+        },
+        {
+          "hit": true,
+          "damage": 113
         }
       ],
       "blows_in_round": 5,
@@ -6236,6 +6268,10 @@
         {
           "hit": true,
           "damage": 89
+        },
+        {
+          "hit": true,
+          "damage": 124
         }
       ],
       "blows_in_round": 4,
@@ -6286,6 +6322,10 @@
         {
           "hit": true,
           "damage": 113
+        },
+        {
+          "hit": true,
+          "damage": 106
         }
       ],
       "blows_in_round": 4,
@@ -6390,6 +6430,10 @@
         {
           "hit": true,
           "damage": 124
+        },
+        {
+          "hit": true,
+          "damage": 130
         }
       ],
       "blows_in_round": 5,
@@ -6482,6 +6526,10 @@
         {
           "hit": true,
           "damage": 91
+        },
+        {
+          "hit": true,
+          "damage": 83
         }
       ],
       "blows_in_round": 4,
@@ -6532,6 +6580,10 @@
         {
           "hit": true,
           "damage": 85
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 4,
@@ -6582,6 +6634,10 @@
         {
           "hit": true,
           "damage": 99
+        },
+        {
+          "hit": true,
+          "damage": 118
         }
       ],
       "blows_in_round": 4,
@@ -11412,6 +11468,10 @@
         {
           "hit": true,
           "damage": 14
+        },
+        {
+          "hit": true,
+          "damage": 9
         }
       ],
       "blows_in_round": 2,
@@ -11454,6 +11514,10 @@
         {
           "hit": true,
           "damage": 26
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -11538,6 +11602,10 @@
         {
           "hit": true,
           "damage": 28
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -11577,6 +11645,10 @@
         "broken_leg": false
       },
       "expected_blows": [
+        {
+          "hit": false,
+          "damage": 0
+        },
         {
           "hit": false,
           "damage": 0
@@ -11622,6 +11694,10 @@
         {
           "hit": true,
           "damage": 10
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -11664,6 +11740,10 @@
         {
           "hit": true,
           "damage": 10
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -11706,6 +11786,10 @@
         {
           "hit": true,
           "damage": 13
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -11748,6 +11832,10 @@
         {
           "hit": true,
           "damage": 11
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -11832,6 +11920,10 @@
         {
           "hit": true,
           "damage": 9
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -11874,6 +11966,10 @@
         {
           "hit": true,
           "damage": 14
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -11916,6 +12012,10 @@
         {
           "hit": true,
           "damage": 10
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -11955,6 +12055,10 @@
         "broken_leg": false
       },
       "expected_blows": [
+        {
+          "hit": false,
+          "damage": 0
+        },
         {
           "hit": false,
           "damage": 0
@@ -12000,6 +12104,10 @@
         {
           "hit": true,
           "damage": 26
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -12042,6 +12150,10 @@
         {
           "hit": true,
           "damage": 13
+        },
+        {
+          "hit": false,
+          "damage": 0
         }
       ],
       "blows_in_round": 2,
@@ -12084,6 +12196,10 @@
         {
           "hit": true,
           "damage": 30
+        },
+        {
+          "hit": true,
+          "damage": 26
         }
       ],
       "blows_in_round": 2,
@@ -12462,6 +12578,10 @@
         {
           "hit": true,
           "damage": 52
+        },
+        {
+          "hit": true,
+          "damage": 59
         }
       ],
       "blows_in_round": 2,
@@ -12504,6 +12624,10 @@
         {
           "hit": true,
           "damage": 59
+        },
+        {
+          "hit": true,
+          "damage": 69
         }
       ],
       "blows_in_round": 2,

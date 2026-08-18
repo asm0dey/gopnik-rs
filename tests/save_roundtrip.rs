@@ -9,7 +9,7 @@ fn load(name: &str) -> Vec<u8> {
 }
 
 #[test]
-// Note: this test does NOT independently validate the `unk_stat*`/`tail`
+// Note: this test does NOT independently validate the eight stat-word/`tail`
 // offsets. `to_bytes` writes those bytes back to the same self-computed
 // offsets it read them from, so the round-trip passes regardless of
 // whether those offsets are actually correct against the original Pascal
@@ -143,8 +143,20 @@ fn rust_offsets_match_save_layout_json() {
 
     assert_eq!(off("magic"), save::OFF_MAGIC);
     assert_eq!(off("name"), save::OFF_NAME);
-    for i in 0..8 {
-        assert_eq!(off(&format!("unk_stat{i}")), save::OFF_STATE + 2 * i);
+    // Names pinned by Task 9 (docs/re/save-format.md); rank_index's own
+    // semantics are still open (Task 9b), but the offset it occupies is not.
+    const STAT_NAMES: [&str; 8] = [
+        "rank_index",
+        "strength",
+        "agility",
+        "vitality",
+        "luck",
+        "level",
+        "dmg_min",
+        "dmg_max",
+    ];
+    for (i, name) in STAT_NAMES.iter().enumerate() {
+        assert_eq!(off(name), save::OFF_STATE + 2 * i);
     }
     assert_eq!(off("hp"), save::OFF_HP);
     assert_eq!(off("hpmax"), save::OFF_HPMAX);

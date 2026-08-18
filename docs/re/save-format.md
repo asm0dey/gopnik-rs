@@ -9,21 +9,21 @@ against all five reference saves shipped in `orig/`: `SAVE_R0.SAV`,
 
 Every `.SAV` file is exactly 694 bytes.
 
-| offset | kind          | len | name        | status                          |
-|--------|---------------|-----|-------------|----------------------------------|
-| 0x000  | `pstring`     | 256 | `magic`     | confirmed — constant version banner |
-| 0x100  | `pstring`     | 256 | `name`      | confirmed — player name, colour-prefixed |
-| 0x200  | `u16`         | 2   | `unk_stat0` | **unknown** — see below |
-| 0x202  | `u16`         | 2   | `unk_stat1` | **unknown** |
-| 0x204  | `u16`         | 2   | `unk_stat2` | **unknown** |
-| 0x206  | `u16`         | 2   | `unk_stat3` | **unknown** |
-| 0x208  | `u16`         | 2   | `unk_stat4` | **unknown** |
-| 0x20a  | `u16`         | 2   | `unk_stat5` | **unknown** |
-| 0x20c  | `u16`         | 2   | `unk_stat6` | **unknown** |
-| 0x20e  | `u16`         | 2   | `unk_stat7` | **unknown** |
-| 0x210  | `u16`         | 2   | `hp`        | confirmed — current hit points |
-| 0x212  | `u16`         | 2   | `hpmax`     | confirmed — maximum hit points |
-| 0x214  | `bytes`       | 162 | `tail`      | **unknown**, opaque — flags, counters, and a run of Pascal `string[2]` records, not yet segmented |
+| offset | kind          | len | name         | status                          |
+|--------|---------------|-----|--------------|----------------------------------|
+| 0x000  | `pstring`     | 256 | `magic`      | confirmed — constant version banner |
+| 0x100  | `pstring`     | 256 | `name`       | confirmed — player name, colour-prefixed |
+| 0x200  | `u16`         | 2   | `rank_index` | confirmed (Task 9) — indexes the `DS:002e` name table; the class-choice → value mapping is still open, see below |
+| 0x202  | `u16`         | 2   | `strength`   | confirmed (Task 9) |
+| 0x204  | `u16`         | 2   | `agility`    | confirmed (Task 9) |
+| 0x206  | `u16`         | 2   | `vitality`   | confirmed (Task 9) |
+| 0x208  | `u16`         | 2   | `luck`       | confirmed (Task 9) |
+| 0x20a  | `u16`         | 2   | `level`      | confirmed (Task 9) — "понтовость", 0..40; **not** 0x200 |
+| 0x20c  | `u16`         | 2   | `dmg_min`    | confirmed (Task 9) |
+| 0x20e  | `u16`         | 2   | `dmg_max`    | confirmed (Task 9) |
+| 0x210  | `u16`         | 2   | `hp`         | confirmed — current hit points |
+| 0x212  | `u16`         | 2   | `hpmax`      | confirmed — maximum hit points |
+| 0x214  | `bytes`       | 162 | `tail`       | **unknown**, opaque — flags, counters, and a run of Pascal `string[2]` records, not yet segmented |
 
 `0x214 + 162 = 0x2ba = 694`, so the tail runs to end of file.
 
@@ -44,41 +44,73 @@ purposes.
 
 ## Observed values (all five reference saves)
 
-| file | magic | name | hp | hpmax | stats (unk_stat0..7) |
-|------|-------|------|----|-------|------------------------|
-| `SAVE_R0.SAV` | `^4Gopnik: ^7version 1.02 june,sept 2003` | `^7 adg` | 118 | 129 | `[4, 24, 13, 19, 7, 15, 17, 29]` |
-| `SAVE_R2.SAV` | (same) | `^7 vor` | 84 | 99 | `[6, 16, 15, 15, 17, 10, 11, 19]` |
-| `SAVE_R3.SAV` | (same) | `^7 vor` | 178 | 178 | `[6, 28, 25, 28, 31, 20, 24, 38]` |
-| `SAVE_R4.SAV` | (same) | `^7 vor` | 251 | 270 | `[6, 42, 45, 44, 52, 30, 32, 53]` |
-| `SAVE_R5.SAV` | (same) | `^7 Mudila` | 325 | 325 | `[5, 90, 120, 45, 49, 40, 57, 102]` |
+| file | magic | name | rank_index | strength | agility | vitality | luck | level | dmg_min | dmg_max | hp | hpmax |
+|------|-------|------|-----------:|---------:|--------:|---------:|-----:|------:|--------:|--------:|---:|------:|
+| `SAVE_R0.SAV` | `^4Gopnik: ^7version 1.02 june,sept 2003` | `^7 adg` | 4 | 24 | 13 | 19 | 7 | 15 | 15 | 17 | 118 | 129 |
+| `SAVE_R2.SAV` | (same) | `^7 vor` | 6 | 16 | 15 | 15 | 17 | 10 | 10 | 11 | 84 | 99 |
+| `SAVE_R3.SAV` | (same) | `^7 vor` | 6 | 28 | 25 | 28 | 31 | 20 | 20 | 24 | 178 | 178 |
+| `SAVE_R4.SAV` | (same) | `^7 vor` | 6 | 42 | 45 | 44 | 52 | 30 | 30 | 32 | 251 | 270 |
+| `SAVE_R5.SAV` | (same) | `^7 Mudila` | 5 | 90 | 120 | 45 | 49 | 40 | 40 | 57 | 325 | 325 |
 
 `magic` is byte-identical across all five saves:
 `^4Gopnik: ^7version 1.02 june,sept 2003` — a constant version banner, not
 per-save state.
 
+## The eight stat words at 0x200–0x20f (Task 9)
+
+**These are confirmed, not guessed.** They are the same 16-byte fighter
+record `docs/re/combat.md` ("The fighter record") already establishes for
+the *in-memory* player record at `DS:389c` — Task 9 confirmed
+`DS:369c`..`DS:369c+694` is byte-identical to the `.SAV` file, and Task 9's
+`tools/capture_combat_vectors.py` reads exactly this block (its
+`FIELDS_U16`, offsets relative to the record) to build every case in
+`data/combat_vectors.json`. Every field below `rank_index` fed the combat
+math that reproduced 352 real blows with zero mismatches, which is strong,
+functional confirmation, not a structural guess.
+
+Independently re-verified here, directly against the five reference save
+files (not taken on the report's word):
+
+- **`level` is at `0x20a`, not `0x200`.** `0x200` (`rank_index`) indexes the
+  `DS:002e` display-name table instead. Three checks, all passing on all
+  five saves: `1000:1404` prints the `+0x0a` word as "`# уровня`"; the XP
+  threshold stored at save offset `0x234` (in `tail`, not yet a named field)
+  equals `10 + 10 * level` for every save — `(level, threshold)` =
+  `(15,160)`, `(10,110)`, `(20,210)`, `(30,310)`, `(40,410)`; and
+  `1000:258a` increments the `+0x0a` word under
+  `^1Понтовость увеличивается:`, capped at 40 (`1000:2580`).
+- **`hpmax == 10 + 5*vitality + strength` holds exactly for `SAVE_R0`,
+  `SAVE_R3`, `SAVE_R5`** (129, 178, 325 — all match). It is off by 2 and 4
+  on `SAVE_R2`/`SAVE_R4` (predicts 101 and 272 against actual 99 and 270),
+  most plausibly equipment or a buff/debuff this record's base stats don't
+  carry — not investigated further here, and not a reason to doubt the
+  field identities, since three of five match exactly and the pattern
+  (`strength`/`vitality`, not some other pair) is what makes any of the
+  five saves match at all.
+- **`agility`** is corroborated separately, live: `docs/re/combat.md` and
+  `src/combat.rs` cite `SAVE_R2` printing `Точность 90%` at agility 15 and
+  `SAVE_R5` printing `- 6 ударов` at agility 120 — both exactly the `0x204`
+  word for those saves.
+
+**`rank_index` keeps that name, not a guess at what it selects.** Its role
+(a name-table index) is established; the mapping from the class the player
+picks to this stored value is not (`DS:0002`'s per-class weight table has
+not been read out) — Task 9b's territory, per `docs/re/combat.md`'s open
+questions.
+
 ## Unknown / not yet established
 
-Per project convention, a field whose meaning is not confirmed is named
-`unk_<hex_offset>` (here `unk_stat0`..`unk_stat7`, since all eight share
-the same 16-byte block at 0x200) and its bytes are preserved rather than
-guessed at:
-
-- **The eight stat words at 0x200–0x20f.** Values climb steadily with
-  character progression (e.g. `unk_stat1` goes 24 -> 16 -> 28 -> 42 -> 90
-  across the five saves) which is consistent with them being attributes
-  or skills, but no name or semantic meaning is assigned yet. `unk_stat0`
-  is notably small and stable-ish (4, 6, 6, 6, 5) relative to the others,
-  which climb much further — possibly a different kind of value (e.g. a
-  level or class index) rather than a raw stat, but this is speculation,
-  not a finding, and is not encoded in the layout.
 - **The 162-byte tail at 0x214–0x2b9.** Carried as opaque `bytes` for an
   exact round trip. It is known to contain a run of Pascal `string[2]`
-  records among flags/counters, per the brief, but the run has not been
-  segmented into individual fields.
+  records among flags/counters, per the brief, and to hold the XP total at
+  `+0x32` (save offset `0x232`) and the next-level threshold at `+0x34`
+  (`0x234`, used above), but the run has not been segmented into individual
+  fields.
+- **The `rank_index → display name` mapping**, per the note above.
 
-Task 9 pins the stat words and segments the tail against the disassembly;
-until then this document and `data/save_layout.json` intentionally leave
-them as opaque/unknown rather than presenting a guessed layout as settled.
+Per project convention, a field whose meaning is not confirmed stays named
+`unk_<hex_offset>`; none of the eight stat words qualify for that any more,
+but the tail still does, and is not presented as a guessed layout.
 
 ## Validation
 

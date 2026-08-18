@@ -236,19 +236,6 @@ def parse_round(lines):
     return player, enemy
 
 
-def truncate_to_opening_accuracy(blows, budget):
-    """The leading blows drawn at the round's opening accuracy.
-
-    resolve_blow() answers for one blow at that accuracy; later blows in the
-    same round come from a budget 18 lower, so the recorded list stops where
-    the effective accuracy changes.
-    """
-    keep = 0
-    while keep < len(blows) and accuracy(budget - 18 * keep) == accuracy(budget):
-        keep += 1
-    return keep
-
-
 def harvest(name, frames, states, notes):
     """Turn one captured run into cases."""
     cases = []
@@ -293,18 +280,13 @@ def harvest(name, frames, states, notes):
                 f"{hp_before - hp_after}"
             )
 
-        # resolve_blow() answers for one blow at the round's opening accuracy.
-        # Later blows in the same round are drawn at a lower budget; keep only
-        # the leading run whose effective accuracy is unchanged, so the
-        # recorded list is exactly what repeated resolve_blow() calls model.
+        # The whole round is recorded, blow by blow. resolve_blow_nth(rng, a,
+        # d, i) is called once per entry, in order, with i equal to the
+        # entry's position in the list -- that is exactly the draw sequence
+        # and the per-blow budget (budget_at(budget, i)) the original uses,
+        # so every blow in the round is a ground-truth check, not just the
+        # leading run at the opening accuracy.
         budget = blow_budget(attacker["agility"], defender["agility"])
-        keep = truncate_to_opening_accuracy(blows, budget)
-        if keep < len(blows):
-            notes.append(
-                f"{name}: frame {i} round had {len(blows)} blows, kept {keep} "
-                f"(blow {keep + 1} is drawn at accuracy "
-                f"{accuracy(budget - 18 * keep)}%, not {accuracy(budget)}%)"
-            )
         cases.append(
             {
                 "run": name,
@@ -312,7 +294,7 @@ def harvest(name, frames, states, notes):
                 "seed": seed,
                 "attacker": attacker,
                 "defender": defender,
-                "expected_blows": blows[:keep],
+                "expected_blows": blows,
                 "blows_in_round": len(blows),
                 "opening_accuracy_pct": accuracy(budget),
                 "attacker_is": "player",
@@ -337,7 +319,6 @@ def harvest(name, frames, states, notes):
             )
             continue
         e_budget = blow_budget(defender["agility"], attacker["agility"])
-        e_keep = truncate_to_opening_accuracy(enemy_blows, e_budget)
         cases.append(
             {
                 "run": name,
@@ -345,7 +326,7 @@ def harvest(name, frames, states, notes):
                 "seed": lcg_step(seed),
                 "attacker": defender,
                 "defender": attacker,
-                "expected_blows": enemy_blows[:e_keep],
+                "expected_blows": enemy_blows,
                 "blows_in_round": len(enemy_blows),
                 "opening_accuracy_pct": accuracy(e_budget),
                 "attacker_is": "enemy",
@@ -403,10 +384,23 @@ def main():
             "`k` command, i.e. the state the round's first Random(100) steps."
         ),
         "expected_blows_is": (
-            "The attacker's blows at the head of the round, truncated to the "
-            "leading run whose effective accuracy equals the round's opening "
-            "accuracy -- that is exactly what repeated resolve_blow() calls "
-            "model. blows_in_round records the full count."
+            "Every blow of the round, attacker's side, in the order the "
+            "screen printed them. Entry i is asserted against "
+            "resolve_blow_nth(rng, attacker, defender, i), which draws from "
+            "the generator in sequence and uses budget_at(budget, i) for "
+            "that blow's accuracy, exactly as the original's blow loop "
+            "does. blows_in_round equals len(expected_blows) here; kept as "
+            "a separate field because it is read off the screen "
+            "independently of resolve_blow_nth and is also compared "
+            "against blows_per_round(attacker, defender)."
+        ),
+        "opening_accuracy_pct_is": (
+            "NOT an original-program value -- derived here in Python from "
+            "the captured attacker/defender agility via the same "
+            "blow-budget formula src/combat.rs implements (accuracy(budget) "
+            "above). Provided as a diagnostic for reading the file; do not "
+            "assert it against the Rust port, since that would just be "
+            "checking the formula against itself."
         ),
         "capture_notes": notes,
         "cases": cases,
