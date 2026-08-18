@@ -1,10 +1,7 @@
 # Known gaps in the port
 
-The list of things the port does **not** reproduce, and why. It used to live
-in `.superpowers/sdd/task-11-report.md`, which is git-ignored, so every source
-comment that pointed at it pointed at nothing for anyone outside the session
-that wrote it. The substance lives here instead; the source comments cite this
-file by section.
+The list of things the port does **not** reproduce, and why. Source comments
+cite this file by section.
 
 Each entry states its evidence tier per `docs/re/METHODOLOGY.md`:
 **established from flow** (with an address), **corroborated** (by state or
@@ -15,24 +12,100 @@ the string at file offset `0x18d0 + n`.
 
 ---
 
-## Discovery: five of the seven flags are still unreachable
+## Discovery flags: the complete store inventory
 
-*Cited from `src/game.rs`'s `enter_shop`.*
+*Cited from `src/game.rs`'s `enter_shop` and `Game::new`.*
 
 The seven discovery flags are seven contiguous bytes at `20ae:3694..369a`
-(`docs/re/command-dispatch.md`, "Discovery gates"). A scan of `orig/g.exe` for
-`c6 06 ?? 36 ??` (`mov byte [0x36??],imm8`) finds every store to them.
-**Established from flow.** Two of the setters are implemented:
+(`docs/re/command-dispatch.md`, "Discovery gates"). Scanning `orig/g.exe` for
+`c6 06 [94-9a] 36 imm8` (`mov byte [0x36??],imm8`) yields **31** stores:
+**14 clears** and **17 set-to-1**. The clears are the two block resets —
+`1000:6d3b`..`1000:6d6e` (the `places.sav` load-failure arm) and
+`1000:ab96`..`1000:abc9` (`reset_for_new_district`). All seventeen setters are
+below; **established from flow** (the scan is byte-exact and the encoding is
+fixed-length, so it cannot miss a store of this form).
 
-| flag | location | setter | implemented as |
-|---|---|---|---|
-| `0x3697` | Girl | `1000:b570` (wander bucket 2) | `Game::wander_girl` |
-| `0x3699` | Club | `1000:d751` (`girl`'s own reveal) | `Game::visit_girl` |
+An earlier revision of this section claimed the same scan "finds every store to
+them", then listed twelve of the seventeen and said "**Two** further stores"
+while naming five addresses. That is the "evidence that proves less than it
+claims" failure `docs/re/METHODOLOGY.md` exists to stop; the count and the
+inventory are now stated together.
 
-That makes `w` → girl → club a real, reachable chain. The other five are set
-only from paths this port does not model; the ones located so far are below.
+| setter | flag | location | trigger | tier | in the port? |
+|---|---|---|---|---|---|
+| `1000:6dc3` | `0x3698` | Vet | character creation, `1000:6dbe` | flow | **yes** — `Game::new` |
+| `1000:6dc8` | `0x3694` | Market | character creation, `1000:6dbe` | flow | **yes** — `Game::new` |
+| `1000:b196` | `0x3698` | Vet | wander preamble, `Random(10)` at `1000:b186` | flow | no |
+| `1000:b1c8` | `0x3694` | Market | wander preamble, `Random(10)` at `1000:b1b8` | flow | no |
+| `1000:b1fa` | `0x3699` | Club | wander preamble, `Random(100)` at `1000:b1ea` | flow | no |
+| `1000:b22c` | `0x369a` | Gym | wander preamble, `Random(100)` at `1000:b21c` | flow | no |
+| `1000:b570` | `0x3697` | Girl | wander bucket 2 | flow | **yes** — `Game::wander_girl` |
+| `1000:d751` | `0x3699` | Club | `girl`'s own reveal | flow | **yes** — `Game::visit_girl` |
+| `1000:73c3` | `0x3696` | Den | `[0x389c] == 5` at `1000:73bb` | flow | no |
+| `1000:73cf` | `0x3697` | Girl | `[0x389c] == 3` at `1000:73bb` | flow | no |
+| `1000:73d4` | `0x3699` | Club | `[0x389c] == 3` at `1000:73bb` | flow | no |
+| `1000:73e0` | `0x3695` | BigMarket | `[0x389c] == 6` at `1000:73bb` | flow | no |
+| `1000:dcf6` | `0x3695` | BigMarket | the `a` token at `1000:dcef` | flow | no |
+| `1000:dcfb` | `0x369a` | Gym | the `a` token at `1000:dcef` | flow | no |
+| `1000:ae1f` | `0x3696` | Den | immediately after `1000:ae13` sets a `[0x3c83]` sentinel | unverified | no |
+| `1000:4aa5` | `0x3696` | Den | inside the combat unit | unverified | no |
+| `1000:52b3` | `0x3696` | Den | inside the combat unit | unverified | no |
 
-### Wander preamble (`1000:af04`..`1000:b2a0`) — not reproduced
+Four of the seven flags are reachable in this port: Market and Vet from
+character creation, Girl from the wander bucket, Club from `girl`. BigMarket,
+Den and Gym are not reachable at all.
+
+### Character creation grants Vet and Market — `1000:6dbe`
+
+**Established from flow.** `1000:6dbe` writes `[0x3692] := 1` (district),
+`1000:6dc3` writes Vet and `1000:6dc8` writes Market, three consecutive
+five-byte stores. Three paths reach the block and all three write all three
+bytes: `1000:6b3a` (the `save_r?.sav` scan at `1000:6a62`..`1000:6ab9` found
+nothing — **the path a fresh run with no `.SAV` files takes**, and it prints
+nothing), `1000:6b81` (the slot prompt at `1000:6b51` read a key that is none
+of `'0'`,`'2'`..`'5'`, i.e. "начать сначала"), and `1000:6bdd` (`IOResult`
+non-zero at `1000:6bd4`, via `1000:6da5`, which prints file `0x7D21`).
+
+The `places.sav` reader's own failure arm (`1000:6d3b`) does **not** reach
+`1000:6dbe`; it clears flags and leaves at `1000:6da0`.
+
+### The `[0x389c]` progression reveals — `1000:73bb`..`1000:73e0`
+
+**Established from flow**, contrary to an earlier "not yet traced to a trigger
+/ unverified" tiering. `1000:73bb` `a1 9c 38` `mov ax,[0x389c]`, then:
+
+```text
+73be  cmp ax,5   / 73c1 jnz 0x73ca / 73c3  [0x3696] := 1   (Den)
+73ca  cmp ax,3   / 73cd jnz 0x73db / 73cf  [0x3697] := 1   (Girl)
+                                    73d4  [0x3699] := 1   (Club)
+73db  cmp ax,6   / 73de jnz 0x73e5 / 73e0  [0x3695] := 1   (BigMarket)
+73e5  mov byte [0x3e35],5
+```
+
+What `[0x389c]` *means*, and what reaches `1000:73bb`, remain **unverified**;
+the store-to-trigger link inside this routine does not.
+
+### The `a` token — `1000:dce5`..`1000:dcfb`
+
+**Established from flow.** Not an untraceable path: it is a typed word.
+
+```text
+dcba  cmp byte [0x3695],0 / 74 07  ; already-have check: BigMarket and
+dcc1  cmp byte [0x369a],0 / 75 6a  ;   Gym both set -> skip to 0xdd32
+dcc8..dcdc                         ; ax := ([0x38a6] - ([0x3692]-1)*10)*2 + [0x38cb]
+dce0  cmp ax,0x28 / 7c 4d          ; < 40 -> skip
+dce5  push ds:0x3a72               ; the line just typed
+dcea  mov di,0x9fc9 / push cs      ; file 0xB899 = the single character 'a'
+dcef  call 0f78:0bd8 / 75 3c       ; string compare; not equal -> skip
+dcf6  [0x3695] := 1                ; BigMarket
+dcfb  [0x369a] := 1                ; Gym
+```
+
+`DS:3a72` is the same submenu input buffer `mar` reads into (`1000:bd21`).
+**Unverified**: which prompt's read leaves the token there, and what `[0x38cb]`
+is. Not implemented here.
+
+### Wander preamble (`1000:af04`..`1000:b34d`) — not reproduced
 
 *Cited from `src/game.rs`'s `Game::walk` doc.*
 
@@ -40,8 +113,21 @@ A long run of one-shot flavour and discovery events, each gated by its own
 `Random()` roll and its own never-repeat flag, running **before** the four-way
 bucket roll at `1000:b34d`. Twenty-two `Random` call sites exist between
 `1000:ae5a` and `1000:b940` (searching for the `9a 4b 11 78 0f` far call);
-`Game::walk` models three of them. **Established from flow** that the
-following four are discovery events:
+`Game::walk` models three of them: the bucket roll `1000:b353`, bucket 2's
+girl roll `1000:b54e`, and the decline roll `1000:b725`.
+
+Counting the preamble exactly, because an earlier revision put it at "eight
+other draws" and no reading yields eight:
+
+* In `1000:af04`..`1000:b2a0` there are **nine** sites: `af68`, `afc7`, `b030`,
+  `b0dc`, `b186`, `b1b8`, `b1ea`, `b21c`, `b272`. Four are the discovery rolls
+  in the table below, so **five** others.
+* Extending the range to the bucket roll adds `b2fa` and `b321` — **eleven**
+  sites, **seven** others. (Those two are inside the `[0x389c] == 6` arm and
+  are skipped by `1000:b2ed` `jnz 0xb34d`, so they are conditional, not
+  per-walk.)
+
+**Established from flow** that these four are discovery events:
 
 | roll | gate | setter | string |
 |---|---|---|---|
@@ -52,23 +138,60 @@ following four are discovery events:
 
 Each fires when its roll returns `0` and its flag is still clear.
 
-**Why they are not implemented.** They are four *unconditional* draws sitting
-inside a preamble whose other eight draws are still uncatalogued. Adding these
+**Why they are not implemented.** This is a **scope** call, not a fidelity
+blocker. They are four unconditional draws inside a preamble whose other seven
+draws have not been catalogued (no `n`, no gate, no effect), so adding these
 four alone would move the port's RNG sequence without bringing it closer to the
-original's, and the fidelity rule is the *sequence*, not the individual event.
-Implementing them belongs with a pass that catalogues the whole preamble.
+original's. The port's sequence is *already* wrong relative to the original —
+see the next section — and stays wrong either way; implementing these belongs
+with a pass that catalogues the whole preamble, so the sequence is wired at
+once rather than in fragments. Nothing about the deferral says the events
+themselves are uncertain: all four are established from flow.
 
-Two further stores are outside the wander path and not yet traced to a trigger:
-`1000:ae1f` (`[0x3696] := 1`, the Den, immediately after `1000:ae13` sets a
-`[0x3c83]` sentinel), and `1000:4aa5` / `1000:52b3` / `1000:73c3` (also the
-Den, inside the combat and progression units). `1000:dcf6` / `1000:dcfb` set
-BigMarket and Gym together. **Unverified**: what reaches each of them. A
-breakpoint on each store during a played session would settle it.
+The same standard applies in the other direction. `Game::wander_girl` and
+`Game::visit_girl` *are* implemented, and each spends its draw where the
+original spends one (`1000:b54e`, `1000:d728`); implementing a store that costs
+no draw at all — `Game::new`'s `1000:6dc3`/`1000:6dc8` — is likewise free of
+this argument, which is why it was not deferred.
+
+### Two unconditional draws after the bucket roll — `1000:b39e`, `1000:b3ae`
+
+**Established from flow**, and **the port spends neither**:
+
+```text
+b39a  b8 c8 00        mov ax,0xc8      ; 200
+b39d  50              push ax
+b39e  9a 4b 11 78 0f  call Random
+b3a3  09 c0           or ax,ax
+b3a5  75 03           jnz 0xb3aa
+b3a7  e8 bd c8        call 0x7c67
+b3aa  b8 64 00        mov ax,0x64      ; 100
+b3ad  50              push ax
+b3ae  9a 4b 11 78 0f  call Random
+b3b3  09 c0           or ax,ax
+b3b5  75 03           jnz 0xb3ba
+b3b7  e8 7e c1        call 0x7538
+```
+
+They sit between the last bucket store (`1000:b395`, reached from the `== 1`
+compare at `1000:b38e`) and the bucket dispatch (`1000:b3ba` `mov al,[0x3970]`), on the
+fall-through path, so **every** walk executes both calls; only the
+`call 0x7c67` / `call 0x7538` payloads are gated on a `0`. Neither callee has
+been disassembled. An earlier revision enumerated `b34d → b359 → b35c..b393 →
+b3ba` and walked straight past this block.
+
+**Consequence for draw-sequence fidelity.** In the original, bucket 2 reaches
+`1000:b54e`'s `Random(2)` as the *fourth* draw since the bucket roll (`b39e`,
+`b3ae`, then bucket 2's own); in the port it is the *first*. The port's wander
+draw sequence is therefore already out of step with the original's, before any
+of the preamble is counted. Not implemented in this wave for the same scope
+reason as the preamble: half-wiring the sequence is worse than a documented
+gap.
 
 ### Wander buckets 1 and 4 — flavour only
 
 **Established from flow** that neither writes a discovery flag (no
-`c6 06 ?? 36 ??` store falls between `1000:b3ba` and `1000:b940` except
+`c6 06 [94-9a] 36 imm8` store falls between `1000:b3ba` and `1000:b940` except
 `1000:b570`).
 
 * Bucket 1 (`1000:b3c4`) toggles `[0x3693]`, then writes one district-keyed
@@ -79,18 +202,50 @@ breakpoint on each store during a played session would settle it.
 
 ---
 
-## `PLACES.SAV`'s byte order
+## `PLACES.SAV`'s byte order — settled
 
 *Cited from `src/locations.rs`'s `TRACKED`.*
 
-**Unverified.** All five `orig/*.SAV` files and `orig/PLACES.SAV` itself are
-`01` in every slot, so the files cannot disambiguate the order, and the routine
-that reads `PLACES.SAV` has not been located. The in-memory flag order
-(`3694` Market, `3695` BigMarket, `3696` Den, `3697` Girl, `3698` Vet, `3699`
-Club, `369a` Gym) is **established from flow** and differs from `TRACKED` at
-slots 2 and 4, but that is evidence about the flags, not about the file's
-layout, so `TRACKED` is deliberately left as it is. Locating the `BlockRead`
-would settle it.
+**Established from flow.** The reader is at `1000:6c5a` and uses `Read`, not
+`BlockRead` — seven one-byte reads, each naming its destination flag:
+
+```text
+6c5a  push ds:0x3e36                 ; the file variable
+6c6a  call 0f78:0ae7                 ; copy DS:3d32 (the directory) into a temp
+6c74  call 0f78:0b66                 ; append cs:0x63f2 = file 0x7CC2, 'places.sav'
+6c79  call 0f78:072e                 ; Assign
+6c87  call 0f78:0769                 ; Reset(f, 1)  -- record size 1
+6c8c  call 0f78:028a                 ; IOResult; non-zero -> 1000:6d3b
+6ca2  call 0f78:081e -> DS:0x3694    ; Read #1  Market
+6cb4  call 0f78:081e -> DS:0x3695    ; Read #2  BigMarket
+6cc6  call 0f78:081e -> DS:0x3696    ; Read #3  Den
+6cd8  call 0f78:081e -> DS:0x3697    ; Read #4  Girl
+6cea  call 0f78:081e -> DS:0x3698    ; Read #5  Vet
+6cfc  call 0f78:081e -> DS:0x3699    ; Read #6  Club
+6d0e  call 0f78:081e -> DS:0x369a    ; Read #7  Gym
+6d1b  call 0f78:07ea                 ; Close
+6d20  writes '^0Загружено из places' (file 0x7CCD)
+```
+
+File order therefore equals flag-address order: **Market, BigMarket, Den, Girl,
+Vet, Club, Gym**. `TRACKED` carried Vet and Den swapped at slots 2 and 4 and
+has been corrected; the file's own bytes still cannot arbitrate (`orig/*.SAV`
+and `orig/PLACES.SAV` are `01` in every slot), but they no longer need to.
+
+Earlier revisions of this section and of `src/locations.rs` said the read "has
+not been located" and that "locating the `BlockRead` would settle it". Both
+claims were wrong: the routine exists and there is no `BlockRead`.
+
+The failure arm at `1000:6d3b` is a **conditional** reset. It clears Vet
+(`6d3b`), Market (`6d40`), Club (`6d4c`), Gym (`6d51`), Girl (`6d5d`),
+BigMarket (`6d62`) and Den (`6d6e`), except that `1000:6d45`
+(`cmp word [0x389c],3` / `jz 0x6d51`) skips the Club clear, `1000:6d56`
+(same compare, `jz 0x6d62`) skips the Girl clear, and `1000:6d67`
+(`cmp word [0x389c],5` / `jz 0x6d73`) skips the Den clear — one flag each,
+not pairs. It then writes `^6Чё-то глюкануло - немогу прoгрузить Places:Ресет ту Default` (file `0x7CE3`) and
+leaves via `1000:6d8c`/`1000:6da0`, never reaching `1000:6dbe`.
+**Unverified**: what `[0x389c]` is. Out of scope here; the port has no `.SAV`
+load path at all.
 
 ## No `.SAV` load path
 
@@ -168,8 +323,9 @@ input loop was not disassembled.
   representable target on `Fighter`.
 * **The joint (`kos`) heal formula** reuses beer's `FUN_1000_29c4` by analogy;
   the joint's own handler was not traced.
-* **The decline branch after a fight encounter.** `1000:b721`'s `Random(2)`
-  evade-vs-detected split is **established from flow**, but a second,
+* **The decline branch after a fight encounter.** The evade-vs-detected split
+  on the `Random(2)` at `1000:b725` (`1000:b721` is its `mov ax,2`,
+  `1000:b724` the `push`) is **established from flow**, but a second,
   similarly-shaped path at `1000:b691` has no roll on decline at all. Which one
   a real encounter reaches depends on `1000:b5fc`, untraced. The port always
   takes the `Random(2)` branch.
