@@ -23,24 +23,29 @@ Every `.SAV` file is exactly 694 bytes.
 | 0x20e  | `u16`         | 2   | `dmg_max`    | confirmed (Task 9) |
 | 0x210  | `u16`         | 2   | `hp`         | confirmed — current hit points |
 | 0x212  | `u16`         | 2   | `hpmax`      | confirmed — maximum hit points |
-| 0x214  | `bytes`       | 162 | `tail`       | opaque, kept for a byte-exact round trip — see below for the parts of it that are now named |
 
-`0x214 + 162 = 0x2b6 = 694`, so the tail runs to end of file.
-
-Four regions inside `tail` are now named (Task 9b fix wave 1) — `data/save_layout.json`'s `fields` array carries both the opaque `tail` entry above (unchanged, so `tests/save_roundtrip.rs::rust_offsets_match_save_layout_json` still finds it at the same offset) and these four as additional, more specific entries over the same bytes:
+The remaining 162 bytes, `0x214`–`0x2b5` (`0x214 + 162 = 0x2b6 = 694`, so
+this run reaches end of file), used to be a single opaque `tail` entry.
+Task 9b fix wave 2 replaced that entry with a full partition of these
+bytes — the four regions fix wave 1 named, plus every still-unestablished
+span as its own `unk_<hex_offset>` entry per the project convention — so
+that `data/save_layout.json`'s `fields` array, sorted by offset, tiles the
+whole 694-byte record with no gaps and no overlaps
+(`tests/save_roundtrip.rs::save_layout_json_fields_tile_the_record`
+enforces this structurally):
 
 | offset | kind    | len | name             | status |
 |--------|---------|-----|------------------|--------|
+| 0x214  | `bytes` | 29  | `unk_0214`       | unestablished — includes the four one-shot post-kill event flags at `0x221`–`0x225` (Task 9b), which are documented in `data/xp.json`'s `post_kill_stat_events[*].flag_save_offset` instead of here, alongside the deltas each flag gates |
 | 0x231  | `u8`    | 1   | `buff_countdown` | confirmed (Task 9b) — countdown on the temporary +2 strength / +1 dmg_min / +2 dmg_max buff from a smoked joint; nonzero means the buff is live and `hpmax` does not reflect it |
 | 0x232  | `u16`   | 2   | `xp`             | confirmed (Task 9b) — XP not yet spent on a level |
 | 0x234  | `u16`   | 2   | `threshold`      | confirmed (Task 9b) — XP needed for the next level |
 | 0x236  | `bytes` | 120 | `growth_log`     | confirmed (Task 9b) — `array[1..40] of string[2]`, three bytes per level, the two stat codes `'1'`..`'4'` each level granted |
+| 0x2ae  | `bytes` | 8   | `unk_02ae`       | unestablished, runs to end of record |
 
-The four one-shot post-kill event flags at `0x221`–`0x225` are also known
-(Task 9b) but are not in this file: they live in `data/xp.json`'s
-`post_kill_stat_events[*].flag_save_offset` instead, alongside the deltas
-each flag gates. `0x214`–`0x220`, `0x226`–`0x230` and `0x2ae`–`0x2b5` remain
-unnamed.
+`unk_0214` and `unk_02ae` are opaque and preserved verbatim for a byte-exact
+round trip, same as `tail` used to be — naming them only documents which
+spans remain unestablished, it does not claim to know their meaning.
 
 `pstring` is a Borland Pascal shortstring: one length byte (`0..255`)
 followed by up to 255 payload bytes at a fixed 256-byte slot. Text is
@@ -89,7 +94,7 @@ files (not taken on the report's word):
 - **`level` is at `0x20a`, not `0x200`.** `0x200` (`rank_index`) indexes the
   `DS:002e` display-name table instead. Three checks, all passing on all
   five saves: `1000:1404` prints the `+0x0a` word as "`# уровня`"; the XP
-  threshold stored at save offset `0x234` (in `tail`, not yet a named field)
+  threshold stored at save offset `0x234` (in the then-opaque tail region, not yet a named field)
   equals `10 + 10 * level` for every save — `(level, threshold)` =
   `(15,160)`, `(10,110)`, `(20,210)`, `(30,310)`, `(40,410)`; and
   `1000:258a` increments the `+0x0a` word under
@@ -119,9 +124,10 @@ weight row. All eleven names and weights are in `data/xp.json`; addresses in
 
 ## Unknown / not yet established
 
-- **The 162-byte tail at 0x214–0x2b5.** Carried as opaque `bytes` for an
-  exact round trip. Task 9b established the meaning of part of it in prose
-  (the four one-shot post-kill event flags at `0x221`–`0x225`, the
+- **`unk_0214` (0x214–0x230, 29 bytes) and `unk_02ae` (0x2ae–0x2b5, 8
+  bytes).** Carried as opaque `bytes` for an exact round trip. Task 9b
+  established the meaning of part of the old 162-byte tail in prose (the
+  four one-shot post-kill event flags at `0x221`–`0x225`, the
   temporary-buff countdown at `0x231`, the XP total at `0x232`, the
   next-level threshold at `0x234`, and the growth log at `0x236`–`0x2ad` — an
   `array[1..40] of string[2]` holding the codes `'1'`..`'4'` for which two
@@ -129,14 +135,21 @@ weight row. All eleven names and weights are in `data/xp.json`; addresses in
   reached a machine-readable artifact; fix wave 1 closed that gap by naming
   the buff countdown, the XP words and the growth log in
   `data/save_layout.json` (see "Layout" above) and the flags in
-  `data/xp.json`. The growth log decodes cleanly in all five saves: exactly
-  `level` entries of exactly two codes, and nothing after them. The rest of
-  the tail, `0x214`–`0x220`, `0x226`–`0x230` and `0x2ae`–`0x2b5`, remains
-  unsegmented and unnamed in either artifact.
+  `data/xp.json` — but left them as *additional* entries layered over a
+  still-present, now-overlapping opaque `tail` entry. Fix wave 2 replaced
+  `tail` with a true partition: the same four named regions at their real
+  offsets, plus every remaining unestablished byte split into its own
+  `unk_<hex_offset>` entry, so `data/save_layout.json`'s `fields` tile
+  `0x214`–`0x2b5` exactly. The growth log decodes cleanly in all five
+  saves: exactly `level` entries of exactly two codes, and nothing after
+  them. `unk_0214` includes the four post-kill event flags at
+  `0x221`–`0x225`, which stay documented only in `data/xp.json` and not
+  named a second time here.
 
 Per project convention, a field whose meaning is not confirmed stays named
 `unk_<hex_offset>`; none of the eight stat words qualify for that any more,
-but the tail still does, and is not presented as a guessed layout.
+but `unk_0214` and `unk_02ae` do, and are not presented as a guessed
+layout.
 
 ## Validation
 

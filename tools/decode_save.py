@@ -19,12 +19,15 @@ Layout (694 bytes total), established from the five reference saves:
     0x210  u16          hp
     0x212  u16          hpmax
     0x214  ...                      -- flags, counters, and a run of
-                                        Pascal string[2] records; not yet
-                                        fully segmented, preserved verbatim.
-                                        Task 9b fix wave 1 named four regions
-                                        of it (buff_countdown, xp, threshold,
-                                        growth_log below); the rest is still
-                                        opaque.
+                                        Pascal string[2] records. Task 9b
+                                        fix wave 1 named four regions of it
+                                        (buff_countdown, xp, threshold,
+                                        growth_log below); fix wave 2
+                                        partitioned the remaining bytes into
+                                        their own unk_<hex_offset> entries so
+                                        that LAYOUT["fields"] tiles the whole
+                                        694-byte record with no overlap and
+                                        no gap (see TAIL_FIELDS below).
 
 Field names and offsets 0x200..0x20f are pinned by Task 9: the player's
 694-byte record in memory (DS:369c) is byte-identical to the .SAV file, and
@@ -33,9 +36,11 @@ FIELDS_U16 to build every combat_vectors.json case -- 314 (now 352) blows
 matched the original with these fields at these offsets. See
 docs/re/combat.md ("The fighter record") and docs/re/save-format.md.
 
-Everything past 0x214 is carried as opaque bytes so that round-trip is
-exact. Task 9 replaces the opaque tail with named fields as they are
-confirmed against the disassembly.
+Everything past 0x214 is carried as opaque `tail` bytes in decode()/encode()
+below (and in src/save.rs's `Save::tail`) so that round-trip is exact --
+that in-memory representation is intentionally coarser than the layout
+artifact, which documents each byte of it individually as it becomes
+established, per-region unk_<hex_offset> or a real name.
 """
 import json
 import pathlib
@@ -121,12 +126,28 @@ STAT_NAMES = [
     "dmg_max",
 ]
 
-# Four regions inside the previously-opaque tail, named by Task 9b's fix wave
-# 1 (docs/re/progression.md, docs/re/save-format.md). `tail` itself is left
-# in the layout unchanged -- these are documentation of what part of it is
-# now understood, not a replacement for it, and every other tail byte stays
-# unnamed (unk_*, not present here at all) because it is not established.
+# The 162-byte tail (0x214..0x2b6), fully partitioned: the four regions
+# named by Task 9b's fix wave 1 (docs/re/progression.md,
+# docs/re/save-format.md) at their real offsets, plus every remaining
+# unestablished span named unk_<hex_offset> per the project convention
+# ("Unknown means unknown" -- a field whose meaning is not confirmed stays
+# named unk_<hex_offset> and its bytes are preserved, never guessed into a
+# real name just to make the table look finished). Fix wave 1 had added the
+# four named regions *alongside* a still-present, now-overlapping opaque
+# `tail` entry; fix wave 2 replaced that with this partition so that
+# LAYOUT["fields"] tiles the full record with no gaps and no overlaps --
+# tests/save_roundtrip.rs::save_layout_json_fields_tile_the_record enforces
+# this structurally.
+#
+# `unk_0214` (0x214..0x231, 29 bytes) also contains the four one-shot
+# post-kill event flags at 0x221-0x225 (Task 9b), which are intentionally
+# *not* named here -- they already live in data/xp.json's
+# `post_kill_stat_events[*].flag_save_offset`, and this file only names a
+# span once, so from save_layout.json's point of view those bytes are still
+# part of the unnamed run.
 TAIL_FIELDS = [
+    # 0x214..0x231: unestablished (includes the post-kill flags -- see above).
+    {"name": "unk_0214", "off": 0x214, "kind": "bytes", "len": 0x231 - 0x214},
     # `.SAV 0x231`, `DS:38cd`: countdown on the temporary +2 strength / +1
     # dmg_min / +2 dmg_max buff from a smoked joint (1000:4b52 sets it to 3,
     # 1000:e9b8 to 10 from a second grant site; 1000:aeb3 clears it and
@@ -144,6 +165,8 @@ TAIL_FIELDS = [
     # per level (a Pascal string[2] length byte plus its two payload bytes),
     # 40 levels.
     {"name": "growth_log", "off": 0x236, "kind": "bytes", "len": 40 * 3},
+    # 0x2ae..0x2b6: unestablished, runs to end of record.
+    {"name": "unk_02ae", "off": 0x236 + 40 * 3, "kind": "bytes", "len": SIZE - (0x236 + 40 * 3)},
 ]
 
 LAYOUT = {
@@ -157,7 +180,6 @@ LAYOUT = {
         ],
         {"name": "hp", "off": OFF_HP, "kind": "u16", "len": 2},
         {"name": "hpmax", "off": OFF_HPMAX, "kind": "u16", "len": 2},
-        {"name": "tail", "off": OFF_TAIL, "kind": "bytes", "len": SIZE - OFF_TAIL},
         *TAIL_FIELDS,
     ],
 }

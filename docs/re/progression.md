@@ -399,11 +399,14 @@ weapon bonus per save: 5, 3, 10, 11, 12 for R0, R2, R3, R4, R5.
   sites in the flee and other command handlers are still unmapped.
 * **Levels 3..9 and the other gaps** in the threshold table are predictions,
   not observations.
-* **The rest of the 162-byte tail.** The growth log (`0x236`..`0x2ad`), the XP
-  words (`0x232`, `0x234`) and the buff countdown (`0x231`) are named in
-  `data/save_layout.json` (fix wave 1); the four one-shot flags
+* **The rest of the old 162-byte tail.** The growth log (`0x236`..`0x2ad`),
+  the XP words (`0x232`, `0x234`) and the buff countdown (`0x231`) are named
+  in `data/save_layout.json` (fix wave 1); the four one-shot flags
   (`0x221`..`0x225`) are named in `data/xp.json`'s `flag_save_offset`
-  instead. The remaining bytes are not named anywhere.
+  instead. Fix wave 2 partitioned the rest of the region into `unk_0214`
+  (`0x214`..`0x230`) and `unk_02ae` (`0x2ae`..`0x2b5`) so that
+  `data/save_layout.json` tiles the record exactly, but those bytes'
+  *meaning* is still not established anywhere.
 * **`Progress::xp`/`Progress::threshold` are `u32` here, but the original's
   `DS:38ce`/`DS:38d0` are 16-bit words.** Every signed-comparison branch
   that touches them (`1000:253c`, `1000:255f`, `1000:51f4`) uses `jnl`, a

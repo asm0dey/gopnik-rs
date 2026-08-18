@@ -160,5 +160,61 @@ fn rust_offsets_match_save_layout_json() {
     }
     assert_eq!(off("hp"), save::OFF_HP);
     assert_eq!(off("hpmax"), save::OFF_HPMAX);
-    assert_eq!(off("tail"), save::OFF_TAIL);
+    // Fix wave 2 replaced the single opaque `tail` entry with a partition of
+    // 0x214..0x2b6 (named fields plus unk_<hex_offset> spans -- see
+    // `save_layout_json_fields_tile_the_record` below), so there is no
+    // longer a field literally named `tail`; `unk_0214` is the first entry
+    // of that partition and sits at the same offset `tail` used to.
+    assert_eq!(off("unk_0214"), save::OFF_TAIL);
+}
+
+/// Fix wave 2 fixed a defect where four newly-named tail fields
+/// (`buff_countdown`, `xp`, `threshold`, `growth_log`) were added
+/// *alongside* the pre-existing opaque `tail` entry instead of partitioning
+/// it, so the fields overlapped and `sum(len)` exceeded `size`. This test
+/// is the structural guard against that regressing: `data/save_layout.json`'s
+/// `fields`, sorted by offset, must tile `[0, size)` exactly -- contiguous,
+/// no gaps, no overlaps -- regardless of what any individual field is named.
+#[test]
+fn save_layout_json_fields_tile_the_record() {
+    let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("data")
+        .join("save_layout.json");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+    let json: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
+
+    let size = json["size"].as_u64().expect("size") as usize;
+    let mut spans: Vec<(usize, usize, String)> = json["fields"]
+        .as_array()
+        .expect("fields array")
+        .iter()
+        .map(|f| {
+            let off = f["off"].as_u64().expect("off") as usize;
+            let len = f["len"].as_u64().expect("len") as usize;
+            let name = f["name"].as_str().expect("name").to_string();
+            (off, len, name)
+        })
+        .collect();
+    assert!(!spans.is_empty(), "fields array must not be empty");
+    spans.sort_by_key(|&(off, _, _)| off);
+
+    let mut cursor = 0usize;
+    for (off, len, name) in &spans {
+        assert_eq!(
+            *off, cursor,
+            "field {name:?} at 0x{off:x} does not start where the previous field ended \
+             (expected 0x{cursor:x}); fields must tile the record with no gap and no overlap"
+        );
+        cursor += len;
+    }
+    assert_eq!(
+        cursor, size,
+        "fields cover 0..0x{cursor:x} but size is 0x{size:x}; \
+         fields must exactly partition [0, size)"
+    );
+
+    // Same invariant, restated as the sum check the fix-wave-2 report calls
+    // out explicitly: sum(len for fields) == size.
+    let total: usize = spans.iter().map(|&(_, len, _)| len).sum();
+    assert_eq!(total, size, "sum(len for fields) must equal size exactly");
 }

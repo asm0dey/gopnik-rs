@@ -74,10 +74,10 @@
    "len": 2
   },
   {
-   "name": "tail",
+   "name": "unk_0214",
    "off": 532,
    "kind": "bytes",
-   "len": 162
+   "len": 29
   },
   {
    "name": "buff_countdown",
@@ -102,6 +102,12 @@
    "off": 566,
    "kind": "bytes",
    "len": 120
+  },
+  {
+   "name": "unk_02ae",
+   "off": 686,
+   "kind": "bytes",
+   "len": 8
   }
  ]
 }
