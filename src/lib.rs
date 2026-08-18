@@ -1,4 +1,5 @@
 pub mod combat;
+pub mod commands;
 pub mod data;
 pub mod model;
 pub mod progress;
