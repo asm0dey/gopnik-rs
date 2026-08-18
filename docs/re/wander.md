@@ -3,12 +3,32 @@
 Machine-readable form: `data/wander.json`. This document is pure reverse
 engineering; it changes no Rust.
 
-Every address here was dumped out of `orig/g.exe` and re-disassembled before
-being written down — `file_off = 0x18d0 + off` for a `1000:off` code address,
-`0x123b0` for `20ae:0000`. `data/wander.json` carries the literal opcode bytes
-at every address it cites, so a five-byte drift is checkable without a
-disassembler. Per `docs/re/METHODOLOGY.md`, each claim states its tier:
-**established from flow**, **corroborated**, or **unverified**.
+Addresses here are dumped out of `orig/g.exe` — `file_off = 0x18d0 + off` for
+a `1000:off` code address, `0x123b0` for `20ae:0000` — and `data/wander.json`
+carries the literal opcode bytes at every address it cites, so a five-byte
+drift is checkable without a disassembler. Treat those bytes as the check.
+Do not treat "every address was verified" as a given: one was not, and the
+callout two paragraphs down says which. Per `docs/re/METHODOLOGY.md`, each claim states its
+tier: **established from flow**, **corroborated**, or **unverified**.
+
+> **The `0x18d0 + off` shorthand is for segment `1000` only.** Every citation
+> here whose segment is not `1000` — the runtime entry points `0f78:114b`
+> (`Random`), `0f78:06c6` (`ReadLn`), `0f78:0772` (`Rewrite`), `0f78:081e`
+> (`BlockRead`), `0f78:0825` (`BlockWrite`), `0eed:01c2` (`WriteLn`),
+> `0f16:031a` (the delay) — maps as
+> `file_off = 0x18d0 + seg*16 + off`. Worked and byte-verified:
+> `0f78:114b` → `0x18d0 + 0xf78*16 + 0x114b` = file `0x1219b`, which
+> disassembles to the 32×16 high-take `mul word [ss:bx+0x4]` pair and
+> `retf 0x2` — `Random` itself. Applying the segment-`1000` form to a far
+> target lands `0xf780` bytes short.
+
+> **One address in the first version of this catalogue was wrong**, and it was
+> wrong in the way `docs/re/METHODOLOGY.md` warns about: `data/wander.json`
+> cited `1000:13dc` as the player-class rank-name lookup. That address is
+> `mov di,[0x3952]` — the *enemy's* class. It came from a byte scan and was
+> never re-disassembled. The player-class site is `1000:1a36`. Corrected in
+> `data/wander.json`'s `class_389c.consumers`, and recorded in
+> `.superpowers/sdd/task-11b-report.md`.
 
 ## The shape of `data/wander.json`
 
@@ -23,7 +43,9 @@ disassembler. Per `docs/re/METHODOLOGY.md`, each claim states its tier:
   result, and each bucket's effect. `gate: null` means the draw is
   unconditional once the turn starts.
 * `nested_routines` — the two callees the turn invokes, including the church's
-  own two draws (ordinals 15 and 16), which are part of the same stream.
+  own four draws (ordinals 15, 16, 17 and 18), which are part of the same
+  stream. 16 and 17/18 sit on mutually exclusive arms, so at most three of the
+  four fire on any one turn.
 * `class_389c`, `den_setters`, `a_token_reveal` — the other three questions.
 
 ## Entry
@@ -55,14 +77,16 @@ encoding is fixed-length, so the scan cannot miss a call of this form.
 | 6 | `1000:b1b8` | 10 | always | `0` | if `[0x3694] == 0`, set it (`1000:b1c8`), print file `0x9FB2` — **Market** |
 | 7 | `1000:b1ea` | 100 | always | `0` | if `[0x3699] == 0`, set it (`1000:b1fa`), print file `0x9FC4` — **Club** |
 | 8 | `1000:b21c` | 100 | always | `0` | if `[0x369a] == 0`, set it (`1000:b22c`), print file `0x9FFE` — **Gym** |
-| 9 | `1000:b272` | 20 | `[0x38c1] != 0` (`1000:b24a`) | `0` | clears `[0x38b1]` (leg, `1000:b289`) and/or `[0x38b0]` (jaw, `1000:b2ae`) |
+| 9 | `1000:b272` | 20 | `[0x38c1] != 0` (`1000:b24a`) | `0` | clears **at most one** fracture — jaw (`[0x38b0]`, `1000:b2ae`) takes precedence over leg (`[0x38b1]`, `1000:b289`); see below |
 | 10 | `1000:b2fa` | `chapter*20` | `[0x389c] == 6` (`1000:b2ea`) | `<= luck` | proceed to draw 11 |
 | 11 | `1000:b321` | `chapter*5` | draw 10 succeeded | any | `[0x3b74] := r+1`; money `+= [0x3b74]`; file `0xA096` |
 | 12 | `1000:b353` | 25 | always | `1..25` | the bucket roll; `[0x3971] := r+1`, then buckets into `[0x3970]` |
-| 13 | `1000:b39e` | 200 | always | `0` | `call 1000:7c67` — the church. **Spends 1–2 more draws and clears `[0x3970]`** |
+| 13 | `1000:b39e` | 200 | always | `0` | `call 1000:7c67` — the church. **Spends 1, 2 or 3 more draws and clears `[0x3970]`** |
 | 14 | `1000:b3ae` | 100 | always | `0` | `call 1000:7538` — the mage's paid save. Spends no draws |
 | 15 | `1000:7f63` | 5 | the church fired | see below | unconditional inside the church |
-| 16 | `1000:7fff` | 4 | draw 15 returned `1` | `0..3` | one stat +1 |
+| 16 | `1000:7fff` | 4 | draw 15 returned `1` (`1000:7ff3`) | `0..3` | one stat +1 |
+| 17 | `1000:25fe` | `Σ` class weights | draw 15 returned `0` (`1000:7f68`) **and** level `!= 40` (`1000:2580`) | any | one stat point, inside the level-up routine |
+| 18 | `1000:25fe` | `Σ` class weights | same gate as 17 | any | second stat point — the loop bound at `1000:287d` is exactly 2 |
 
 The non-draw steps between them matter to state, not to the stream, and are in
 `data/wander.json`'s `steps` array in order: the joint-buff countdown
@@ -79,6 +103,30 @@ flag *before* `1000:af76`/`1000:afd5` test whether the den is known and
 rolls the `0` without a phone loses the errand permanently and sees nothing.
 This is exactly the class of behaviour `docs/re/METHODOLOGY.md` warns cannot be
 recovered from output.
+
+### Draw 9 clears at most one fracture, jaw first
+
+**Established from flow.** The table row above used to say "leg and/or jaw",
+which is loose; `data/wander.json` was already precise. The branch is:
+
+```
+0000B277  09C0              or ax,ax
+0000B279  7751              ja 0xb2cc            ; result != 0 -> skip everything
+0000B27B  803EB03800        cmp byte [0x38b0],0x0  ; jaw
+0000B280  7525              jnz 0xb2a7           ; jaw broken -> straight to the jaw arm
+0000B282  803EB13800        cmp byte [0x38b1],0x0  ; leg
+0000B287  741E              jz 0xb2a7
+0000B289  C606B13800        mov byte [0x38b1],0x0  ; clear leg, print file 0xA043
+...
+0000B2A7  803EB03800        cmp byte [0x38b0],0x0
+0000B2AC  741E              jz 0xb2cc
+0000B2AE  C606B03800        mov byte [0x38b0],0x0  ; clear jaw, print file 0xA06B
+```
+
+The leg block is reached only when the jaw is intact (`jnz` at `1000:b280`),
+and the jaw block is reached only when the jaw is broken. So the two are
+mutually exclusive and the jaw has precedence: with both broken, only the jaw
+is cleared.
 
 ### The bucket roll (draw 12)
 
@@ -113,15 +161,115 @@ The church also spends draws. Its three stage arms (`[0x3951] == 2` at
 `1000:7c76`, `== 1` at `1000:7ceb`, `== 0` at `1000:7dcb`) all converge on
 `1000:7f5f`, so `Random(5)` at `1000:7f63` is unconditional once the church
 fires, and `Random(4)` at `1000:7fff` follows when the first returns exactly
-`1` (`1000:7f68` is `3d 00 00 74 03`, i.e. `cmp ax,0` / `jz`; the `1` arm is
-the `cmp ax,1` at `1000:7ff3`).
+`1` — that test is `1000:7ff3` `3d 01 00` (`cmp ax,1`) / `1000:7ff6` `74 03`
+(`jz 0x7ffb`). `1000:7f68` is `3d 00 00 74 03`, the **zero** arm, which is a
+different outcome entirely (see below). `data/wander.json` cited `1000:7f68` as
+draw 16's gate in its first version; that is corrected.
 
-`Random(5)` outcomes: `0` text only (file `0x930C`, which *claims* a
-понтовость rise the code does not make); `1` a stat blessing via draw 16;
-`2` the first unfired one-shot gift (`[0x38bf]` `1000:8134`, `[0x38c0]`
-`1000:8184`, `[0x38c1]` `1000:81c4`); `3` `inc byte [0x38b2]`
-(`1000:81e9`, message `^1Накладываю на тебя защиту!`); `4`
-`[0x38cb] += chapter*50 + 50` (`1000:820d`..`1000:821a`).
+`Random(5)` outcomes: `0` a **forced level-up** — three draws for the church
+in total, counting this one (15, 17, 18); see below; `1` a stat blessing via draw 16; `2` the first unfired one-shot gift
+(`[0x38bf]` `1000:8134`, `[0x38c0]` `1000:8184`, `[0x38c1]` `1000:81c4`);
+`3` `inc byte [0x38b2]` (`1000:81e9`, message
+`^1Накладываю на тебя защиту!`); `4` `[0x38cb] += chapter*50 + 50`
+(`1000:820d`..`1000:821a`).
+
+The `[0x38bf]` gift at `1000:8134` also does
+`add [0x38a8], 1 - (strength mod 2)` at `1000:8130` (state only, no draw), and
+so does draw 16's bucket `0` at `1000:8043`. Both were missing from the first
+version of this table. `docs/re/progression.md`'s post-kill copy of the same
+gift already records the `dmg_min += 1 - str mod 2` term.
+
+#### The `Random(5) == 0` arm grants a level and spends two more draws
+
+**Established from flow.** This is the correction of the worst error in the
+first version of this catalogue, which said the arm "prints file `0x930C`
+only; no state change despite the text claiming a pontovost rise". That
+reasoned from OUTPUT against FLOW and got it backwards — the code makes
+exactly the rise the text claims. The arm ends:
+
+```
+00007FE4  A1D038            mov ax,[0x38d0]      ; xp threshold
+00007FE7  A3CE38            mov [0x38ce],ax      ; xp := threshold
+00007FEA  B000              mov al,0x0
+00007FEC  50                push ax
+00007FED  E836A5            call 0x2526          ; the level-up routine
+00007FF0  E94F02            jmp 0x8242
+```
+
+`1000:7fed` is the **only near call inside the church** — a linear sweep of
+`1000:7c67`..`1000:82b2` that lands exactly on the `89 ec 5d c3` epilogue
+finds `call 0x2526` and nothing else of that form. The first version did not
+follow it.
+
+`1000:2526` is the level-up routine already documented at
+`docs/re/progression.md` § "The level-up: `FUN_1000_2526` (`1000:2526`)" and
+its "The weight table" subsection, and cross-checked in `docs/re/combat.md`.
+What is new here is only that the **church reaches it**, and therefore that
+the wander stream contains its two draws. Its entry test is
+
+```
+00002535  A1CE38            mov ax,[0x38ce]
+00002538  3B06D038          cmp ax,[0x38d0]
+0000253C  7D03              jnl 0x2541           ; xp >= threshold -> proceed
+0000253E  E98003            jmp 0x28c1           ; else return
+```
+
+and the church has just made the two equal, so the level-up **always**
+proceeds. The xp loop at `1000:2546`..`1000:255f` then runs exactly once
+(`xp := 0`, `threshold += 10`, level count `:= 1`), because equal-then-subtract
+leaves `xp` below the raised threshold. Inside the per-level body:
+
+```
+0000257A  807E0400          cmp byte [bp+0x4],0x0   ; church passes param 0
+0000257E  750A              jnz 0x258a
+00002580  833EA63828        cmp word [0x38a6],0x28  ; level == 40?
+00002585  7503              jnz 0x258a
+00002587  E91603            jmp 0x28a0              ; capped: no draw, no level
+0000258A  A1A638            mov ax,[0x38a6]
+0000258D  40                inc ax
+0000258E  A3A638            mov [0x38a6],ax         ; the rise the text claims
+```
+
+then the two draws, ordinals 17 and 18:
+
+```
+000025AA  8B3E9C38          mov di,[0x389c]         ; class
+000025AE  D1E7              shl di,1
+000025B0  D1E7              shl di,1                ; class*4
+000025B2  8A850500          mov al,[di+0x5]         ; ... and [di+2], [di+3], [di+4]
+...
+000025EE  8946FA            mov [bp-0x6],ax         ; weight_sum
+000025F1  C746F80100        mov word [bp-0x8],0x1
+000025F6  EB03              jmp 0x25fb
+000025F8  FF46F8            inc word [bp-0x8]
+000025FB  FF76FA            push word [bp-0x6]
+000025FE  9A4B11780F        call word 0xf78:word 0x114b   ; Random(weight_sum)
+00002603  40                inc ax
+00002604  8946F6            mov [bp-0xa],ax
+```
+
+with the loop bound
+
+```
+0000287D  837EF802          cmp word [bp-0x8],0x2
+00002881  7403              jz 0x2886
+00002883  E972FD            jmp 0x25f8
+```
+
+— exactly two iterations, hence exactly two draws per level gained, and the
+church always gains exactly one level. `n` is the sum of the four class growth
+weights at `DS:(class*4 + 2 .. class*4 + 5)`, the same table
+`data/xp.json` holds.
+
+So a church turn with `Random(5) == 0` spends **three** draws (15, 17, 18),
+grants a level, and rewrites `[0x38a6]`, `[0x38ce]`, `[0x38d0]` and the growth
+log. At level 40 it spends **one** draw and grants nothing — but note that
+`[0x38ce]` and `[0x38d0]` are rewritten *before* the level-40 test, so the xp
+bookkeeping happens either way.
+
+Ordinals 15..18 are labels, not positions in one linear stream: 16 belongs to
+the `== 1` arm and 17/18 to the `== 0` arm, and the arms are mutually
+exclusive. A church turn spends **1, 2 or 3** draws.
 
 ### The mage — `1000:7538`
 
@@ -134,8 +282,9 @@ the `cmp ax,1` at `1000:7ff3`).
 third input buffer — and compares it against the token `y` (file `0x8D79`).
 
 On `y` it charges and writes both save files: the 694-byte record from
-`DS:369c` into the hard-coded name `save_r0.sav` (file `0x8D7B`, `Rewrite`
-record size `0x2b6` at `1000:764e`, `BlockWrite` at `1000:765d`), and the seven
+`DS:369c` into the hard-coded name `save_r0.sav` (file `0x8D7B`; the record
+size is `mov ax,0x2b6` at `1000:764a`, the `Rewrite` call `0f78:0772` is at
+`1000:764e`, the `BlockWrite` call `0f78:0825` is at `1000:765d`), and the seven
 discovery flags one byte at a time into `places.sav` (file `0x8D87`,
 `1000:766f`..).
 
@@ -151,6 +300,13 @@ discovery flags one byte at a time into `places.sav` (file `0x8D87`,
 `docs/re/gaps.md` carried this as "what `[0x389c]` *means* remains unverified"
 while `docs/re/progression.md` already had it as the class/rank index. The
 progression reading is the right one, and every use lines up.
+
+Three other places in the repo already read `[0x389c]` as the class and are
+consistent with this: `docs/re/combat.md` (the class-indexed growth-weight and
+rank-name tables, and the enemy's mirror field `[0x3952]`), and
+`tools/capture_xp_cases.py`'s `CLASS_OF_ANSWER_ADD` (the `answer + 3` mapping
+that `1000:71b8` implements). This section confirms them from the write side;
+it does not originate the reading.
 
 Five write sites — a byte scan for the two-byte operand `9c 38` over
 `0x1000`..`0x11000` finds 41 references, and classifying each by the opcode
@@ -170,8 +326,10 @@ finds only direct memory operands carrying the literal displacement, so a store
 through a pointer register would not appear. The one such store that does exist
 is the 694-byte character-record `BlockRead` at `1000:6c01` (`0f78:081e` into `DS:369c`);
 `DS:369c + 0x200 = DS:389c`, which is why the class is `.SAV` offset `0x200`.
-The two `BlockWrite` counterparts are `1000:7658` (the mage) and `1000:acc3`
-(the district-advance autosave at `1000:ac5e`..`1000:ad12`).
+The two `BlockWrite` (`0f78:0825`) counterparts are the calls at `1000:765d`
+(the mage) and `1000:acc8` (the district-advance autosave at
+`1000:ac5e`..`1000:ad12`). `1000:7658` and `1000:acc3` are the `bf 9c 36`
+(`mov di,0x369c`) that sets each one up, not the call itself.
 
 Answer `4` is `4-Чё за батва?` (file `0x7FA1`): it zeroes the scratch, prints
 the four class descriptions, and re-prompts. Those descriptions name the
@@ -297,7 +455,10 @@ unknown before:
 
 ## Corrections to existing `docs/re/` content
 
-1. **`docs/re/command-dispatch.md` step 5 is wrong.** It says `1000:b358` sits
+All five are now folded back into the documents themselves (fix wave 1); the
+list is kept as the record of what changed and why.
+
+1. **`docs/re/command-dispatch.md` step 5 was wrong.** It said `1000:b358` sits
    "within the *district-transition* preamble" and that "the specific `Random`
    call feeding the regular-turn branch was not found". There is one wander
    path. `w`/`run` land at `1000:aea1`, run straight through
@@ -306,18 +467,60 @@ unknown before:
    the call feeding the regular-turn branch. `src/game.rs`'s assumption is
    correct; the reasoning recorded for it was not. (The genuine
    district-transition block is `1000:ab75`..`1000:ae18`, a different region.)
+   Step 4's "not catalogued" was corrected in the same pass. **Applied.**
 2. **`docs/re/gaps.md`** carried `[0x389c]` as unverified in three places. It is
-   the class; see above.
-3. **`docs/re/gaps.md`** says the preamble's "other seven draws have not been
+   the class; see above. **Applied.**
+3. **`docs/re/gaps.md`** said the preamble's "other seven draws have not been
    catalogued (no `n`, no gate, no effect)". All eleven now are, plus the two
-   after the bucket roll and the church's two.
+   after the bucket roll and the church's four. **Applied.**
 4. **`docs/re/progression.md`**'s one-shot event 3 (`DS:38bf`/`38c0`/`38c1`
-   table) lists `[0x38c1]` as "text only". It grants the ring whose effect is
+   table) listed `[0x38c1]` as "text only". It grants the ring whose effect is
    the per-walk regen at `1000:b24a`. The same three gifts are also reachable
    from the church at `1000:80c8`..`1000:81c9` — a second grant site for all
-   three flags, not just the post-kill block.
+   three flags, not just the post-kill block. **Applied.**
 5. **`docs/re/tables.md`**'s `1000:761d` row (`district * 50`) is right, but the
-   same routine *prints* `district * 25`. Both numbers are in the binary.
+   same routine *prints* `district * 25` (`1000:758d`). Both numbers are in the
+   binary and both are now recorded. **Applied.**
+6. **`data/command_dispatch.json`** recorded the three Den setters
+   (`1000:ae1f`, `1000:4aa5`, `1000:52b3`) as trigger-UNVERIFIED. All three are
+   established from flow; `setters_found` now carries each trigger, and
+   `1000:4aa5` keeps its unresolved set-while-refusing note. **Applied.**
+
+## What a turn costs, in draws
+
+**Established from flow.** There is no fixed per-turn count; a differential
+test must walk the `steps` array and evaluate each `gate`. But the common case
+is worth stating, because getting it wrong is easy:
+
+For a fresh Подтсан with no phone and no ring, draws 3/4 (need the phone),
+9 (needs the ring) and 10/11 (need class 6) are gated off, leaving
+**1, 2, 5, 6, 7, 8, 12, 13, 14 — nine draws per turn.**
+
+That nine is the *steady state*, not just turn 1. Draws 1 and 2 are each gated
+on their one-shot flag being still clear (`1000:af5d`, `1000:afbc`), and the
+flag is written at `1000:af71` / `1000:afd0` — **after** the
+`or ax,ax / jnz` at `1000:af6d` / `1000:afcc`:
+
+```
+0000AF5D  803E783B00        cmp byte [0x3b78],0x0
+0000AF62  7558              jnz 0xafbc          ; already fired -> skip the draw
+0000AF64  B81400            mov ax,0x14
+0000AF67  50                push ax
+0000AF68  9A4B11780F        call word 0xf78:word 0x114b
+0000AF6D  09C0              or ax,ax
+0000AF6F  754B              jnz 0xafbc          ; non-zero -> flag NOT set
+0000AF71  C606783B01        mov byte [0x3b78],0x1
+```
+
+So the flag is set only on the 1-in-20 roll that actually returns `0`. Until
+that happens — expected ~20 turns for each, independently — the draw fires
+every turn. The count falls to **eight** when one one-shot has fired and
+**seven** only once both have.
+
+Each other state shifts it again: a phone adds draws 3 and 4, the ring adds
+draw 9, class 6 (Вор) adds draw 10 and, when the theft succeeds, draw 11. A
+church turn (draw 13 returns `0`) adds 1, 2 or 3 more and produces no
+encounter. A mage turn (draw 14 returns `0`) adds none but blocks on input.
 
 ## What this does NOT settle
 
@@ -334,5 +537,6 @@ unknown before:
 * The name of the item at `DS:394d`.
 * `unk_38b2`.
 * No live breakpoint was used. Everything above is static flow; a `tools/qemu`
-  run enumerating the fourteen sites in order on a pinned seed would corroborate
-  the sequence, and is the obvious next step for Task 12.
+  run enumerating the fourteen in-range sites in order on a pinned seed — and
+  the church's four when it fires — would corroborate the sequence, and is the
+  obvious next step for Task 12.

@@ -153,10 +153,11 @@ other draws" and no reading yields eight:
 Each fires when its roll returns `0` and its flag is still clear.
 
 **The preamble is now catalogued.** Task 11b recovered all fourteen draws in
-`1000:ae5a`..`1000:b3ba` as one ordered sequence, plus the two the church
-spends inside `1000:7c67` — `docs/re/wander.md` and `data/wander.json`. The
-site list is byte-scan complete. What follows is why the *port* still does not
-spend them.
+`1000:ae5a`..`1000:b3ba` as one ordered sequence, plus the **four** the church
+can spend — one inside `1000:7c67` itself, one on its `== 1` arm, and two more
+inside the level-up routine `1000:2526` that its `== 0` arm calls —
+`docs/re/wander.md` and `data/wander.json`. The site list is byte-scan
+complete. What follows is why the *port* still does not spend them.
 
 **Why they are not implemented.** This is a **scope** call, not a fidelity
 blocker. They are four unconditional draws inside a preamble whose other seven
@@ -198,8 +199,11 @@ compare at `1000:b38e`) and the bucket dispatch (`1000:b3ba` `mov al,[0x3970]`),
 fall-through path, so **every** walk executes both calls; only the
 `call 0x7c67` / `call 0x7538` payloads are gated on a `0`. **Both callees were
 disassembled by Task 11b.** `1000:7c67` is the church: it spends a further
-`Random(5)` unconditionally and a `Random(4)` when that returns `1`, and it
-ends by clearing `[0x3970]` at `1000:8282`, so a church turn produces no
+`Random(5)` unconditionally; a `Random(4)` when that returns `1`; and **two**
+`Random(class-weight-sum)` draws when it returns `0`, because that arm sets
+`xp := threshold` (`1000:7fe4`/`1000:7fe7`) and calls the level-up routine at
+`1000:7fed`, whose two-iteration inner loop (`1000:287d`) always draws twice.
+It ends by clearing `[0x3970]` at `1000:8282`, so a church turn produces no
 encounter at all. `1000:7538` is the wandering mage's paid save: no draws, but
 a blocking `ReadLn` into a stack local, and it charges `chapter*50` while
 printing `chapter*25`. An earlier revision enumerated `b34d → b359 → b35c..b393 →
@@ -370,7 +374,7 @@ The wander preamble is now fully catalogued as one ordered sequence, so the
 port's divergence there is a known quantity rather than an unknown one. These
 are the questions that pass left open, and the ones it created.
 
-* **The whole sequence is static-only.** Every one of the sixteen draws is
+* **The whole sequence is static-only.** Every one of the eighteen draws is
   **established from flow** from the disassembly; **none** has been corroborated
   by a live breakpoint. A `tools/qemu` run on a pinned seed that logs the
   fourteen in-range sites in order — and the church's two when it fires — would
@@ -393,16 +397,19 @@ are the questions that pass left open, and the ones it created.
   `[0x3c83]` — its only writes are `1000:7364` and `1000:ae13`. So on the face
   of the flow, once chapter 5 is reached the rector fight and the endgame fight
   run every turn. Whether `FUN_1000_3d11(4)` returns at all was not traced.
-* **The mage's printed price disagrees with the charged price.**
-  `1000:758d` prints `chapter*25`; `1000:7605`/`1000:7618` check and charge
-  `chapter*50`. Both are in the binary. `docs/re/tables.md`'s "Other price
-  sources" records only the charged half.
-* **`data/command_dispatch.json` still records the three Den setters as
-  trigger-UNVERIFIED.** All three are now established from flow
-  (`docs/re/wander.md`, "The three Den setters"), but Task 11b was scoped out of
-  editing that artifact. Re-syncing it is a follow-up.
-* **`docs/re/command-dispatch.md` step 5 is wrong** and is corrected in
-  `docs/re/wander.md`: `1000:b353` is not "within the district-transition
-  preamble", it is the regular-turn bucket roll, and there is only one wander
-  path. The correction has not been folded back into
-  `docs/re/command-dispatch.md` itself.
+* ~~**The mage's printed price disagrees with the charged price.**~~
+  **Folded back in fix wave 1.** `docs/re/tables.md`'s "Other price sources"
+  now records both halves — printed `chapter*25` at `1000:758d`, checked and
+  charged `chapter*50` at `1000:7605`/`1000:7618`.
+* ~~**`data/command_dispatch.json` still records the three Den setters as
+  trigger-UNVERIFIED.**~~ **Folded back in fix wave 1.** All three
+  `setters_found` entries now carry the trigger established from flow;
+  `1000:4aa5` keeps its unresolved set-while-refusing note (above).
+* ~~**`docs/re/command-dispatch.md` step 5 is wrong.**~~ **Folded back in fix
+  wave 1.** Step 5 now names `1000:b353` as the regular-turn bucket roll, says
+  there is one wander path, and points at `docs/re/wander.md`. Step 4's "not
+  catalogued" was corrected at the same time.
+* ~~**`docs/re/progression.md` lists `DS:38c1` as "text only".**~~ **Folded
+  back in fix wave 1.** The one-shot table now names it the ring "Господи
+  помилуй" with its per-walk regen, and records the church's second grant site
+  for all three gift flags.

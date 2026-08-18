@@ -5,8 +5,9 @@
   "address_convention": {
     "image_base": "0x18d0",
     "rule": "file_off = 0x18d0 + (seg - 0x1000) * 16 + off; a 1000:XXXX code address is file offset 0x18d0 + XXXX",
+    "rule_scope_warning": "the `- 0x1000` term above is a shorthand that holds ONLY for segment 1000 citations. For every citation in this file whose segment is not 1000 -- all the 0f78:, 0eed: and 0f16: runtime entry points (0f78:114b, 0f78:06c6, 0f78:0772, 0f78:081e, 0f78:0825, 0eed:01c2, 0f16:031a) -- the mapping is file_off = 0x18d0 + seg * 16 + off. Worked example, byte-verified: 0f78:114b -> 0x18d0 + 0xf78*16 + 0x114b = 0x1219b, which disassembles to the 32x16 high-take `mul word [ss:bx+0x4]` pair and `retf 0x2` -- i.e. Random itself. Applying the segment-1000 shorthand to a far target lands 0xf780 bytes short.",
     "data_segment": "20ae; DS:0000 is file offset 0x123b0",
-    "note": "every `at` and `bytes` pair below was dumped from orig/g.exe and re-disassembled; `bytes` is the literal opcode encoding at `at`"
+    "note": "`bytes` is the literal opcode encoding at `at`, so a drift is checkable without a disassembler. Read that as the check, not as a blanket assurance: the first version of this file claimed every address had been re-disassembled before being written down, and review round 1 falsified that -- class_389c.consumers cited 1000:13dc (an identically shaped lookup on the ENEMY class at [0x3952]) for what is 1000:1a36. Corrected in fix wave 1; every address touched or added in that wave was disassembled from an aligned instruction start, never from a byte-scan hit."
   },
   "random": {
     "callee": "0f78:114b",
@@ -178,7 +179,7 @@
     { "seq": 19, "kind": "state", "at": "1000:b2d4", "bytes": "a1 ac 38 3b 06 ae 38", "what": "class 4 (Отморозок) only (test at 1000:b2cf): if hp < hpmax then hp += 1 (1000:b2dd); then jmp 1000:b34d", "tier": "flow", "note": "this is the 'Бонус - Самолечение царапин' the creation menu advertises (file 0x7FE8)" },
     { "seq": 20, "kind": "state", "at": "1000:b2e3", "bytes": "3d 05 00", "what": "class 5 (Гопник): jmp 1000:b34d, no perk in the wander", "tier": "flow" },
 
-    { "seq": 21, "kind": "draw", "draw_ordinal": 10, "at": "1000:b2fa", "bytes": "9a 4b 11 78 0f", "n_expr": "chapter * 20", "n_at": "1000:b2ef", "n_bytes": "a0 92 36 30 e4 ba 14 00 f7 e2",
+    { "seq": 21, "kind": "draw", "draw_ordinal": 10, "at": "1000:b2fa", "bytes": "9a 4b 11 78 0f", "n_expr": "chapter * 20", "n_at": "1000:b2ef", "n_bytes": "a0 92 36 30 e4 ba 14 00 f7 e2 50",
       "gate": { "at": "1000:b2ea", "bytes": "3d 06 00", "cond": "class == 6 (Вор)", "skip_target": "1000:b34d" },
       "test": { "at": "1000:b308", "bytes": "99 3b d3 7f 06 7c 3c 3b c1", "cond": "luck (sign-extended to 32 bits, 1000:b305/1000:b308) >= result (zero-extended, 1000:b2ff..1000:b303)", "skip_target": "1000:b34b" },
       "buckets": [
@@ -188,7 +189,7 @@
       "tier": "flow",
       "note": "this is the 'Бонус - Воровство' the creation menu advertises (file 0x8059)"
     },
-    { "seq": 22, "kind": "draw", "draw_ordinal": 11, "at": "1000:b321", "bytes": "9a 4b 11 78 0f", "n_expr": "chapter * 5", "n_at": "1000:b313", "n_bytes": "a0 92 36 30 e4 8b f0 d1 e0 d1 e0 01 f0",
+    { "seq": 22, "kind": "draw", "draw_ordinal": 11, "at": "1000:b321", "bytes": "9a 4b 11 78 0f", "n_expr": "chapter * 5", "n_at": "1000:b313", "n_bytes": "a0 92 36 30 e4 8b f0 d1 e0 d1 e0 01 f0 50",
       "gate": { "at": "1000:b308", "cond": "class == 6 AND luck >= draw 10's result" },
       "test": null,
       "buckets": [
@@ -197,7 +198,7 @@
       "tier": "flow"
     },
 
-    { "seq": 23, "kind": "draw", "draw_ordinal": 12, "at": "1000:b353", "bytes": "9a 4b 11 78 0f", "n": 25, "n_at": "1000:b34d", "n_bytes": "b8 05 00 f7 e8",
+    { "seq": 23, "kind": "draw", "draw_ordinal": 12, "at": "1000:b353", "bytes": "9a 4b 11 78 0f", "n": 25, "n_at": "1000:b34d", "n_bytes": "b8 05 00 f7 e8 50",
       "gate": null,
       "test": null,
       "store": { "at": "1000:b358", "bytes": "40 a2 71 39", "what": "wander_roll := result + 1, i.e. 1..25" },
@@ -215,12 +216,12 @@
       "gate": null,
       "test": { "at": "1000:b3a3", "bytes": "09 c0 75 03", "cond": "result == 0", "skip_target": "1000:b3aa" },
       "buckets": [
-        { "range": "0", "p": "1/200", "effect": "call 1000:7c67 -- the church event. See `nested_routines.church`. It spends 1 or 2 further draws and ALWAYS clears wander_bucket, so no encounter happens this turn." },
+        { "range": "0", "p": "1/200", "effect": "call 1000:7c67 -- the church event. See `nested_routines.church`. It spends 1, 2 or 3 further draws (draw 15 always; plus draw 16 on the `== 1` arm; plus draws 17 and 18, inside the level-up routine 1000:2526, on the `== 0` arm below level 40) and ALWAYS clears wander_bucket, so no encounter happens this turn." },
         { "range": "1..199", "p": "199/200", "effect": "nothing" }
       ],
       "tier": "flow"
     },
-    { "seq": 25, "kind": "draw", "draw_ordinal": 14, "at": "1000:b3ae", "bytes": "9a 4b 11 78 0f", "n": 100, "n_at": "1000:b3aa", "n_bytes": "b8 64 00",
+    { "seq": 25, "kind": "draw", "draw_ordinal": 14, "at": "1000:b3ae", "bytes": "9a 4b 11 78 0f", "n": 100, "n_at": "1000:b3aa", "n_bytes": "b8 64 00 50",
       "gate": null,
       "test": { "at": "1000:b3b3", "bytes": "09 c0 75 03", "cond": "result == 0", "skip_target": "1000:b3ba" },
       "buckets": [
@@ -248,23 +249,38 @@
           "gate": null,
           "note": "every stage path converges on 1000:7f5f, so this draw is unconditional once the church fires",
           "buckets": [
-            { "range": "0", "p": "1/5", "effect": "prints file 0x930C only; no state change despite the text claiming a pontovost rise" },
-            { "range": "1", "p": "1/5", "effect": "-> draw 16, a stat blessing" },
-            { "range": "2", "p": "1/5", "effect": "the first unfired one-shot gift: oneshot_gift_1 (1000:8134, all four stats +1, hpmax/hp +6, dmg_max +1), else oneshot_gift_2 (1000:8184, all four +4, hpmax/hp +24, dmg_max +4, dmg_min +2), else ring_gospodi_pomilui (1000:81c4, text only here -- its effect is the wander regen)" },
+            { "range": "0", "p": "1/5", "effect": "a forced level-up. Prints file 0x930C plus the old and new rank names (1000:7f9e / 1000:7fbb, the DS:0b42 256-byte-stride table indexed by level and level+1), then at 1000:7fe4/1000:7fe7 does `mov ax,[0x38d0] / mov [0x38ce],ax` -- xp := xp_threshold -- and at 1000:7fea..1000:7fed does `mov al,0x0 / push ax / call 0x2526`, the level-up routine documented in docs/re/progression.md. The routine's entry test at 1000:2535..1000:253c is `mov ax,[0x38ce] / cmp ax,[0x38d0] / jnl 0x2541`, which the church has just made pass by construction, so the level-up ALWAYS proceeds; it then spends draws 17 and 18 below. Byte-verified: `a1 d0 38 / a3 ce 38 / b0 00 / 50 / e8 36 a5`.", "state": "xp [0x38ce] := 0 and xp_threshold [0x38d0] += 10 (1000:2546..1000:2550, exactly one iteration because the church made them equal); then, unless level [0x38a6] == 40 (1000:2580 `cmp word [0x38a6],0x28`, tested only because the church passes param 0 -- 1000:257a `cmp byte [bp+0x4],0x0`), `inc word [0x38a6]` at 1000:258e plus the growth log written by draws 17/18" },
+            { "range": "1", "p": "1/5", "effect": "-> draw 16, a stat blessing (test at 1000:7ff3 `cmp ax,0x1` / 1000:7ff6 `jz 0x7ffb`)" },
+            { "range": "2", "p": "1/5", "effect": "the first unfired one-shot gift: oneshot_gift_1 (flag set at 1000:8134; grants all four stats +1 at 1000:8101..1000:810d, hpmax/hp +6 at 1000:8111/1000:8116, dmg_max +1 at 1000:811b, and dmg_min += 1 - (strength mod 2) at 1000:811f..1000:8130), else oneshot_gift_2 (flag at 1000:8184; all four +4, hpmax/hp +0x18, dmg_max +4, dmg_min +2 at 1000:815c..1000:817f), else ring_gospodi_pomilui (1000:81c4, text only here -- its effect is the wander regen)", "note": "the dmg_min term at 1000:8130 (`01 06 a8 38`, `add [0x38a8],ax`, where ax = 1 - strength mod 2 computed at 1000:811f..1000:812e) was missing from the first draft. It is state only, no draw. The same shape is documented for the post-kill copy of this gift in docs/re/progression.md's one-shot table." },
             { "range": "3", "p": "1/5", "effect": "unk_38b2 += 1 (1000:81e9), message file 0x9476" },
             { "range": "4", "p": "1/5", "effect": "pontovost_street += chapter*50 + 50 (1000:820d..1000:821a), message files 0x9493 and 0x94CC" }
           ],
           "tier": "flow" },
         { "draw_ordinal": 16, "at": "1000:7fff", "bytes": "9a 4b 11 78 0f", "n": 4, "n_at": "1000:7ffb", "n_bytes": "b8 04 00 50",
-          "gate": { "at": "1000:7f68", "bytes": "3d 00 00 74 03", "cond": "draw 15 returned exactly 1" },
+          "gate": { "at": "1000:7ff3", "bytes": "3d 01 00 74 03", "cond": "draw 15 returned exactly 1", "note": "the first draft cited 1000:7f68 (`3d 00 00 74 03`) here. That instruction is `cmp ax,0x0 / jz 0x7f70` -- the ZERO arm, which is the forced level-up above, not this one. The `== 1` test is 1000:7ff3 `cmp ax,0x1` followed by 1000:7ff6 `jz 0x7ffb`; the fall-through at 1000:7ff8 is `jmp 0x80c0`, the `== 2` test." },
           "buckets": [
-            { "range": "0", "p": "1/4", "effect": "strength +1, hpmax +1, hp +1, dmg_max +1 (1000:8022..1000:802e)" },
+            { "range": "0", "p": "1/4", "effect": "strength +1 (1000:8022), hpmax +1 (1000:8026), hp +1 (1000:802a), dmg_max +1 (1000:802e), and dmg_min += 1 - (strength mod 2) at 1000:8032..1000:8043 (`01 06 a8 38`, `add [0x38a8],ax`)", "note": "the dmg_min term was missing from the first draft. State only, no draw." },
             { "range": "1", "p": "1/4", "effect": "agility +1 (1000:8067)" },
             { "range": "2", "p": "1/4", "effect": "vitality +1, hpmax +5, hp +5 (1000:808b..1000:8094)" },
             { "range": "3", "p": "1/4", "effect": "luck +1 (1000:80b9)" }
           ],
-          "tier": "flow" }
+          "tier": "flow" },
+        { "draw_ordinal": 17, "at": "1000:25fe", "bytes": "9a 4b 11 78 0f", "n_expr": "sum of the four class growth weights: byte[DS: class*4 + 2] + byte[DS: class*4 + 3] + byte[DS: class*4 + 4] + byte[DS: class*4 + 5], computed at 1000:25aa..1000:25ee into [bp-0x6]", "n_at": "1000:25fb", "n_bytes": "ff 76 fa",
+          "gate": { "at": "1000:7f68", "cond": "draw 15 returned exactly 0 (1000:7f68 `cmp ax,0x0` / 1000:7f6b `jz 0x7f70`) AND, inside 1000:2526, level [0x38a6] != 40 (1000:2580 `cmp word [0x38a6],0x28` / 1000:2585 `jnz 0x258a`; reached because the church pushes param 0, tested at 1000:257a `cmp byte [bp+0x4],0x0`). At level 40 the routine jumps to 1000:28a0 and spends NO draw." },
+          "buckets": [
+            { "range": "0 .. weight_sum-1", "effect": "result+1 (1000:2603 `inc ax`, stored at [bp-0xa]) is compared against each class weight in turn (first at 1000:2607..1000:2618) to pick which stat gains a point; the chosen stat is incremented and a growth line printed" }
+          ],
+          "tier": "flow",
+          "note": "reached only through 1000:7fed `call 0x2526` -- the ONLY near call inside the church routine (a linear sweep of 1000:7c67..1000:82b2 that lands exactly on the epilogue finds `call 0x2526` at 1000:7fed and no other near call). 1000:25fe is the same site the whole-image byte scan for `9a 4b 11 78 0f` already reports." },
+        { "draw_ordinal": 18, "at": "1000:25fe", "bytes": "9a 4b 11 78 0f", "n_expr": "same weight_sum as draw 17 -- [bp-0x6] is not recomputed between iterations", "n_at": "1000:25fb", "n_bytes": "ff 76 fa",
+          "gate": { "at": "1000:287d", "bytes": "83 7e f8 02", "cond": "same gate as draw 17. The inner loop counter [bp-0x8] is initialised to 1 at 1000:25f1 (`c7 46 f8 01 00`), incremented at 1000:25f8, and the bound at 1000:287d is `cmp word [bp-0x8],0x2` / 1000:2881 `jz 0x2886` / 1000:2883 `jmp 0x25f8` -- exactly two iterations, so exactly two draws per level gained." },
+          "buckets": [
+            { "range": "0 .. weight_sum-1", "effect": "second stat point, same selection chain" }
+          ],
+          "tier": "flow",
+          "note": "the outer loop at 1000:2895 (`mov ax,[bp-0x4] / cmp ax,[bp-0xc] / jz 0x28a0`) repeats the pair once per level gained. The church always makes exactly one level ([bp-0xc] == 1), because 1000:7fe7 sets xp exactly equal to the threshold and the xp loop at 1000:2546..1000:255f therefore runs exactly once. So a church level-up is exactly TWO draws, never more." }
       ],
+      "draw_ordinal_note": "ordinals 15..18 are labels, not positions in one linear stream. 15 always fires once the church is entered. 16 fires only on the `== 1` arm; 17 and 18 fire only on the `== 0` arm. The two arms are mutually exclusive, so a church turn spends 1 draw (arm 2/3/4, or arm 0 at level 40), 2 draws (arm 1), or 3 draws (arm 0 below level 40).",
       "tail": { "at": "1000:8282", "bytes": "c6 06 70 39 00", "what": "wander_bucket := 0, unconditionally -- no jump inside the routine targets an address above 1000:8282 and the routine has exactly one epilogue, so every path executes it", "consequence": "a church turn never produces an encounter", "tier": "flow" },
       "blocking_read": { "at": "1000:828c", "what": "call 0f78:05dd on DS:3fcc -- waits for the player before returning" }
     },
@@ -274,7 +290,7 @@
       "callers": ["1000:b3b7"],
       "draws": [],
       "what": "the wandering mage Рушель Блаво offers a paid save. Prints files 0x8CBE, 0x8CF5, 0x8D2D (with a price of chapter*25 from `mov dx,0x19` at 1000:758d) and 0x8D62, then ReadLn into a STACK LOCAL at [bp-0x100] (1000:75c7..1000:75d1) -- neither DS:3972 nor DS:3a72 -- and compares it against the token `y` (file 0x8D79) at 1000:75f6.",
-      "on_yes": "if money >= chapter*50 (`mov dx,0x32` at 1000:7605) then money -= chapter*50 (1000:7618..1000:761d) and write both save files: the 694-byte record from DS:369c into `save_r0.sav` (name at file 0x8D7B, Rewrite record size 0x2b6 at 1000:764e) and the seven discovery flags into `places.sav` (name at file 0x8D87, 1000:766f..)",
+      "on_yes": "if money >= chapter*50 (`mov dx,0x32` at 1000:7605) then money -= chapter*50 (1000:7618..1000:761d) and write both save files: the 694-byte record from DS:369c into `save_r0.sav` (name at file 0x8D7B, `mov ax,0x2b6` at 1000:764a and the Rewrite call 0f78:0772 at 1000:764e; the BlockWrite 0f78:0825 is at 1000:765d) and the seven discovery flags into `places.sav` (name at file 0x8D87, 1000:766f..)",
       "divergence": "the price PRINTED at 1000:758d is chapter*25; the price CHECKED and CHARGED at 1000:7605 / 1000:7618 is chapter*50. Established from flow, byte-verified (`ba 19 00` vs `ba 32 00`).",
       "tier": "flow"
     }
@@ -290,7 +306,7 @@
       { "at": "1000:713d", "bytes": "a3 9c 38", "what": "reset to 0 when the answer is < 0 (1000:712d) or > 3 (1000:7134)" },
       { "at": "1000:71b8", "bytes": "83 06 9c 38 03", "what": "add 3 -- the stored class is answer + 3" }
     ],
-    "load_path": "restored as part of the 694-byte character record BlockRead at 1000:6c01 (`bf 9c 36 1e 57 9a 1e 08 78 0f`, 0f78:081e into DS:369c). DS:369c + 0x200 = DS:389c, which is why the class is .SAV offset 0x200. The two BlockWrite counterparts are 1000:7658 (the mage) and 1000:acc3 (the district-advance autosave). No other code writes DS:389c.",
+    "load_path": "restored as part of the 694-byte character record BlockRead at 1000:6c01 (`bf 9c 36 1e 57 9a 1e 08 78 0f`, 0f78:081e into DS:369c). DS:369c + 0x200 = DS:389c, which is why the class is .SAV offset 0x200. The two BlockWrite (0f78:0825) counterparts are the calls at 1000:765d (the mage) and 1000:acc8 (the district-advance autosave); 1000:7658 and 1000:acc3 are the `bf 9c 36` (`mov di,0x369c`) that sets up each one, not the call. No other code writes DS:389c.",
     "player_values": [
       { "answer": 0, "class": 3, "rank": "Подтсан", "menu_text_file": "0x7FB0", "bonus": "flag_girl + flag_club, granted at 1000:73cf/1000:73d4" },
       { "answer": 1, "class": 4, "rank": "Отморозок", "menu_text_file": "0x7FE8", "bonus": "+1 hp per walk, 1000:b2d4..1000:b2dd" },
@@ -299,7 +315,7 @@
     ],
     "consumers": [
       { "at": "1000:25aa", "what": "indexes the four-byte growth-weight table at DS:0002" },
-      { "at": "1000:13dc", "what": "indexes the 256-byte-stride rank-name table at DS:002e" },
+      { "at": "1000:1a36", "bytes": "8b 3e 9c 38 b1 08 d3 e7 81 c7 2e 00", "what": "indexes the 256-byte-stride rank-name table at DS:002e (class << 8, + 0x2e)", "correction": "the first draft cited 1000:13dc for this. 1000:13dc is `8b 3e 52 39`, `mov di,[0x3952]` -- the ENEMY's class (docs/re/combat.md:63), an identically shaped lookup into the same table. The address was taken from a byte scan and not re-disassembled from an aligned start. 1000:1a36 is the player-class lookup, re-derived here by disassembling from 1000:1a30.", "other_sites_same_shape": ["1000:3e0c", "1000:3e63", "1000:41e3", "1000:5f74", "1000:5fe2", "1000:7ee9"], "other_sites_note": "a byte scan for the full 12-byte sequence `8b 3e 9c 38 b1 08 d3 e7 81 c7 2e 00` finds exactly seven hits; all seven, including 1000:1a36, were re-disassembled from an aligned instruction start and each is this same player-rank-name lookup. 1000:7ee9 is the church's own copy." },
       { "at": "1000:73bb", "what": "the class-bonus grants; reached on EVERY entry into the game (both the new-character path through 1000:71ea.. and the loaded-save path via 1000:6da0 -> 1000:7262), because 1000:7369's `cmp byte [0x3692],1 / jnz 0x73bb` only skips the district-1 intro text, never the grants" },
       { "at": "1000:6d45", "what": "places.sav read failure: `cmp word [0x389c],3` spares the club clear" },
       { "at": "1000:6d56", "what": "same compare spares the girl clear" },
