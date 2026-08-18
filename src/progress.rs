@@ -313,7 +313,7 @@ pub fn apply_levels(
         let hpmax_before = f.hpmax;
         let mut gains = [None; GAINS_PER_LEVEL];
         for slot in gains.iter_mut() {
-            let roll = rng.below(sum).wrapping_add(1);
+            let roll = rng.below_at("1000:25fe", sum).wrapping_add(1);
             let stat = pick(weights, roll);
             if let Some(stat) = stat {
                 grant(f, stat);

@@ -16,8 +16,14 @@
 //! are spared when `[20ae:389c] == 3`, Den at `1000:abc9` when it is `5`
 //! (Gym at `1000:abac` and BigMarket at `1000:abbd` are always cleared, being
 //! the second store in each pair, past the skip). `reset_for_new_district`
-//! clears all seven unconditionally. Fixing it needs `[0x389c]`'s meaning,
-//! which is not established -- see `docs/re/gaps.md`.
+//! clears all seven unconditionally.
+//!
+//! `[0x389c]` is no longer the blocker this comment used to name: Task 11b
+//! established it as the character class, and Task 11c reads it in
+//! `Game::apply_class_bonus` (`1000:73bb`). What is still missing is that
+//! `Places` has no class to consult -- the fix is to pass one in, which
+//! belongs with the district-transition block (`1000:ab75`..`1000:ae18`)
+//! rather than with the wander turn. See `docs/re/gaps.md`.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Location {

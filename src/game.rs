@@ -92,6 +92,55 @@ pub struct Game {
     pub district: u8,
     pub rng: Rng,
     pub location: Location,
+    /// `20ae:38bb` -- the player owns a mobile phone. Gates draws 3 and 4 of
+    /// the wander preamble and every phone-call message in it.
+    pub has_mobile: bool,
+    /// `20ae:38bf` / `.SAV 0x223` -- the first one-shot gift, granted by the
+    /// church's `Random(5) == 2` arm (`1000:8134`) as well as the post-kill
+    /// block `docs/re/progression.md` documents.
+    pub oneshot_gift_1: bool,
+    /// `20ae:38c0` / `.SAV 0x224` -- the second one-shot gift (`1000:8184`).
+    pub oneshot_gift_2: bool,
+    /// `20ae:38c1` / `.SAV 0x225` -- the ring "Господи помилуй"
+    /// (`1000:81c4`). Gates the wander's +3 HP regen and draw 9.
+    pub ring_gospodi_pomilui: bool,
+    /// `20ae:38cb` / `.SAV 0x22f` -- понтовость на улице, the street-cred
+    /// counter that is **not** the level at `20ae:38a6`. Gates draw 2's
+    /// message (`>= 100`) and is topped up by the church's arm 4.
+    pub pontovost_street: i32,
+    /// `20ae:38cd` / `.SAV 0x231` -- the joint buff's countdown. Decremented
+    /// at the top of every walk (`1000:aea8`); reaching zero takes the buff
+    /// back. `crate::model::Fighter::stoned` is the same event as a bool;
+    /// this is the counter the original actually keeps.
+    pub buff_countdown: u8,
+    /// `20ae:3b74` is a global in the original, but nothing outside
+    /// `1000:b321`..`1000:b346` reads it, so the theft amount is a local
+    /// there rather than a field here.
+    ///
+    /// `20ae:3b76` -- the market ban's countdown, set to 5 at `1000:c465`
+    /// and decremented once per walk at `1000:b173`.
+    pub market_ban_countdown: u8,
+    /// `20ae:3b77` -- the club ban's countdown (`1000:e23e`, `1000:b17e`).
+    pub club_ban_countdown: u8,
+    /// `20ae:3b78` -- den errand one. Set by draw 1 at `1000:af71`, and set
+    /// there **unconditionally**, before the flags that decide whether
+    /// anything prints.
+    pub den_errand_1_pending: bool,
+    /// `20ae:3b79` -- den errand two (`1000:afd0`, same shape).
+    pub den_errand_2_pending: bool,
+    /// `20ae:394d` / `.SAV 0x2b1` -- a 150-rouble order placed with the
+    /// dealers (`1000:cd05`); arms [`Game::dealer_delivery_counter`].
+    pub dealer_order_placed: bool,
+    /// `20ae:3e32` -- counts walks 0..25 once the order is placed; the phone
+    /// call fires at exactly 25 (`1000:af36`).
+    pub dealer_delivery_counter: u8,
+    /// `20ae:3e35` -- the den's loan credit. Set to 5 at `1000:73e5` and
+    /// topped up once per walk while below `district * 10` (`1000:af19`).
+    pub den_loan_credit: u8,
+    /// `20ae:3951` / `.SAV 0x2b5` -- the church's sermon stage, 0..2. Read
+    /// at `1000:7c76`/`1000:7ceb`/`1000:7dcb` to pick which sermon runs and
+    /// at `1000:8247` to pick the parting line.
+    pub church_visits: u8,
     mode: Mode,
     /// The most recently fought opponent, shown by `Command::Inspect` (`sv`).
     last_enemy: Option<Fighter>,
@@ -157,18 +206,72 @@ impl Game {
         let mut places = Places::from_bytes(&[0u8; 7]);
         places.mark_found(Location::Vet);
         places.mark_found(Location::Market);
-        Game {
+        let mut g = Game {
             player,
             progress,
             places,
             district: 1,
             rng: Rng::new(seed),
             location: Location::Street,
+            has_mobile: false,
+            oneshot_gift_1: false,
+            oneshot_gift_2: false,
+            ring_gospodi_pomilui: false,
+            pontovost_street: 0,
+            buff_countdown: 0,
+            market_ban_countdown: 0,
+            club_ban_countdown: 0,
+            den_errand_1_pending: false,
+            den_errand_2_pending: false,
+            dealer_order_placed: false,
+            dealer_delivery_counter: 0,
+            den_loan_credit: 0,
+            church_visits: 0,
             mode: Mode::Street,
             last_enemy: None,
             save_template_bytes: None,
             running: true,
+        };
+        g.apply_class_bonus();
+        g
+    }
+
+    /// `1000:73bb`..`1000:73e5`, the class bonus and the den's opening loan
+    /// credit.
+    ///
+    /// **Established from flow.** `docs/re/wander.md` ("What reaches
+    /// `1000:73bb`") shows both exits of the character-setup procedure
+    /// converge on `1000:7262`, and `1000:7369`'s `jnz 0x73bb` skips only the
+    /// district-1 intro text, never the grants -- so this runs on **every**
+    /// entry into the game, new character or loaded save. Re-derived here:
+    ///
+    /// ```text
+    /// 73bb  a1 9c 38        mov ax,[0x389c]
+    /// 73be  3d 05 00        cmp ax,5          ; Гопник
+    /// 73c3  c6 06 96 36 01  mov byte [0x3696],1   ; Den
+    /// 73ca  3d 03 00        cmp ax,3          ; Подтсан
+    /// 73cf  c6 06 97 36 01  mov byte [0x3697],1   ; Girl
+    /// 73d4  c6 06 99 36 01  mov byte [0x3699],1   ; Club
+    /// 73db  3d 06 00        cmp ax,6          ; Вор
+    /// 73e0  c6 06 95 36 01  mov byte [0x3695],1   ; BigMarket
+    /// 73e5  c6 06 35 3e 05  mov byte [0x3e35],5   ; den loan credit
+    /// ```
+    ///
+    /// The three arms are mutually exclusive (`1000:73c8` and `1000:73d9`
+    /// jump straight to `1000:73e5`), and `1000:73e5` is unconditional.
+    /// Class 4 (Отморозок) gets no flag here -- its bonus is the +1 HP per
+    /// walk at `1000:b2d4`.
+    fn apply_class_bonus(&mut self) {
+        match self.player.class {
+            5 => self.places.mark_found(Location::Den),
+            3 => {
+                self.places.mark_found(Location::Girl);
+                self.places.mark_found(Location::Club);
+            }
+            6 => self.places.mark_found(Location::BigMarket),
+            _ => {}
         }
+        self.den_loan_credit = 5;
     }
 
     /// The banner is printed once by `main.rs` before character creation,
@@ -359,7 +462,7 @@ impl Game {
             return;
         }
         term::println("^2Ты пришел к своей подруге.");
-        if self.rng.below(2) == 0 && !self.places.is_found(Location::Club) {
+        if self.rng.below_at("1000:d728", 2) == 0 && !self.places.is_found(Location::Club) {
             term::println("^2Она вытащила тебя в клуб и теперь ты знаешь где он находиться.");
             self.places.mark_found(Location::Club);
         }
@@ -500,7 +603,7 @@ impl Game {
         term::print("Ты пришел в притон - ");
         match self.district {
             1 => {
-                let n = self.rng.below(6) + 3;
+                let n = self.rng.below_at("1000:d83b", 6) + 3;
                 term::println(&text::fill("^0общагу №#", &[n as i64]));
             }
             2 => term::println("^0общагу ВКИ"),
@@ -669,83 +772,42 @@ impl Game {
         term::println("^6Ты чё псих? мигом менты накроют!");
     }
 
-    /// `w`/`run`. Reconstructed from `1000:ae5a`..`1000:b82c`:
+    /// `w`/`run` -- one whole wander turn, the complete `Random` sequence
+    /// included.
     ///
-    /// * `1000:ae63` -- `ReadLn` into `DS:3972` (this is the whole loop's
-    ///   own input read, not specific to walking; every verb goes through
-    ///   it, matching this port's `run()`).
-    /// * `1000:ae86`/`1000:ae97` -- compare against `"w"`/`"run"`; both jump
-    ///   to `1000:aea1` (**confirmed synonyms**).
-    /// * `1000:aea1`..`1000:af04` -- decays a "stoned" counter (`DS:38cd`)
-    ///   and, when it just hit zero, applies a strength penalty with the
-    ///   message `^4Глюки прошли. Сила -2.` (`0x9D64`) -- not modelled here,
-    ///   `crate::model::Fighter` has a `stoned: bool` flag, not a countdown.
-    /// * `1000:af04` onward -- a long run of one-shot flavour/discovery
-    ///   events (phone calls, finding the market's own sign, the silencer's
-    ///   25-wander counter `docs/re/tables.md` already documents at
-    ///   `20ae:3e32`), each gated by its own `Random()` roll and a
-    ///   never-repeat flag. **Not reproduced** -- nine `Random` sites
-    ///   between `1000:af04` and `1000:b2a0` plus `1000:b2fa` and
-    ///   `1000:b321`, only four of which are traced (the four discovery
-    ///   rolls). Cataloguing the whole run is a separate RE pass; see
-    ///   `docs/re/gaps.md`, "Wander preamble".
-    /// * **The four-way bucket roll -- established from flow.** Earlier
-    ///   revisions of this doc called the roll an assumption ("the specific
-    ///   `Random` call feeding the regular-turn branch was not found"). It
-    ///   has now been found, and it is the same one: `1000:b34d`
-    ///   `mov ax,5` / `1000:b350` `f7 e8` `imul ax` (`DX:AX := AX*AX`, i.e.
-    ///   **25**) / `1000:b352` `push ax` / `1000:b353` `call Random` /
-    ///   `1000:b358` `inc ax` / `1000:b359` `mov [0x3971],al`. The result is
-    ///   then bucketed into `DS:3970` by four independent compares:
-    ///   `1000:b35c` (`>= 0x0a` gives bucket 4), `1000:b368` with
-    ///   `1000:b36f` (`5..=9` gives 3), `1000:b37b` with `1000:b382`
-    ///   (`2..=4` gives 2), `1000:b38e` (`== 1` gives 1). It is dispatched
-    ///   at `1000:b3ba` (`mov al,[0x3970]`) through `cmp al,1`
-    ///   (`1000:b3bd`), `cmp al,2` (`1000:b4e8`), `cmp al,3` (`1000:b5ae`)
-    ///   and `cmp al,4` (`1000:b82f`). `1000:b34d` is reached
-    ///   unconditionally on the walk path: every arm of the preceding
-    ///   `[0x389c]` switch converges on it (`1000:b2e1` and `1000:b2e8`
-    ///   `jmp 0xb34d`, `1000:b2ed` `jnz 0xb34d`, and the `== 6` arm falls
-    ///   through it at `1000:b34b`).
-    /// * **Two more unconditional draws sit between the bucket roll and the
-    ///   bucket dispatch, and this port spends neither.** Established from
-    ///   flow at `1000:b39a`:
+    /// **Established from flow.** `1000:ae86` (`w`) and `1000:ae97` (`run`)
+    /// both jump to `1000:aea1`; there is exactly one wander path, and
+    /// `1000:ae63`'s `ReadLn` into `DS:3972` is the main loop's own read,
+    /// which this port's `run()` mirrors. A turn is
+    /// [`Game::wander_preamble`] (`1000:aea1`..`1000:b3b9` -- fourteen
+    /// catalogued `Random` sites and the state steps between them) followed
+    /// by the bucket dispatch at `1000:b3ba`.
     ///
-    ///   ```text
-    ///   b39a  b8 c8 00        mov ax,0xc8       ; 200
-    ///   b39d  50              push ax
-    ///   b39e  9a 4b 11 78 0f  call Random
-    ///   b3a3  09 c0           or ax,ax
-    ///   b3a5  75 03           jnz 0xb3aa
-    ///   b3a7  e8 bd c8        call 0x7c67
-    ///   b3aa  b8 64 00        mov ax,0x64       ; 100
-    ///   b3ad  50              push ax
-    ///   b3ae  9a 4b 11 78 0f  call Random
-    ///   b3b3  09 c0           or ax,ax
-    ///   b3b5  75 03           jnz 0xb3ba
-    ///   b3b7  e8 7e c1        call 0x7538
-    ///   ```
+    /// **This function used to spend exactly one draw where the original
+    /// spends nine.** The bucket roll is draw 12 of 14, so the port's stream
+    /// desynchronised from the original's on the first walk and never
+    /// recovered. Task 11c wired the rest of the sequence in;
+    /// `tests/wander_sequence.rs` replays five captured runs of the original
+    /// (`data/rng_trace.json`) against it draw for draw.
     ///
-    ///   Both calls happen on every walk regardless of the roll; only the
-    ///   `call 0x7c67` / `call 0x7538` payloads are gated on a `0`. Neither
-    ///   callee has been disassembled. **Consequence for draw-sequence
-    ///   fidelity:** in the original the bucket roll is followed by two more
-    ///   draws before bucket 2 reaches `wander_girl`'s own `Random(2)`, so
-    ///   that draw is the original's *fourth* since the bucket roll and this
-    ///   port's *first*. Wiring them here would leave the eleven preamble
-    ///   draws at `1000:af04`..`1000:b34d` still missing, so the sequence
-    ///   would move without arriving; they are catalogued with the rest of
-    ///   the preamble in `docs/re/gaps.md`, "Wander preamble", and belong to
-    ///   the same follow-up pass.
-    /// * **Bucket 1** (`1000:b3c4`) toggles `[0x3693]` and writes one
-    ///   district-keyed flavour line from either of two sets
-    ///   (`1000:b3db`.. and `1000:b465`..). Sets no discovery flag; not
-    ///   modelled -- see `docs/re/gaps.md`.
-    /// * **Bucket 2** (`1000:b4ef`) is the girl encounter, implemented by
-    ///   [`Game::wander_girl`].
-    /// * **Bucket 3** (`1000:b5b5`) is the fight encounter, below.
-    /// * **Bucket 4** (`1000:b836`) is the stoned-counter (`[0x38cd]`)
-    ///   flavour path; sets no discovery flag, not modelled.
+    /// The dispatch at `1000:b3ba` reads `20ae:3970` and compares it against
+    /// 1 (`1000:b3bd`), 2 (`1000:b4e8`) and 3 (`1000:b5ae`), falling through
+    /// to bucket 4 at `1000:b836`:
+    ///
+    /// * **0** -- no arm matches, so the turn ends with nothing. The only
+    ///   way to reach it is the church, which zeroes the already-rolled
+    ///   bucket at `1000:8282`.
+    /// * **1** (`1000:b3c4`) -- flavour only: toggles `20ae:3693` and writes
+    ///   one district-keyed line from either of two sets (`1000:b3db..`,
+    ///   `1000:b465..`). **Not modelled** -- it spends no draw and neither
+    ///   line set was extracted. See `docs/re/gaps.md`.
+    /// * **2** (`1000:b4ef`) -- the girl encounter, [`Game::wander_girl`].
+    /// * **3** (`1000:b5b5`) -- the fight encounter, below.
+    /// * **4** (`1000:b836`) -- flavour only, branching on the joint buff's
+    ///   countdown `20ae:38cd`. **Not modelled**, same reason as bucket 1.
+    ///
+    /// The fight encounter, `1000:b5b5` onward:
+    ///
     /// * `1000:b5b8` -- `call FUN_1000_0d14` (rolls the enemy).
     /// * `1000:b6a6`..`1000:b6dd` -- writes `^6Идет ` (file `0xA267`), the
     ///   rank name, and ` # уровня, ищущий кого отпинать. Хочешь наехать?`
@@ -775,26 +837,27 @@ impl Game {
     /// There is a second, structurally similar answer block at `1000:b691`
     /// that has **no** random roll on decline (a non-`y` answer simply ends
     /// the encounter); which of the two a real encounter reaches depends on
-    /// the rolled enemy's class via `1000:b5fc`, which this task did not
-    /// trace. This port always takes the `Random(2)` branch.
-    fn walk(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
-        // 1000:b34d..1000:b359: Random(5*5) + 1, bucketed at 1000:b35c..
-        // 1000:b393 and dispatched at 1000:b3ba.
-        let roll = self.rng.below(25) + 1;
-        let bucket = if roll == 1 {
-            1
-        } else if roll <= 4 {
-            2
-        } else if roll <= 9 {
-            3
-        } else {
-            4
-        };
+    /// the rolled enemy's class via `1000:b5fc`, which has not been traced.
+    /// This port always takes the `Random(2)` branch.
+    ///
+    /// **KNOWN DIVERGENCE, and the reason three of the five captured runs do
+    /// not replay.** Everything from `1000:b5b8` on is outside
+    /// `docs/re/wander.md`'s catalogue and is not recovered:
+    /// [`Game::pick_enemy`] is an admitted approximation of `FUN_1000_0d14`
+    /// (`1000:0d14`..`1000:11c2`, fourteen `Random` sites plus a
+    /// weight-driven loop), and the fight-flow draws the captures show at
+    /// `1000:b5f1`, `1000:b725` and `1000:b792` are not modelled either.
+    /// Because the generator is one shared stream, a single bucket-3 turn
+    /// desynchronises the rest of a run. See `docs/re/gaps.md`.
+    ///
+    /// `pub` so `tests/wander_sequence.rs` can drive one turn at a time;
+    /// `run()` is still the only path a player takes.
+    pub fn walk(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
+        let bucket = self.wander_preamble(lines)?;
         match bucket {
             2 => return self.wander_girl(lines),
             3 => {}
-            // Buckets 1 (1000:b3c4) and 4 (1000:b836) are flavour-only and
-            // are not modelled; see this function's doc and docs/re/gaps.md.
+            // 0 (church-cancelled), 1 and 4: nothing this port models.
             _ => return Ok(()),
         }
 
@@ -812,12 +875,464 @@ impl Game {
         let answer = line?;
         if answer.trim().eq_ignore_ascii_case("y") {
             self.run_combat(enemy, lines)?;
-        } else if self.rng.below(2) == 0 {
+        } else if self.rng.below_at("1000:b725", 2) == 0 {
             term::println("^4Он тебя заметил.");
             self.run_combat(enemy, lines)?;
         } else {
             term::println("^2Ты смылся.");
         }
+        Ok(())
+    }
+
+    /// `1000:aea1`..`1000:b3b9`: everything a walk does before the bucket
+    /// dispatch, in execution order. Returns the value `20ae:3970` holds
+    /// when `1000:b3ba` reads it.
+    ///
+    /// The order, every `n`, every gate and every state step come from
+    /// `data/wander.json`'s `steps` array (prose and addresses:
+    /// `docs/re/wander.md`), which carries the opcode bytes at each address
+    /// cited below so a five-byte drift is checkable without a disassembler.
+    /// All fourteen sites were re-derived from `orig/g.exe` for this
+    /// implementation, and all fourteen have been observed firing in the
+    /// running original with the `n` used here (`data/rng_trace.json`).
+    ///
+    /// Two shapes are easy to get wrong and are called out where they occur:
+    ///
+    /// * **Draws 1 and 2 are not one-shots.** Their never-repeat flag is
+    ///   written at `1000:af71`/`1000:afd0`, *after* the `or ax,ax / jnz` at
+    ///   `1000:af6d`/`1000:afcc`, so the flag is set only by the 1-in-20
+    ///   roll that actually returns `0`. Until then the draw fires every
+    ///   turn. Steady state is nine draws, decaying to eight and then seven.
+    /// * **Draws 5..8 always fire.** Only their *effect* is gated on the
+    ///   discovery flag still being clear; the roll happens either way.
+    fn wander_preamble(
+        &mut self,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<u8> {
+        // seq 1, 1000:aea1 -- the joint buff decays, and hitting zero takes
+        // back exactly what 1000:4b57 granted (1000:aeb3/aeb8/aebc).
+        if self.buff_countdown > 0 {
+            self.buff_countdown -= 1;
+            if self.buff_countdown == 0 {
+                self.player.strength = self.player.strength.wrapping_sub(2);
+                self.player.dmg_min = self.player.dmg_min.wrapping_sub(1);
+                self.player.dmg_max = self.player.dmg_max.wrapping_sub(2);
+                self.player.stoned = false;
+                term::println("^6Глюки прошли. Сила -2.");
+            }
+        }
+
+        // seq 2, 1000:aeda -- `run` (and only `run`) writes file 0x9D7D
+        // here. `crate::commands::parse` folds `w` and `run` into one
+        // `Command::Walk`, so this port cannot tell them apart and writes
+        // nothing. It costs no draw; recorded in `docs/re/gaps.md`.
+
+        // seq 3, 1000:af04 -- the den's loan credit tops up once per walk
+        // while it is below district*10 (`jnl 0xaf1d` skips otherwise).
+        if u16::from(self.den_loan_credit) < u16::from(self.district) * 10 {
+            self.den_loan_credit += 1;
+        }
+
+        // seq 4, 1000:af1d -- the dealers' 25-walk delivery counter. Three
+        // gates before the increment (1000:af1d, af24, af2b), then the call
+        // only on the turn it becomes exactly 25 and only with a phone.
+        if self.places.is_found(Location::BigMarket)
+            && self.dealer_order_placed
+            && self.dealer_delivery_counter < 25
+        {
+            self.dealer_delivery_counter += 1;
+            if self.dealer_delivery_counter == 25 && self.has_mobile {
+                term::println(
+                    "Телефон:^6Алё, ты где? Приходи, мы вещицу для тебя раздобыли.(Иди к барыгам)",
+                );
+            }
+        }
+
+        // Draw 1, 1000:af68 -- Random(20), gate `[0x3b78] == 0` at
+        // 1000:af5d. The flag is set at 1000:af71 BEFORE the den/phone tests
+        // at 1000:af76/1000:af7d, so a player without a phone loses the
+        // errand permanently and sees nothing.
+        if !self.den_errand_1_pending && self.rng.below_at("1000:af68", 20) == 0 {
+            self.den_errand_1_pending = true;
+            if self.places.is_found(Location::Den) && self.has_mobile {
+                // 1000:af84..1000:afb7 concatenates three pieces into one
+                // WriteLn: file 0x9DDB, the name at DS:379c, file 0x9DEA.
+                term::print("Телефон:^6Алё,");
+                term::print(&self.player.name);
+                term::println("^6? ты где щас? Тут помощь нужна.(Иди в притон)");
+            }
+        }
+
+        // Draw 2, 1000:afc7 -- the same shape one flag along, with понтовость
+        // >= 100 as an extra print gate (1000:afdc).
+        if !self.den_errand_2_pending && self.rng.below_at("1000:afc7", 20) == 0 {
+            self.den_errand_2_pending = true;
+            if self.places.is_found(Location::Den)
+                && self.pontovost_street >= 100
+                && self.has_mobile
+            {
+                term::print("Телефон:^6Алё,");
+                term::print(&self.player.name);
+                term::println("^6? ты щас где? Базар есть.(Иди в притон)");
+            }
+        }
+
+        // 1000:b022 and 1000:b0ce are two separate `cmp byte [0x38bb],1`
+        // gates; without a phone the first jumps past draw 3 to 1000:b0ce
+        // and the second jumps past draw 4 AND the two cooldown messages
+        // straight to 1000:b16c.
+        if self.has_mobile {
+            // Draw 3, 1000:b030 -- Random(200), the wrong-number gag. The
+            // original spaces these with 0f16:031a delays this port has no
+            // equivalent for.
+            if self.rng.below_at("1000:b030", 200) == 0 {
+                term::println("Телефон:^6Алё Вася?");
+                term::print("^2Нет это ");
+                term::print(&self.player.name);
+                term::println(".");
+                term::println("Телефон:^6А Васю можно?");
+                term::println("^2Нет, он будет в больнице в ближайшие 2 месяца.");
+            }
+            // Draw 4, 1000:b0dc -- Random(100); prints only with a girl.
+            if self.rng.below_at("1000:b0dc", 100) == 0 && self.places.is_found(Location::Girl) {
+                term::println("Телефон(Твоя пассия):^5Привет, это я. Зайдешь ко мне сегодня?");
+                term::println("^2А ты: Безбазаров, жди.");
+            }
+            // seq 9/10, 1000:b11e and 1000:b145 -- the "it blew over" calls,
+            // on the last turn of each ban and only with the den known.
+            if self.market_ban_countdown == 1 && self.places.is_found(Location::Den) {
+                term::println(
+                    "Телефон:^2Это ты там на базаре шухер наводил? Ну короче там менты свалили.",
+                );
+            }
+            if self.club_ban_countdown == 1 && self.places.is_found(Location::Den) {
+                term::println("Телефон:^2Ты че там, в клуб-та пойдёшь. Уже утряслось всё.");
+            }
+        }
+
+        // seq 11, 1000:b16c/1000:b177 -- both cooldowns tick down.
+        if self.market_ban_countdown > 0 {
+            self.market_ban_countdown -= 1;
+        }
+        if self.club_ban_countdown > 0 {
+            self.club_ban_countdown -= 1;
+        }
+
+        // Draws 5..8 -- the four discovery rolls. 1000:b186 Random(10) vet,
+        // 1000:b1b8 Random(10) market, 1000:b1ea Random(100) club,
+        // 1000:b21c Random(100) gym. The comparison constants ARE the
+        // probabilities (`docs/re/METHODOLOGY.md`).
+        if self.rng.below_at("1000:b186", 10) == 0 && !self.places.is_found(Location::Vet) {
+            self.places.mark_found(Location::Vet); // 1000:b196
+            term::println("^1Ты спросил у прохожего где больница.");
+        }
+        if self.rng.below_at("1000:b1b8", 10) == 0 && !self.places.is_found(Location::Market) {
+            self.places.mark_found(Location::Market); // 1000:b1c8
+            term::println("^1Ты нашел базар.");
+        }
+        if self.rng.below_at("1000:b1ea", 100) == 0 && !self.places.is_found(Location::Club) {
+            self.places.mark_found(Location::Club); // 1000:b1fa
+            term::println("^1Ты увидел объявление \"Типа заходи в наш понтовый клуб\".");
+        }
+        if self.rng.below_at("1000:b21c", 100) == 0 && !self.places.is_found(Location::Gym) {
+            self.places.mark_found(Location::Gym); // 1000:b22c
+            term::println("^1На стене реклама \"Жизнь тяжела. Если не хочешь сдохнуть качайся!\".");
+        }
+
+        // seq 16 + draw 9, both behind `[0x38c1] != 0` at 1000:b24a -- the
+        // ring "Господи помилуй", whose own description string (file
+        // 0x53DD) advertises exactly this: +3 HP and a 5% fracture heal.
+        if self.ring_gospodi_pomilui {
+            // 1000:b251..1000:b26b, clamped to hpmax.
+            if self.player.hp < self.player.hpmax {
+                self.player.hp += 3;
+                if self.player.hp > self.player.hpmax {
+                    self.player.hp = self.player.hpmax;
+                }
+            }
+            // Draw 9, 1000:b272 -- Random(20); 1000:b279 `ja` means only a
+            // zero continues. At most ONE fracture clears, jaw first: the
+            // leg block at 1000:b289 is reached only when the jaw is intact
+            // (`jnz 0xb2a7` at 1000:b280), and the jaw block at 1000:b2ae
+            // only when it is broken.
+            if self.rng.below_at("1000:b272", 20) == 0 {
+                if !self.player.broken_jaw && self.player.broken_leg {
+                    self.player.broken_leg = false;
+                    term::println("^2Твоя нога залечилась с Божей помощью.");
+                }
+                if self.player.broken_jaw {
+                    self.player.broken_jaw = false;
+                    term::println("^2Твоя челюсть залечилась с Божей помощью.");
+                }
+            }
+        }
+
+        // seq 18..22, 1000:b2cc -- the class-perk dispatch. Every arm
+        // converges on 1000:b34d.
+        match self.player.class {
+            // 1000:b2cf -- Отморозок heals one scratch a walk, the
+            // "Бонус - Самолечение царапин" the creation menu advertises.
+            4 => {
+                if self.player.hp < self.player.hpmax {
+                    self.player.hp += 1;
+                }
+            }
+            // 1000:b2e3 -- Гопник has no wander perk.
+            5 => {}
+            // 1000:b2ea -- Вор steals, the menu's "Бонус - Воровство".
+            6 => {
+                // Draw 10, 1000:b2fa. `n` is built at 1000:b2ef..1000:b2f8
+                // as district * 20 (`mov dx,0x14` / `mul dx`).
+                let r = self
+                    .rng
+                    .below_at("1000:b2fa", u16::from(self.district) * 20);
+                // 1000:b305..1000:b311: luck is sign-extended (`cwd`) and
+                // the result zero-extended, and the theft succeeds when
+                // luck >= result.
+                if i32::from(self.player.luck) >= i32::from(r) {
+                    // Draw 11, 1000:b321. `n` is district * 5, built at
+                    // 1000:b313..1000:b31e as (district << 2) + district.
+                    let amount = self.rng.below_at("1000:b321", u16::from(self.district) * 5) + 1;
+                    // 1000:b326/1000:b32d: [0x3b74] := r + 1, money += it.
+                    self.player.money += i32::from(amount);
+                    term::println(&text::fill(
+                        "^2Опа бабки! # рублей на пиво!",
+                        &[amount as i64],
+                    ));
+                }
+            }
+            _ => {}
+        }
+
+        // Draw 12, 1000:b353 -- the bucket roll. `n` is built at 1000:b34d
+        // as `mov ax,5` / `imul ax`, i.e. AX*AX = 25, and 1000:b358 stores
+        // r+1 (so 1..25) into 20ae:3971. The chain at 1000:b35c..1000:b393
+        // tests the highest boundary first.
+        let roll = self.rng.below_at("1000:b353", 25) + 1;
+        let mut bucket = if roll >= 10 {
+            4
+        } else if roll >= 5 {
+            3
+        } else if roll >= 2 {
+            2
+        } else {
+            1
+        };
+
+        // Draw 13, 1000:b39e -- Random(200); a zero calls the church at
+        // 1000:b3a7.
+        if self.rng.below_at("1000:b39e", 200) == 0 {
+            self.church();
+            // 1000:8282 `c6 06 70 39 00` is the routine's last act before
+            // its single epilogue and no jump inside it targets an address
+            // above that, so EVERY path zeroes the bucket: a church turn
+            // produces no encounter even though the roll already happened.
+            bucket = 0;
+        }
+
+        // Draw 14, 1000:b3ae -- Random(100); a zero calls the mage at
+        // 1000:b3b7. It spends no draw but does block on a ReadLn.
+        if self.rng.below_at("1000:b3ae", 100) == 0 {
+            self.mage(lines)?;
+        }
+
+        Ok(bucket)
+    }
+
+    /// The church, `1000:7c67`..`1000:82af` -- one procedure, one prologue,
+    /// one epilogue (`89 ec 5d c3` at `1000:82af`), called from exactly one
+    /// site (`1000:b3a7`).
+    ///
+    /// Three sermon arms are selected by `20ae:3951` (`== 2` at `1000:7c76`,
+    /// `== 1` at `1000:7ceb`, `== 0` at `1000:7dcb`) and all converge on
+    /// `1000:7f5f`, so draw 15 is unconditional once the church fires. The
+    /// two lower arms raise the stage on their way out (`1000:7dc7`,
+    /// `1000:7f5b`), which is why it saturates at 2.
+    ///
+    /// **Not reproduced:** the two long sermons (the `== 0` and `== 1`
+    /// arms), and the old/new rank names the level-up arm prints from the
+    /// `DS:0b42` 256-byte-stride table. Both are text only and cost no
+    /// draw; recorded in `docs/re/gaps.md`.
+    fn church(&mut self) {
+        let stage = self.church_visits;
+        if stage <= 1 {
+            self.church_visits += 1;
+        } else {
+            // The `== 2` arm's four lines, files 0x904C/0x9083/0x909F/0x90B4.
+            term::println("Бродя по окрестностям с самыми грязными намериниями...");
+            term::println("Ты наткнулся на храм Божий.");
+            term::println("^1Бог: \"А ты опять.\"");
+            term::println("^1Ну ладно насылаю на тебя \"благославление\"");
+        }
+
+        // Draw 15, 1000:7f63 -- Random(5). Five equally likely arms.
+        match self.rng.below_at("1000:7f63", 5) {
+            // 1000:7f68's zero arm: a forced level-up.
+            0 => {
+                term::println("^1Да увеличится твоя понтовость!");
+                // 1000:7fe4/1000:7fe7 `mov ax,[0x38d0]` / `mov [0x38ce],ax`
+                // -- xp := threshold -- then `mov al,0` / `call 0x2526`.
+                // 1000:2526's entry test (1000:2535..1000:253c) therefore
+                // passes by construction, its xp loop runs exactly once, and
+                // the per-level body spends draws 17 and 18 at 1000:25fe
+                // (loop bound `cmp word [bp-0x8],0x2` at 1000:287d). At
+                // level 40 (1000:2580) it spends no draw and grants nothing,
+                // but the xp rewrite above has already happened.
+                self.progress.xp = self.progress.threshold;
+                progress::apply_levels(
+                    &mut self.progress,
+                    &mut self.player,
+                    &mut self.rng,
+                    0,
+                    false,
+                );
+            }
+            // 1000:7ff3 `cmp ax,1` / 1000:7ff6 `jz 0x7ffb` -- a stat
+            // blessing. (1000:7f68 is the ZERO arm above, not this one.)
+            1 => match self.rng.below_at("1000:7fff", 4) {
+                // 1000:8022..1000:8043. The dmg_min term reads the
+                // ALREADY-incremented strength, so it is +1 when the new
+                // strength is even -- the same rule as a level-up's.
+                0 => {
+                    term::println("^1Да увеличиться твоя сила!");
+                    self.player.strength += 1;
+                    self.player.hpmax += 1;
+                    self.player.hp += 1;
+                    self.player.dmg_max += 1;
+                    if self.player.strength.is_multiple_of(2) {
+                        self.player.dmg_min += 1;
+                    }
+                }
+                1 => {
+                    term::println("^1Да уменьшиться твоя корявость!");
+                    self.player.agility += 1; // 1000:8067
+                }
+                2 => {
+                    term::println("^1Да возрастут твой силы жизненные!");
+                    // 1000:808b..1000:8094
+                    self.player.vitality += 1;
+                    self.player.hpmax += 5;
+                    self.player.hp += 5;
+                }
+                _ => {
+                    term::println("^1Да снизойдет на тебя удача!");
+                    self.player.luck += 1; // 1000:80b9
+                }
+            },
+            // 1000:80c0's `cmp ax,2` -- the first unfired one-shot gift.
+            // These are the same three flags the post-kill block grants
+            // (`docs/re/progression.md`); this is a second grant site.
+            2 => {
+                term::println("^1Дарю тебе феньку!");
+                if !self.oneshot_gift_1 {
+                    // 1000:80e1 gate, 1000:8101..1000:8134.
+                    term::println("^1Кольцо \"Помоги Господи\"");
+                    self.player.strength += 1;
+                    self.player.agility += 1;
+                    self.player.vitality += 1;
+                    self.player.luck += 1;
+                    self.player.hpmax += 6;
+                    self.player.hp += 6;
+                    self.player.dmg_max += 1;
+                    if self.player.strength.is_multiple_of(2) {
+                        self.player.dmg_min += 1; // 1000:811f..1000:8130
+                    }
+                    self.oneshot_gift_1 = true;
+                } else if !self.oneshot_gift_2 {
+                    // 1000:813c gate, 1000:815c..1000:8184.
+                    term::println("^1\"Мега Кольцо\"! со своего, можно сказать, пальца");
+                    self.player.strength += 4;
+                    self.player.agility += 4;
+                    self.player.vitality += 4;
+                    self.player.luck += 4;
+                    self.player.hpmax += 24;
+                    self.player.hp += 24;
+                    self.player.dmg_max += 4;
+                    self.player.dmg_min += 2;
+                    self.oneshot_gift_2 = true;
+                } else if !self.ring_gospodi_pomilui {
+                    // 1000:818b gate, 1000:81c4. Text only here -- the
+                    // ring's effect is the wander regen and draw 9 above.
+                    term::println("^1Ваще полезное кольцо \"Господи помилуй\"");
+                    term::println("^1Восст. жизни - 3, 5% - самозарост переломов");
+                    self.ring_gospodi_pomilui = true;
+                }
+            }
+            // 1000:81cb's `cmp ax,3` -- `inc byte [0x38b2]` at 1000:81e9.
+            // `data/wander.json` carries 20ae:38b2 as `unk_38b2` with no
+            // consumer traced; it is fighter-record offset +0x16, which
+            // `crate::model` and `docs/re/combat.md` already establish as
+            // ARMOUR (subtracted from damage at 1000:4769, printed as
+            // `^2Броня #` at 1000:163f) -- and "накладываю защиту" is
+            // exactly that. Corroborated by state: `SAVE_R3.SAV` holds 4 at
+            // `.SAV 0x216` and run E's guest reports `unk_38b2 == 4`.
+            3 => {
+                term::println("^1Накладываю на тебя защиту!");
+                self.player.armor += 1;
+            }
+            // 1000:81ef's `cmp ax,4` -- 1000:820d..1000:821a.
+            _ => {
+                term::println("^1Да увеличится, офигенно, твоя понтовость среди гопоты!");
+                let gain = i32::from(self.district) * 50 + 50;
+                self.pontovost_street += gain;
+                term::println(&text::fill("^1Получи #!", &[gain as i64]));
+            }
+        }
+
+        // 1000:8247 `cmp byte [0x3951],0x2` / `jnc 0x8269`, read AFTER the
+        // stage was raised.
+        if self.church_visits < 2 {
+            term::println("^1А теперь вали отсюда и никогда здесь не появляйся!");
+        } else {
+            term::println("^1А теперь проваливай!");
+        }
+    }
+
+    /// The wandering mage Рушель Блаво, `1000:7538`..`1000:7778`, called
+    /// only from `1000:b3b7`. **It contains no `Random` call** -- it spends
+    /// no draw, but it does block on a `ReadLn`, so it consumes a line.
+    ///
+    /// `1000:75c7`..`1000:75d1` reads into a **stack local** `[bp-0x100]`,
+    /// neither `DS:3972` nor `DS:3a72` -- a third input buffer -- then
+    /// `1000:75e6` case-folds it through `0eed:0216` and `1000:75f6`
+    /// compares it against the token `y` (file `0x8D79`, `01 79`).
+    ///
+    /// **A divergence inside the original, reproduced here.** The price it
+    /// PRINTS is `district * 25` (`1000:758d`, `ba 19 00`); the price it
+    /// CHECKS and CHARGES is `district * 50` (`1000:7605` and `1000:7618`,
+    /// both `ba 32 00`, debit at `1000:761d`).
+    ///
+    /// **Not reproduced:** the two file writes on the paid path -- the
+    /// 694-byte record into `save_r0.sav` (`1000:764e`/`1000:765d`) and the
+    /// seven discovery flags into `places.sav` (`1000:766f`..).
+    /// [`Game::write_save`] is `Unsupported` for every `Game` this port can
+    /// build, so the money leaves and no file appears; recorded in
+    /// `docs/re/gaps.md`.
+    fn mage(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
+        term::println("Бродя по окрестностям с самыми грязными намериниями...");
+        term::println("Ты встретил великого мага и экстрасенса - Рушеля Блаво.");
+        term::println(&text::fill(
+            "За # рублей он может сделать сохранение прямо здесь.",
+            &[i64::from(self.district) * 25],
+        ));
+        term::println("Ты хочешь сохраниться?");
+        let Some(line) = lines.next() else {
+            self.running = false;
+            return Ok(());
+        };
+        let answer = line?;
+        if !answer.trim().eq_ignore_ascii_case("y") {
+            // 1000:775f, file 0x8DDC.
+            term::println("^6Нехотите как хотите - мое дело предложить");
+            return Ok(());
+        }
+        let price = i32::from(self.district) * 50;
+        if self.player.money < price {
+            // 1000:7744, file 0x8DC1.
+            term::println("^6Парень, все стоит бабок!");
+            return Ok(());
+        }
+        self.player.money -= price;
         Ok(())
     }
 
@@ -873,7 +1388,7 @@ impl Game {
         if !answer.trim().eq_ignore_ascii_case("y") {
             return Ok(());
         }
-        if self.rng.below(2) == 0 {
+        if self.rng.below_at("1000:b54e", 2) == 0 {
             term::println("^5Ты такой подкатываешь, а она:\"Глянулся ты мне парниша\"");
             self.places.mark_found(Location::Girl);
         } else {
@@ -1036,7 +1551,11 @@ impl Game {
             return;
         }
         self.player.joints -= 1;
+        // 1000:e9b4 sets the countdown at 20ae:38cd to 10; the walk
+        // preamble decays it (1000:aea8) and takes the buff back at zero.
+        // `Fighter::stoned` is the same event as a bool, kept in step here.
         self.player.stoned = true;
+        self.buff_countdown = 10;
         self.player.strength += 2;
         self.player.dmg_min += 1;
         self.player.dmg_max += 2;
@@ -1809,25 +2328,31 @@ mod tests {
         );
     }
 
-    /// Replays `walk`'s draws for `seed` and reports the `Random(2)` the
-    /// decline branch would see, or `None` when the wander roll does not
-    /// produce an encounter at all.
+    /// Runs one whole walk on `seed` and reports what the decline branch's
+    /// `Random(2)` at `1000:b725` returned, or `None` when the turn produced
+    /// no fight encounter at all.
     ///
-    /// **What this can and cannot catch.** It re-runs the same draw sequence
-    /// `walk` runs, so it pins which *arm* a given roll takes and would fail
-    /// if the branch were inverted -- but it is not an independent oracle
-    /// for the draws themselves. If `walk` gained, lost or reordered a
-    /// `Random` call, this helper would drift with it and stay green. Only
-    /// the disassembly (and a live trace of the `Random` call sites) settles
-    /// the draw count and order.
+    /// **This observes the draw log rather than predicting it.** An earlier
+    /// version hand-replayed what it believed `walk`'s draws to be, and its
+    /// own doc admitted the flaw: "if `walk` gained, lost or reordered a
+    /// `Random` call, this helper would drift with it and stay green."
+    /// Task 11c added the eleven preamble draws that were missing, and the
+    /// helper duly broke -- which is the drift, not a conflict with the
+    /// finding the tests below assert. Reading `1000:b725` out of
+    /// [`crate::rng::Rng`]'s log cannot drift: it names the call site.
+    ///
+    /// What it still cannot do is tell whether the *sequence* is right; only
+    /// `tests/wander_sequence.rs`, replaying captured runs of the original,
+    /// settles that.
     fn decline_roll_for(seed: u32) -> Option<u16> {
         let mut g = Game::new(player(), Progress::new(), seed);
-        let roll = g.rng.below(25) + 1;
-        if !(5..=9).contains(&roll) {
-            return None;
-        }
-        let _ = g.pick_enemy();
-        Some(g.rng.below(2))
+        g.rng.start_log();
+        g.walk(&mut input(&["n"])).unwrap();
+        g.rng
+            .take_log()
+            .iter()
+            .find(|d| d.site == "1000:b725")
+            .map(|d| d.r)
     }
 
     /// **C1.** `1000:b718`..`1000:b74e`: after a non-`y` answer, `Random(2)`
@@ -1882,16 +2407,19 @@ mod tests {
         assert!(!g.running, "an accepted encounter must enter combat");
     }
 
-    /// The first seed whose wander roll lands in bucket 2 (`2..=4`, the
-    /// girl event) and whose following `Random(2)` equals `want`. Same
-    /// caveat as [`decline_roll_for`]: it replays `walk`'s own draws, so it
-    /// pins the branch, not the draw sequence.
+    /// The first seed whose walk reaches the girl event and whose
+    /// `Random(2)` at `1000:b54e` returns `want`. Observed from the draw
+    /// log, for the reason [`decline_roll_for`] gives.
     fn girl_seed_with_roll(want: u16) -> u32 {
         (1u32..40_000)
             .find(|&seed| {
                 let mut g = Game::new(player(), Progress::new(), seed);
-                let roll = g.rng.below(25) + 1;
-                (2..=4).contains(&roll) && g.rng.below(2) == want
+                g.rng.start_log();
+                g.walk(&mut input(&["y"])).unwrap();
+                g.rng
+                    .take_log()
+                    .iter()
+                    .any(|d| d.site == "1000:b54e" && d.r == want)
             })
             .unwrap_or_else(|| panic!("no seed produced a girl event with Random(2) == {want}"))
     }

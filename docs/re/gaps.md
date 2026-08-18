@@ -35,16 +35,16 @@ inventory are now stated together.
 |---|---|---|---|---|---|
 | `1000:6dc3` | `0x3698` | Vet | character creation, `1000:6dbe` | flow | **yes** — `Game::new` |
 | `1000:6dc8` | `0x3694` | Market | character creation, `1000:6dbe` | flow | **yes** — `Game::new` |
-| `1000:b196` | `0x3698` | Vet | wander preamble, `Random(10)` at `1000:b186` | flow | no |
-| `1000:b1c8` | `0x3694` | Market | wander preamble, `Random(10)` at `1000:b1b8` | flow | no |
-| `1000:b1fa` | `0x3699` | Club | wander preamble, `Random(100)` at `1000:b1ea` | flow | no |
-| `1000:b22c` | `0x369a` | Gym | wander preamble, `Random(100)` at `1000:b21c` | flow | no |
+| `1000:b196` | `0x3698` | Vet | wander preamble, `Random(10)` at `1000:b186` | flow | **yes** (Task 11c) — `Game::wander_preamble` |
+| `1000:b1c8` | `0x3694` | Market | wander preamble, `Random(10)` at `1000:b1b8` | flow | **yes** (Task 11c) — `Game::wander_preamble` |
+| `1000:b1fa` | `0x3699` | Club | wander preamble, `Random(100)` at `1000:b1ea` | flow | **yes** (Task 11c) — `Game::wander_preamble` |
+| `1000:b22c` | `0x369a` | Gym | wander preamble, `Random(100)` at `1000:b21c` | flow | **yes** (Task 11c) — `Game::wander_preamble` |
 | `1000:b570` | `0x3697` | Girl | wander bucket 2 | flow | **yes** — `Game::wander_girl` |
 | `1000:d751` | `0x3699` | Club | `girl`'s own reveal | flow | **yes** — `Game::visit_girl` |
-| `1000:73c3` | `0x3696` | Den | `[0x389c] == 5` at `1000:73bb` | flow | no |
-| `1000:73cf` | `0x3697` | Girl | `[0x389c] == 3` at `1000:73bb` | flow | no |
-| `1000:73d4` | `0x3699` | Club | `[0x389c] == 3` at `1000:73bb` | flow | no |
-| `1000:73e0` | `0x3695` | BigMarket | `[0x389c] == 6` at `1000:73bb` | flow | no |
+| `1000:73c3` | `0x3696` | Den | `[0x389c] == 5` at `1000:73bb` | flow | **yes** (Task 11c) — `Game::apply_class_bonus` |
+| `1000:73cf` | `0x3697` | Girl | `[0x389c] == 3` at `1000:73bb` | flow | **yes** (Task 11c) — `Game::apply_class_bonus` |
+| `1000:73d4` | `0x3699` | Club | `[0x389c] == 3` at `1000:73bb` | flow | **yes** (Task 11c) — `Game::apply_class_bonus` |
+| `1000:73e0` | `0x3695` | BigMarket | `[0x389c] == 6` at `1000:73bb` | flow | **yes** (Task 11c) — `Game::apply_class_bonus` |
 | `1000:dcf6` | `0x3695` | BigMarket | the `a` token at `1000:dcef` | flow | no |
 | `1000:dcfb` | `0x369a` | Gym | the `a` token at `1000:dcef` | flow | no |
 | `1000:ae1f` | `0x3696` | Den | the chapter-5 endgame arm at `1000:adbf` | flow | no |
@@ -55,9 +55,13 @@ All three Den triggers were **closed by Task 11b** — see `docs/re/wander.md`,
 "The three Den setters". `1000:4aa5`'s store and the line it prints contradict
 each other in the original; that is recorded there, not resolved.
 
-Four of the seven flags are reachable in this port: Market and Vet from
-character creation, Girl from the wander bucket, Club from `girl`. BigMarket,
-Den and Gym are not reachable at all.
+**All seven flags are now reachable in this port** (Task 11c). Market and Vet
+from character creation and from the wander preamble's draws 6 and 5; Club from
+`girl`, from the class-3 bonus and from draw 7; Gym from draw 8; Girl from the
+wander bucket and the class-3 bonus; Den from the class-5 bonus; BigMarket from
+the class-6 bonus. Six setters remain unimplemented: the `a` token
+(`1000:dcf6`/`1000:dcfb`), the chapter-5 endgame (`1000:ae1f`), the de-level
+penalty (`1000:4aa5`) and the post-kill block (`1000:52b3`).
 
 ### Character creation grants Vet and Market — `1000:6dbe`
 
@@ -86,7 +90,8 @@ The `places.sav` reader's own failure arm (`1000:6d3b`) does **not** reach
 73e5  mov byte [0x3e35],5
 ```
 
-**Closed by Task 11b.** `[0x389c]` is the character class, written only at
+**Closed by Task 11b, implemented by Task 11c** (`Game::apply_class_bonus`,
+called from `Game::new`). `[0x389c]` is the character class, written only at
 `1000:6fed`, `1000:6ffc`, `1000:712a`, `1000:713d` and `1000:71b8` (plus the
 694-byte record `BlockRead` at `1000:6c01`), and these four stores are the
 class bonuses the creation menu advertises. `1000:73bb` is reached on **every**
@@ -119,29 +124,32 @@ the top level. `[0x38cb]` is a street-cred counter distinct from the level
 (`1000:5291` grows it per kill, `1000:db9b` spends it, `1000:dc79` prints it).
 See `docs/re/wander.md`. Still not implemented here.
 
-### Wander preamble (`1000:af04`..`1000:b34d`) — not reproduced
+### Wander preamble (`1000:aea1`..`1000:b3b9`) — CLOSED by Task 11c
 
-*Cited from `src/game.rs`'s `Game::walk` doc.*
+*Cited from `src/game.rs`'s `Game::wander_preamble`.*
 
-A long run of one-shot flavour and discovery events, each gated by its own
-`Random()` roll and its own never-repeat flag, running **before** the four-way
-bucket roll at `1000:b34d`. Twenty-two `Random` call sites exist between
-`1000:ae5a` and `1000:b940` (searching for the `9a 4b 11 78 0f` far call);
-`Game::walk` models three of them: the bucket roll `1000:b353`, bucket 2's
-girl roll `1000:b54e`, and the decline roll `1000:b725`.
+This section used to read "not reproduced". **It is now implemented**:
+`Game::wander_preamble` walks `data/wander.json`'s `steps` array in execution
+order — all fourteen catalogued `Random` sites, the state steps between them
+(the joint-buff decay, the den's loan credit, the dealers' delivery counter,
+the two cooldown decrements, the ring's regen, the class-perk dispatch), the
+church at `1000:7c67` with its own draws 15–18, and the mage at `1000:7538`.
 
-Counting the preamble exactly, because an earlier revision put it at "eight
-other draws" and no reading yields eight:
+**The headline divergence this closes.** `Game::walk` used to spend **one**
+draw (the bucket roll) where the original spends **nine** in steady state, and
+the bucket roll is draw 12 of 14, so the port's RNG stream desynchronised from
+the original's on the very first walk and never recovered. It no longer does.
 
-* In `1000:af04`..`1000:b2a0` there are **nine** sites: `af68`, `afc7`, `b030`,
-  `b0dc`, `b186`, `b1b8`, `b1ea`, `b21c`, `b272`. Four are the discovery rolls
-  in the table below, so **five** others.
-* Extending the range to the bucket roll adds `b2fa` and `b321` — **eleven**
-  sites, **seven** others. (Those two are inside the `[0x389c] == 6` arm and
-  are skipped by `1000:b2ed` `jnz 0xb34d`, so they are conditional, not
-  per-walk.)
+**How that is checked.** `tests/wander_sequence.rs` replays all five captured
+runs in `data/rng_trace.json` — the original itself, under qemu, with
+`RandSeed` pinned — asserting the port's `(call site, n, result)` sequence
+equals the capture's for the whole run. Runs **C** and **D** (3 walks each, 30
+and 29 draws, the church firing on turn 1 on two different arms) replay
+**exactly**, and their 29-variable `final_state` agrees field for field.
+Runs **A**, **B** and **E** replay exactly up to their first bucket-3
+encounter and then diverge — see the next section, which is the reason.
 
-**Established from flow** that these four are discovery events:
+The four discovery rolls, unchanged and still established from flow:
 
 | roll | gate | setter | string |
 |---|---|---|---|
@@ -150,84 +158,134 @@ other draws" and no reading yields eight:
 | `1000:b1ea` `Random(100)` | `1000:b1f3` `cmp byte [0x3699],0` | `1000:b1fa` `[0x3699] := 1` (Club) | file `0x9FC4` |
 | `1000:b21c` `Random(100)` | `1000:b225` `cmp byte [0x369a],0` | `1000:b22c` `[0x369a] := 1` (Gym) | file `0x9FFE` |
 
-Each fires when its roll returns `0` and its flag is still clear.
+Each *effect* fires when its roll returns `0` and its flag is still clear; the
+**roll itself is unconditional**, which is the part a "one-shot event" reading
+gets wrong.
 
-**The preamble is now catalogued.** Task 11b recovered all fourteen draws in
-`1000:ae5a`..`1000:b3ba` as one ordered sequence, plus the **four** the church
-can spend — one inside `1000:7c67` itself, one on its `== 1` arm, and two more
-inside the level-up routine `1000:2526` that its `== 0` arm calls —
-`docs/re/wander.md` and `data/wander.json`. The site list is byte-scan
-complete. What follows is why the *port* still does not spend them.
+Two more shapes worth restating because they are easy to lose:
 
-**Why they are not implemented.** This is a **scope** call, not a fidelity
-blocker. They are four unconditional draws inside a preamble whose other seven
-draws had not been catalogued when Task 11 shipped (no `n`, no gate, no
-effect), so adding these four alone would move the port's RNG sequence without
-bringing it closer to the original's. The port's sequence is *already* wrong relative to the original —
-see the next section — and stays wrong either way; implementing these belongs
-with a pass that catalogues the whole preamble, so the sequence is wired at
-once rather than in fragments. Nothing about the deferral says the events
-themselves are uncertain: all four are established from flow.
+* **Draws 1 and 2 are not one-shots.** `1000:af71` / `1000:afd0` write the
+  never-repeat flag *after* the `or ax,ax / jnz` at `1000:af6d` / `1000:afcc`,
+  so the flag is set only by the 1-in-20 roll that returns `0`; until then the
+  draw fires every turn. Nine draws per turn decays to eight, then seven.
+* **The church cancels the turn it fires on.** `1000:8282` zeroes the
+  already-rolled bucket on every path out of `1000:7c67`. Run C's turn 1 is
+  the live proof: its bucket roll is `9` (bucket 3, a fight) and the capture
+  shows no enemy-generation draws on that turn at all.
 
-The same standard applies in the other direction. `Game::wander_girl` and
-`Game::visit_girl` *are* implemented, and each spends its draw where the
-original spends one (`1000:b54e`, `1000:d728`); implementing a store that costs
-no draw at all — `Game::new`'s `1000:6dc3`/`1000:6dc8` — is likewise free of
-this argument, which is why it was not deferred.
+### The two draws after the bucket roll — `1000:b39e`, `1000:b3ae` — CLOSED
 
-### Two unconditional draws after the bucket roll — `1000:b39e`, `1000:b3ae`
+*Cited from `src/game.rs`'s `Game::church` and `Game::mage`.*
 
-**Established from flow**, and **the port spends neither**:
+Both are now spent, and both callees are implemented:
 
 ```text
 b39a  b8 c8 00        mov ax,0xc8      ; 200
-b39d  50              push ax
 b39e  9a 4b 11 78 0f  call Random
-b3a3  09 c0           or ax,ax
 b3a5  75 03           jnz 0xb3aa
-b3a7  e8 bd c8        call 0x7c67
+b3a7  e8 bd c8        call 0x7c67      ; the church
 b3aa  b8 64 00        mov ax,0x64      ; 100
-b3ad  50              push ax
 b3ae  9a 4b 11 78 0f  call Random
-b3b3  09 c0           or ax,ax
 b3b5  75 03           jnz 0xb3ba
-b3b7  e8 7e c1        call 0x7538
+b3b7  e8 7e c1        call 0x7538      ; the mage
 ```
 
-They sit between the last bucket store (`1000:b395`, reached from the `== 1`
-compare at `1000:b38e`) and the bucket dispatch (`1000:b3ba` `mov al,[0x3970]`), on the
-fall-through path, so **every** walk executes both calls; only the
-`call 0x7c67` / `call 0x7538` payloads are gated on a `0`. **Both callees were
-disassembled by Task 11b.** `1000:7c67` is the church: it spends a further
-`Random(5)` unconditionally; a `Random(4)` when that returns `1`; and **two**
-`Random(class-weight-sum)` draws when it returns `0`, because that arm sets
-`xp := threshold` (`1000:7fe4`/`1000:7fe7`) and calls the level-up routine at
-`1000:7fed`, whose two-iteration inner loop (`1000:287d`) always draws twice.
-It ends by clearing `[0x3970]` at `1000:8282`, so a church turn produces no
-encounter at all. `1000:7538` is the wandering mage's paid save: no draws, but
-a blocking `ReadLn` into a stack local, and it charges `chapter*50` while
-printing `chapter*25`. An earlier revision enumerated `b34d → b359 → b35c..b393 →
-b3ba` and walked straight past this block.
+The church (`Game::church`) spends `Random(5)` at `1000:7f63` unconditionally,
+`Random(4)` at `1000:7fff` on the `== 1` arm, and two `Random(weight_sum)`
+draws at `1000:25fe` on the `== 0` arm (which sets `xp := threshold` at
+`1000:7fe4`/`1000:7fe7` and calls the level-up routine at `1000:7fed`, whose
+inner loop bound at `1000:287d` is exactly 2). The mage (`Game::mage`) spends
+no draw but consumes a line, and charges `district * 50` while printing
+`district * 25` — the original's own divergence, reproduced.
 
-**Consequence for draw-sequence fidelity.** In the original, bucket 2 reaches
-`1000:b54e`'s `Random(2)` as the *fourth* draw since the bucket roll (`b39e`,
-`b3ae`, then bucket 2's own); in the port it is the *first*. The port's wander
-draw sequence is therefore already out of step with the original's, before any
-of the preamble is counted. Not implemented in this wave for the same scope
-reason as the preamble: half-wiring the sequence is worse than a documented
-gap.
+**Still not reproduced inside those two:** the church's two long sermons (the
+`== 0` and `== 1` stage arms, `1000:7cf5`.. and `1000:7dd5`..) and the
+old/new rank names its level-up arm prints from the `DS:0b42` 256-byte-stride
+table; and the mage's two file writes on the paid path (`save_r0.sav` at
+`1000:764e`/`1000:765d`, `places.sav` at `1000:766f`..), because
+`Game::write_save` is `Unsupported` for every `Game` this port can build. All
+are text or I/O; none costs a draw.
 
-### Wander buckets 1 and 4 — flavour only
+### The random-encounter opponent — `FUN_1000_0d14` — THE OPEN DIVERGENCE
+
+*Cited from `src/game.rs`'s `Game::walk` and `Game::pick_enemy`.*
+
+**This is now the largest known divergence in the port, and it is what stops
+three of the five captured runs replaying.**
+
+`1000:b5b8` calls `FUN_1000_0d14` to roll the encounter's opponent.
+`Game::pick_enemy` is an admitted approximation of it: a uniform `Random(10)`
+class pick and a weight-driven stat distribution. The original is a whole
+routine, `1000:0d14`..`1000:11c2`, and `data/rng_trace.json`'s
+`sites_not_in_catalogue` enumerates the **fourteen** `Random` sites it and its
+callees actually use, with the `n` each was observed pushing:
+
+| site | observed `n` | stops |
+|---|---|---|
+| `1000:0d26` | 51 | 13 |
+| `1000:0d70` | 1, 3 | 13 |
+| `1000:0d91` | 4 | 5 |
+| `1000:0dcc` | 1, 3 | 13 |
+| `1000:0ddd` | 5 | 13 |
+| `1000:0df0` | 2 | 13 |
+| `1000:0e04` | 2 | 13 |
+| `1000:0efd` | 6, 8, 9, 12, 20, 22 | 348 |
+| `1000:102e` | 6 | 13 |
+| `1000:109c` | 0, 1, 2, 31, 46, 88 | 13 |
+| `1000:10c4` | 6 | 13 |
+| `1000:113c` | 0, 1, 2, 31, 46, 88 | 13 |
+| `1000:1162` | 2 | 13 |
+| `1000:1197` | 0, 8 | 13 |
+
+`1000:0d26`'s `Random(51)` is the class pick `docs/re/tables.md` records as
+"`Random(0x33)` plus a district formula, not fully recovered"; the port's
+`Random(10)` is neither the same `n` nor the same number of draws.
+
+Downstream of it, the fight flow spends more draws the port does not model:
+`1000:b5f1` (`n` 18 or 22, 11 stops), `1000:b725` (`n` 2 — the decline roll,
+which the port *does* spend) and `1000:b792` (`n` 22 or 36, 2 stops). Which of
+`1000:b691` / `1000:b721` a real encounter reaches depends on `1000:b5fc`,
+untraced. `docs/re/wander.md` puts every one of these outside its catalogue.
+
+**Consequence.** The generator is one shared stream, so a single bucket-3 turn
+desynchronises everything after it. `tests/wander_sequence.rs` therefore fails
+on runs A, B and E, at exactly the first `1000:0d26` in each:
+
+| run | walks | draws in the capture | port matches through | first divergence |
+|---|---|---|---|---|
+| A | 30 | 393 | index 17 (turn 2's draw 14) | index 18, `1000:0d26` |
+| B | 25 | 325 | index 62 (turn 6's draw 14) | index 63, `1000:0d26` |
+| C | 3 | 30 | **all 30** | — |
+| D | 3 | 29 | **all 29** | — |
+| E | 25 | 610 | index 78 (turn 6's draw 14) | index 79, `1000:0d26` |
+
+Those three assertions are deliberately left failing rather than narrowed to
+the preamble: a green suite that checks less than it appears to is the failure
+mode `docs/re/METHODOLOGY.md` warns about. Recovering `FUN_1000_0d14` and the
+fight flow is what closes them.
+
+### Wander buckets 1 and 4 — flavour only, still not modelled
 
 **Established from flow** that neither writes a discovery flag (no
 `c6 06 [94-9a] 36 imm8` store falls between `1000:b3ba` and `1000:b940` except
-`1000:b570`).
+`1000:b570`) and that neither spends a draw, so leaving them out cannot move
+the RNG sequence.
 
 * Bucket 1 (`1000:b3c4`) toggles `[0x3693]`, then writes one district-keyed
   line from one of two sets (`1000:b3db`.. when the toggle is set,
-  `1000:b465`.. when it is clear).
-* Bucket 4 (`1000:b836`) branches on the stoned counter `[0x38cd]` and writes
-  name-keyed flavour built with `0f78:0ae7` / `0f78:0b66` string calls.
+  `1000:b465`.. when it is clear). `20ae:3693` is not modelled either: with
+  neither line set extracted, a field carrying the toggle would have no
+  reader.
+* Bucket 4 (`1000:b836`) branches on the joint-buff countdown `[0x38cd]` and
+  writes name-keyed flavour built with `0f78:0ae7` / `0f78:0b66` string calls.
+
+### `run`'s extra line — `1000:aeda`
+
+**Established from flow.** `1000:ae86` (`w`) and `1000:ae97` (`run`) both jump
+to `1000:aea1`, and `1000:aeda` re-compares the typed line against `run`
+(token file `0x9D60`) to decide whether to print `^6Забегал мудак.` (file
+`0x9D7D`). `crate::commands::parse` folds both verbs into one `Command::Walk`,
+so this port cannot tell them apart and prints nothing. It costs no draw.
 
 ---
 
@@ -384,9 +442,21 @@ are the questions that pass left open, and the ones it created.
   trace**. What that pass did *not* raise: probabilities still come from the
   comparison constants and never from counting outcomes, and the fight-flow
   questions below are untouched.
-* **`unk_38b2`.** `1000:81e9` increments this byte under
-  `^1Накладываю на тебя защиту!` (file `0x9476`). No consumer was located.
-  The name in `data/wander.json` stays `unk_38b2`.
+* ~~**`unk_38b2`.**~~ **Resolved by Task 11c — it is the ARMOUR byte.**
+  `20ae:38b2` is fighter-record offset `+0x16` (`0x38b2 - 0x389c = 0x16`), and
+  `crate::model`'s record table and `docs/re/combat.md` already establish that
+  field as armour: subtracted from damage at `1000:4769`, printed as
+  `^2Броня #` (file `0x2C0A`) at `1000:163f`. Its two neighbours in
+  `data/wander.json`'s own `globals` corroborate the alignment — `20ae:38b0`
+  (`+0x14`) is the jaw and `20ae:38b1` (`+0x15`) the leg, exactly the record's
+  `broken_jaw`/`broken_leg`. `1000:81e9`'s `inc byte [0x38b2]` under
+  `^1Накладываю на тебя защиту!` ("I lay protection on you") is therefore the
+  church granting +1 armour. **Corroborated by state:** `SAVE_R3.SAV` holds
+  `4` at `.SAV 0x216` and run E's guest, which never entered the church,
+  reports `unk_38b2 == 4` at the end of the run. `src/game.rs` increments
+  `Fighter::armor` there. `data/wander.json` is a reviewed artifact this task
+  did not modify, so its `globals` entry still reads `unk_38b2`; that is a
+  stale name, not a disagreement.
 * **The item at `DS:394d`.** Bought from the dealers for 150 roubles at
   `1000:cd05` (price byte `DS:0b3e`), and it arms the 25-walk delivery counter
   `DS:3e32` that `1000:af1d` drives. `docs/re/tables.md` calls that counter
@@ -412,11 +482,18 @@ are the questions that pass left open, and the ones it created.
   not match. The live trace saw fourteen bucket-2 turns — seven of them with
   the girl flag still clear — and `1000:b54e` never fired, because the harness
   declines every question. `docs/re/METHODOLOGY.md`'s worked example describes
-  the `y` path correctly but does not mention either gate. **Open question for
-  the wander implementation:** `Game::wander_girl` spends a draw here; whether
-  it spends it on the same condition the original does was not checked by this
-  pass, and a draw spent unconditionally where the original spends it only
-  after a `y` puts the whole sequence out of step.
+  the `y` path correctly but does not mention either gate. ~~**Open question
+  for the wander implementation.**~~ **Checked and closed by Task 11c:
+  `Game::wander_girl` already agrees with both gates**, and the whole block
+  `1000:b4e8`..`1000:b592` was re-derived from `orig/g.exe` to confirm it —
+  `1000:b4ef` `cmp byte [0x3697],0x0` with `1000:b4f6` `jmp 0xb592` (the
+  already-known arm, file `0xA24C`, which reads no input), the `ReadLn` into
+  `DS:3a72` at `1000:b520`, the case-fold `0eed:0216` at `1000:b534`, the
+  compare against `y` (file `0x9BF3`) at `1000:b543` and `1000:b548`
+  `jnz 0xb590` skipping the draw. The port takes the same three decisions in
+  the same order and spends the draw only on `y`. The draw is now recorded
+  under the site label `1000:b54e`, so a future regression shows up as a named
+  site rather than a value drift.
 * **The `y` path of bucket 2 was never driven**, so the `Random(2)` at
   `1000:b54e` and the flag store at `1000:b570` are still static-only. One
   `tools/rngtrace` run whose driver answers `y` would close it.
@@ -436,3 +513,62 @@ are the questions that pass left open, and the ones it created.
   back in fix wave 1.** The one-shot table now names it the ring "Господи
   помилуй" with its per-walk regen, and records the church's second grant site
   for all three gift flags.
+
+---
+
+## Opened by Task 11c (wiring the wander sequence in)
+
+*Cited from `src/game.rs` and `tests/wander_sequence.rs`.*
+
+* **`FUN_1000_0d14` and the fight flow.** The headline open item; it has its
+  own section above ("The random-encounter opponent"). Until it is recovered,
+  three of the five captured runs cannot replay, and `cargo test` is red on
+  exactly those three assertions.
+* **Run E's starting discovery flags are inferred, not observed.**
+  `data/rng_trace.json` records a 29-variable `final_state` per run but no
+  starting state, and the seven `places.sav` flags are outside the 694-byte
+  record. Run E ends with Den, Girl, Club and Gym clear, and nothing in a
+  wander turn can clear a flag, so those four must have started clear;
+  Vet and Market are *set during the run* by draws 5 and 6, so their starting
+  value is not determined by the capture at all. `tests/wander_sequence.rs`
+  starts all seven clear and says so. No discovery flag gates any draw in the
+  preamble, so the choice cannot move the sequence — but the guest's own
+  `places.sav` load path is not modelled and it is not known why the flags
+  were clear when `orig/PLACES.SAV` (copied into the run's game directory) is
+  all `01`.
+* **`.SAV` offsets `0x2b1` and `0x2b5` are inside `unk_02ae`.** The record
+  spans `DS:369c`..`DS:3952`, so `unk_02ae` (`.SAV 0x2ae`..`0x2b5`) is
+  `20ae:394a`..`20ae:3951` — which makes `.SAV 0x2b1` the
+  `dealer_order_placed` byte `20ae:394d` and `.SAV 0x2b5` the
+  `church_visits` byte `20ae:3951`, both named in `data/wander.json`'s
+  `globals`. `tests/wander_sequence.rs` reads run E's state from those two
+  offsets. `data/save_layout.json` and `docs/re/save-format.md` still carry
+  the whole span as one opaque `unk_02ae`; this task did not modify either
+  (both are outside its file list), so the two documents disagree about a
+  name, not about a byte.
+* **`Fighter::stoned` and `Game::buff_countdown` are two models of one
+  variable.** The original keeps only the countdown at `20ae:38cd`
+  (`1000:e9b4` sets it to 10, `1000:aea8` decays it, `1000:aeb3` takes the
+  buff back at zero). `crate::model::Fighter` already had a `stoned: bool`,
+  and this task added the counter rather than changing the frozen model
+  module, keeping the two in step in `Game::smoke` and in the decay step. One
+  of them should go.
+* **Text the wander turn writes that this port still does not.** None costs a
+  draw: `run`'s extra line (`1000:aeda`, above), the church's two long
+  sermons and its rank-name pair, bucket 1's and bucket 4's flavour lines, and
+  the `0f16:031a` delays the original spaces its phone-call gags with.
+* **`Game::mage` charges but cannot save.** On the paid path the money leaves
+  and no file is written, because `Game::write_save` is `Unsupported` for
+  every `Game` this port can build (see "No `.SAV` load path"). No captured
+  run took that path — draw 14 returned `0` once, in run A's turn 24, and the
+  driver answered `n` — so this is untested against the original.
+* **Two claims the differential test cannot reach**, found by mutating the
+  port and checking that runs C and D still passed:
+  * **The mage spends no draw.** Since no *passing* run enters `1000:7538`
+    (run A does, at turn 24, but it has diverged since turn 2), this rests on
+    the byte scan alone — no `9a 4b 11 78 0f` occurs in
+    `1000:7538`..`1000:7778` — and not on the live trace. A capture whose seed
+    puts a mage turn in the first few walks would close it.
+  * **`church_visits`'s three transitions** (`1000:7dc7`, `1000:7f5b`, and the
+    `1000:8247` read). The stage byte selects sermon text only; no draw
+    depends on it, so the replay is blind to it.
