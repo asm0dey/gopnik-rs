@@ -3055,10 +3055,17 @@ unconditionally. That is correct on Unix terminals and wrong everywhere else:
   emit colour when `NO_COLOR` is set to any non-empty value.
 - **Dumb terminals.** `TERM=dumb` cannot render SGR.
 
-**Dependency sign-off:** `colored` is approved for this task (owner's choice).
-Do NOT add a second terminal crate (`crossterm`, `termion`, `anstream`) — the
-game needs no cursor control, no raw mode and no keypress handling; it is
-line-based (`stdin().read_line()`).
+**Dependency sign-off:** `colored` (3.x) is approved for this task (owner's
+choice). Do NOT add a second terminal crate (`crossterm`, `termion`, `anstream`,
+`console`) — the game needs no cursor control, no raw mode and no keypress
+handling; it is line-based (`stdin().read_line()`).
+
+Checked against RUSTSEC-2021-0139 (`ansi_term` unmaintained) at the owner's
+request: **not applicable.** `cargo tree` shows neither `colored` nor `anstream`
+depends on `ansi_term`. Of that advisory's suggested alternatives, `anstyle`,
+`owo-colors`, `yansi`, `nu-ansi-term`, `ansiterm` and `stylish` are all styling
+APIs (`"x".red()`), which is the shape we specifically do not need; `console`
+would work but carries cursor and terminal-size machinery we never use.
 
 **Design — `colored` is used as a policy oracle, not as a styling API.**
 
@@ -3069,8 +3076,12 @@ Rust. So use exactly two things from the crate:
 
 1. `colored::control::SHOULD_COLORIZE.should_colorize()` — the decision. It
    already implements the precedence `CLICOLOR_FORCE` > `NO_COLOR` >
-   `CLICOLOR` + tty check (`control.rs:100-108` in 2.1.0), which is what we
-   want; do not reimplement it and do not read those env vars yourself.
+   `CLICOLOR` + tty check (verified in colored 3.1.1, `control.rs:100-115`),
+   which is what we want; do not reimplement it and do not read those env vars
+   yourself. Pin `colored = "3"`: the API above was verified against 3.1.1,
+   where `SHOULD_COLORIZE` is a `std::sync::LazyLock` and the crate has **zero
+   dependencies** off-Windows (`windows-sys` on Windows only). 2.x used
+   `lazy_static` and is not what these line references describe.
 2. `colored::control::set_virtual_terminal(true)` — the Windows VT call, from
    `term::init()`. **Verified from the crate source: nothing in `colored` calls
    this internally, and it is `#[cfg(windows)]`-gated.** So `init()` needs its
