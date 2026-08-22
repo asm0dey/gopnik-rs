@@ -3,10 +3,9 @@
 DOS picks the load segment, so the base is NOT fixed and must never be
 hardcoded (tools/qemu/README.md saw 0x224B0 once; that is one run's value).
 
-Address conventions -- the two do not mix:
-  * a Ghidra citation `1000:XXXX`      -> image offset XXXX          (Ghidra loaded at seg 0x1000)
-  * a real runtime `seg:off`, e.g. `0f78:114b` -> image offset seg*16 + off
-  * file offset = 0x18d0 + image offset (the MZ header is 397 paragraphs)
+The address convention -- both citation forms and the header-derived file
+offset -- lives in `tools/addr.py` and is imported here, never restated.
+`docs/re/METHODOLOGY.md` is the human-readable authority for the same rule.
 
 Derivation, and then three independent verifications:
   1. locate a relocation-free byte window of the loaded image in the dump;
@@ -15,54 +14,34 @@ Derivation, and then three independent verifications:
      file word + load_seg -- this is what actually proves the candidate is
      our image loaded at that segment and not a stale copy or a coincidence.
 """
-import struct
+import sys
+from pathlib import Path
 
-HEADER_BYTES = 0x18D0          # 397 paragraphs
-GHIDRA_BASE_SEG = 0x1000       # Ghidra loaded the image at segment 0x1000
-DATA_SEG_IMAGE_OFF = 0x10AE0   # image offset of DS (Ghidra 20ae:0000); above this,
-                               # memory diverges from the file at runtime
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from addr import (  # noqa: E402
+    DATA_SEG_IMAGE_OFF, GHIDRA_BASE_SEG, HEADER_BYTES,
+    file_off_of_image_off, image_off_of_ghidra, image_off_of_seg_off,
+    load_image, parse_relocations,
+)
+
+__all__ = [
+    "DATA_SEG_IMAGE_OFF", "GHIDRA_BASE_SEG", "HEADER_BYTES",
+    "file_off_of_image_off", "image_off_of_ghidra", "image_off_of_seg_off",
+    "load_image", "parse_relocations",
+    "IMAGE_OFF_RANDOM", "IMAGE_OFF_RANDOMIZE", "IMAGE_OFF_RANDSEED",
+    "FILE_OFF_RANDOM", "RANDOM_BYTES",
+    "find_anchor", "verify_base", "derive", "linear",
+    "GuestCodeError", "verify_guest_code",
+]
 
 # Image offsets used by the pre-breakpoint guest verification below.
-IMAGE_OFF_RANDOM = 0xF78 * 16 + 0x114B          # 0x108cb -- file 0x1219b
-IMAGE_OFF_RANDOMIZE = 0xF78 * 16 + 0x11E0       # 0x10960 -- file 0x12230
-IMAGE_OFF_RANDSEED = DATA_SEG_IMAGE_OFF + 0x367E  # 0x1415e -- DS:367e, file 0x15a2e
-FILE_OFF_RANDOM = HEADER_BYTES + IMAGE_OFF_RANDOM  # 0x1219b
+# Both citation forms go through tools/addr.py, which enforces their ranges.
+IMAGE_OFF_RANDOM = image_off_of_seg_off(0x0F78, 0x114B)     # 0x108cb -- file 0x1219b
+IMAGE_OFF_RANDOMIZE = image_off_of_seg_off(0x0F78, 0x11E0)  # 0x10960 -- file 0x12230
+IMAGE_OFF_RANDSEED = image_off_of_ghidra(0x20AE, 0x367E)    # 0x1415e -- file 0x15a2e
+FILE_OFF_RANDOM = file_off_of_image_off(IMAGE_OFF_RANDOM)   # 0x1219b
 RANDOM_BYTES = 29                                # entry .. `ca 02 00` inclusive
-
-
-def file_off_of_image_off(image_off: int) -> int:
-    return HEADER_BYTES + image_off
-
-
-def image_off_of_ghidra(off: int) -> int:
-    """`1000:off` -> image offset."""
-    return off
-
-
-def image_off_of_seg_off(seg: int, off: int) -> int:
-    """A real runtime `seg:off` (pre-relocation segment) -> image offset."""
-    return seg * 16 + off
-
-
-def parse_relocations(exe: bytes):
-    """Return [image_off, ...] for every MZ relocation entry."""
-    if exe[:2] not in (b"MZ", b"ZM"):
-        raise ValueError("not an MZ image")
-    crlc, = struct.unpack_from("<H", exe, 0x06)
-    lfarlc, = struct.unpack_from("<H", exe, 0x18)
-    hdrpara, = struct.unpack_from("<H", exe, 0x08)
-    if hdrpara * 16 != HEADER_BYTES:
-        raise ValueError("unexpected header size %d paragraphs" % hdrpara)
-    out = []
-    for i in range(crlc):
-        off, seg = struct.unpack_from("<HH", exe, lfarlc + i * 4)
-        out.append(seg * 16 + off)
-    return out
-
-
-def load_image(exe: bytes) -> bytes:
-    """The bytes DOS copies into memory (everything after the header)."""
-    return exe[HEADER_BYTES:]
 
 
 def find_anchor(image: bytes, relocs, start_hint: int, length: int = 64) -> int:

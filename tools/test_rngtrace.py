@@ -145,9 +145,12 @@ def synthetic_memory(exe, base, size=0x100000):
 
 class TestLoadBase(unittest.TestCase):
     def test_offset_conventions_do_not_mix(self):
+        # The convention itself lives in tools/addr.py and is tested against
+        # the bytes of orig/g.exe in tools/test_addr.py; this only pins the
+        # two entry points loadbase re-exports.
         # A Ghidra `1000:XXXX` citation is an IMAGE offset; file = 0x18d0 + it.
         self.assertEqual(loadbase.file_off_of_image_off(
-            loadbase.image_off_of_ghidra(0xB353)), 0x18D0 + 0xB353)
+            loadbase.image_off_of_ghidra(0x1000, 0xB353)), 0x18D0 + 0xB353)
         # A real seg:off like 0f78:114b is seg*16 + off, then + 0x18d0.
         self.assertEqual(loadbase.file_off_of_image_off(
             loadbase.image_off_of_seg_off(0x0F78, 0x114B)), 0x1219B)
