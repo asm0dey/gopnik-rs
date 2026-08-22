@@ -11,14 +11,21 @@ disagree, trust `git log`.
 
 ## READ THIS FIRST: `cargo test` is RED, deliberately
 
-`cargo test --test wander_sequence` fails 3 of 6:
+`cargo test --test wander_sequence` fails 3 of 11:
 `run_a_replays_exactly`, `run_b_replays_exactly`, `run_e_replays_exactly`.
 Everything else in the workspace is green (113 tests).
 
 **This is not a broken build and must not be "fixed" by weakening the tests.**
 The three runs replay the original's `Random` stream *exactly* up to their first
-bucket-3 encounter (draw indices 17, 62 and 78 of 393, 325 and 610) and then
-diverge at `1000:0d26`. One enumerated gap causes all three: `FUN_1000_0d14`
+bucket-3 encounter and then diverge at `1000:0d26`. The first **mismatching**
+draw is at index **18, 63 and 79** of 393, 325 and 610 — 0-based, and exactly
+what the harness prints — so the matching prefixes are 18, 63 and 79 draws long.
+(An earlier revision of this paragraph said 17, 62 and 78, which is the index of
+the last *matching* draw, one short of what the failure message names. The
+constants `A_/B_/E_DIVERGES_AT` in `tests/wander_sequence.rs` carry the corrected
+values and bound the prefix assertions.)
+
+One enumerated gap causes all three: `FUN_1000_0d14`
 (`1000:0d14..11c2`), the random-encounter opponent roll, is not recovered —
 `Game::pick_enemy` is an approximation, and the fight-flow draws at `1000:b5f1`
 and `1000:b792` are unmodelled. `docs/re/wander.md` puts all of them outside its

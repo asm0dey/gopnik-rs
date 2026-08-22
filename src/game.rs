@@ -113,9 +113,43 @@ pub struct Game {
     /// back. `crate::model::Fighter::stoned` is the same event as a bool;
     /// this is the counter the original actually keeps.
     pub buff_countdown: u8,
-    /// `20ae:3b74` is a global in the original, but nothing outside
-    /// `1000:b321`..`1000:b346` reads it, so the theft amount is a local
-    /// there rather than a field here.
+    /// `20ae:3b74` -- the theft amount -- is a global in the original, but it
+    /// needs no field here, because **every** reader writes it immediately
+    /// before reading it: no path carries a value in it across a turn
+    /// boundary, so it is a local at each of its two use sites.
+    ///
+    /// **Established from flow**, both blocks re-derived from `orig/g.exe`
+    /// from an aligned instruction start:
+    ///
+    /// * `1000:b313`..`1000:b346`, wander draw 11. `1000:b321` is the
+    ///   `Random(district * 5)`; `1000:b326` `inc ax`, `1000:b327`
+    ///   `a3 74 3b` stores, `1000:b32a` `a1 74 3b` reads back for
+    ///   `1000:b32d` `add [0x38c7],ax` (money), and `1000:b336`
+    ///   `ff 36 74 3b` pushes it into the message written at `1000:b346`.
+    /// * `1000:c333`..`1000:c396`, a **second** pickpocket block in the
+    ///   market, entered from the `0f78:0bd8` token compare at `1000:c329`
+    ///   (`jz 0xc333`). Same shape, different gates: `Random(district*5 + 5)`
+    ///   at `1000:c344` checked against luck `[0x38a4]` (`1000:c353`..
+    ///   `1000:c35b`), then `Random(10)` at `1000:c361` with `cmp ax,9` /
+    ///   `jnc 0xc3cd` at `1000:c366`, then `Random(luck * 2)` at
+    ///   `1000:c371`; `1000:c376` `inc ax`, `1000:c377` `a3 74 3b` stores,
+    ///   `1000:c37a` `a1 74 3b` reads back for `1000:c37d`
+    ///   `add [0x38c7],ax`, `1000:c386` `ff 36 74 3b` pushes it.
+    ///
+    /// An earlier revision of this comment said "nothing outside
+    /// `1000:b321`..`1000:b346` reads it". That was **false**, and it is the
+    /// "scan whose completeness claim stopped the next search" failure
+    /// `docs/re/METHODOLOGY.md` exists to stop. Scanning the whole image for
+    /// the operand bytes `74 3b` returns **7** hits: `1000:b328`,
+    /// `1000:b32b`, `1000:b338` (first block), `1000:c378`, `1000:c37b`,
+    /// `1000:c388` (second block) -- and `1000:c358`, which is *not* an
+    /// operand at all but the straddle of `1000:c357` `7c 74` (`jl 0xc3cd`)
+    /// and `1000:c359` `3b c1` (`cmp ax,cx`). Six real references, two
+    /// blocks. The *conclusion* above survives; the evidence first given for
+    /// it did not.
+    ///
+    /// The second block's two draws are **not modelled** by this port -- see
+    /// `docs/re/gaps.md`, "Opened by Task 11c".
     ///
     /// `20ae:3b76` -- the market ban's countdown, set to 5 at `1000:c465`
     /// and decremented once per walk at `1000:b173`.
@@ -594,7 +628,16 @@ impl Game {
     /// `0xB5C0`) is *written without a newline* (`call 0eed:0000` at
     /// `1000:d82a`), then exactly one district-keyed suffix completes the
     /// line. District 1 spends a real `Random(6)` draw for the dorm number
-    /// (`1000:d83b`, `+3`), so this branch is part of the RNG sequence.
+    /// (`1000:d83f`, `+3`), so this branch is part of the RNG sequence.
+    ///
+    /// The call site is `1000:d83f`, not `1000:d83b`: re-derived from an
+    /// aligned start at `1000:d816`, `1000:d83b` is `b8 06 00`
+    /// (`mov ax,0x6`), `1000:d83e` is `50` (`push ax`) and `1000:d83f` is
+    /// the `9a 4b 11 78 0f` (`call 0f78:114b`), with `1000:d844`
+    /// `05 03 00` (`add ax,0x3`) after it. A four-byte-early label costs
+    /// nothing while the branch never fires, but `site` is the identity key
+    /// of the differential replay in `tests/wander_sequence.rs`, so a future
+    /// capture that drove the den would report a spurious mismatch.
     ///
     /// **Not reproduced:** the conditional lines that follow
     /// (`1000:d8c8` onward, gated on flags `20ae:3b78`/`20ae:3b79` this port
@@ -603,7 +646,7 @@ impl Game {
         term::print("Ты пришел в притон - ");
         match self.district {
             1 => {
-                let n = self.rng.below_at("1000:d83b", 6) + 3;
+                let n = self.rng.below_at("1000:d83f", 6) + 3;
                 term::println(&text::fill("^0общагу №#", &[n as i64]));
             }
             2 => term::println("^0общагу ВКИ"),
