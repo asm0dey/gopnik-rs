@@ -524,22 +524,23 @@ are the questions that pass left open, and the ones it created.
   own section above ("The random-encounter opponent"). Until it is recovered,
   three of the five captured runs cannot replay, and `cargo test` is red on
   exactly those three assertions.
-* **The market's second pickpocket block spends two draws this port never
-  makes** — `1000:c361` `Random(10)` and `1000:c371` `Random(luck * 2)`.
+* **The market's second pickpocket block spends three draws this port never
+  makes** — `1000:c344` `Random(district * 5 + 5)`, `1000:c361` `Random(10)`
+  and `1000:c371` `Random(luck * 2)`.
   **Established from flow**, re-derived from an aligned start at `1000:c2a0`:
   the token compare at `1000:c329` (`call 0f78:0bd8`, string operand
   `cs:0x9089`) jumps to `1000:c333` on a match, which reads the district
   `[0x3692]`, builds `district * 5 + 5` (`1000:c33a`..`1000:c340`) and spends
-  a **third** draw at `1000:c344`, comparing it against luck `[0x38a4]`
+  the **first** of the three at `1000:c344`, comparing it against luck `[0x38a4]`
   (`1000:c353` `cmp dx,bx` / `1000:c355` `jg` / `1000:c357` `jl 0xc3cd` /
   `1000:c359` `cmp ax,cx` / `1000:c35b` `jc 0xc3cd`). Only then does
   `1000:c361` `Random(10)` run, with `1000:c366` `cmp ax,0x9` /
   `1000:c369` `jnc 0xc3cd` — so the block is skipped one time in ten — and
   `1000:c371` `Random([0x38a4] * 2)` produce the amount, which is `inc`'d at
   `1000:c376`, stored at `1000:c377`, added to money at `1000:c37d` and
-  printed at `1000:c396`. `1000:c344` is a fourth unmodelled site by the same
-  route. `data/rng_trace.json` never observed any of the three (the capture
-  driver never entered the market submenu), and `docs/re/wander.md`'s
+  printed at `1000:c396`. `data/rng_trace.json` never observed any of the
+  three (the capture driver never entered the market submenu), and
+  `docs/re/wander.md`'s
   catalogue is the wander preamble only, so these are outside it. This was
   found while correcting a false completeness claim in `src/game.rs` about
   `20ae:3b74` — the theft amount — whose earlier comment asserted that

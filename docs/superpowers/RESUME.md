@@ -153,13 +153,21 @@ a flow claim but never establish one. Probabilities come from the comparison
 constants that bucket a `Random` result, never from counting outcomes. Every
 claim states its tier and cites an address.
 
-**Address convention:** `file_off = 0x18d0 + (SEG - 0x1000)*16 + OFF`. The
-`- 0x1000` is load-bearing; dropping it overshoots by 64 KiB, which cost this
-project a wrong adjudication last session. Check any derived address against a
-landmark: `1000:b353` holds `9a 4b 11 78 0f`; `0f78:114b` is file `0x1219b`.
+**Address convention:** two forms, and they are not the same arithmetic --
+`docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is
+the authority. Ghidra labels (`SEG >= 0x1000`, e.g. `1000:`, `1f78:`, `20ae:`)
+map as `file_off = 0x18d0 + (SEG - 0x1000)*16 + OFF`; the `- 0x1000` is
+load-bearing there, and dropping it overshoots by 64 KiB. Real runtime
+`seg:off` as `ndisasm` prints a far-call operand (`0eed:`, `0f16:`, `0f78:` --
+the image's relative segments) map as `file_off = 0x18d0 + SEG*16 + OFF`, with
+**no** `- 0x1000`; applying the Ghidra form to one of these *under*shoots by
+the same 64 KiB. Check any derived address against a landmark: `1000:b353`
+holds `9a 4b 11 78 0f` at file `0xcc23`; `0f78:114b` (== Ghidra `1f78:114b`)
+is file `0x1219b`, `0x18d0 + 0xf780 + 0x114b`.
 
 Every RE miss caught here has been a two-to-five-byte drift — near enough to
-read as authoritative. Verify from an aligned instruction start, never from a
+read as authoritative — with one exception: the address-convention error
+above, which is 64 KiB. Verify from an aligned instruction start, never from a
 byte-scan hit.
 
 **The recurring defect across every review this project has run: a check that

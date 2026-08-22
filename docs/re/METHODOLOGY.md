@@ -34,6 +34,71 @@ Symmetry is not evidence either. "Shops are probably modal because combat is
 modal" is a hypothesis to test with a breakpoint on the shop input read, not a
 finding to record.
 
+## Address convention, and its range of validity
+
+Two conventions are in use across `docs/re/`, `src/` and the task briefs, and
+they are **not the same arithmetic**. Mixing them is a 64 KiB error, not the
+usual two-to-five-byte drift, and it has already produced one wrong
+adjudication on this project.
+
+`orig/g.exe` is an MZ image whose `e_cparhdr` is `0x18d` paragraphs, so the
+header is `0x18d0` bytes and the load image begins at file offset `0x18d0`.
+Every segment value *stored in the file* — in a far-call operand and in the
+relocation table — is **relative to the load base**, because the loader adds
+the base to it at load time. The image has exactly four relative segments,
+which is also exactly the set of segments named in its 1580 relocation
+entries: `0x0000` (game code), `0x0eed`, `0x0f16`, `0x0f78` (runtime).
+
+**Form A — a Ghidra label `SEG:OFF`.** Ghidra loads at segment `0x1000`, so
+`relseg = SEG - 0x1000`:
+
+```
+file_off = 0x18d0 + (SEG - 0x1000) * 16 + OFF        # valid only for SEG >= 0x1000
+```
+
+`1000:b353` → `0x18d0 + 0 + 0xb353` = `0xcc23`, which holds
+`9a 4b 11 78 0f`. `20ae:xxxx` is DGROUP (`relseg 0x10ae`), which the runtime
+sets itself: `0f78:0000` is `ba ae 10` / `8e da` = `mov dx,0x10ae` /
+`mov ds,dx`.
+
+**Form B — a real runtime `seg:off`, i.e. what `ndisasm` prints for a far-call
+operand.** The operand already *is* the relative segment, so `relseg = SEG`
+and there is no `- 0x1000`:
+
+```
+file_off = 0x18d0 + SEG * 16 + OFF                   # the SEG < 0x1000 runtime segments
+```
+
+Anything written `0eed:`, `0f16:` or `0f78:` in this repo is Form B. The
+Ghidra label for the same address is `SEG + 0x1000`, and Form A then agrees:
+`0f78:114b` and `1f78:114b` are the same address.
+
+**Do not apply Form A to a Form B address.** Worked, on the address that was
+adjudicated wrongly:
+
+```
+0f78:114b, Form B (correct):
+    0x18d0 + 0x0f78*16 + 0x114b = 0x18d0 + 0xf780 + 0x114b = 0x1219b
+0f78:114b, Form A misapplied:
+    0x18d0 + (0x0f78 - 0x1000)*16 + 0x114b = 0x18d0 + (-0x880) + 0x114b = 0x219b
+difference = 0x1000 * 16 = 0x10000 = 64 KiB
+```
+
+`0x1219b` is `Random`; `0x219b` is not even an instruction boundary — it is
+the interior of `1000:08ca` `8d be fe fe` (`lea di,[bp-0x102]`), in the middle
+of a screen-drawing loop in the game's own code segment. The 64 KiB warning
+attached to the `- 0x1000` term is real, but it points the *other* way: it is
+Form A addresses that overshoot when the term is dropped.
+
+**Established from flow.** All 86 `9a 4b 11 78 0f` far calls carry their
+segment word in the relocation table, so `0f78` is a relative segment awaiting
+a fixup, and following the call lands on `relseg 0x0f78`, offset `0x114b`.
+There the code is `e8 5a 00` (`call 0f78:11a8`, the LCG on `RandSeed` at
+DGROUP `0x367e`), `8b dc` (`mov bx,sp`), `36 f7 67 04` (`mul word [ss:bx+4]`,
+the pushed argument), `8b c2` (`mov ax,dx`, the high word) and `ca 02 00`
+(`retf 2`) — Borland's `Random(n)`, with a far return that pops the one
+argument the call pushed.
+
 ## Worked example: where do discovery probabilities live?
 
 "What is the chance of finding the club, or the gym?" cannot be answered by

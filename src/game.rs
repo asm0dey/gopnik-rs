@@ -148,8 +148,9 @@ pub struct Game {
     /// blocks. The *conclusion* above survives; the evidence first given for
     /// it did not.
     ///
-    /// The second block's two draws are **not modelled** by this port -- see
-    /// `docs/re/gaps.md`, "Opened by Task 11c".
+    /// The second block's **three** draws (`1000:c344`, `1000:c361`,
+    /// `1000:c371` -- the three enumerated above) are **not modelled** by this
+    /// port -- see `docs/re/gaps.md`, "Opened by Task 11c".
     ///
     /// `20ae:3b76` -- the market ban's countdown, set to 5 at `1000:c465`
     /// and decremented once per walk at `1000:b173`.
