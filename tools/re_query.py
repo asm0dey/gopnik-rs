@@ -125,6 +125,31 @@ class Program:
         return streams[key], votes, sum(tally.values())
 
 
+# --- the runtime name table --------------------------------------------------
+
+_RTL_CACHE = None
+
+
+def rtl_names():
+    """`ghidra label -> record` from `data/rtl_names.json`, or `{}` if absent.
+
+    The Borland runtime routines are identified in that side table rather than
+    renamed in `data/functions.json`, which is a Ghidra build artifact.  See
+    `docs/re/rtl.md` and `tools/rtlmatch.py`.
+    """
+    global _RTL_CACHE
+    if _RTL_CACHE is None:
+        path = Path(__file__).resolve().parents[1] / "data" / "rtl_names.json"
+        try:
+            doc = json.loads(path.read_text())
+        except (OSError, ValueError):
+            _RTL_CACHE = {}
+        else:
+            _RTL_CACHE = {r["ghidra"]: r for r in doc.get("routines", [])
+                          if r.get("name")}
+    return _RTL_CACHE
+
+
 # --- resolve -----------------------------------------------------------------
 
 def resolve(prog, text, nbytes=16, ninsns=4):
@@ -142,6 +167,15 @@ def resolve(prog, text, nbytes=16, ninsns=4):
     }
     f = prog.function_containing(image_off)
     out["function"] = f["name"] if f else None
+    rec = rtl_names().get(f["entry"]) if f else None
+    if rec is not None:
+        out["rtl"] = {
+            "name": rec["name"],
+            "kind": rec["name_kind"],
+            "unit": rec["match"].get("unit"),
+            "is_entry": f["entry"] == cit.ghidra_label,
+            "evidence": rec["evidence"],
+        }
     out["instructions"] = []
     if image_off < len(prog.image):
         pos = image_off

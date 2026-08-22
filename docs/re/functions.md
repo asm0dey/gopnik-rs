@@ -32,6 +32,14 @@ certainly Borland RTL (string handling, I/O, `Write`/`WriteLn`, etc.) rather
 than game logic — none of the ten largest functions above are in those
 blocks, so none are excluded as RTL by that heuristic.
 
+**Settled in Task 11h — see `docs/re/rtl.md`.** All 107 of those functions are
+now identified against a Turbo Pascal 7 `TURBO.TPL`: `1f78` is `SYSTEM`,
+`1f16` is `CRT`, `1ee5` is `DOS`, and `1eed` is **not** runtime at all but a
+second code segment of the game's own. 104 carry a name in
+`data/rtl_names.json`; `python3 tools/re_query.py resolve <citation>` prints
+it. The "almost certainly Borland RTL" hedge above is discharged for the three
+runtime segments and refuted for `1eed`.
+
 `entry` (1000:ab59, 17143 bytes) is very likely not itself "the main loop" in
 the traditional sense: it decompiles to a single enormous function full of
 `extraout_AH` locals, i.e. dozens of inlined DOS/BIOS interrupt calls — the

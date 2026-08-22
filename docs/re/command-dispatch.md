@@ -11,7 +11,17 @@ Every address below is a Ghidra `1000:XXXX` label. `docs/re/METHODOLOGY.md`, "Ad
 (`1000:ae63`, `call far 0f78:06c6`, confirmed a Pascal `ReadLn` by its
 position immediately after the loop's per-turn housekeeping and before any
 comparison), then compares it against a chain of literal command tokens
-using `FUN_1f78_0bd8`. Reading that routine's own decompilation
+using `FUN_1f78_0bd8`.
+
+**Task 11h settles both of those from flow rather than from position — see
+`docs/re/rtl.md`.** `0f78:06c6` is the runtime's `Read(Text,String)` worker
+(destination at `[bp+8]`, its maximum length at `[bp+6]`), and `1000:ae63` is
+followed immediately by `lcall 0f78:059d` (the `ReadLn` line skip) and
+`lcall 0f78:0291` (the `{$I+}` check): those three calls in that order are a
+`ReadLn(s)` statement. `FUN_1f78_0bd8` is the shortstring comparison —
+`0f78:0bf8` is `repe cmpsb` over the shorter of the two lengths, `0f78:0bfc`
+then compares the lengths — so the reading below is confirmed against the
+disassembly, not only against Ghidra's C. Reading that routine's own decompilation
 (`build/decomp/FUN_1f78_0bd8_1f78_0bd8.c`) shows it walks
 `min(len1, len2)` bytes of two Pascal shortstrings and stops on the first
 mismatch, leaving the zero flag set for the caller's `jz`/`jnz` -- i.e. it

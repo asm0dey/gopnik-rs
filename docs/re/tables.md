@@ -341,8 +341,14 @@ row. The other three:
 | `1000:e0a8` | `0xf978` | `byte[20ae:3c82]` | **unidentified** (see below) |
 
 `1000:5014` is preceded by `mov di,0x4000 / call 0f78:1111 / call 0f78:1131`,
-so the debited amount is whatever that call returns; nothing else about it is
-established, and its `what` is `null`. It sits 24 bytes before the `imm8` site
+so the debited amount is whatever that call returns; its `what` is still
+`null`, but Task 11h identified the calls — see `docs/re/rtl.md`. The whole
+sequence from `1000:4ff0` is `0f78:1125` (32-bit integer to 6-byte real),
+`0f78:1117` (real divide, by the literal in `cx`/`si`/`di` at `1000:4ff5`),
+`0f78:1111` (real multiply, by the literal at `1000:5002`) and `0f78:1131`
+(real back to integer, error 207 on overflow). So the amount is
+`round(x / K1 * K2)`. Reading `K1` and `K2` as decimal numbers needs the
+6-byte real layout confirmed against a known value and is **not established**. It sits 24 bytes before the `imm8` site
 at `1000:502c`, so it is a genuinely separate debit, not a second reading of
 that one.
 
