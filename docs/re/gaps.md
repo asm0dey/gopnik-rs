@@ -349,7 +349,7 @@ add that carry into the *magnitude*, before the sign is applied at
   carries no growth log, so it prints the arm's line (file `0x4CEF`) and
   leaves the fight without applying the penalty. Costs no draw, and no
   captured run reaches it: run A's cop fight is fled at level 0.
-* `1000:48eb`'s `[0x3c83] == 1` arm (file `0x33BF`, the rector refusing to
+* `1000:48eb`'s `[0x3c83] == 1` arm (file `0x4C8F`, the rector refusing to
   let you run). Nothing in this port sets `[0x3c83]`, so the arm is
   unreachable rather than wrong.
 * The three loot words are rolled and stored on the returned `Fighter`

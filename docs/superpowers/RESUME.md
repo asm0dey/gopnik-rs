@@ -47,10 +47,11 @@ Tasks 1–11 complete and reviewed (see git log). Since then:
 | 11b | Wander `Random` catalogue (18 draws) | `61de765..f1602bd` | complete, reviewed |
 | 11d | Live `Random` tracer (qemu+gdb) | `587f9b1..e344c63` | complete, reviewed |
 | 11e | Ghidra branch enumeration | `e32aa71..f72c541` | complete, reviewed |
-| 11c | Wander sequence wired into `src/` | `2b2ad33` | **NOT yet reviewed** |
+| 11c | Wander sequence wired into `src/` | `f72c541..a31f4a8` | complete, reviewed (two fix rounds) |
+| 11f | `FUN_1000_0d14` + fight flow recovered; all five runs replay | `3fac24c` | complete, reviewed and approved; fix round 1 applied |
 
-**Next action: review Task 11c.** Base for the review package is `f72c541`.
-Brief `.superpowers/sdd/task-11c-brief.md`, report `.superpowers/sdd/task-11c-report.md`.
+**Next action: Task 11g** — one address module, and the queries that keep
+getting hand-rolled. Brief `.superpowers/sdd/task-11g-brief.md`.
 
 ## Owner constraints in force
 
@@ -84,18 +85,35 @@ Brief `.superpowers/sdd/task-11c-brief.md`, report `.superpowers/sdd/task-11c-re
 
 ## How much is actually traced
 
-121 of 838 game branches (14.4%) have their branch address or guard cited
-anywhere in `docs/re/`. Two functions hold 75% of all game branches:
+134 of 838 game branches (16.0%) have their branch address or guard cited
+anywhere in `docs/re/*.md`, re-run against the current tree with:
+
+```
+$ python3 - <<'EOF'
+import json, re, glob
+d = json.load(open('data/branches.json'))
+B = [b for b in d['branches'] if b['class'] == 'game']
+text = "".join(open(f, encoding='utf-8').read() for f in sorted(glob.glob('docs/re/*.md')))
+cited = {m.group(0).lower() for m in re.finditer(r'\b[0-9a-fA-F]{4}:[0-9a-fA-F]{2,4}\b', text)}
+hit = lambda b: b['addr'].lower() in cited or (b['guard'] and b['guard']['addr'].lower() in cited)
+print(sum(map(hit, B)), '/', len(B))
+EOF
+134 / 838
+```
+
+(up from 121/838 at the last Task 11c checkpoint; Task 11f's fight-flow
+addresses are all inside `entry`.) Two functions hold 75% of all game
+branches:
 
 | branches | cited | function |
 |---:|---:|---|
-| 406 | 68 | `1000:ab59` — main loop + command dispatch |
+| 406 | 74 | `1000:ab59` — main loop + command dispatch |
 | 224 | 26 | `1000:3d11` — combat |
 | **83** | **0** | **`1000:1a03` — nothing written about it at all** |
 
 The metric undercounts (a function can be understood without every `jz` being
-cited) and a citation is not comprehension. Re-run the query in the ledger to
-track it.
+cited) and a citation is not comprehension. Re-run the query above to track
+it.
 
 ### The best lead for next session
 
@@ -113,16 +131,21 @@ then `sv` mid-fight. That proves which verbs reach it, including a negative.
 
 ## Remaining work
 
-1. Review Task 11c; then **`FUN_1000_0d14`** (turns the three red tests green).
+1. **Task 11g** — promote the address convention into `tools/addr.py` with
+   tests, and stop re-deriving it by hand each time (`.superpowers/sdd/task-11g-brief.md`).
 2. Task 12 — now much smaller: the draw-replay covers the RNG half, so 12 is
    prices, XP thresholds, level-up gains, starting stats, menu numbering.
 3. The bulk, from `docs/re/gaps.md`: no `.SAV` load path and `write_save`
    returns `Unsupported`; shop purchase effects; the class-keyed combat-opener
    table (`1000:3d32..3e8a`); the rector death branch and hospital rescue
-   (`1000:4f8c`); the encounter decline branch; `sv`/`v`/`x`/`wes` dispatcher
-   sites; shop modality; `kl`/`trn` prices; `help` and `rename` content; the
-   quit messages; the joint heal formula (rests on analogy with beer — a
-   hypothesis, not a finding).
+   (`1000:4f8c`); `sv`/`v`/`x`/`wes` dispatcher sites; shop modality;
+   `kl`/`trn` prices; `help` and `rename` content; the quit messages; the
+   joint heal formula (rests on analogy with beer — a hypothesis, not a
+   finding). The encounter decline branch itself is now resolved (Task 11f
+   traced `1000:b5fc` and the port models both the aggressive and quiet
+   arms), dropped from this list; `docs/re/gaps.md:516-519` still describes it
+   as open and needs its own fix pass — not done in this round, out of scope
+   for `task-11f-findings-r1.md`.
 4. Small follow-ups: `ExportAll.java` serialises an unsorted set so
    `run_ghidra.sh` rewrites `data/functions.json` nondeterministically (one-line
    sort); `data/strings.json` false positives (10 entries inside function
@@ -167,9 +190,12 @@ holds `9a 4b 11 78 0f` at file `0xcc23`; `0f78:114b` (== Ghidra `1f78:114b`)
 is file `0x1219b`, `0x18d0 + 0xf780 + 0x114b`.
 
 Every RE miss caught here has been a two-to-five-byte drift — near enough to
-read as authoritative — with one exception: the address-convention error
-above, which is 64 KiB. Verify from an aligned instruction start, never from a
-byte-scan hit.
+read as authoritative — with two exceptions: the address-convention error
+above, which is 64 KiB, and Task 11f's fix round, which found three citations
+in `src/game.rs` (and one in `docs/re/gaps.md`) labelled "file" while holding
+an **image** offset — a `0x18d0`-byte miss, the header size itself. Verify
+from an aligned instruction start, never from a byte-scan hit, and never trust
+a "file" label without checking which arithmetic actually produced it.
 
 **The recurring defect across every review this project has run: a check that
 cannot fail, presented as verification.** A tautological string comparison, a

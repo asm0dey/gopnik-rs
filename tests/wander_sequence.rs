@@ -537,11 +537,15 @@ fn run_e_replays_exactly() {
 /// exactly as often as the capture saw it, with exactly the same set of `n`,
 /// summed over all five runs.
 ///
-/// This reads a **different field of the oracle** from the replay tests --
-/// an aggregate the capture computed, not the per-run `draws` arrays -- and
-/// checks the two things a `Random` call site is: how many times it runs, and
-/// what bound it pushes. It is the committed check that Task 11f's recovered
-/// `n` formulas are the original's and not merely self-consistent.
+/// This reads `sites_not_in_catalogue`, a field of the oracle distinct from
+/// the per-run `draws` arrays the replay tests compare against -- but it is
+/// **not an independent channel**: `sites_not_in_catalogue` is exactly
+/// derivable from `runs[].draws` (same counts, same `n` sets, over all 17
+/// sites), so this test cannot fail unless a replay test fails too. What it
+/// actually checks is that the oracle's own aggregate agrees with its
+/// per-run arrays -- a consistency check worth having, since the two are
+/// computed differently in `data/rng_trace.json`, but not a second source of
+/// truth on Task 11f's recovered `n` formulas.
 ///
 /// It cannot pass vacuously. The assertions below require the map to be
 /// non-empty, every count to be non-zero, and the port to have made at least

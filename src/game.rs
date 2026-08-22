@@ -2146,10 +2146,10 @@ impl Game {
     /// `crate::commands::parse` (where `w` and `run` fold into one verb) is
     /// bypassed for it here.
     ///
-    /// * `1000:48eb` `[0x3c83] == 1` -> file `0x33BF`, stay in the fight.
+    /// * `1000:48eb` `[0x3c83] == 1` -> file `0x4C8F`, stay in the fight.
     ///   `[0x3c83]` is not modelled by this port (nothing here sets it), so
     ///   that arm is unreachable rather than wrong.
-    /// * `1000:490e` a broken leg -> file `0x33F6`, stay in the fight.
+    /// * `1000:490e` a broken leg -> file `0x4CC6`, stay in the fight.
     /// * `1000:4931` `[0x38a6] > 0` -> `1000:493b`..`1000:4adc`, which
     ///   **reverses one level**: it reads the growth-log entry for the
     ///   current level at `[0x38a6] * 3 + 0x38cf`, undoes the two stat
@@ -2159,7 +2159,7 @@ impl Game {
     ///   applied** -- see `docs/re/gaps.md`. The control flow is: both this
     ///   arm and the next reach `1000:4af7` `mov byte [bp-1],1` and leave
     ///   the fight.
-    /// * `1000:4ade` otherwise (level 0) -> file `0x349F` and leave.
+    /// * `1000:4ade` otherwise (level 0) -> file `0x4D6F` and leave.
     ///
     /// No arm of the flee path draws: there is no `9a 4b 11 78 0f` anywhere
     /// in `1000:48eb`..`1000:4afb`. That is what makes run A turn 7 of
