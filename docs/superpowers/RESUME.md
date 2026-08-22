@@ -1,6 +1,6 @@
 # Resume checkpoint — gopnik-rs port
 
-**Branch:** `port/gopnik-rust`. **Last checkpoint commit:** see `git log`; this file was last updated after Task 11f.
+**Branch:** `port/gopnik-rust`. **Last checkpoint commit:** see `git log`; this file was last updated after Task 11f fix round 2.
 
 `.superpowers/sdd/progress.md` is the full ledger but is **git-ignored** — a
 `git clean -fdx` destroys it. This file is the committed backup. If they
@@ -48,7 +48,7 @@ Tasks 1–11 complete and reviewed (see git log). Since then:
 | 11d | Live `Random` tracer (qemu+gdb) | `587f9b1..e344c63` | complete, reviewed |
 | 11e | Ghidra branch enumeration | `e32aa71..f72c541` | complete, reviewed |
 | 11c | Wander sequence wired into `src/` | `f72c541..a31f4a8` | complete, reviewed (two fix rounds) |
-| 11f | `FUN_1000_0d14` + fight flow recovered; all five runs replay | `3fac24c` | complete, reviewed and approved; fix round 1 applied |
+| 11f | `FUN_1000_0d14` + fight flow recovered; all five runs replay | `3fac24c` | complete, reviewed and approved; fix rounds 1 and 2 applied |
 
 **Next action: Task 11g** — one address module, and the queries that keep
 getting hand-rolled. Brief `.superpowers/sdd/task-11g-brief.md`.
@@ -86,24 +86,57 @@ getting hand-rolled. Brief `.superpowers/sdd/task-11g-brief.md`.
 ## How much is actually traced
 
 134 of 838 game branches (16.0%) have their branch address or guard cited
-anywhere in `docs/re/*.md`, re-run against the current tree with:
+anywhere in `docs/re/*.md`. Re-run it against the current tree with:
 
 ```
-$ python3 - <<'EOF'
+python3 - <<'EOF'
 import json, re, glob
 d = json.load(open('data/branches.json'))
 B = [b for b in d['branches'] if b['class'] == 'game']
 text = "".join(open(f, encoding='utf-8').read() for f in sorted(glob.glob('docs/re/*.md')))
 cited = {m.group(0).lower() for m in re.finditer(r'\b[0-9a-fA-F]{4}:[0-9a-fA-F]{2,4}\b', text)}
-hit = lambda b: b['addr'].lower() in cited or (b['guard'] and b['guard']['addr'].lower() in cited)
+hit = lambda b: b['addr'].lower() in cited or bool(b['guard'] and b['guard']['addr'].lower() in cited)
 print(sum(map(hit, B)), '/', len(B))
 EOF
-134 / 838
 ```
 
-(up from 121/838 at the last Task 11c checkpoint; Task 11f's fight-flow
-addresses are all inside `entry`.) Two functions hold 75% of all game
-branches:
+It printed `134 / 838`, exit 0, run against the tree at the Task 11f fix-round-2
+commit. The `bool(...)` is load-bearing, not tidying: without it `hit` returns
+`None` — not `False` — for a branch that is uncited and has no guard, because
+`x and y` yields `x` when `x` is falsy, and `sum()` then raises
+`TypeError: unsupported operand type(s) for +: 'int' and 'NoneType'`. An
+earlier revision of this file shipped the snippet without the `bool` **under a
+`$` prompt and a hand-written `134 / 838` output line** — a command that cannot
+run, presented as a transcript of its own output. The number was right; the
+evidence for it was fabricated-looking. Do not re-simplify it.
+
+**What this metric does not see.** It globs `docs/re/*.md` and nothing else. RE
+citations that live in `src/` doc comments — for instance the `run_combat`
+block in `src/game.rs` — never count toward it, in either direction. Read the
+percentage as coverage of `docs/re/`, not as the project's real coverage.
+
+**Where the +13 since Task 11c came from.** The baseline is 121/838 at commit
+`9bfd4bd` (the Task 11c checkpoint) — that is what the snippet above returns
+when pointed at that commit's `docs/re/*.md`. All thirteen new hits are
+citations added to `docs/re/gaps.md`, in two commits:
+
+| commit | new hits | function | addresses newly cited |
+|---|---:|---|---|
+| `9794362` (11c fix round) | 4 | `entry` — market pickpocket block | `1000:c353`..`1000:c369` |
+| `3fac24c` (Task 11f) | 6 | `FUN_1000_0d14` — opponent roll | `1000:0d64`, `1000:0d86`, `1000:0da7`, `1000:0dba`, `1000:0e48`, `1000:0e54` |
+| `3fac24c` (Task 11f) | 3 | `entry` — encounter notice/decline | `1000:b5da`, `1000:b60a`, `1000:b614` |
+
+Fix round 1 (`3ef0959`) added none. So `entry` goes 67 → 74 and
+`FUN_1000_0d14` 0 → 6, and **combat `FUN_1000_3d11` is unchanged at 26/224**.
+Task 11f's fight-flow addresses `1000:48eb`, `1000:490e` and `1000:4931` are
+inside `FUN_1000_3d11`, combat — *not* inside `entry`, which is what this file
+claimed until now — and they moved the count by zero: `1000:48eb` and
+`1000:4931` were already cited in `docs/re/wander.md` and
+`docs/re/progression.md` before Task 11f, and `1000:490e` appears nowhere
+under `docs/re/` at all — only in `src/game.rs` and in this file, neither of
+which the metric reads.
+
+Two functions hold 75% of all game branches:
 
 | branches | cited | function |
 |---:|---:|---|
@@ -143,9 +176,10 @@ then `sv` mid-fight. That proves which verbs reach it, including a negative.
    joint heal formula (rests on analogy with beer — a hypothesis, not a
    finding). The encounter decline branch itself is now resolved (Task 11f
    traced `1000:b5fc` and the port models both the aggressive and quiet
-   arms), dropped from this list; `docs/re/gaps.md:516-519` still describes it
-   as open and needs its own fix pass — not done in this round, out of scope
-   for `task-11f-findings-r1.md`.
+   arms), dropped from this list; `docs/re/gaps.md:516-521` still describes it
+   as open ("Which one a real encounter reaches depends on `1000:b5fc`,
+   untraced"). Task 11g's stale-entry sweep owns that fix; it was out of scope
+   for both Task 11f fix rounds.
 4. Small follow-ups: `ExportAll.java` serialises an unsorted set so
    `run_ghidra.sh` rewrites `data/functions.json` nondeterministically (one-line
    sort); `data/strings.json` false positives (10 entries inside function
