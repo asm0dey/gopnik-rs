@@ -61,14 +61,20 @@ DIVERGENT = {"0f78:0c8f", "0f16:003b", "0f16:02a8", "0f16:02c8"}
 #: bytes earlier.  See `docs/re/gaps.md`, "`Delete`'s index clamp".
 DELETE_CLAMP = (32, "83 7e 08 01 7d 05 c7 46 08 01 00")
 
-#: The one routine whose `data/functions.json` size does NOT tile into whole
-#: instructions.  Ghidra gives `0f78:1117` 22 bytes, but its body is the 10
-#: bytes `0f78:1117`..`0f78:1120` (`or cl,cl` / `jz` / `call` / `jb` / `retf`)
-#: and the recorded extent runs one byte into the `call` at `0f78:112b`.  The
-#: neighbouring records `0f78:1121` and `0f78:1125` start inside that extent,
-#: so the 22 is Ghidra over-reaching across a run of tiny thunks, not a
-#: citation error.  `data/functions.json` is a build artifact and is not
-#: hand-edited, so the exception is named here rather than removed.
+#: The one routine OF THE 104 NAMED HERE whose `size` does NOT tile into whole
+#: instructions when it is read as a SPAN.  `size` is Ghidra's count of the
+#: addresses in the body, and `0f78:1117` is the runtime's one split body --
+#: named as such in `docs/re/branches.md` ("getNumAddresses", lines 248-258 and
+#: 603-611) -- so its 22 is 10 bytes at `1117`..`1120` plus two 6-byte
+#: out-of-line error tails at `113f` and `1145`, NOT a 22-byte window.  The
+#: export is right; the span is the approximation.  Decoding 22 bytes forward
+#: from `1117` therefore walks into `0f78:1121`, `0f78:1125` and the unexported
+#: routine at `0f78:1129`, and stops two bytes short: the `call` at `0f78:112b`
+#: is `e8 63 ff`, three bytes at `112b`..`112d`, and the window ends after
+#: `112c`.  `data/functions.json` is correct and is not edited, so the
+#: exception is named here rather than removed.  (Over all 123 records, not
+#: just these 104, one more fails to tile -- `1000:0d14`, in the game's own
+#: code, under-reading by 2.  `tools/test_re_query.py` owns that census.)
 DOES_NOT_TILE = {"0f78:1117"}
 
 
@@ -365,11 +371,12 @@ class TestCapstoneAgreesWithDis16(unittest.TestCase):
                                  "%s +%#x" % (r["citation"], off))
         self.assertEqual(compared, 2258)
         self.assertEqual(unmatched, 0)
-        # 4973 of 4975 bytes.  The two missing are the last two of
-        # `0f78:1117`, the same `DOES_NOT_TILE` record: Ghidra's 22 bytes run
-        # into the `call` at `0f78:112b`, so the sweep stops at +20 with
-        # "instruction at 0x14 runs off the end of the buffer".  No other
-        # named routine loses a byte.
+        # 4973 of 4975 bytes.  The two missing are the last two of the 22-byte
+        # WINDOW taken for `0f78:1117`, the same `DOES_NOT_TILE` record: that
+        # window is not a body (see above), and decoding forward from the entry
+        # reaches the 3-byte `call` at `0f78:112b` with only 2 bytes of window
+        # left, so the sweep stops at +20 with "instruction at 0x14 runs off
+        # the end of the buffer".  No other named routine loses a byte.
         self.assertEqual((covered, sized), (4973, 4975))
 
 

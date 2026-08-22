@@ -176,7 +176,8 @@ Discrimination comes from three things in ascending order of strength: the
 prefix gate (nearly free), the long-run fraction **over the whole block**
 (which is what kills the 1139-byte `SYSTEM` block 35 false positive above),
 and above both the **coverage** the walk accumulates — 4958 of 4960 for a
-segment that is the unit, 37 of 656 for one that is not.
+segment that is the unit, 37 of 656 for one that is not (and of that 37 only
+13 bytes were compared at all; see "Which unit each segment is" below).
 
 ## Which unit each segment is
 
@@ -224,19 +225,56 @@ PY
 (Needs the library: `GOPNIK_TPL=…/BIN/TURBO.TPL`.)
 
 37 of 656 is 5.6%, against 1567 of 1568 for `0f16` and 4958 of 4960 for
-`0f78`.  Those 37 bytes are not a partial match either: exhaustively testing
-every (offset, unit, block) triple — 46,728 of them — leaves **three**
-whole-block survivors of both gates, all of them the same 13-byte `CRT` block
-0 (the `Halt` stub) at `0eed:00f7`, `0eed:010c` and `0eed:0120`, each with
-**11 of its 13 bytes differing**.  That is `fits()` being weak on a short
-block, not a match; see "Why `fits()` alone proves nothing" above.
+`0f78` — and even 5.6% flatters it, because `align()`'s `covered` is the
+offset the walk **reached**, not the number of bytes it compared, and the walk
+is allowed to skip up to `SLACK` (24) bytes before a block.  The `CRT` best of
+37 is a single placement:
+
+```
+CRT best cov 37 at start offset 223 (0eed:00df)
+    block 0, size 13, seg_off 24, gap_before 24, matched_bytes 13,
+    diff_bytes 11 in 3 runs, long_run_bytes 0
+```
+
+(`seg_off` is relative to that start offset, so the block sits at
+223 + 24 = 247 = `0eed:00f7` — the same placement the triple scan below finds.)
+
+24 skipped + 13 compared = 37, so **13 bytes were ever compared and 2 of them
+agreed**.  `SYSTEM`'s and `DOS`'s bests of 36 have the same shape: 24 skipped
+plus a 12-byte fragment of a 145-byte and a 153-byte block, cut off by the end
+of the segment.
+
+Those bytes are not a partial match either.  Exhaustively testing every
+(offset, unit, block) triple — 46,728 of them — against both of `align()`'s
+gates:
+
+```
+triples tried:                                             46728
+prefix-gate survivors (fits() alone):                         86
+survivors of both gates, whole block inside the segment:       3
+   off 247 (0eed:00f7) CRT block 0 size 13  diff_bytes=11 in 3 runs
+   off 268 (0eed:010c) CRT block 0 size 13  diff_bytes=11 in 3 runs
+   off 288 (0eed:0120) CRT block 0 size 13  diff_bytes=11 in 3 runs
+survivors of both gates, block truncated by the segment end:  37
+   at offsets 644, 646, 647, 648 only; blocks of 18..1139 bytes,
+   of which 8..12 bytes were compared, 2..9 of them differing
+```
+
+The **three** whole-block survivors are all the same 13-byte `CRT` block 0
+(the `Halt` stub), each with **11 of its 13 bytes differing** — `fits()` being
+weak on a short block, not a match; see "Why `fits()` alone proves nothing"
+above.  The **37** truncated survivors are recorded here rather than left out,
+but they carry less still: they sit at four start offsets inside the segment's
+last twelve bytes, and each compares only the 8-to-12-byte head of a block
+that is otherwise entirely outside the segment.  A block that is 99% off the
+end is not evidence that the segment is that block's unit.
 
 **Positive evidence for what `0eed` is**, which is stronger than the negative:
-the encoding `31 c0` (`xor ax,ax`, the `0x31` direction) occurs **8 times in
-`0eed` and 3200 times in the game's own segment `1000`, and 0 times in all
-27,826 code bytes of the library** — see "The instruction-encoding
-observation" below for the full count, including why `55 89 e5` is *not* a
-discriminator.
+the byte pair `31 c0` (`xor ax,ax`, the `0x31` direction) occurs **8 times in
+`0eed`'s 656 bytes and 3200 times in the game's own segment `1000` and its
+embedded data, and 0 times in all 27,826 code bytes of the library** — see
+"The instruction-encoding observation" below, which says exactly what those
+byte counts are and are not, and why `55 89 e5` is *not* a discriminator.
 
 Segment `0eed`'s three routines call the
 runtime (`lcall 0f78:02cd`, the stack check, opens each of them) and one of
@@ -341,13 +379,24 @@ first like evidence of a different compiler.  It is not: `PRINTER`, whose 54
 bytes of code are a plain Pascal `Assign(Lst,'LPT1'); Rewrite(Lst)`, also
 encodes `55 89 e5`, and so do `CRT` and `OVERLAY` in their compiled parts.
 The split is between Borland's hand-written assembler (`SYSTEM`, `DOS`, most
-of `CRT`) and compiler output, not between compilers.  Counted:
+of `CRT`) and compiler output, not between compilers.
 
-| encoding | seg `1000` (game) | seg `0eed` | seg `0f16` | seg `0f78` | library (27,826 bytes) |
+**What was counted, exactly.**  These are **raw byte-substring occurrences**
+over whole regions, counted with `bytes.find` at every offset — *not* decoded
+instructions, and no offset here was checked for being an instruction
+boundary.  The regions are the whole segment ranges from
+`tools/rtlmatch.py`'s `SEGMENTS` (`0eed` 656 bytes, `0f16` 1568, `0f78` 4960)
+and, for the game, image offsets `0x0`..`0xee50` — **61,008 bytes** that hold
+the game's code *and* the string and table data embedded in it.  3200 hits in
+61,008 mixed bytes is 5.2% of all offsets, which no instruction census would
+give; most of them are data.  The column is a byte-frequency comparison, and
+it is only used as one:
+
+| encoding | seg `1000` + its data (61,008 B) | seg `0eed` (656 B) | seg `0f16` (1568 B) | seg `0f78` (4960 B) | library code (27,826 B) |
 |---|---:|---:|---:|---:|---:|
 | `55 89 e5` | 15 | 3 | 2 | 0 | 4 |
 | `31 c0` | 3200 | 8 | 0 | 0 | **0** |
-| `30 c0` | — | — | — | — | 0 |
+| `30 c0` | 0 | 0 | 0 | 0 | 0 |
 
 So `55 89 e5` is **not** a discriminator — Borland emits it too, in `PRINTER`,
 `CRT` and `OVERLAY` — and any claim resting on it is retracted.  `31 c0` is:
@@ -388,9 +437,12 @@ holding 81 of the 107 routines never entered this comparison**.  1282 is
 **2. Every named routine, anchored at its own entry — 2258 instructions.**
 This one is not sweep-limited, because each routine starts a fresh decode at
 an address the export says is an entry.  It covers **4973 of the 4975 bytes**
-of the 104 named routines; the two missing are the last two of `0f78:1117`,
-whose recorded 22 bytes are Ghidra over-reaching (see "One thing the
-assertion found" below).  This is the comparison that actually covers `0f78`.
+of the 104 named routines; the two missing are the last two of the 22-byte
+window taken for `0f78:1117`.  That window is not a body — `0f78:1117` is a
+split function, so decoding 22 bytes forward from its entry runs
+into the `call` at `0f78:112b`, which belongs to a different routine and whose
+third byte falls outside the window ("One thing the assertion found" below).
+This is the comparison that actually covers `0f78`.
 
 `tools/test_rtlmatch.py`'s `TestCapstoneAgreesWithDis16` asserts both, and now
 asserts the exact populations (1282 and 2258) and the sweep stop points rather
@@ -535,6 +587,29 @@ number.
 | `0f78:12d0` | 75 | `Str` | borland | fixups_only | 1 |
 | `0f78:131b` | 49 | `Val` | borland | fixups_only | 1 |
 
+`size` is `data/functions.json`'s `size` verbatim, and that field is Ghidra's
+count of **addresses in the body**, not the length of a contiguous span.  For
+every row above but one the body is contiguous and the two numbers coincide.
+The exception is `0f78:1117`, whose 22 is 10 bytes at `1117`..`1120` plus two
+6-byte out-of-line error tails at `113f` and `1145` — see "One thing the
+assertion found" below.  So **the 22 in that row is a byte count, not a
+window**, and neither is the `compared_bytes: 22` that `rtlmatch.classify`
+records for it in `data/rtl_names.json`: `rtlmatch.build` passes `size` to
+`classify` as a length (`tools/rtlmatch.py`), so that comparison ran over the
+contiguous window `1117`..`112c`, which contains the neighbouring thunks
+`0f78:1121` and `0f78:1125` and not the two tails.  The verdict survives it —
+comparing the true address set instead gives **3 runs / 6 differing bytes**
+against the span's 4 runs / 7, and `fixups_only` either way, because the
+library's bytes at the phantom offsets are those same thunks with their call
+targets still unrelocated:
+
+```
+head    0f78:1117..1120  here 0a c9 74 2a e8 96 fe 72 1f cb  lib ... e8 00 00 ...
+phantom 0f78:1121..112c  here e8 07 ff cb e8 2d ff cb b5 00 e8 63   (not this body)
+tail    0f78:113f..1144  here b8 cd 00 e9 ca ef  lib b8 cd 00 e9 00 00
+tail    0f78:1145..114a  here b8 c8 00 e9 c4 ef  lib b8 c8 00 e9 00 00
+```
+
 `kind` is the name's provenance as described above; `match` is `exact` (no
 differing byte at all), `fixups_only` (differs only in relocation-shaped
 runs), `divergent` (a longer run — a different build) or `not_runtime`.
@@ -616,17 +691,121 @@ Wiring it later is still a small job, and (1) is the constraint on how: read
 `"rtl_name"` field **beside** `name`, never in place of it — then re-run the
 byte-identical check.
 
-### One thing the assertion found
+### One thing the assertion found: `size` is an address count, and one body is split
 
-`data/functions.json` contains exactly one pair of overlapping extents:
-`1f78:1117` is recorded as 22 bytes (`0x10897`..`0x108ad`), which swallows the
-entries `1f78:1121` and `1f78:1125`.  Its real body is the ten bytes
-`0f78:1117`..`0f78:1120` — `or cl,cl` / `jz` / `call` / `jb` / `retf` — and
-the recorded extent runs one byte into the `call` at `0f78:112b`.
-`re_query.Program.function_containing` returned the first matching range in
-file order, so `resolve 0f78:1125` answered `FUN_1f78_1117` and printed
-`rtl_real_op_div` as the runtime name — for an address `docs/re/tables.md`
-cites by name.  It now returns the innermost containing range;
-`test_the_one_overlapping_ghidra_extent_resolves_to_the_inner_routine` pins
-both the overlap set and the three names.  `data/functions.json` was not
-edited: it is a build artifact and the 22 is Ghidra's to fix.
+**The export is correct here.**  An earlier version of this section called
+`1f78:1117`'s 22 bytes a Ghidra defect.  It is not one, and this repository
+already said so before Task 11h began.  **`docs/re/branches.md`** states the
+rule under "`size` on a function record is `getNumAddresses()`, a set
+cardinality, not a span" (lines 248-258), and the note in its audit script
+(lines 603-611) names `1f78:1117` as the sole split body in the image, names
+`1f78:1121`..`112c` as its phantom range, and ends *"Do not copy this line
+into a check where the over-read would matter — use the address set, not the
+span."*  That comment is
+the authority for what follows; this section only records what the span model
+does in `tools/re_query.py` and what was confirmed by disassembly.
+
+`data/functions.json` gives each function an `entry` and a `size`, and `size`
+is Ghidra's **address-set byte count**.  `re_query.Program.__init__` has no
+address set to read, so it builds a span `[entry, entry + size)` — a **span
+approximation**, exact whenever the body is contiguous and wrong in two
+directions when it is not.
+
+Disassembled from `orig/g.exe` (`0f78:1117` → image `0x10897`, file `0x12167`;
+`capstone`, `CS_MODE_16`):
+
+```
+0f78:1117  0a c9        or cl, cl        \
+0f78:1119  74 2a        je 0x1145        |
+0f78:111b  e8 96 fe     call 0xfb4       |  head, 10 bytes
+0f78:111e  72 1f        jb 0x113f        |
+0f78:1120  cb           retf             /
+0f78:1121  e8 07 ff     call 0x102b         <- FUN_1f78_1121, not this body
+0f78:1124  cb           retf
+0f78:1125  e8 2d ff     call 0x1055         <- FUN_1f78_1125, not this body
+0f78:1128  cb           retf
+0f78:1129  b5 00        mov ch, 0           <- not exported at all
+0f78:112b  e8 63 ff     call 0x1091
+0f78:112e  72 09        jb 0x1139
+0f78:1130  cb           retf
+0f78:1131  b5 01        mov ch, 1           <- FUN_1f78_1131
+0f78:1133  e8 5b ff     call 0x1091
+0f78:1136  72 01        jb 0x1139
+0f78:1138  cb           retf
+0f78:1139  b8 cf 00     mov ax, 0xcf        <- error tail, reached by both `jb`s
+0f78:113c  e9 d0 ef     jmp 0x10f
+0f78:113f  b8 cd 00     mov ax, 0xcd     \  out-of-line error tail, 6 bytes
+0f78:1142  e9 ca ef     jmp 0x10f        /   (`jb` target of 1102/1108/1114/111e)
+0f78:1145  b8 c8 00     mov ax, 0xc8     \  out-of-line error tail, 6 bytes
+0f78:1148  e9 c4 ef     jmp 0x10f        /   (`je` target of 0f78:1119 alone)
+```
+
+`1145` is `0f78:1117`'s alone.  `113f` is a **shared** tail: the `jb` of all
+four real-op thunks — `0f78:10ff` (`72 3b`), `1105` (`72 35`), `1111`
+(`72 29`) and `1117` (`72 1f`) — jumps to it.  A shared tail can be counted
+into only one address set, and Ghidra charged it to `1117`; the other three
+are recorded as 6 bytes each, head only.  `1139`..`113e` is charged to `1131`
+for the same reason, though there the two pieces happen to be adjacent.
+
+10 + 6 + 6 = **22**, exactly what the export records, and `113f`..`114a` is
+exactly the 12-byte hole the export's spans leave between `1f78:1131`'s end
+and the next entry `1f78:114b`.  (Two smaller holes in this run, `110b`..`1110`
+and `112d`..`1130`, are the interiors of routines the export does not carry an
+entry for at all, so they are a different thing.)
+`1f78:1131`'s 14 is 8 + 6 the same way — but there the two pieces are
+**adjacent** (`1131`..`1138` then `1139`..`113e`), so its span and its address
+set are the same bytes.
+
+**How many records this affects, measured over all 123.**  Decode forward from
+each entry for exactly `size` bytes and see whether the instructions tile onto
+the recorded end.  121 of 123 do.  The two that do not are:
+
+| record | `size` | what decoding says | direction |
+|---|---:|---|---|
+| `1f78:1117` | 22 | 22 bytes forward overshoots the end by 1 — the window is not a body | over-reads |
+| `1000:0d14` | 1196 | its `ret 0x2` ends at `1000:11c1`, and the next entry is `1000:11c2`, so the contiguous body is **1198** bytes | under-reads by 2 |
+
+`1f78:1117` is the only pair of overlapping spans in the file.  `1000:0d14` is
+a **second** non-contiguity, in the game's own code rather than the runtime,
+and it was not known before this round: two of its addresses are missing from
+Ghidra's set somewhere inside `1000:0d14`..`11c1`, and the artifact emits no
+body ranges to say which.  The live consequence is the under-read direction
+again — `resolve 1000:11c0` and `1000:11c1` report `function: None` for the
+two operand bytes of that `ret 0x2`.  Naming it is all this task does with it;
+explaining it needs Ghidra, not this document.
+
+That makes `branches.md`'s "the sole split body in the image" one record too
+narrow, read literally: `1f78:1117` is the sole **overlapping** one, and the
+sentence's own use — the strings-overlap count — is unaffected either way,
+because `1000:0d14`'s two lost addresses are the operand bytes of a `ret` and
+no `data/strings.json` entry touches them (checked: 0).
+
+**The span model's two failure directions**, both live and both now asserted in
+`tools/test_re_query.py`:
+
+1. **It over-reads.**  `[0x10897, 0x108ad)` is `0f78:1117`..`112c`, so
+   `resolve 0f78:1129` and `resolve 0f78:112b` report `FUN_1f78_1117` /
+   `rtl_real_op_div` for bytes that belong to no exported function at all
+   (`0f78:1129` is not in the export).  For `0f78:1121` and `0f78:1125`, which
+   *are* exported — and the second of which `docs/re/tables.md:346` cites by
+   name — the innermost-range rule fixes it: `function_containing` now returns the
+   tightest containing range instead of the first in file order, so those two
+   resolve to themselves.  The rule is right whenever extents nest; it is not
+   justified by any defect in the export.
+2. **It under-reads.**  `0f78:113f`..`114a` **is** `FUN_1f78_1117`'s body and
+   the span does not contain it, so `resolve` reports `function: None` there
+   and falls back to the back-sweep anchor.  Nothing in the span model can
+   recover those bytes.  `1000:11c0`..`11c1` is the same direction on
+   `1000:0d14` (see the census above).
+
+`tools/test_re_query.py` asserts the census (exactly those two records, by
+citation) and both directions on both records, so a third non-contiguous
+record — or a change that silently repairs one direction — fails a test.
+
+`data/functions.json` was not edited, and not because it is a build artifact
+one hesitates to touch: it is **right**.  What is approximate is `_ranges`.
+Modelling the address set properly would mean reconstructing each function's
+partition from flow — new inference, presented in the shape of exported data —
+and the export carries no address set to check it against.  So the
+approximation stays, named as one, with both of its failure directions pinned
+by tests rather than left to be rediscovered.

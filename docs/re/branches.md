@@ -257,6 +257,26 @@ is an inference — the artifact does not emit body ranges). Taking `size` as a
 span makes `1f78:1117` appear to swallow the two 4-byte functions `1f78:1121`
 and `1f78:1125`, an 8-byte phantom overlap.
 
+Task 11h pinned down the second chunk, and the candidate above was half right.
+The 12 addresses are `1f78:113f`..`114a`: **two** 6-byte out-of-line error
+tails, `mov ax,0xcd` / `jmp 0x10f` at `113f` (the shared overflow exit that the
+`jc` of all four real-op thunks targets) and `mov ax,0xc8` / `jmp 0x10f` at
+`1145` (divide-by-zero, reached only from `1117`'s own `jz`).  10 + 6 + 6 = 22,
+and `113f`..`114a` is exactly the 12-byte hole the export's spans leave between
+`1f78:1131`'s end and `1f78:114b`.  The artifact still emits no body ranges, so
+this remains an inference — but it is now a checked one with no competing fit.
+`docs/re/rtl.md`, "One thing the assertion found", carries the disassembly and
+what the span approximation in `tools/re_query.py` gets wrong because of it.
+
+Same task, one correction to the paragraph above and to the note in the audit
+script below: `1f78:1117` is the sole **overlapping** record, not the sole
+non-contiguous one.  A tiling census over all 123 records found a second,
+`1000:0d14` in the game's own code — `size: 1196` where the contiguous body up
+to the next entry `1000:11c2` is 1198 bytes.  It creates no overlap (its span
+is short, not long), and the strings-overlap count below is 10 either way: the
+two addresses it loses are the operand bytes of a `ret 0x2` and no
+`strings.json` entry touches them.
+
 The bodies really are disjoint, and the argument does not need the chunk
 boundaries: the sum of `getNumAddresses()` over all 123 functions is 43,890, and
 the independent per-address block walk that produces the 64.2% headline — which

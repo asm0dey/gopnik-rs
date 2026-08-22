@@ -239,12 +239,18 @@ class TestResolveReportsTheRuntimeName(unittest.TestCase):
         self.assertNotIn("rtl", re_query.resolve(PROG, "0eed:0000"))
 
     def test_the_one_overlapping_ghidra_extent_resolves_to_the_inner_routine(self):
-        """`data/functions.json` has exactly one pair of overlapping extents:
-        `1f78:1117`'s recorded 22 bytes swallow the entries `1f78:1121` and
-        `1f78:1125`.  First-match-in-file-order answered both with
-        `FUN_1f78_1117` and `resolve` reported `rtl_real_op_div` for them.
-        `docs/re/tables.md` cites `0f78:1125` by name, so this is a name a
-        document depends on."""
+        """`size` is Ghidra's ADDRESS-SET byte count and `Program._ranges`
+        reads it as a span, so a split body produces overlapping spans.
+        `data/functions.json` has one such record -- `1f78:1117`, named as the
+        image's sole split body in `docs/re/branches.md` (lines 248-258 and
+        603-611) -- and its
+        span `1117`..`112c` covers the two later entries `1f78:1121` and
+        `1f78:1125`, hence two overlapping pairs from one outer record.
+        First-match-in-file-order answered both with `FUN_1f78_1117` and
+        `resolve` reported `rtl_real_op_div` for them; `docs/re/tables.md:346`
+        cites `0f78:1125` by name, so this is a name a document depends on.
+        The export is correct and is not edited; the span is the
+        approximation, and the two tests below pin what it still gets wrong."""
         overlaps = []
         for lo, hi, f in PROG._ranges:
             for lo2, _, g in PROG._ranges:
@@ -263,6 +269,125 @@ class TestResolveReportsTheRuntimeName(unittest.TestCase):
         # An address genuinely interior to the outer routine still gets it.
         self.assertEqual(re_query.resolve(PROG, "0f78:1119")["rtl"]["name"],
                          "rtl_real_op_div")
+
+    def test_the_span_approximation_over_reads_past_the_split_body(self):
+        """Failure direction 1 of reading `size` as a span, still live.
+
+        `0f78:1117`'s span ends at `112c`, so it covers `0f78:1129`..`112c` --
+        the head of a routine that `data/functions.json` does not export at
+        all, and that is NOT part of `FUN_1f78_1117`'s body.  Nothing in
+        `_ranges` can tell the difference, so `resolve` names the wrong
+        routine there.  Asserted rather than quietly tolerated.
+        """
+        entries = {f["entry"] for f in PROG.functions}
+        self.assertNotIn("1f78:1129", entries)
+        for cit in ("0f78:1129", "0f78:112b", "0f78:112c"):
+            with self.subTest(cit):
+                out = re_query.resolve(PROG, cit)
+                self.assertEqual(out["function"], "FUN_1f78_1117")
+                self.assertEqual(out["rtl"]["name"], "rtl_real_op_div")
+        # One past the span end is nobody's, which is also wrong -- `112d` is
+        # the last byte of the `call` at `0f78:112b`.
+        self.assertIsNone(re_query.resolve(PROG, "0f78:112d")["function"])
+        # The bytes, straight from the image: `mov ch,0` / `call` / `jb` /
+        # `retf` is a routine of its own, not a continuation of `1117`.
+        off = addr.image_off_of_citation("0f78:1129")
+        self.assertEqual(IMAGE[off:off + 8].hex(" "),
+                         "b5 00 e8 63 ff 72 09 cb")
+
+    def test_the_span_approximation_loses_the_split_bodys_out_of_line_tails(self):
+        """Failure direction 2, in the opposite direction, also still live.
+
+        `FUN_1f78_1117`'s 22 addresses are 10 at `1117`..`1120` plus two
+        6-byte out-of-line error tails at `113f` and `1145`.  The span stops at
+        `112c`, so every byte of both tails resolves to no function at all,
+        and `resolve` falls back to the back-sweep anchor there.
+
+        That the tails are error exits of this run of real-arithmetic thunks
+        is read out of the image, not asserted: the `je` at `0f78:1119`
+        targets `1145` and the `jb` at `0f78:111e` targets `113f`.  `1145` is
+        reached from `1117` alone; `113f` is a SHARED tail, reached by the
+        `jb` of all four thunks (`10ff`, `1105`, `1111`, `1117`), and Ghidra
+        charged it to `1117` -- the other three are recorded as 6 bytes each,
+        head only.  A shared tail can belong to only one address set, which is
+        the same reason `1139`..`113e` is charged to `1131`.
+        """
+        head = addr.image_off_of_citation("0f78:1117")
+        # `0a c9` or cl,cl / `74 2a` je +0x2a -> 1145 / `e8 96 fe` call /
+        # `72 1f` jb +0x1f -> 113f / `cb` retf
+        self.assertEqual(IMAGE[head:head + 10].hex(" "),
+                         "0a c9 74 2a e8 96 fe 72 1f cb")
+        self.assertEqual(0x1119 + 2 + 0x2a, 0x1145)
+        self.assertEqual(0x111e + 2 + 0x1f, 0x113f)
+        # The shared tail: all four thunks branch to `113f`, and the other
+        # three are 6 bytes each, so only `1117` counts it in.
+        seg = addr.image_off_of_citation("0f78:0000")
+        for at, want, size in ((0x1102, "72 3b", 6), (0x1108, "72 35", 6),
+                               (0x1114, "72 29", 6), (0x111e, "72 1f", 22)):
+            with self.subTest("%#x" % at):
+                b = IMAGE[seg + at:seg + at + 2]
+                self.assertEqual(b.hex(" "), want)
+                self.assertEqual(at + 2 + b[1], 0x113f)
+        self.assertEqual(
+            [f["size"] for f in PROG.functions
+             if f["entry"] in ("1f78:10ff", "1f78:1105", "1f78:1111")],
+            [6, 6, 6])
+        for cit, want in (("0f78:113f", "b8 cd 00 e9 ca ef"),
+                          ("0f78:1145", "b8 c8 00 e9 c4 ef")):
+            off = addr.image_off_of_citation(cit)
+            self.assertEqual(IMAGE[off:off + 6].hex(" "), want)
+        for cit in ("0f78:113f", "0f78:1141", "0f78:1144",
+                    "0f78:1145", "0f78:1148", "0f78:114a"):
+            with self.subTest(cit):
+                out = re_query.resolve(PROG, cit)
+                self.assertIsNone(out["function"])
+                self.assertNotIn("rtl", out)
+        # 10 + 6 + 6 is the recorded size, so the export counted the tails in
+        # and the span model is what drops them.
+        rec = next(f for f in PROG.functions if f["entry"] == "1f78:1117")
+        self.assertEqual(rec["size"], 10 + 6 + 6)
+
+    def test_exactly_two_records_have_a_non_contiguous_body(self):
+        """The census behind the two tests above, over all 123 records.
+
+        Decoding forward from an entry for exactly `size` bytes tiles onto the
+        recorded end whenever the body is contiguous.  Two records do not
+        tile, in opposite directions, and this pins the set: a third one, or a
+        change that repairs one of these, fails here instead of silently
+        widening what the span model gets wrong.
+        """
+        ragged = {}
+        for f in PROG.functions:
+            lo = addr.image_off_of_citation(f["entry"])
+            end, pos = lo + f["size"], lo
+            while pos < end:
+                pos = dis16.decode(IMAGE, pos).end
+            if pos != end:
+                ragged[f["entry"]] = pos - end
+        self.assertEqual(len(PROG.functions), 123)
+        self.assertEqual(ragged, {"1f78:1117": 1, "1000:0d14": 2})
+
+    def test_the_game_functions_last_two_bytes_are_outside_its_span_too(self):
+        """The second non-contiguous record, `1000:0d14`, under-reads by 2.
+
+        Its `ret 0x2` is `c2 02 00` at `1000:11bf`..`11c1` and the next entry
+        is `1000:11c2`, so the contiguous body is 1198 bytes; Ghidra's address
+        count is 1196.  Whatever two addresses the export leaves out, the span
+        `[0d14, 11c0)` stops before the `ret`'s operand, so those two bytes
+        resolve to no function.
+        """
+        rec = next(f for f in PROG.functions if f["entry"] == "1000:0d14")
+        self.assertEqual(rec["size"], 1196)
+        self.assertIn("1000:11c2", {f["entry"] for f in PROG.functions})
+        off = addr.image_off_of_citation("1000:11bf")
+        self.assertEqual(IMAGE[off:off + 3].hex(" "), "c2 02 00")
+        self.assertEqual(
+            re_query.resolve(PROG, "1000:11bf")["function"], "FUN_1000_0d14")
+        for cit in ("1000:11c0", "1000:11c1"):
+            with self.subTest(cit):
+                self.assertIsNone(re_query.resolve(PROG, cit)["function"])
+        self.assertEqual(
+            re_query.resolve(PROG, "1000:11c2")["function"], "FUN_1000_11c2")
 
     def test_every_named_routine_resolves_to_its_own_name(self):
         doc = json.loads((REPO / "data" / "rtl_names.json").read_text())

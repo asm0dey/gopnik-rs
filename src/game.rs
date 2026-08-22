@@ -1647,8 +1647,9 @@ impl Game {
     ///    where `s` is `Random(5)` (`1000:0ddd`), `f` is `Random(2) + 1`
     ///    (`1000:0df0`) and `d` is `Random(2) + 1` (`1000:0e04`). The
     ///    multiply is `0f78:09d2` (32-bit `imul`), the divide is
-    ///    `0f78:1117` (6-byte real divide -- it is the entry that checks
-    ///    `cl` for a zero divisor and raises runtime error 200), the add and
+    ///    `0f78:1117` (the real-divide entry thunk: 10 bytes at
+    ///    `0f78:1117`..`1120` that check `cl` for a zero divisor and raise
+    ///    runtime error 200 out of line at `0f78:1145`), the add and
     ///    subtract are `0f78:10ff`/`0f78:1105`, and `0f78:1131` rounds.
     ///    `1000:0e48` floors it at 0, and `1000:0e54`..`1000:0e76` then
     ///    multiplies it by **1.5** (`0f78:1111`, real multiply, against the

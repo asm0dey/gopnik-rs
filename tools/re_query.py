@@ -65,6 +65,29 @@ class Program:
         self.functions_path = Path(functions_path) if functions_path else None
         if self.functions_path and self.functions_path.exists():
             self.functions = json.loads(self.functions_path.read_text())
+        # `size` is Ghidra's count of the ADDRESSES in a function's body, not
+        # the length of a contiguous span, and the export carries no address
+        # set.  So this is a SPAN APPROXIMATION: exact for every contiguous
+        # body, and wrong in two directions for a split one.  The runtime's one
+        # split body was named in `docs/re/branches.md` (lines 248-258 and
+        # 603-611) before this code existed: `1f78:1117`, 22 bytes = 10 at
+        # `1117`..`1120` plus two 6-byte out-of-line error tails at `113f` and
+        # `1145`, with `1121`..`112c` a PHANTOM range the span claims and the
+        # body does not contain.  `docs/re/rtl.md`, "One thing the assertion found",
+        # carries the disassembly.  The export is correct; the span is the
+        # approximation.  Consequences, both asserted in test_re_query.py:
+        #   over-read : `0f78:1129`/`112b` resolve to `FUN_1f78_1117` although
+        #               they are the unexported routine at `0f78:1129`.
+        #   under-read: `0f78:113f`..`114a` resolve to None although they ARE
+        #               `FUN_1f78_1117`'s body.
+        # A second record is non-contiguous the OTHER way: `1000:0d14` records
+        # 1196 where the contiguous body to the next entry `1000:11c2` is 1198,
+        # so `1000:11c0`..`11c1` (the operand of its `ret 0x2`) resolve to None
+        # as well.  Those two are the whole population -- over all 123 records
+        # only these two fail to tile, and test_re_query.py asserts the census.
+        # Fixing this properly needs a per-function address set the export does
+        # not have; reconstructing one from flow would be new inference wearing
+        # the shape of exported data, so it is named, not silently patched.
         self._ranges = []
         for f in self.functions:
             lo = addr.image_off_of_citation(f["entry"])
@@ -73,19 +96,19 @@ class Program:
     # --- anchoring -----------------------------------------------------------
 
     def function_containing(self, image_off):
-        """The INNERMOST exported function whose extent covers `image_off`.
+        """The INNERMOST range of `_ranges` covering `image_off`, or None.
 
-        Ghidra's extents are not always disjoint.  `data/functions.json` has
-        exactly one overlap: `1f78:1117` is recorded as 22 bytes, `0x10897`..
-        `0x108ad`, and that swallows the entries `1f78:1121` and `1f78:1125`,
-        two of the six-byte real-arithmetic thunks that follow it (the real
-        body of `1f78:1117` is the ten bytes ending in the `retf` at
-        `0f78:1120`).  Returning the first match in file order therefore
-        answered `0f78:1125` -- which `docs/re/tables.md` cites by name -- with
-        `FUN_1f78_1117`, and `resolve` then reported the wrong runtime name for
-        it.  The innermost range is the right answer whenever they nest, so
-        prefer the latest entry, and among equal entries the tightest extent.
-        `data/functions.json` is a build artifact and is not hand-edited.
+        `_ranges` is a SPAN APPROXIMATION and this method inherits its two
+        errors -- see `__init__`.  Where extents nest, the innermost one is the
+        right answer, so prefer the latest entry and, among equal entries, the
+        tightest extent.  Without that rule `0f78:1121` and `0f78:1125`
+        answered `FUN_1f78_1117` (first match in file order) and `resolve`
+        printed `rtl_real_op_div` for them -- and `docs/re/tables.md:346` cites
+        `0f78:1125` by name.  The rule fixes those two.  It does NOT fix the
+        two bytes of `0f78:1117`'s span that belong to the unexported routine
+        at `0f78:1129`, and it cannot recover `0f78:113f`..`114a`, which the
+        span does not reach, nor `1000:11c0`..`11c1` on `1000:0d14`;
+        `tools/test_re_query.py` asserts all of it.
         """
         best = None
         for lo, hi, f in self._ranges:
