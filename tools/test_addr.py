@@ -159,11 +159,20 @@ class TestRelocationTable(unittest.TestCase):
                          (0x0000, 0x0EED, 0x0F16, 0x0F78))
 
     def test_every_relative_segment_is_accepted_by_the_runtime_form(self):
+        """Each relative segment's base must land inside the image, and the
+        Ghidra form must refuse it.  Checked against the file's own size rather
+        than by restating the arithmetic."""
         for seg in addr.relocation_segments(EXE):
             self.assertLess(seg, addr.GHIDRA_BASE_SEG)
-            self.assertEqual(addr.image_off_of_seg_off(seg, 0x10), seg * 16 + 0x10)
+            base = addr.file_off_of_image_off(addr.image_off_of_seg_off(seg, 0))
+            self.assertGreaterEqual(base, addr.HEADER_BYTES)
+            self.assertLess(base, len(EXE))
             with self.assertRaises(addr.AddressError):
-                addr.image_off_of_ghidra(seg, 0x10)
+                addr.image_off_of_ghidra(seg, 0)
+        # And the one whose contents are known: 0f78:114b is Random.
+        self.assertIn(0x0F78, addr.relocation_segments(EXE))
+        fo = addr.file_off_of_citation("0f78:114b")
+        self.assertEqual(EXE[fo:fo + 5], RANDOM_PROLOGUE)
 
     def test_relocation_count_and_offsets(self):
         entries = addr.relocation_entries(EXE)
