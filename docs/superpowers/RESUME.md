@@ -1,7 +1,6 @@
 # Resume checkpoint — gopnik-rs port
 
-**Branch:** `port/gopnik-rust`. **HEAD at checkpoint:** `2b2ad33`.
-**Last session ended:** 2026-08-19, at the owner's request, after Task 11c.
+**Branch:** `port/gopnik-rust`. **Last checkpoint commit:** see `git log`; this file was last updated after Task 11f.
 
 `.superpowers/sdd/progress.md` is the full ledger but is **git-ignored** — a
 `git clean -fdx` destroys it. This file is the committed backup. If they
@@ -9,31 +8,33 @@ disagree, trust `git log`.
 
 ---
 
-## READ THIS FIRST: `cargo test` is RED, deliberately
+## READ THIS FIRST: `cargo test` is GREEN as of Task 11f
 
-`cargo test --test wander_sequence` fails 3 of 11:
-`run_a_replays_exactly`, `run_b_replays_exactly`, `run_e_replays_exactly`.
-Everything else in the workspace is green (113 tests).
+The whole workspace passes with **zero warnings**. `cargo test --no-fail-fast`
+reports 11 targets, 132 tests, 0 failed; `cargo clippy --all-targets` and
+`cargo fmt --check` are clean.
 
-**This is not a broken build and must not be "fixed" by weakening the tests.**
-The three runs replay the original's `Random` stream *exactly* up to their first
-bucket-3 encounter and then diverge at `1000:0d26`. The first **mismatching**
-draw is at index **18, 63 and 79** of 393, 325 and 610 — 0-based, and exactly
-what the harness prints — so the matching prefixes are 18, 63 and 79 draws long.
-(An earlier revision of this paragraph said 17, 62 and 78, which is the index of
-the last *matching* draw, one short of what the failure message names. The
-constants `A_/B_/E_DIVERGES_AT` in `tests/wander_sequence.rs` carry the corrected
-values and bound the prefix assertions.)
+Task 11c had deliberately left three tests red —
+`run_{a,b,e}_replays_exactly` in `tests/wander_sequence.rs` — with one
+enumerated cause: `FUN_1000_0d14` (`1000:0d14`..`1000:11bf`), the
+random-encounter opponent roll, plus the fight-flow draws around it. **Task 11f
+recovered all of it.** All five captured runs now replay their whole draw
+stream (1387 draws) *and* their whole 29-variable `final_state`; the
+`final_state` assertions for A, B and E were added in the same task, since the
+reason they had been withheld was exactly the divergence that is now closed.
 
-One enumerated gap causes all three: `FUN_1000_0d14`
-(`1000:0d14..11c2`), the random-encounter opponent roll, is not recovered —
-`Game::pick_enemy` is an approximation, and the fight-flow draws at `1000:b5f1`
-and `1000:b792` are unmodelled. `docs/re/wander.md` puts all of them outside its
-catalogue. Because the RNG is one shared stream, a single bucket-3 turn
-desynchronises the rest of that run.
+The assertions were not weakened to get there: `replay()` still compares site,
+`n` and `r` over the whole run including the draw count
+(`first_mismatch(.., usize::MAX)`). The constants `A_/B_/E_PREFIX` in
+`tests/wander_sequence.rs` are no longer divergence indices — they only bound
+the three preamble-prefix assertions, which are kept so a preamble regression
+is localised rather than only reported from wherever the whole-run comparison
+happens to break.
 
-The implementer deliberately did not narrow the assertions to the preamble.
-Closing `FUN_1000_0d14` is the next task and turns all five green.
+What `docs/re/gaps.md` still lists open around this area costs **no draw**:
+the level>0 arm of combat's `run` (it needs the growth log, which this port
+does not carry), the `[0x3c83]` arm of the same, the loot award on victory,
+and the flavour text of wander buckets 1 and 4.
 
 ---
 

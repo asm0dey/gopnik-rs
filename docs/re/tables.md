@@ -461,17 +461,37 @@ The prose citations below (`1000:0d14 rolls stats from the weights at
 scripted?) is the one boolean of the two the game actually branches on, so
 it stays runtime.
 
-`FUN_1000_0d14` (`1000:0d14`) generates a random encounter:
+`FUN_1000_0d14` (`1000:0d14`..`1000:11bf`) generates a random encounter.
+**Fully recovered by Task 11f** -- the step list below is now established
+from flow, and `docs/re/gaps.md`'s "The random-encounter opponent" section
+carries the per-site table, the `n` each site pushes and the two `20ae:3693`
+readers. In outline, with `param_1 = 0` (what `1000:b5b8` passes):
 
 1. picks a class index into `20ae:3952` from `Random(0x33)` folded through a
-   triangular walk, plus `Random(district)`, clamped to 9 (`1000:0d6a`..);
-2. zeroes strength/agility/vitality/luck (`20ae:3954`..`20ae:395a`);
-3. distributes `(w0+w1+w2+w3) + крутизна*2` points over the four stats by
-   repeated `Random(sum)`, in proportion to the four weight bytes at
+   triangular walk, plus `Random(district)`, plus `Random(4)` when
+   `[0x3693]` is set, clamped to 9 (`1000:0d22`..`1000:0da5`). The fold
+   **inverts** the roll: a `Random(0x33)` of 0-1 gives class 8, 44-50 gives
+   class 0;
+2. rolls крутизна into `20ae:395c` (`1000:0dc6`..`1000:0e76`):
+   `Round(player_level * f / d + s - 2) + 4 * Random(district)`, floored at
+   0, then multiplied by 1.5 when `[0x3693]` is set;
+3. zeroes strength/agility/vitality/luck (`20ae:3954`..`20ae:395a`);
+4. distributes `(w0+w1+w2+w3) + крутизна*2` points over the four stats by
+   repeated `Random(w0+w1+w2+w3)`, in proportion to the four weight bytes at
    `20ae:0002 + class*4` -- the same array Task 9b recovered as
    `progress::CLASS_WEIGHTS`;
-4. derives `dmg_min = strength div 2`, `dmg_max = strength`,
-   `hpmax = vitality*5 + strength + 10`, `hp = hpmax`.
+5. derives `dmg_min = strength div 2`, `dmg_max = strength`,
+   `hpmax = vitality*5 + strength + 10`, `hp = hpmax`;
+6. rolls the three loot words `20ae:396a`/`396c`/`396e` (beer, money, Хлам)
+   and the armour byte `20ae:3968`.
+
+**Correction.** An earlier revision of step 4 said the loop drew
+`Random(sum)` where `sum` was the *running remaining points*. It is the
+constant weight-row sum: `1000:0ed1` stores it once into `[bp-2]` and
+`1000:0ef7` pushes that same byte every iteration. `data/rng_trace.json`
+observed exactly `{6, 8, 9, 12, 20, 22}` at `1000:0efd` across 348 stops --
+the six distinct weight-row sums of classes 0..9 -- which a decreasing
+remainder could not produce.
 
 So `data/enemies.json` carries, for classes 0..9, the class name and its
 weight row and nothing else (`generated: true`, `level: null`,

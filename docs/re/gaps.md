@@ -206,78 +206,180 @@ table; and the mage's two file writes on the paid path (`save_r0.sav` at
 `Game::write_save` is `Unsupported` for every `Game` this port can build. All
 are text or I/O; none costs a draw.
 
-### The random-encounter opponent — `FUN_1000_0d14` — THE OPEN DIVERGENCE
+### The random-encounter opponent — `FUN_1000_0d14` — CLOSED (Task 11f)
 
-*Cited from `src/game.rs`'s `Game::walk` and `Game::pick_enemy`.*
+*Cited from `src/game.rs`'s `Game::walk`, `Game::roll_enemy` and
+`Game::cop_encounter`.*
 
-**This is now the largest known divergence in the port, and it is what stops
-three of the five captured runs replaying.**
+This was the largest known divergence in the port and the reason three of the
+five captured runs did not replay. **It is closed.** All five runs of
+`data/rng_trace.json` now replay their whole draw stream — 1387 draws — and
+all five also match their whole 29-variable `final_state`.
 
-`1000:b5b8` calls `FUN_1000_0d14` to roll the encounter's opponent.
-`Game::pick_enemy` is an admitted approximation of it: a uniform `Random(10)`
-class pick and a weight-driven stat distribution. The original is a whole
-routine, `1000:0d14`..`1000:11c2`, and `data/rng_trace.json`'s
-`sites_not_in_catalogue` enumerates the **fourteen** `Random` sites it and its
-callees actually use, with the `n` each was observed pushing:
+**Established from flow.** `1000:0d14`..`1000:11bf` (file
+`0x25e4`..`0x2a8f`) was disassembled with
+`ndisasm -b16 -o 0xd14 -e 0x25e4 orig/g.exe`, i.e. from the routine's own
+`55` / `89 e5` entry, so every address below sits on a confirmed instruction
+boundary; each of the fourteen `Random` sites carries the `9a 4b 11 78 0f`
+signature at the address named. `1000:b5b8` calls it with `param_1 = 0`
+(`b0 00` / `50` at `1000:b5b5`); `1000:c3d0`, `1000:dc0e` and `1000:e181`
+pass 1 and `1000:ddf6` passes 2, which selects only the two extra clamps at
+`1000:0da7`/`1000:0dba`.
 
-| site | observed `n` | stops |
-|---|---|---|
-| `1000:0d26` | 51 | 13 |
-| `1000:0d70` | 1, 3 | 13 |
-| `1000:0d91` | 4 | 5 |
-| `1000:0dcc` | 1, 3 | 13 |
-| `1000:0ddd` | 5 | 13 |
-| `1000:0df0` | 2 | 13 |
-| `1000:0e04` | 2 | 13 |
-| `1000:0efd` | 6, 8, 9, 12, 20, 22 | 348 |
-| `1000:102e` | 6 | 13 |
-| `1000:109c` | 0, 1, 2, 31, 46, 88 | 13 |
-| `1000:10c4` | 6 | 13 |
-| `1000:113c` | 0, 1, 2, 31, 46, 88 | 13 |
-| `1000:1162` | 2 | 13 |
-| `1000:1197` | 0, 8 | 13 |
+| site | what it draws | `n` | stops |
+|---|---|---|---|
+| `1000:0d26` | class seed, folded by the triangular walk at `1000:0d2f`..`1000:0d68` | 51 | 13 |
+| `1000:0d70` | class += `Random(district)` | district | 13 |
+| `1000:0d91` | class += `Random(4)`, **only** when `[0x3693]` is set (`1000:0d86`) | 4 | 5 |
+| `1000:0dcc` | крутизна += `4 * Random(district)` (`shl ax,1` twice at `1000:0dd1`) | district | 13 |
+| `1000:0ddd` | the `+ s` term of the крутизна expression | 5 | 13 |
+| `1000:0df0` | its **divisor**, `+ 1` | 2 | 13 |
+| `1000:0e04` | its **multiplier**, `+ 1` | 2 | 13 |
+| `1000:0efd` | one stat point, bucketed against the weight row | Σ weights | 348 |
+| `1000:102e` | Хлам's flat term | 6 | 13 |
+| `1000:109c` | Хлам's spread | `k` | 13 |
+| `1000:10c4` | money's flat term | 6 | 13 |
+| `1000:113c` | money's spread | `k` | 13 |
+| `1000:1162` | beer | 2 | 13 |
+| `1000:1197` | armour | `2 * (district − 1)²` | 13 |
 
-`1000:0d26`'s `Random(51)` is the class pick `docs/re/tables.md` records as
-"`Random(0x33)` plus a district formula, not fully recovered"; the port's
-`Random(10)` is neither the same `n` nor the same number of draws.
+The recovered routine, in order:
 
-Downstream of it, the fight flow spends more draws the port does not model:
-`1000:b5f1` (`n` 18 or 22, 11 stops), `1000:b725` (`n` 2 — the decline roll,
-which the port *does* spend) and `1000:b792` (`n` 22 or 36, 2 stops). Which of
-`1000:b691` / `1000:b721` a real encounter reaches depends on `1000:b5fc`,
-untraced. `docs/re/wander.md` puts every one of these outside its catalogue.
+1. **Class.** `Random(0x33) + 1` (`1000:0d26`), then a triangular walk: for
+   `i` in `1..=10`, if the running value goes negative on subtracting `i` the
+   class becomes `10 − i` and the walk stops, otherwise `i` is subtracted
+   (`1000:0d64` `cmp byte [bp-1],0x0a` / `jnz 0xd35` bounds it). 51 cannot
+   survive all ten subtractions — they total 55 — so the walk always leaves
+   through the break. The fold **inverts** the roll: `Random(0x33)` of 0–1
+   gives class 8, 44–50 gives class 0. Then `+ Random(district)`, then
+   `+ Random(4)` when `[0x3693]` is set, then clamp to 9.
+2. **Крутизна** (`1000:0dc6`..`1000:0e76`).
+   `Round(player_level * f / d + s − 2) + 4 * Random(district)`, floored at 0
+   (`1000:0e48`), and then **multiplied by 1.5** (`1000:0e6c`) when
+   `[0x3693]` is set. `s` is `Random(5)`, `f` is `Random(2) + 1` at
+   `1000:0e04` and `d` is `Random(2) + 1` at `1000:0df0` — that assignment is
+   not cosmetic: `1000:0dfd` pushes the `1000:0df0` value as a real which
+   `1000:0e1e` pops back into `cx:si:di`, the divisor operand of `0f78:1117`,
+   while the `1000:0e04` value stays in `cx:bx` for the `0f78:09d2` multiply
+   against `[0x38a6]`. `0f78:1117` is the divide, not the multiply: it is the
+   entry that tests `cl` for a zero divisor and raises runtime error 200
+   (`0f78:1117` `0a c9` / `74 2a`); `0f78:1111` is the multiply.
+3. **Stats.** The four are zeroed (`1000:0e79`..`1000:0e8a`), then
+   `Σ weights + крутизна * 2` points are distributed, each
+   `Random(Σ weights) + 1` bucketed against the running prefix sums of the
+   class's weight row at `20ae:0002 + class*4` — `progress::CLASS_WEIGHTS`.
+   Both the sum and the point count are stored as **bytes** (`1000:0ed1`,
+   `1000:0ee2`).
+4. **Derived** (`1000:0ff3`..`1000:101d`): `dmg_min = strength div 2`,
+   `dmg_max = strength`, `hpmax = vitality * 5 + strength + 10`, `hp = hpmax`.
+5. **Loot** (`1000:102a`..`1000:1181`). With
+   `k = крутизна div 2 + Round(class * крутизна / 5)`, recomputed from
+   scratch each time it is needed (`1000:1037`, `1000:106a`, `1000:10cd`,
+   `1000:110a` are all `mov ax,[0x3952]` / `mul word [0x395c]`):
+   Хлам `[0x396e] = max(0, Random(6) + 2 * Random(k) − k)`, money
+   `[0x396c] = max(0, Random(6) + Random(k) − k div 2)`, beer
+   `[0x396a] = Random(2) + крутизна div 10 + 1`. `1000:523e`..`1000:5251`,
+   the victory block of `FUN_1000_3d11`, is what names them: they are added
+   into `[0x38c3]` (beer), `[0x38c7]` (money) and `[0x38c9]` (Хлам).
+6. **Armour** (`1000:1184`..`1000:11b9`): `Random(b) + b` stored as a byte,
+   `b = 2 * (district − 1)²`. District 1 therefore always draws `Random(0)`,
+   which returns 0 — the draw still happens, which is why `1000:1197` has 13
+   stops and not 3.
 
-**Consequence.** The generator is one shared stream, so a single bucket-3 turn
-desynchronises everything after it. `tests/wander_sequence.rs` therefore fails
-on runs A, B and E, at exactly the first `1000:0d26` in each:
+`Round` is Borland's, and it is **half away from zero**: `0f78:1131` sets
+`ch = 1` and calls `0f78:1091`, whose `0f78:10d4` `add bh,bh` sets CF when the
+byte shifted out of the mantissa is ≥ `0x80` and whose `adc ax,0` / `adc dx,0`
+add that carry into the *magnitude*, before the sign is applied at
+`0f78:10e4`. It matters exactly once, at step 2's `× 1.5`: run A turn 11 of
+`data/rng_trace.json` rolls крутизна 1 there and then spends **12** draws at
+`1000:0efd` rather than 10, which only happens if `Round(1.5) = 2`.
 
-| run | walks | draws in the capture | port matches through | first divergence |
-|---|---|---|---|---|
-| A | 30 | 393 | index 17 (turn 2's draw 14) | index 18, `1000:0d26` |
-| B | 25 | 325 | index 62 (turn 6's draw 14) | index 63, `1000:0d26` |
-| C | 3 | 30 | **all 30** | — |
-| D | 3 | 29 | **all 29** | — |
-| E | 25 | 610 | index 78 (turn 6's draw 14) | index 79, `1000:0d26` |
+#### Two corrections this recovery forces
 
-Those three assertions are deliberately left failing rather than narrowed to
-the preamble: a green suite that checks less than it appears to is the failure
-mode `docs/re/METHODOLOGY.md` warns about. Recovering `FUN_1000_0d14` and the
-fight flow is what closes them.
+* **`docs/re/tables.md`'s sketch had the `1000:0efd` loop drawing
+  `Random(remaining points)`.** It does not: the `n` is the constant
+  weight-row sum. The capture's own `n` set at that site is exactly
+  `{6, 8, 9, 12, 20, 22}`, which is the six distinct weight-row sums of
+  classes 0..9 (class 7's 14 never came up), not a decreasing remainder.
+* **`20ae:3693` is not flavour.** `docs/re/wander.md` and this file both
+  described bucket 1's toggle as having no reader. `FUN_1000_0d14` reads it
+  twice — `1000:0d86` and `1000:0e54` — so it changes both the draw *count*
+  and the draw *values* of every later encounter. The port carries it as
+  `Game::flag_3693`.
 
-### Wander buckets 1 and 4 — flavour only, still not modelled
+#### The fight flow around it
+
+**Established from flow**, disassembled forward from `1000:b353` (the
+`9a 4b 11 78 0f` at file `0xcc23`):
+
+* `1000:b5c0` `cmp word [0x3952],8` / `jnz 0xb5ca` — a rolled `Мент` takes
+  `1000:b76a` instead, which **asks no question**: it writes
+  `^6Идет ментяра # уровня гроза гопов.` (file `0xA2DB`), draws
+  `Random(district * 7 + 15)` at `1000:b792`, and compares luck against it.
+  Luck wins → `^2Ты затаился…` (file `0xA300`) and no fight. Luck loses with
+  `[0x38b3]` (тёмные очки) set → files `0xA33C`/`0xA38A` and no fight. Luck
+  loses without them → `^4Запалил!` (file `0xA3B2`) and `1000:b81a` sets the
+  accept flag, so `1000:b829` calls `FUN_1000_3d11(0)` outright.
+* `1000:b5ed`/`1000:b5f1` — the ordinary encounter's notice roll, the same
+  `district * 7 + 15`, but **halved** when `[0x38bc]` (зоновская наколка) is
+  set (`1000:b5da` `cmp byte [0x38bc],1`). The cop's roll has no such branch,
+  which is why the capture shows `n` 18 and 22 at `1000:b5f1` but 22 and 36
+  at `1000:b792`.
+* `1000:b5fc`..`1000:b61b` — the branch that was "untraced". It compares luck
+  against the notice roll as a longint (`cwd`, `cmp dx,bx`, `cmp ax,cx`,
+  `jnc 0xb614`) and then applies a class threshold that **differs between the
+  two arms**: 3 when luck lost (`1000:b60a`), 7 when luck won (`1000:b614`).
+  Meeting it selects the aggressive block at `1000:b6a0` (file `0xA28A`,
+  ` # уровня, ищущий кого отпинать. Хочешь наехать?`, decline roll
+  `Random(2)` at `1000:b725`); otherwise the quiet block at `1000:b61e`
+  (file `0xA26F`, ` # уровня. Хочешь наехать?`, **no** decline roll).
+* `1000:48dc` — combat's own `run` token compare (file `0x4C8B`), reached by
+  the cop fight. Its level-0 arm at `1000:4ade` writes file `0x4D6F` and
+  leaves the fight. **No arm of the flee path draws**: there is no
+  `9a 4b 11 78 0f` anywhere in `1000:48eb`..`1000:4afb`, which is why run A's
+  turn 7 — a cop fight entered and fled — shows zero draws between
+  `1000:b792` and the next turn's `1000:af68`.
+
+#### What is still not modelled inside the fight flow
+
+* `1000:493b`..`1000:4adc`, the **level > 0** arm of `run`: it reads the
+  growth log entry at `[0x38a6] * 3 + 0x38cf`, undoes the two stat grants it
+  records, clears it, may set the den flag (`1000:4aa5`), then
+  `dec word [0x38a6]` / `sub word [0x38d0],0xa` and clamps the XP. This port
+  carries no growth log, so it prints the arm's line (file `0x4CEF`) and
+  leaves the fight without applying the penalty. Costs no draw, and no
+  captured run reaches it: run A's cop fight is fled at level 0.
+* `1000:48eb`'s `[0x3c83] == 1` arm (file `0x33BF`, the rector refusing to
+  let you run). Nothing in this port sets `[0x3c83]`, so the arm is
+  unreachable rather than wrong.
+* The three loot words are rolled and stored on the returned `Fighter`
+  (`beer_dl`, `money`, `junk`) but **not awarded** on victory: this port's
+  `Game::run_combat` tail does not yet reproduce `1000:523e`..`1000:5251`.
+  Costs no draw.
+
+### Wander buckets 1 and 4 — their text is still not modelled
 
 **Established from flow** that neither writes a discovery flag (no
 `c6 06 [94-9a] 36 imm8` store falls between `1000:b3ba` and `1000:b940` except
-`1000:b570`) and that neither spends a draw, so leaving them out cannot move
-the RNG sequence.
+`1000:b570`) and that neither spends a draw, so leaving their *text* out
+cannot move the RNG sequence.
 
-* Bucket 1 (`1000:b3c4`) toggles `[0x3693]`, then writes one district-keyed
-  line from one of two sets (`1000:b3db`.. when the toggle is set,
-  `1000:b465`.. when it is clear). `20ae:3693` is not modelled either: with
-  neither line set extracted, a field carrying the toggle would have no
-  reader.
+* Bucket 1 (`1000:b3c4`) toggles `[0x3693]`
+  (`80 3e 93 36 00` / `b0 00` / `75 01` / `40` / `a2 93 36` — read, then
+  written back inverted), then writes one district-keyed line from one of two
+  sets (`1000:b3db`.. when the toggle is set, `1000:b465`.. when it is clear).
+  Neither line set is extracted, so the port writes nothing here.
+
+  **The toggle itself IS modelled, since Task 11f.** An earlier revision of
+  this section said `20ae:3693` was not modelled because "a field carrying
+  the toggle would have no reader". That was wrong, and it is the "scan whose
+  completeness claim stopped the next search" failure `METHODOLOGY.md` names:
+  the readers are `1000:0d86` and `1000:0e54`, both inside `FUN_1000_0d14`,
+  and between them they change the draw count and the draw values of every
+  later encounter. It is `Game::flag_3693`.
 * Bucket 4 (`1000:b836`) branches on the joint-buff countdown `[0x38cd]` and
   writes name-keyed flavour built with `0f78:0ae7` / `0f78:0b66` string calls.
+  Nothing outside bucket 4 reads what it writes, and it spends no draw.
 
 ### `run`'s extra line — `1000:aeda`
 
@@ -520,10 +622,11 @@ are the questions that pass left open, and the ones it created.
 
 *Cited from `src/game.rs` and `tests/wander_sequence.rs`.*
 
-* **`FUN_1000_0d14` and the fight flow.** The headline open item; it has its
-  own section above ("The random-encounter opponent"). Until it is recovered,
-  three of the five captured runs cannot replay, and `cargo test` is red on
-  exactly those three assertions.
+* ~~**`FUN_1000_0d14` and the fight flow.**~~ **Closed by Task 11f.** It has
+  its own section above ("The random-encounter opponent"), now marked CLOSED:
+  all five captured runs replay their whole draw stream and their whole
+  `final_state`, and `cargo test` is green. What remains open inside the
+  fight flow is enumerated there, and none of it costs a draw.
 * **The market's second pickpocket block spends three draws this port never
   makes** — `1000:c344` `Random(district * 5 + 5)`, `1000:c361` `Random(10)`
   and `1000:c371` `Random(luck * 2)`.

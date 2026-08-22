@@ -95,6 +95,29 @@ pub struct Game {
     /// `20ae:38bb` -- the player owns a mobile phone. Gates draws 3 and 4 of
     /// the wander preamble and every phone-call message in it.
     pub has_mobile: bool,
+    /// `20ae:3693` -- the flag wander bucket 1 toggles at `1000:b3c4`
+    /// (`80 3e 93 36 00` / `b0 00` / `75 01` / `40` / `a2 93 36`: a plain
+    /// boolean flip, read then written back inverted).
+    ///
+    /// **It is not flavour.** `FUN_1000_0d14` reads it twice -- at
+    /// `1000:0d86` to decide whether to spend an extra `Random(4)` on the
+    /// opponent's class (`1000:0d91`), and at `1000:0e54` to multiply the
+    /// opponent's level by 1.5 (`1000:0e6c`). So the toggle changes both the
+    /// draw count and the draw values of every later encounter, which is why
+    /// this port has to carry it even though bucket 1 itself prints only
+    /// flavour text.
+    pub flag_3693: bool,
+    /// `20ae:38b3` / `.SAV 0x217` -- тёмные очки, listed in the stat block by
+    /// `1000:1cf8`/`1000:1cff` (`^1У тебя есть тёмные очки`). On the cop
+    /// encounter's losing roll they are what stops the fight
+    /// (`1000:b7c6` `cmp byte [0x38b3],1`).
+    pub dark_glasses: bool,
+    /// `20ae:38bc` / `.SAV 0x220` -- зоновская наколка, listed by
+    /// `1000:1d18`/`1000:1d1f` (`^1На тебе зоновская наколка`) and bought at
+    /// `1000:cb05` (`^2Чистый зек.`). It **halves** the ordinary encounter's
+    /// notice roll at `1000:b5da`..`1000:b5ea`, and only that one: the cop
+    /// encounter's roll at `1000:b784` has no such branch.
+    pub prison_tattoo: bool,
     /// `20ae:38bf` / `.SAV 0x223` -- the first one-shot gift, granted by the
     /// church's `Random(5) == 2` arm (`1000:8134`) as well as the post-kill
     /// block `docs/re/progression.md` documents.
@@ -249,6 +272,9 @@ impl Game {
             rng: Rng::new(seed),
             location: Location::Street,
             has_mobile: false,
+            flag_3693: false,
+            dark_glasses: false,
+            prison_tattoo: false,
             oneshot_gift_1: false,
             oneshot_gift_2: false,
             ring_gospodi_pomilui: false,
@@ -841,10 +867,13 @@ impl Game {
     /// * **0** -- no arm matches, so the turn ends with nothing. The only
     ///   way to reach it is the church, which zeroes the already-rolled
     ///   bucket at `1000:8282`.
-    /// * **1** (`1000:b3c4`) -- flavour only: toggles `20ae:3693` and writes
-    ///   one district-keyed line from either of two sets (`1000:b3db..`,
-    ///   `1000:b465..`). **Not modelled** -- it spends no draw and neither
-    ///   line set was extracted. See `docs/re/gaps.md`.
+    /// * **1** (`1000:b3c4`) -- toggles `20ae:3693` and writes one
+    ///   district-keyed line from either of two sets (`1000:b3db..`,
+    ///   `1000:b465..`). The **toggle is modelled** (see
+    ///   [`Game::flag_3693`] -- `FUN_1000_0d14` branches on it twice, so it
+    ///   changes both the draw count and the draw values of every later
+    ///   encounter); the lines are not, neither set having been extracted.
+    ///   The bucket spends no draw either way. See `docs/re/gaps.md`.
     /// * **2** (`1000:b4ef`) -- the girl encounter, [`Game::wander_girl`].
     /// * **3** (`1000:b5b5`) -- the fight encounter, below.
     /// * **4** (`1000:b836`) -- flavour only, branching on the joint buff's
@@ -852,11 +881,25 @@ impl Game {
     ///
     /// The fight encounter, `1000:b5b5` onward:
     ///
-    /// * `1000:b5b8` -- `call FUN_1000_0d14` (rolls the enemy).
-    /// * `1000:b6a6`..`1000:b6dd` -- writes `^6Идет ` (file `0xA267`), the
-    ///   rank name, and ` # уровня, ищущий кого отпинать. Хочешь наехать?`
-    ///   (file `0xA28A`) as one `WriteLn`. **No prompt is written after it**
-    ///   -- the very next instruction (`1000:b6e0`) sets up the `ReadLn`.
+    /// * `1000:b5b8` -- `call FUN_1000_0d14` with `param_1 = 0`, which rolls
+    ///   the whole opponent record at `20ae:3952`. Recovered in Task 11f:
+    ///   [`Game::roll_enemy`].
+    /// * `1000:b5c0` -- `cmp word [0x3952],8` / `jnz 0xb5ca`. A rolled
+    ///   `Мент` skips everything below and takes [`Game::cop_encounter`]
+    ///   instead, which asks no question at all.
+    /// * `1000:b5ed`/`1000:b5f1` -- `Random(district * 7 + 15)`, halved
+    ///   first when [`Game::prison_tattoo`] is set (`1000:b5da`
+    ///   `cmp byte [0x38bc],1`). `1000:b5fc`..`1000:b61b` then compares the
+    ///   player's luck against it as a longint and picks between the two
+    ///   answer blocks below: the class threshold is 3 when luck lost the
+    ///   compare (`1000:b60a`) and 7 when it won (`1000:b614`).
+    /// * `1000:b6a6`..`1000:b6dd` -- the aggressive block. Writes `^6Идет `
+    ///   (file `0xA267`), the rank name, and ` # уровня, ищущий кого
+    ///   отпинать. Хочешь наехать?` (file `0xA28A`) as one `WriteLn`.
+    ///   **No prompt is written after it** -- the very next instruction
+    ///   (`1000:b6e0`) sets up the `ReadLn`. `1000:b61e`..`1000:b65b` is the
+    ///   quiet block: same shape, but file `0xA26F`
+    ///   (` # уровня. Хочешь наехать?`) and no decline roll.
     /// * `1000:b6e0`..`1000:b704` -- a **second** `ReadLn`, this time into
     ///   `DS:3a72` (confirmed a different variable from the line-level
     ///   `DS:3972`), then `call 0eed:0216` -- the same case-folding routine
@@ -878,38 +921,69 @@ impl Game {
     /// * `1000:b81f`/`1000:b826` -- if the accept flag is set, `call
     ///   FUN_1000_3d11` (combat) with `param_1 = 0`.
     ///
-    /// There is a second, structurally similar answer block at `1000:b691`
-    /// that has **no** random roll on decline (a non-`y` answer simply ends
-    /// the encounter); which of the two a real encounter reaches depends on
-    /// the rolled enemy's class via `1000:b5fc`, which has not been traced.
-    /// This port always takes the `Random(2)` branch.
-    ///
-    /// **KNOWN DIVERGENCE, and the reason three of the five captured runs do
-    /// not replay.** Everything from `1000:b5b8` on is outside
-    /// `docs/re/wander.md`'s catalogue and is not recovered:
-    /// [`Game::pick_enemy`] is an admitted approximation of `FUN_1000_0d14`
-    /// (`1000:0d14`..`1000:11c2`, fourteen `Random` sites plus a
-    /// weight-driven loop), and the fight-flow draws the captures show at
-    /// `1000:b5f1`, `1000:b725` and `1000:b792` are not modelled either.
-    /// Because the generator is one shared stream, a single bucket-3 turn
-    /// desynchronises the rest of a run. See `docs/re/gaps.md`.
+    /// The `1000:b691` block's decline arm has **no** random roll: a non-`y`
+    /// answer simply ends the encounter. An earlier revision of this comment
+    /// said which of the two blocks a real encounter reaches "has not been
+    /// traced" and that this port "always takes the `Random(2)` branch".
+    /// Both are now false: `1000:b5fc` is the luck-versus-`1000:b5f1`
+    /// compare described above, and the port takes whichever block it
+    /// selects. The 11 stops at `1000:b5f1` against only 2 at `1000:b725` in
+    /// `data/rng_trace.json` are the live confirmation that the quiet block
+    /// is the common one.
     ///
     /// `pub` so `tests/wander_sequence.rs` can drive one turn at a time;
     /// `run()` is still the only path a player takes.
     pub fn walk(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
         let bucket = self.wander_preamble(lines)?;
         match bucket {
+            // 1000:b3c4..1000:b3ce -- bucket 1's only lasting effect. The
+            // two line sets it writes are still not extracted (see
+            // `docs/re/gaps.md`), but the toggle itself is not optional:
+            // `FUN_1000_0d14` branches on it twice.
+            1 => {
+                self.flag_3693 = !self.flag_3693;
+                return Ok(());
+            }
             2 => return self.wander_girl(lines),
             3 => {}
-            // 0 (church-cancelled), 1 and 4: nothing this port models.
+            // 0 (church-cancelled) and 4: nothing this port models.
             _ => return Ok(()),
         }
 
-        let enemy = self.pick_enemy();
+        // 1000:b5b5/1000:b5b8 -- `mov al,0` / `push ax` / `call 0xd14`.
+        let enemy = self.roll_enemy(0);
+        // 1000:b5bb -- `c6 06 72 3b 00`, the accept flag cleared first.
+        // 1000:b5c0 -- `cmp word [0x3952],8` / `jnz 0xb5ca`; the cop gets its
+        // own block with no prompt and no `Хочешь наехать?`.
+        if enemy.class == 8 {
+            return self.cop_encounter(enemy, lines);
+        }
+
+        // 1000:b5ca..1000:b5f1 -- `district * 7 + 15`, halved by the tattoo,
+        // is the notice roll's `n`.
+        let mut n = u16::from(self.district) * 7 + 15;
+        if self.prison_tattoo {
+            n /= 2;
+        }
+        let notice = self.rng.below_at("1000:b5f1", n);
+        // 1000:b5fc..1000:b61b -- luck is compared against it as a longint
+        // (`cwd`, then `cmp dx,bx` / `cmp ax,cx` / `jnc 0xb614`), and the
+        // class threshold differs between the two arms: 3 when luck lost the
+        // compare (`1000:b60a`), 7 when it won (`1000:b614`).
+        let aggressive = if i32::from(self.player.luck) < i32::from(notice) {
+            enemy.class >= 3
+        } else {
+            enemy.class >= 7
+        };
         term::print("^6Идет ");
         term::print(&enemy.name);
+        // 1000:b644 (file 0xA26F) vs 1000:b6c8 (file 0xA28A).
         term::println(&text::fill(
-            " # уровня, ищущий кого отпинать. Хочешь наехать?",
+            if aggressive {
+                " # уровня, ищущий кого отпинать. Хочешь наехать?"
+            } else {
+                " # уровня. Хочешь наехать?"
+            },
             &[enemy.level as i64],
         ));
         let Some(line) = lines.next() else {
@@ -919,6 +993,9 @@ impl Game {
         let answer = line?;
         if answer.trim().eq_ignore_ascii_case("y") {
             self.run_combat(enemy, lines)?;
+        } else if !aggressive {
+            // 1000:b696 -- the quiet arm has no decline roll at all: a
+            // non-`y` answer simply ends the turn.
         } else if self.rng.below_at("1000:b725", 2) == 0 {
             term::println("^4Он тебя заметил.");
             self.run_combat(enemy, lines)?;
@@ -926,6 +1003,58 @@ impl Game {
             term::println("^2Ты смылся.");
         }
         Ok(())
+    }
+
+    /// `1000:b76a`..`1000:b81a` -- what a rolled class 8 (`Мент`) does
+    /// instead of the ordinary encounter.
+    ///
+    /// **Established from flow**, re-derived from `orig/g.exe` disassembling
+    /// forward from `1000:b353` (the `9a 4b 11 78 0f` at file `0xcc23`, the
+    /// wander's own bucket roll) so every address below is on a confirmed
+    /// instruction boundary:
+    ///
+    /// * `1000:b76a`..`1000:b77f` -- writes `^6Идет ментяра # уровня гроза
+    ///   гопов.` (file `0xA2DB`) with `[0x395c]`, the rolled level, pushed at
+    ///   `1000:b76f`. **No line is read**: there is no `Хочешь наехать?` on
+    ///   this path.
+    /// * `1000:b784`..`1000:b792` -- `district * 7 + 15` (`mul dx` with
+    ///   `dx = 7`, then `add ax,0xf`) pushed into `Random`. Unlike
+    ///   `1000:b5ed`'s roll this one is **never** halved by the tattoo --
+    ///   there is no `cmp byte [0x38bc],1` between `1000:b784` and the call.
+    /// * `1000:b79d`..`1000:b7a9` -- luck as a longint against it;
+    ///   `jc 0xb7c6` is taken when luck is **below** the roll.
+    /// * luck won -> `1000:b7ab` writes `^2Ты затаился, прикинулся не
+    ///   гопом... Мент вроде не заметил` (file `0xA300`) and leaves the
+    ///   accept flag clear.
+    /// * luck lost and `[0x38b3]` is 1 -> `1000:b7cd`/`1000:b7e6` write the
+    ///   тёмные очки pair (files `0xA33C`, `0xA38A`); still no fight.
+    /// * luck lost without them -> `1000:b801` writes `^4Запалил!` (file
+    ///   `0xA3B2`) and `1000:b81a` (`c6 06 72 3b 01`) sets the accept flag,
+    ///   so `1000:b829` calls `FUN_1000_3d11` with `param_1 = 0`.
+    fn cop_encounter(
+        &mut self,
+        enemy: Fighter,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<()> {
+        term::println(&text::fill(
+            "^6Идет ментяра # уровня гроза гопов.",
+            &[enemy.level as i64],
+        ));
+        let n = u16::from(self.district) * 7 + 15;
+        let notice = self.rng.below_at("1000:b792", n);
+        if i32::from(self.player.luck) >= i32::from(notice) {
+            term::println("^2Ты затаился, прикинулся не гопом... Мент вроде не заметил");
+            return Ok(());
+        }
+        if self.dark_glasses {
+            term::println(
+                "^2Ты напялил тёмные очки и мент не узнал твою рожу, которая весит на почётном",
+            );
+            term::println("^2стенде \"Разыскиваются за гопничество\"");
+            return Ok(());
+        }
+        term::println("^4Запалил!");
+        self.run_combat(enemy, lines)
     }
 
     /// `1000:aea1`..`1000:b3b9`: everything a walk does before the bucket
@@ -1443,25 +1572,158 @@ impl Game {
         Ok(())
     }
 
-    /// Picks and rolls a random-encounter opponent, reproducing
-    /// `FUN_1000_0d14` (`1000:0d14`, `docs/re/tables.md` section 3) as far
-    /// as this task traced it: distribute `sum(weights)` points across the
-    /// four stats by repeated `Random(sum)` in proportion to the class's
-    /// weight row (the same range-pick `crate::progress`'s level-up `pick`
-    /// uses, reimplemented here since that helper is private); derive
-    /// `dmg_min = str/2`, `dmg_max = str`, `hpmax = vit*5 + str + 10`.
+    /// Turbo Pascal's `Round` of a value that is an exact multiple of one
+    /// half, taking that value **doubled** so the caller needs no float.
     ///
-    /// **Simplifications, not guesses:** the class pick is uniform 0..=9
-    /// rather than the original's `Random(0x33)`-plus-district formula
-    /// (not fully recovered); крутизна's point bonus and the class-8
-    /// (`Мент`/cop) special-case branch at `1000:b5c0` are not modelled.
-    fn pick_enemy(&mut self) -> Fighter {
-        let class = self.rng.below(10);
+    /// **Established from flow.** `Round` is `0f78:1131` (`b5 01`
+    /// `mov ch,1`, then `call 0f78:1091`); `0f78:1129` is `Trunc` and
+    /// differs only in `ch`. Inside the worker, `0f78:10d0`
+    /// (`0a ed` `or ch,ch`) selects the rounding tail: `0f78:10d4`
+    /// `02 ff` (`add bh,bh`) sets CF when the byte shifted out of the
+    /// mantissa is >= 0x80 -- i.e. when the fraction is >= 1/2 -- and
+    /// `15 00 00` / `83 d2 00` (`adc ax,0` / `adc dx,0`) adds one to the
+    /// **magnitude**; the sign is only applied afterwards at `0f78:10e4`.
+    /// So it is round-half-away-from-zero, not half-to-even.
+    ///
+    /// That distinction is load-bearing exactly once: `1000:0e6c`'s
+    /// `level * 1.5`. Run A turn 11 of `data/rng_trace.json` rolls level 1
+    /// there and then spends 12 draws at `1000:0efd` rather than 10, which
+    /// only happens if `Round(1.5)` is 2.
+    fn round_half(twice: i32) -> i32 {
+        if twice >= 0 {
+            (twice + 1) / 2
+        } else {
+            -((-twice + 1) / 2)
+        }
+    }
+
+    /// `FUN_1000_0d14` (`1000:0d14`..`1000:11bf`, file `0x25e4`..`0x2a8f`) --
+    /// the random-encounter opponent, rolled into the record at `20ae:3952`.
+    ///
+    /// **Established from flow.** The whole routine was disassembled with
+    /// `ndisasm -b16 -o 0xd14 -e 0x25e4 orig/g.exe`, i.e. from the routine's
+    /// own `55` / `89 e5` (`push bp` / `mov bp,sp`) entry, and every one of
+    /// its fourteen `Random` call sites carries the `9a 4b 11 78 0f`
+    /// signature at the address cited beside it below. All fourteen fire in
+    /// the running original with the `n` used here: `data/rng_trace.json`'s
+    /// `sites_not_in_catalogue` records 13 stops each (5 for `1000:0d91`,
+    /// 348 for the `1000:0efd` loop), and this implementation reproduces
+    /// every one of them in order.
+    ///
+    /// `param_1` is `[bp+4]`, a byte. `1000:b5b8` -- the wander encounter,
+    /// the only caller this port has -- passes 0; `1000:c3d0`, `1000:dc0e`
+    /// and `1000:e181` pass 1 and `1000:ddf6` passes 2. The clamps at
+    /// `1000:0da7` and `1000:0dba` are the only thing it selects.
+    ///
+    /// Step by step, with the addresses:
+    ///
+    /// 1. `1000:0d22`..`1000:0d68` -- `Random(0x33) + 1`, folded by a
+    ///    triangular walk: for `i` in `1..=10`, if the running value is
+    ///    negative after subtracting `i` the class is `10 - i` and the walk
+    ///    stops, otherwise `i` is subtracted and the walk continues
+    ///    (`1000:0d64` `cmp byte [bp-1],0x0a` / `jnz 0xd35` is the bound).
+    ///    51 can never survive all ten subtractions (they total 55), so the
+    ///    walk always leaves through the break. It maps low rolls to high
+    ///    classes: `Random(0x33)` of 0..1 gives class 8, 44..50 gives class 0.
+    /// 2. `1000:0d6a`..`1000:0d83` -- plus `Random(district)`.
+    /// 3. `1000:0d86`..`1000:0d96` -- plus `Random(4)`, but **only** when
+    ///    `[0x3693]` is set (see [`Game::flag_3693`]).
+    /// 4. `1000:0d9a`..`1000:0dc4` -- clamp to 9; then `param_1 == 1` clamps
+    ///    to 7 and `param_1 == 2` forces 8.
+    /// 5. `1000:0dc6`..`1000:0e45` -- крутизна:
+    ///    `Round(player_level * f / d + s - 2) + 4 * Random(district)`,
+    ///    where `s` is `Random(5)` (`1000:0ddd`), `f` is `Random(2) + 1`
+    ///    (`1000:0df0`) and `d` is `Random(2) + 1` (`1000:0e04`). The
+    ///    multiply is `0f78:09d2` (32-bit `imul`), the divide is
+    ///    `0f78:1117` (6-byte real divide -- it is the entry that checks
+    ///    `cl` for a zero divisor and raises runtime error 200), the add and
+    ///    subtract are `0f78:10ff`/`0f78:1105`, and `0f78:1131` rounds.
+    ///    `1000:0e48` floors it at 0, and `1000:0e54`..`1000:0e76` then
+    ///    multiplies it by **1.5** (`0f78:1111`, real multiply, against the
+    ///    constant `ax=0x0081 bx=0 dx=0x4000`) when `[0x3693]` is set.
+    /// 6. `1000:0e79`..`1000:0e8a` -- the four stats are zeroed.
+    /// 7. `1000:0e8d`..`1000:0fee` -- `sum(weights) + крутизна * 2` points,
+    ///    each `Random(sum(weights)) + 1` (`1000:0efd`) bucketed against the
+    ///    running prefix sums of the class's weight row at `20ae:0002 +
+    ///    class*4` (`mov di,[0x3952]` / `shl di,1` / `shl di,1` /
+    ///    `mov al,[di+0x2..0x5]`), i.e. `crate::progress::CLASS_WEIGHTS`.
+    ///    Both the sum and the point count are stored as **bytes**
+    ///    (`1000:0ed1` `mov [bp-2],al`, `1000:0ee2` `mov [bp-4],al`).
+    ///
+    ///    An earlier reading, recorded in `docs/re/tables.md`, had this loop
+    ///    drawing `Random(remaining points)`. It does not: the `n` is the
+    ///    constant weight-row sum, which is why the observed `n` set at
+    ///    `1000:0efd` is exactly `{6, 8, 9, 12, 20, 22}` -- the six distinct
+    ///    weight-row sums of classes 0..9.
+    /// 8. `1000:0ff3`..`1000:101d` -- `dmg_min = strength div 2`,
+    ///    `dmg_max = strength`, `hpmax = vitality * 5 + strength + 10`,
+    ///    `hp = hpmax`.
+    /// 9. `1000:102a`..`1000:114f` -- the two loot words, both built from the
+    ///    same intermediate `k = крутизна div 2 + Round(class * крутизна / 5)`
+    ///    (recomputed from scratch for each: `1000:1037`, `1000:106a`,
+    ///    `1000:10cd` and `1000:110a` all `mov ax,[0x3952]` /
+    ///    `mul word [0x395c]`). Хлам (`[0x396e]`) is
+    ///    `Random(6) + 2 * Random(k) - k`, money (`[0x396c]`) is
+    ///    `Random(6) + Random(k) - k div 2`, each floored at 0
+    ///    (`1000:10b4`, `1000:1152`).
+    /// 10. `1000:115e`..`1000:1181` -- beer, `Random(2) + крутизна div 10 + 1`.
+    /// 11. `1000:1184`..`1000:11b9` -- armour, `Random(b) + b` stored as a
+    ///     byte, where `b = 2 * (district - 1)^2` (`dec ax` / `imul ax` /
+    ///     `shl ax,1` twice / `idiv 2`). District 1 therefore always draws
+    ///     `Random(0)`, which the original's `Random` returns 0 for -- the
+    ///     draw still happens, which is why `1000:1197` has 13 stops and
+    ///     not 3.
+    fn roll_enemy(&mut self, param_1: u8) -> Fighter {
+        let mut cls = i32::from(self.rng.below_at("1000:0d26", 0x33)) + 1;
+        for i in 1..=10 {
+            if cls - i < 0 {
+                cls = 10 - i;
+                break;
+            }
+            cls -= i;
+        }
+        cls += i32::from(self.rng.below_at("1000:0d70", u16::from(self.district)));
+        if self.flag_3693 {
+            cls += i32::from(self.rng.below_at("1000:0d91", 4));
+        }
+        if cls > 9 {
+            cls = 9;
+        }
+        if param_1 == 1 && cls > 7 {
+            cls = 7;
+        }
+        if param_1 == 2 {
+            cls = 8;
+        }
+        let class = cls as u16;
+
+        let district_bonus =
+            4 * i32::from(self.rng.below_at("1000:0dcc", u16::from(self.district)));
+        let spread = i32::from(self.rng.below_at("1000:0ddd", 5));
+        // `1000:0df0` is the DIVISOR and `1000:0e04` the multiplier, not the
+        // other way round: `1000:0dfd` pushes the first as a real which
+        // `1000:0e1e` pops back into `cx:si:di`, the divisor operand of
+        // `0f78:1117`, while the second stays in `cx:bx` for the `0f78:09d2`
+        // multiply against the player's level at `1000:0e10`.
+        let divisor = i32::from(self.rng.below_at("1000:0df0", 2)) + 1;
+        let factor = i32::from(self.rng.below_at("1000:0e04", 2)) + 1;
+        // `divisor` is 1 or 2 and the numerator is doubled first, so this is
+        // the real quotient exactly, with no rounding of its own.
+        let twice = i32::from(self.player.level) * factor * 2 / divisor + 2 * (spread - 2);
+        let mut ponty = Self::round_half(twice) + district_bonus;
+        if ponty < 0 {
+            ponty = 0;
+        }
+        if self.flag_3693 {
+            ponty = Self::round_half(ponty * 3);
+        }
+
         let weights = progress::class_weights(class);
-        let sum: u16 = weights.iter().sum();
+        let sum = weights.iter().sum::<u16>() & 0xff;
+        let points = ((i32::from(sum) + 2 * ponty) & 0xff) as u16;
         let mut stats = [0u16; 4]; // strength, agility, vitality, luck
-        for _ in 0..sum {
-            let roll = self.rng.below(sum) + 1;
+        for _ in 0..points {
+            let roll = self.rng.below_at("1000:0efd", sum) + 1;
             let mut edge = 0u16;
             for (i, w) in weights.iter().enumerate() {
                 edge += w;
@@ -1473,11 +1735,25 @@ impl Game {
         }
         let [strength, agility, vitality, luck] = stats;
         let hpmax = 10 + 5 * vitality + strength;
+
+        let k = ponty / 2 + (2 * i32::from(class) * ponty + 5) / 10;
+        let junk_bonus = i32::from(self.rng.below_at("1000:102e", 6));
+        let junk_roll = i32::from(self.rng.below_at("1000:109c", k as u16));
+        let junk = (junk_bonus + 2 * junk_roll - k).max(0);
+        let money_bonus = i32::from(self.rng.below_at("1000:10c4", 6));
+        let money_roll = i32::from(self.rng.below_at("1000:113c", k as u16));
+        let money = (money_bonus + money_roll - k / 2).max(0);
+        let beer_dl = i32::from(self.rng.below_at("1000:1162", 2)) + ponty / 10 + 1;
+        let armour_base = 2 * (i32::from(self.district) - 1).pow(2);
+        let armor =
+            (i32::from(self.rng.below_at("1000:1197", armour_base as u16)) + armour_base) & 0xff;
+
         // `data/enemies.json` has one row per rolled class 0..=9 (classes
         // 0..9 are unique there; only the scripted class 10 has variants),
-        // so this lookup is total for every value `below(10)` can return.
-        // A nameless fighter must never reach the player, so a missing row
-        // is a build-data bug, not something to paper over with "".
+        // so this lookup is total for every class the clamps above can
+        // leave. A nameless fighter must never reach the player, so a
+        // missing row is a build-data bug, not something to paper over
+        // with "".
         let name = data::enemies()
             .iter()
             .find(|e| e.class == class)
@@ -1486,15 +1762,19 @@ impl Game {
         Fighter {
             name,
             class,
-            level: 0,
+            level: ponty as u16,
             hp: hpmax,
             hpmax,
             strength,
             agility,
             vitality,
             luck,
+            armor: armor as u16,
             dmg_min: strength / 2,
             dmg_max: strength,
+            beer_dl: beer_dl as u16,
+            money,
+            junk: junk as u16,
             ..Fighter::default()
         }
     }
@@ -1855,6 +2135,36 @@ impl Game {
     ///   `^2Ты победил.` is *not* a per-fight line: it is file `0x1DBF`, the
     ///   centred end-of-game banner `FUN_1000_074b` writes when you beat the
     ///   rector, and printing it here was a fabrication.
+    ///
+    /// ## `run` -- fleeing
+    ///
+    /// **Established from flow**, and needed because Task 11f's cop
+    /// encounter reaches this loop without ever asking a question:
+    /// `1000:48d7`..`1000:48e1` compares the typed line against the literal
+    /// `run` (file `0x4C8B`, `03 72 75 6e`) with `0f78:0bd8`, combat's own
+    /// token compare -- **not** the street dispatcher's, which is why
+    /// `crate::commands::parse` (where `w` and `run` fold into one verb) is
+    /// bypassed for it here.
+    ///
+    /// * `1000:48eb` `[0x3c83] == 1` -> file `0x33BF`, stay in the fight.
+    ///   `[0x3c83]` is not modelled by this port (nothing here sets it), so
+    ///   that arm is unreachable rather than wrong.
+    /// * `1000:490e` a broken leg -> file `0x33F6`, stay in the fight.
+    /// * `1000:4931` `[0x38a6] > 0` -> `1000:493b`..`1000:4adc`, which
+    ///   **reverses one level**: it reads the growth-log entry for the
+    ///   current level at `[0x38a6] * 3 + 0x38cf`, undoes the two stat
+    ///   grants it records, clears it, may set the den flag at `1000:4aa5`,
+    ///   then `dec word [0x38a6]` / `sub word [0x38d0],0xa` and clamps the
+    ///   XP. This port carries no growth log, so **the penalty is not
+    ///   applied** -- see `docs/re/gaps.md`. The control flow is: both this
+    ///   arm and the next reach `1000:4af7` `mov byte [bp-1],1` and leave
+    ///   the fight.
+    /// * `1000:4ade` otherwise (level 0) -> file `0x349F` and leave.
+    ///
+    /// No arm of the flee path draws: there is no `9a 4b 11 78 0f` anywhere
+    /// in `1000:48eb`..`1000:4afb`. That is what makes run A turn 7 of
+    /// `data/rng_trace.json` -- a cop fight entered and fled -- show zero
+    /// draws between `1000:b792` and the next turn's `1000:af68`.
     fn run_combat(
         &mut self,
         mut enemy: Fighter,
@@ -1870,6 +2180,26 @@ impl Game {
                 return Ok(());
             };
             let line = line?;
+            // 1000:48dc -- combat's own `run` compare, ahead of everything
+            // `parse` knows about.
+            if line.trim().eq_ignore_ascii_case("run") {
+                if self.player.broken_leg {
+                    // 1000:4915, file 0x4CC6.
+                    term::println("^4Ты не можешь убежать на сломаной ноге.");
+                    continue;
+                }
+                if self.player.level > 0 {
+                    // 1000:493b, file 0x4CEF. The growth-log reversal that
+                    // follows it in the original is not modelled; see this
+                    // method's doc.
+                    term::print("^4Враг: Трусливый засранец! ");
+                } else {
+                    // 1000:4ade, file 0x4D6F.
+                    term::println("^4Враг: Засранец!");
+                }
+                self.last_enemy = Some(enemy);
+                return Ok(());
+            }
             match parse(&line) {
                 Command::Inspect => self.print_enemy_block(&enemy),
                 Command::Fight => self.combat_round(&mut enemy),
@@ -2126,6 +2456,131 @@ mod tests {
         }
     }
 
+    /// `1000:b76a`'s three arms, and which of them starts a fight.
+    ///
+    /// Driven through `cop_encounter` directly because reaching it from
+    /// `walk` needs the generator to roll class 8, which is a seed hunt
+    /// rather than a test. The input iterator is the assertion: the two
+    /// no-fight arms read **no** line (there is no prompt on this path at
+    /// all), while the `^4Запалил!` arm hands straight to combat, which
+    /// does read one.
+    #[test]
+    fn the_cop_encounter_fights_only_when_luck_loses_and_the_glasses_are_off() {
+        let cop = |g: &mut Game| {
+            g.rng.start_log();
+            Fighter {
+                class: 8,
+                name: "Мент".to_string(),
+                hp: 10,
+                hpmax: 10,
+                ..Fighter::default()
+            }
+        };
+
+        // Luck wins the compare (1000:b7ab): no fight. The tattoo is set
+        // here on purpose: `1000:b784`..`1000:b791` has no
+        // `cmp byte [0x38bc],1`, so unlike `1000:b5f1` this roll must NOT
+        // be halved -- which is what makes the other test's "only" true.
+        let mut g = game();
+        g.player.luck = 10_000;
+        g.prison_tattoo = true;
+        let e = cop(&mut g);
+        let mut lines = input(&["run", "run"]);
+        g.cop_encounter(e, &mut lines).unwrap();
+        assert_eq!(lines.count(), 2, "the stealth arm must read no line");
+        let log = g.rng.take_log();
+        assert_eq!(log.len(), 1, "exactly one draw, 1000:b792");
+        assert_eq!(log[0].site, "1000:b792");
+        assert_eq!(
+            log[0].n, 22,
+            "district 1 -> 1 * 7 + 15, and the tattoo must not halve it"
+        );
+
+        // Luck loses but the тёмные очки are on (1000:b7cd): still no fight.
+        let mut g = game();
+        g.player.luck = 0;
+        g.dark_glasses = true;
+        let e = cop(&mut g);
+        let mut lines = input(&["run", "run"]);
+        g.cop_encounter(e, &mut lines).unwrap();
+        assert_eq!(lines.count(), 2, "the glasses arm must read no line");
+
+        // Luck loses with no glasses (1000:b801): the fight starts.
+        let mut g = game();
+        g.player.luck = 0;
+        let e = cop(&mut g);
+        let mut lines = input(&["run", "run"]);
+        g.cop_encounter(e, &mut lines).unwrap();
+        assert_eq!(
+            lines.count(),
+            1,
+            "^4Запалил! must reach FUN_1000_3d11, which prompts"
+        );
+    }
+
+    /// The зоновская наколка halves `1000:b5f1`'s `n` and nothing else's.
+    /// Asserted on the `n` the port actually pushes, over a whole walk, so a
+    /// regression in either direction shows up.
+    #[test]
+    fn the_prison_tattoo_halves_only_the_ordinary_notice_roll() {
+        for (tattoo, want) in [(false, 22u16), (true, 11u16)] {
+            let mut seen = None;
+            // Walk until a bucket-3 turn produces an ordinary encounter.
+            for seed in 0..400u32 {
+                let mut g = game();
+                g.prison_tattoo = tattoo;
+                g.rng = Rng::new(seed);
+                g.rng.start_log();
+                g.walk(&mut input(&["run", "run", "run", "run"])).unwrap();
+                if let Some(d) = g.rng.take_log().iter().find(|d| d.site == "1000:b5f1") {
+                    seen = Some(d.n);
+                    break;
+                }
+            }
+            assert_eq!(
+                seen,
+                Some(want),
+                "tattoo = {tattoo}: 1000:b5f1's n (district 1)"
+            );
+        }
+    }
+
+    /// `1000:48dc`'s `run`, both arms that leave the fight and the one that
+    /// does not, and the fact that none of them draws.
+    #[test]
+    fn run_leaves_a_fight_without_spending_a_draw() {
+        let enemy = || Fighter {
+            name: "Дохляк".to_string(),
+            hp: 50,
+            hpmax: 50,
+            ..Fighter::default()
+        };
+
+        // Level 0 (1000:4ade): leaves, and reads exactly one line.
+        let mut g = game();
+        g.player.level = 0;
+        g.rng.start_log();
+        let mut lines = input(&["run", "run", "run"]);
+        g.run_combat(enemy(), &mut lines).unwrap();
+        assert_eq!(lines.count(), 2, "one line consumed, then the fight ended");
+        assert!(
+            g.rng.take_log().is_empty(),
+            "no arm of 1000:48eb..1000:4afb calls Random"
+        );
+
+        // A broken leg (1000:490e): stays in the fight, so every line is
+        // consumed and the loop only ends when the input runs out.
+        let mut g = game();
+        g.player.broken_leg = true;
+        let mut lines = input(&["run", "run", "run"]);
+        g.run_combat(enemy(), &mut lines).unwrap();
+        assert_eq!(
+            lines.count(),
+            0,
+            "1000:4915 re-prompts rather than leaving the fight"
+        );
+    }
+
     #[test]
     fn every_gated_location_has_its_own_refusal_string() {
         let mut seen = std::collections::HashSet::new();
@@ -2343,11 +2798,47 @@ mod tests {
     }
 
     #[test]
-    fn pick_enemy_produces_a_named_fighter() {
+    fn roll_enemy_produces_a_named_fighter() {
         let mut g = game();
-        let e = g.pick_enemy();
+        let e = g.roll_enemy(0);
         assert!(!e.name.is_empty());
         assert!(e.hp > 0);
+    }
+
+    /// `param_1` is the only thing `FUN_1000_0d14`'s two extra clamps
+    /// (`1000:0da7`, `1000:0dba`) react to, and this port's own caller
+    /// passes 0 -- so without this the two arms would ship untested.
+    /// Driven over 200 seeds rather than one so the assertion is not
+    /// satisfied by a single lucky roll.
+    #[test]
+    fn roll_enemy_param_clamps_the_class() {
+        let mut saw_eight_without_the_clamp = false;
+        for seed in 0..200u32 {
+            let mut g = game();
+            g.rng = Rng::new(seed);
+            let free = g.roll_enemy(0).class;
+            saw_eight_without_the_clamp |= free > 7;
+
+            let mut g = game();
+            g.rng = Rng::new(seed);
+            assert!(
+                g.roll_enemy(1).class <= 7,
+                "seed {seed}: param_1 = 1 must clamp to 7 (1000:0dad)"
+            );
+
+            let mut g = game();
+            g.rng = Rng::new(seed);
+            assert_eq!(
+                g.roll_enemy(2).class,
+                8,
+                "seed {seed}: param_1 = 2 must force 8 (1000:0dc0)"
+            );
+        }
+        assert!(
+            saw_eight_without_the_clamp,
+            "no seed in 0..200 rolled a class above 7 with param_1 = 0, so the \
+             param_1 = 1 assertion above never had anything to clamp"
+        );
     }
 
     #[test]

@@ -22,6 +22,13 @@
 //! | `+0x15` | `0x215` | `broken_leg` (byte) | set at `1000:45e5` / `1000:4842` |
 //! | `+0x16` | `0x216` | `armor` (byte) | subtracted from damage at `1000:4769`; printed as `^2Броня #` at `1000:163f` |
 //!
+//! The rolled-enemy record at `DS:3952` stops there and then carries three
+//! **loot** words the player's record keeps elsewhere. `1000:523e`..`1000:5251`,
+//! the victory block of `FUN_1000_3d11`, is what names them: `[0x396a]` is
+//! added into `[0x38c3]` (beer in half-litres), `[0x396c]` into `[0x38c7]`
+//! (money) and `[0x396e]` into `[0x38c9]` (Хлам). All three are rolled by
+//! `FUN_1000_0d14` -- see [`crate::game::Game::roll_enemy`].
+//!
 //! The in-game help screen (`1000:610c`..`1000:613e`) states the derived
 //! quantities the same way: `Здоровье = 10+Живучесть*5+Сила`,
 //! `Урон = (Сила/2)мин - (Сила)макс`, `Точность = (20+Ловкость*5)%`. Both
@@ -66,4 +73,11 @@ pub struct Fighter {
     pub stoned: bool,
     pub beer_dl: u16,
     pub money: i32,
+    /// `DS:38c9` for the player, `DS:396e` for a rolled enemy -- "Хлам",
+    /// the junk the dealers buy back (`1000:ce87`..`1000:ce97` moves it into
+    /// the money at `DS:38c7` and zeroes it; the stat block prints it as
+    /// `Хлам #` at `1000:246a`). A rolled opponent carries some, and
+    /// `1000:524c` (`mov ax,[0x396e]` / `add [0x38c9],ax`) hands it to the
+    /// winner.
+    pub junk: u16,
 }

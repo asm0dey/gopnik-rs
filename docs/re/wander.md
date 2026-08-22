@@ -550,16 +550,48 @@ draw 9, class 6 (Вор) adds draw 10 and, when the theft succeeds, draw 11. A
 church turn (draw 13 returns `0`) adds 1, 2 or 3 more and produces no
 encounter. A mage turn (draw 14 returns `0`) adds none but blocks on input.
 
+**A bucket-3 turn adds far more than any of those.** `FUN_1000_0d14` alone
+spends 13 or 14 draws outside its stat loop (14 when `[0x3693]` is set and
+`1000:0d91` fires), and the stat loop itself spends
+`Σ weights + крутизна * 2`. Across the thirteen encounters
+`data/rng_trace.json` captured, that loop ran between **6** and **104**
+times — 348 iterations in total; the 104 is run E's turn 6, class 8 at
+крутизна 42. Then the notice roll at `1000:b5f1` or `1000:b792`, and the
+decline roll at `1000:b725` on the aggressive block. Any differential test
+that assumes a bounded per-turn draw count will be wrong on bucket 3.
+
 ## What this does NOT settle
 
 * Whether `Random`'s `n` of `0` is reachable at draws 10/11 — `chapter` is
   1..5, so `chapter*20` and `chapter*5` are never 0 in any state this pass saw,
   but `[0x3692]`'s full write set was not enumerated.
-* Bucket 3's fight flow (`1000:b5ae`..`1000:b82c`) still has the two open
+* ~~Bucket 3's fight flow (`1000:b5ae`..`1000:b82c`) still has the two open
   questions `docs/re/gaps.md` records: which of `1000:b691` / `1000:b721` a
-  real encounter reaches, and the cop-class stealth path at `1000:b76a`.
-  Draws at `b54e`, `b5f1`, `b725`, `b792`, `b841`, `b871`, `b891`, `b8bd` are
-  downstream of the bucket dispatch and are out of this task's scope.
+  real encounter reaches, and the cop-class stealth path at `1000:b76a`.~~
+  **Both answered by Task 11f**, and the catalogue below now extends past the
+  bucket dispatch to cover them; the full derivation is in
+  `docs/re/gaps.md`'s "The random-encounter opponent" section.
+
+  * `1000:b5fc`..`1000:b61b` decides between the two answer blocks: the
+    player's luck against `Random(district * 7 + 15)` from `1000:b5f1`
+    (halved first when `[0x38bc]`, the зоновская наколка, is set), then a
+    class threshold of 3 if luck lost and 7 if luck won. Meeting it takes
+    `1000:b6a0` (which has the `Random(2)` decline roll at `1000:b725`);
+    otherwise `1000:b61e`, which has none.
+  * `1000:b76a` is entered only when the *rolled enemy's* class is 8
+    (`1000:b5c0`), asks nothing, and rolls the same `district * 7 + 15` at
+    `1000:b792` — never halved. Luck wins → no fight; luck loses with
+    `[0x38b3]` (тёмные очки) → no fight; luck loses without them →
+    `^4Запалил!` and `FUN_1000_3d11(0)` straight away.
+  * `1000:b54e` is bucket 2's own draw and was already catalogued as draw 13a
+    in `Game::wander_girl`; `1000:b841`, `1000:b871`, `1000:b891` and
+    `1000:b8bd` are bucket 4's and are still **outside** the catalogue (that
+    bucket writes flavour only — `docs/re/gaps.md`).
+  * The fourteen draws of `FUN_1000_0d14` itself
+    (`1000:0d26`, `0d70`, `0d91`, `0dcc`, `0ddd`, `0df0`, `0e04`, `0efd`,
+    `102e`, `109c`, `10c4`, `113c`, `1162`, `1197`) are catalogued in
+    `docs/re/gaps.md` rather than duplicated here: they belong to a called
+    routine, not to the wander turn's own straight-line sequence.
 * Whether `FUN_1000_3d11(4)` returns, and therefore whether the chapter-5
   block at `1000:ae1f` really re-runs every turn.
 * The name of the item at `DS:394d`.

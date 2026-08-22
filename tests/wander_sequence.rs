@@ -28,55 +28,61 @@
 //! * anything else -> Enter
 //!
 //! The port has no screen to classify, so every line this test feeds a
-//! handler is `n`: the only prompts a walk turn can raise in this port are
-//! questions (the girl encounter, the fight encounter, the mage's save), and
-//! `n` is what the driver answered at all three. `run`/Enter never became
-//! relevant, because the driver never accepted a fight.
+//! handler is the same one: `run`. That is not a shortcut, it is the only
+//! string that answers all three prompt kinds the way the driver did.
 //!
-//! ## Runs A, B and E are expected to fail, and why that is deliberate
+//! * At a question (the girl encounter, the fight encounter, the mage's
+//!   save) the original compares the answer against the literal `y`
+//!   (file `0x9BF3`) and treats **everything else** as a decline --
+//!   `1000:b548`, `1000:b696` and `1000:b718` are all `jnz`. `run` is not
+//!   `y`, so it declines exactly as the driver's `n` did.
+//! * At the `^0Битва\` prompt `run` is the flee token
+//!   (`1000:48dc`, file `0x4C8B`) -- which is what the driver typed there.
 //!
-//! The port models the wander preamble (`docs/re/wander.md`,
-//! `data/wander.json`). It does **not** model `FUN_1000_0d14`
-//! (`1000:0d14`..`1000:11c2`), the routine that rolls a random-encounter
-//! opponent, nor the fight-flow draws at `1000:b5f1` / `1000:b725` /
-//! `1000:b792` downstream of it -- `docs/re/wander.md` puts all of those
-//! outside its catalogue, and `Game::pick_enemy` is an explicit
-//! approximation. So every run that reaches wander bucket 3 diverges at the
-//! first encounter and cannot recover: the RNG is a single shared stream.
+//! It became relevant with Task 11f: run A's turn 7 rolls class 8, and the
+//! cop encounter at `1000:b76a` starts a fight with **no question asked**
+//! (`1000:b81a` sets the accept flag directly). A test that could only say
+//! `n` would sit at that combat prompt forever.
 //!
-//! Runs C and D never reach bucket 3 and therefore replay end to end,
-//! including the church's own draws.
+//! ## All five runs replay, as of Task 11f
 //!
-//! The assertions are NOT narrowed to the part that passes. A failing
-//! assertion that names the exact divergence is the honest state of the port;
-//! shrinking the comparison to the preamble would make the suite green while
-//! checking less than it appears to.
+//! Runs A, B and E were **deliberately red** from Task 11c until Task 11f,
+//! each diverging at the first draw of `FUN_1000_0d14`
+//! (`1000:0d26`): A at index 18, B at 63, E at 79. The cause was single and
+//! enumerated -- the random-encounter opponent and the fight flow around it
+//! were not recovered, `Game::pick_enemy` was an admitted approximation, and
+//! because the RNG is one shared stream a single bucket-3 turn desynchronised
+//! everything after it.
+//!
+//! Task 11f recovered `1000:0d14`..`1000:11bf` and the three fight-flow sites
+//! (`1000:b5f1`, `1000:b725`, `1000:b792`), and all five runs now replay their
+//! whole draw stream -- 1387 draws in total. The assertions were never
+//! narrowed to make that happen: `replay()` still compares site, `n` and `r`
+//! for the **whole** run including the draw count
+//! (`first_mismatch(.., usize::MAX)`).
 //!
 //! ## Prefix assertions -- added, not substituted
 //!
 //! Draws 3, 4, 9, 10 and 11 (the phone gags, the ring's heal, the thief's two
-//! rolls) occur only in runs B and E, both of which fail overall. A regression
-//! in any of them therefore changed nothing observable: a red test is red
-//! either way. `run_{a,b,e}_matches_the_prefix_before_its_divergence` close
-//! that hole by asserting the first `N` draws of those runs, where `N` is the
-//! run's own enumerated divergence index. They are **additional** tests: the
-//! whole-run assertions above are untouched and still fail. Each prefix test
-//! also asserts that the sites it exists for actually occur inside its window,
-//! so it cannot pass by covering nothing.
+//! rolls) occur only in runs B and E. While those runs were red overall, a
+//! regression in any of them changed nothing observable, so
+//! `run_{a,b,e}_matches_the_preamble_prefix` were added to assert
+//! the first `N` draws, `N` being the run's own divergence index at the time.
+//! They are kept now that the whole-run assertions are green: each one also
+//! asserts that the sites it exists for actually occur inside its window, so
+//! it still cannot pass by covering nothing, and it localises a regression to
+//! the preamble instead of only reporting it from wherever the whole-run
+//! comparison happens to break.
 //!
 //! ## The state channel
 //!
 //! The draw sequence is only one of two channels. `apply_class_bonus`'s flags,
 //! the church's five stat arms and three gift arms, the errand flags and the
-//! level-up grants are all invisible to it. `run_{c,d}_final_state_matches`
-//! assert the capture's whole 29-variable `final_state` for the two runs that
-//! replay end to end, so those are checked too.
-//!
-//! Runs A, B and E get **no** `final_state` assertion. Their draw streams
-//! diverge partway, so their end states legitimately differ from the capture's
-//! and asserting them would either fail for the already-enumerated reason or
-//! have to be weakened to a subset -- and the draw assertion wins over any
-//! state assertion that would conflict with it.
+//! level-up grants are all invisible to it. `run_*_final_state_matches` assert
+//! the capture's whole 29-variable `final_state`, and since Task 11f that is
+//! **all five runs**, not just C and D: the two channels are independent, so
+//! five matching end states is a real second check on the encounter generator
+//! and not a restatement of the draw comparison.
 
 use gopnik::game::Game;
 use gopnik::locations::Location;
@@ -146,9 +152,20 @@ struct Run {
     final_state: FinalState,
 }
 
+/// One row of `data/rng_trace.json`'s `sites_not_in_catalogue` -- the
+/// summary the capture wrote of every `Random` site it saw that
+/// `docs/re/wander.md`'s preamble catalogue does not cover. It is a
+/// *different* field from `runs[].draws`, aggregated across all five runs.
+#[derive(Deserialize)]
+struct SiteSummary {
+    count: usize,
+    n_values: Vec<u16>,
+}
+
 #[derive(Deserialize)]
 struct Trace {
     runs: Vec<Run>,
+    sites_not_in_catalogue: std::collections::BTreeMap<String, SiteSummary>,
 }
 
 fn repo(rel: &str) -> PathBuf {
@@ -229,7 +246,9 @@ fn game_for(run: &Run) -> Game {
         .district_key
         .parse::<u8>()
         .unwrap_or_else(|_| panic!("run {}: bad district_key", run.label));
+    g.dark_glasses = b[0x217] != 0; // 20ae:38b3
     g.has_mobile = b[0x21f] != 0; // 20ae:38bb
+    g.prison_tattoo = b[0x220] != 0; // 20ae:38bc
     g.oneshot_gift_1 = b[0x223] != 0; // 20ae:38bf
     g.oneshot_gift_2 = b[0x224] != 0; // 20ae:38c0
     g.ring_gospodi_pomilui = b[0x225] != 0; // 20ae:38c1
@@ -253,29 +272,29 @@ fn game_for(run: &Run) -> Game {
     g
 }
 
-/// `n` for every prompt: see the module doc for why it is the driver's
-/// answer at all three prompts a walk turn can raise. Bounded rather than
-/// endless so a handler that ignores the line cannot spin forever.
+/// `run` for every prompt: see the module doc for why one string answers
+/// all three prompt kinds the way `tools/rngtrace/driver.py` answered them.
+/// Bounded rather than endless so a handler that ignores the line cannot
+/// spin forever.
 fn declines(n: usize) -> std::vec::IntoIter<std::io::Result<String>> {
     (0..n)
-        .map(|_| Ok("n".to_string()))
+        .map(|_| Ok("run".to_string()))
         .collect::<Vec<_>>()
         .into_iter()
 }
 
-/// Where each red run's draw sequence first disagrees with the oracle, as a
-/// 0-based index into `runs[].draws` -- i.e. the index of the first
-/// **mismatching** draw, so `0..N` is the matching prefix and draw `N` is the
-/// port's `Game::pick_enemy` standing in for the original's `1000:0d26`.
+/// Where each of these runs' draw sequences used to first disagree with the
+/// oracle, as a 0-based index into `runs[].draws`: the index of the first
+/// `1000:0d26`, which is where `Game::pick_enemy`'s approximation stood in
+/// for `FUN_1000_0d14` before Task 11f recovered it.
 ///
-/// These are not fresh claims: they are the indices
-/// `run_{a,b,e}_replays_exactly` print when they fail, and the ones
-/// `docs/re/gaps.md`'s "The random-encounter opponent" table records. They are
-/// used only to bound the prefix assertions below; the whole-run assertions
-/// do not read them.
-const A_DIVERGES_AT: usize = 18;
-const B_DIVERGES_AT: usize = 63;
-const E_DIVERGES_AT: usize = 79;
+/// They are no longer divergence points -- all five runs replay in full --
+/// and they are kept only as the window bound for the prefix assertions
+/// below, which is the one thing they were ever used for. The whole-run
+/// assertions do not read them.
+const A_PREFIX: usize = 18;
+const B_PREFIX: usize = 63;
+const E_PREFIX: usize = 79;
 
 /// Drive one captured run to completion, returning the finished [`Game`] --
 /// so the *state* channel can be checked as well as the draw sequence -- and
@@ -470,8 +489,10 @@ fn assert_final_state(label: &str, run: &Run, g: &Game) {
 }
 
 /// Run A -- a fresh Подтсан (class 3) in district 1, 30 walks, 393 draws.
-///
-/// **Expected to fail** at index 18; see the module doc.
+/// Six of its turns reach wander bucket 3, and turn 7 rolls class 8: the
+/// only cop encounter in the captures that gets past the notice roll, so
+/// this is the run that exercises `1000:b801`, the fight it starts and the
+/// `run` that ends it.
 #[test]
 fn run_a_replays_exactly() {
     replay("A");
@@ -480,8 +501,6 @@ fn run_a_replays_exactly() {
 /// Run B -- a fresh Вор (class 6) in district 1, 25 walks, 325 draws. The
 /// only runs that exercise draws 10 and 11 (`1000:b2fa`, `1000:b321`) are
 /// this one and E.
-///
-/// **Expected to fail** at index 63; see the module doc.
 #[test]
 fn run_b_replays_exactly() {
     replay("B");
@@ -504,12 +523,63 @@ fn run_d_replays_exactly() {
 
 /// Run E -- `SAVE_R3.SAV` loaded at district 3: a Вор with the phone and the
 /// ring, so this is the only run that reaches draws 3, 4 and 9, and the only
-/// one where draws 10/11 use a district other than 1 (`n` = 60 and 15).
-///
-/// **Expected to fail** at index 79; see the module doc.
+/// one where draws 10/11 use a district other than 1 (`n` = 60 and 15). It
+/// is also the only run with the зоновская наколка (`20ae:38bc`), which
+/// halves the ordinary encounter's notice roll at `1000:b5f1` from 36 to
+/// 18 -- both values appear in the capture, 18 here and 36 at the cop's
+/// unhalved `1000:b792`.
 #[test]
 fn run_e_replays_exactly() {
     replay("E");
+}
+
+/// Every site in `data/rng_trace.json`'s `sites_not_in_catalogue` must fire
+/// exactly as often as the capture saw it, with exactly the same set of `n`,
+/// summed over all five runs.
+///
+/// This reads a **different field of the oracle** from the replay tests --
+/// an aggregate the capture computed, not the per-run `draws` arrays -- and
+/// checks the two things a `Random` call site is: how many times it runs, and
+/// what bound it pushes. It is the committed check that Task 11f's recovered
+/// `n` formulas are the original's and not merely self-consistent.
+///
+/// It cannot pass vacuously. The assertions below require the map to be
+/// non-empty, every count to be non-zero, and the port to have made at least
+/// one draw at every site named -- so a port that stopped drawing at, say,
+/// `1000:0d91` (five stops out of 1387 draws, easy to lose) fails here rather
+/// than reporting "0 == 0".
+#[test]
+fn the_uncatalogued_sites_fire_as_often_as_the_capture_saw_them() {
+    let t = trace();
+    assert!(
+        !t.sites_not_in_catalogue.is_empty(),
+        "the oracle's sites_not_in_catalogue is empty, so this test checks nothing"
+    );
+
+    let mut got: std::collections::BTreeMap<String, (usize, std::collections::BTreeSet<u16>)> =
+        std::collections::BTreeMap::new();
+    for label in ["A", "B", "C", "D", "E"] {
+        let run = run_named(label);
+        let (_, draws) = drive(&run);
+        for d in draws {
+            let e = got.entry(d.site.to_string()).or_default();
+            e.0 += 1;
+            e.1.insert(d.n);
+        }
+    }
+
+    for (site, want) in &t.sites_not_in_catalogue {
+        assert!(
+            want.count > 0,
+            "{site}: the capture recorded 0 stops, so asserting it proves nothing"
+        );
+        let (count, ns) = got
+            .get(site)
+            .unwrap_or_else(|| panic!("{site}: the port never drew here at all"));
+        assert_eq!(count, &want.count, "{site}: number of draws");
+        let want_ns: std::collections::BTreeSet<u16> = want.n_values.iter().copied().collect();
+        assert_eq!(ns, &want_ns, "{site}: the set of n values pushed");
+    }
 }
 
 /// Run C's whole 29-variable end state, the channel the draw comparison
@@ -534,14 +604,43 @@ fn run_d_final_state_matches() {
     assert_final_state("D", &run, &g);
 }
 
-/// The first 18 draws of run A -- the whole matching prefix of a run whose
-/// full assertion is red. Six turns' worth of the ordinary preamble, plus
-/// draws 1 and 2 firing and then stopping (`1000:af68`, `1000:afc7`).
+/// Run A's whole 29-variable end state. Task 11f added it: before the
+/// encounter generator landed this run's draw stream diverged at index 18
+/// and its end state legitimately could not be asserted. It can now, and
+/// leaving it out would have kept a hole exactly where the new code runs --
+/// run A is the only captured run that enters a fight at all (turn 7's cop).
 #[test]
-fn run_a_matches_the_prefix_before_its_divergence() {
+fn run_a_final_state_matches() {
+    let run = run_named("A");
+    let (g, _) = drive(&run);
+    assert_final_state("A", &run, &g);
+}
+
+/// Run B's whole 29-variable end state. Same reason as run A's.
+#[test]
+fn run_b_final_state_matches() {
+    let run = run_named("B");
+    let (g, _) = drive(&run);
+    assert_final_state("B", &run, &g);
+}
+
+/// Run E's whole 29-variable end state -- the only loaded-save run, so this
+/// is the only committed check that the `.SAV`-derived starting state
+/// survives 25 walks unchanged where the original left it unchanged.
+#[test]
+fn run_e_final_state_matches() {
+    let run = run_named("E");
+    let (g, _) = drive(&run);
+    assert_final_state("E", &run, &g);
+}
+
+/// The first 18 draws of run A: six turns' worth of the ordinary preamble,
+/// plus draws 1 and 2 firing and then stopping (`1000:af68`, `1000:afc7`).
+#[test]
+fn run_a_matches_the_preamble_prefix() {
     replay_prefix(
         "A",
-        A_DIVERGES_AT,
+        A_PREFIX,
         &[
             "1000:af68",
             "1000:b186",
@@ -555,23 +654,21 @@ fn run_a_matches_the_prefix_before_its_divergence() {
 /// The first 63 draws of run B. This is the committed check on **draws 10 and
 /// 11** -- the Вор's two thief draws, `1000:b2fa` (`Random(district * 20)`)
 /// and `1000:b321` (`Random(district * 5)`, reached only when
-/// `luck >= draw 10`). Before this test they were exercised only by tests
-/// that fail overall.
+/// `luck >= draw 10`) -- localised to the preamble.
 #[test]
-fn run_b_matches_the_prefix_before_its_divergence() {
-    replay_prefix("B", B_DIVERGES_AT, &["1000:b2fa", "1000:b321"]);
+fn run_b_matches_the_preamble_prefix() {
+    replay_prefix("B", B_PREFIX, &["1000:b2fa", "1000:b321"]);
 }
 
 /// The first 79 draws of run E. This is the committed check on **draws 3, 4
 /// and 9** -- the two phone gags (`1000:b030` `Random(200)`, `1000:b0dc`
 /// `Random(100)`) and the ring's injury heal (`1000:b272` `Random(20)`) --
 /// and on draws 10 and 11 at a district other than 1 (`n` = 60 and 15).
-/// Before this test all five were exercised only by tests that fail overall.
 #[test]
-fn run_e_matches_the_prefix_before_its_divergence() {
+fn run_e_matches_the_preamble_prefix() {
     replay_prefix(
         "E",
-        E_DIVERGES_AT,
+        E_PREFIX,
         &[
             "1000:b030",
             "1000:b0dc",
