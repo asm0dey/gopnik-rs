@@ -47,7 +47,11 @@ before subtracting** — the load image starts at file `0x18d0`, which is Ghidra
     linear(1000:XXXX) = image_base + XXXX
 
 Skipping the `- 0x18d0` puts the base out by exactly that much and every
-breakpoint lands on unrelated memory.
+breakpoint lands on unrelated memory. The header size is not a magic number:
+`tools/addr.py` derives it from the MZ header and exposes
+`image_off_of_file_off()` / `file_off_of_image_off()`, which `tools/rngtrace`
+uses. `docs/re/METHODOLOGY.md` is the authority for the rule; the worked
+numbers above are kept because deriving the base is what this file is for.
 
 Testing saw base `0x224B0`, cross-checked against a live `CS=0x224e`. Do NOT
 hardcode it — DOS picks the load segment.

@@ -15,8 +15,9 @@
 //! The constants below are transcribed from `orig/g.exe` via
 //! `data/strings.json`, at the file offsets named on each line -- **not**
 //! copied out of `main.rs`. That is the point: if `main.rs` drifts away from
-//! the original's bytes, this test fails. Convert a Ghidra `1000:XXXX`
-//! address to a file offset with `0x18d0 + XXXX`.
+//! the original's bytes, this test fails. To convert a Ghidra `1000:XXXX`
+//! address to a file offset, run `python3 tools/re_query.py resolve 1000:XXXX`
+//! (`docs/re/METHODOLOGY.md` is the authority for the rule).
 
 use std::process::{Command, Stdio};
 

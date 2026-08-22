@@ -155,12 +155,10 @@ Other stated limits:
 
 ## Address convention, and how it was checked
 
-Ghidra loads the image at segment `0x1000`, so for a Ghidra address `SEG:OFF`:
-
-```
-file_off  = 0x18d0 + (SEG - 0x1000) * 16 + OFF
-real DOS seg = SEG - 0x1000        # Ghidra 1f78:114b == the docs' 0f78:114b
-```
+Every address in this file is a Ghidra label (`SEG >= 0x1000`), so Form A of
+the convention applies throughout. `docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is the authority for the rule; `tools/addr.py` is its executable form and `python3 tools/re_query.py resolve <citation>` checks any single address against the bytes. `data/branches.json`
+records the same formula in its `file_off_formula` field, which is a
+description of that artifact, not a second authority.
 
 Every branch record carries `file_off` (that formula) **and**
 `file_off_ghidra` (Ghidra's own `AddressSourceInfo.getFileOffset()`, computed

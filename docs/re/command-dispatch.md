@@ -3,8 +3,7 @@
 Machine-readable form: `data/command_dispatch.json`. Traced with
 `ndisasm -b16 -o 0xab59` over `entry`'s full 17143-byte body (file
 `0xC429`..`0x10720`) plus manual disassembly of specific regions.
-`file_off = 0x18D0 + off` for every `1000:XXXX` address below, per this
-project's standard convention.
+Every address below is a Ghidra `1000:XXXX` label. `docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is the authority for the rule; `tools/addr.py` is its executable form and `python3 tools/re_query.py resolve <citation>` checks any single address against the bytes.
 
 ## Method
 
@@ -36,8 +35,8 @@ sequence, filtered to calls whose first operand is `DS:3972` (a second,
 unrelated variable `DS:3a72` is reused for encounter/sub-prompt answers,
 see below), and extracted `(compare address, token file offset)` for every
 hit. Each row below was independently re-verified by disassembling its own
-compare instruction directly and reading the token bytes at
-`0x18D0 + off` out of `orig/g.exe`.
+compare instruction directly and reading the token bytes out of
+`orig/g.exe` at the file offset the citation resolves to.
 
 ## The confirmed `DS:3972` dispatch chain
 

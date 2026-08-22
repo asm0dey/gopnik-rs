@@ -20,7 +20,10 @@ import java.util.TreeSet;
  * opcodes like BA/B8/68.
  *
  * Address mapping (see docs/re/string-pointers.md): the program image begins
- * at file offset 0x18D0 and loads at segment 0x1000. Every memory block in
+ * at file offset 0x18D0 and loads at segment 0x1000. (The rule and its range
+ * of validity live in docs/re/METHODOLOGY.md; tools/addr.py is its executable
+ * form. This file restates the SEG >= 0x1000 half only because a Ghidra script
+ * is Java and cannot import it -- keep the two in step.) Every memory block in
  * this import is part of one contiguous flat image, so for an instruction at
  * segment S, a 16-bit value imm used as a near offset within that same
  * segment maps to file_offset = 0x18D0 + (S - 0x1000) * 16 + imm. This

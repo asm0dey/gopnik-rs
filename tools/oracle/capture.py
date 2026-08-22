@@ -35,6 +35,10 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+import addr  # noqa: E402  -- the address convention, defined once
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 ORIG = ROOT / "orig"
 HERE = pathlib.Path(__file__).resolve().parent
@@ -62,7 +66,10 @@ STATE_RECORD = 2 + STATE_SIZE
 # orig/g.exe is never touched, and a pinned binary is never committed: pass
 # seed=None -- the default -- and the game seeds itself from the clock exactly
 # as it ships. See docs/re/combat.md.
-RANDOMIZE_FILE_OFF = 0x12230  # 0x18D0 + (0x1f78 - 0x1000) * 16 + 0x11e0
+# tools/addr.py owns the citation arithmetic; 0f78:11e0 is a real runtime
+# seg:off (Form B), so it goes through image_off_of_seg_off, not the Ghidra
+# form.  See docs/re/METHODOLOGY.md.
+RANDOMIZE_FILE_OFF = addr.file_off_of_citation("0f78:11e0")  # 0x12230
 RANDOMIZE_ORIGINAL = bytes.fromhex("b42ccd21890e7e3689168036cb")
 
 

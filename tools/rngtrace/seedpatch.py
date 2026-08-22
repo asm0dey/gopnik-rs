@@ -16,10 +16,16 @@ Same length, same entry, same far return, same two destination words, so the
 patch cannot shift any other address.  orig/g.exe is never touched.
 """
 import hashlib
+import sys
 from pathlib import Path
 
-# file_off = 0x18d0 + seg*16 + off  for a real seg:off.  0f78:11e0 -> 0x12230.
-RANDOMIZE_FILE_OFF = 0x12230
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import addr  # noqa: E402  -- the address convention, defined once
+
+# 0f78:11e0 is a real runtime seg:off; tools/addr.py picks the right form for
+# it (docs/re/METHODOLOGY.md is the authority for the rule).
+RANDOMIZE_FILE_OFF = addr.file_off_of_citation("0f78:11e0")  # 0x12230
 RANDOMIZE_ORIG = bytes.fromhex("b42ccd21890e7e3689168036cb")
 SEED_LO_ADDR = 0x367E  # DS:367e -- RandSeed low word
 SEED_HI_ADDR = 0x3680  # DS:3680 -- RandSeed high word

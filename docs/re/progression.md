@@ -5,12 +5,11 @@ running under the Task 3 oracle. Artifacts: `data/xp.json` (built by
 `tools/capture_xp_cases.py`), port in `src/progress.rs`, tests in
 `tests/progression.rs`.
 
-Addresses are Ghidra `segment:offset`. The load image begins at file offset
-`0x18d0` with code segment `1000`, so `1000:xxxx` is file offset
-`0x18d0 + xxxx`; the data segment is Ghidra's `20ae`, i.e. file offset
-`0x18d0 + (0x20ae - 0x1000) * 16 = 0x123b0` for `DS:0000`. That base is not
-assumed: `tools/capture_xp_cases.py` refuses to read anything out of the
-image unless the shortstring at `DS:002e` decodes to `Дохляк`.
+Addresses are Ghidra `segment:offset`; the data segment is Ghidra's `20ae`,
+whose `DS:0000` is file `0x123b0`. `docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is the authority for the rule; `tools/addr.py` is its executable form and `python3 tools/re_query.py resolve <citation>` checks any single address against the bytes. That base is not
+assumed: `tools/capture_xp_cases.py` imports `tools/addr.py` rather than
+recomputing it, and refuses to read anything out of the image unless the
+shortstring at `DS:002e` decodes to `Дохляк`.
 
 ## The state
 

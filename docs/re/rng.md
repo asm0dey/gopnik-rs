@@ -18,9 +18,8 @@ never find it.
 ## Addresses
 
 All three routines live in Ghidra memory block `CODE_5`, segment `1f78`
-(the Borland `System` unit). File offsets below assume the standard MZ
-mapping `file = 0x18D0 + (seg - 0x1000) * 16 + off` (header is 397
-paragraphs; Ghidra loaded the image at segment `0x1000`).
+(the Borland `System` unit), so every citation in this section is a Ghidra
+label. `docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is the authority for the rule; `tools/addr.py` is its executable form and `python3 tools/re_query.py resolve <citation>` checks any single address against the bytes.
 
 | Ghidra address | Ghidra name | File offset | Pascal identity |
 |---|---|---|---|

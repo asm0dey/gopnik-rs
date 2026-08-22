@@ -133,8 +133,12 @@ inside `FUN_1000_3d11`, combat — *not* inside `entry`, which is what this file
 claimed until now — and they moved the count by zero: `1000:48eb` and
 `1000:4931` were already cited in `docs/re/wander.md` and
 `docs/re/progression.md` before Task 11f, and `1000:490e` appears nowhere
-under `docs/re/` at all — only in `src/game.rs` and in this file, neither of
-which the metric reads.
+under `docs/re/` at all — among the project's RE prose it is only in
+`src/game.rs` and in this file, neither of which the metric reads. (It does
+appear twice in `data/branches.json`, as catalogue data, and in
+`data/string_pointers_audit.tsv`; those are generated artifacts, not prose,
+and the metric does not read them either.
+`git grep -l '1000:490e'` lists exactly those four files.)
 
 Two functions hold 75% of all game branches:
 
@@ -164,8 +168,11 @@ then `sv` mid-fight. That proves which verbs reach it, including a negative.
 
 ## Remaining work
 
-1. **Task 11g** — promote the address convention into `tools/addr.py` with
-   tests, and stop re-deriving it by hand each time (`.superpowers/sdd/task-11g-brief.md`).
+1. ~~**Task 11g**~~ — **done.** The address convention lives in
+   `tools/addr.py` with tests in `tools/test_addr.py`; the four recurring
+   disassembly questions are `python3 tools/re_query.py {resolve,is-call-site,
+   pushed-n,xrefs-to}` with tests in `tools/test_re_query.py`. See
+   `docs/re/METHODOLOGY.md`, "How to check this mechanically".
 2. Task 12 — now much smaller: the draw-replay covers the RNG half, so 12 is
    prices, XP thresholds, level-up gains, starting stats, menu numbering.
 3. The bulk, from `docs/re/gaps.md`: no `.SAV` load path and `write_save`
@@ -176,15 +183,20 @@ then `sv` mid-fight. That proves which verbs reach it, including a negative.
    joint heal formula (rests on analogy with beer — a hypothesis, not a
    finding). The encounter decline branch itself is now resolved (Task 11f
    traced `1000:b5fc` and the port models both the aggressive and quiet
-   arms), dropped from this list; `docs/re/gaps.md:516-521` still describes it
-   as open ("Which one a real encounter reaches depends on `1000:b5fc`,
-   untraced"). Task 11g's stale-entry sweep owns that fix; it was out of scope
-   for both Task 11f fix rounds.
-4. Small follow-ups: `ExportAll.java` serialises an unsorted set so
-   `run_ghidra.sh` rewrites `data/functions.json` nondeterministically (one-line
-   sort); `data/strings.json` false positives (10 entries inside function
-   bodies, one unflagged); the tracer's progress guard has an inert `RandSeed`
-   half; its strongest guard-replay test skips for anyone who clones.
+   arms), dropped from this list; Task 11g's stale-entry sweep corrected the
+   two places that still described it as open, `docs/re/gaps.md`'s "Other
+   unreproduced behaviour" entry and `docs/re/rng-trace.md`'s "Limits" list.
+4. Small follow-ups: ~~`ExportAll.java` serialises an unsorted set~~ **fixed
+   in Task 11g** — every collection it writes is sorted and two runs are
+   byte-identical, and it now also emits `data_xrefs`. Still open:
+   `data/strings.json` false positives (10 entries inside function bodies, one
+   unflagged); the tracer's progress guard has an inert `RandSeed` half; its
+   strongest guard-replay test skips for anyone who clones. **New:**
+   `data/branches.json` is stale against `src/` — regenerating it changes only
+   the port-citation fields (`cited_in_port`, `port_citations`,
+   `bytes_to_nearest_port_citation`, …) on 342 of 1119 records, because Task
+   11f edited `src/`. Task 11g verified this and deliberately left it alone as
+   out of scope.
 5. Windows VT: compiles and runs under wine, but VT changes how a console
    *renders* bytes, not which bytes are written — no byte-capture test can
    verify it. Needs a human at a `cmd.exe` window.
@@ -211,17 +223,16 @@ a flow claim but never establish one. Probabilities come from the comparison
 constants that bucket a `Random` result, never from counting outcomes. Every
 claim states its tier and cites an address.
 
-**Address convention:** two forms, and they are not the same arithmetic --
+**Address convention:** two forms, and they are not the same arithmetic.
 `docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is
-the authority. Ghidra labels (`SEG >= 0x1000`, e.g. `1000:`, `1f78:`, `20ae:`)
-map as `file_off = 0x18d0 + (SEG - 0x1000)*16 + OFF`; the `- 0x1000` is
-load-bearing there, and dropping it overshoots by 64 KiB. Real runtime
-`seg:off` as `ndisasm` prints a far-call operand (`0eed:`, `0f16:`, `0f78:` --
-the image's relative segments) map as `file_off = 0x18d0 + SEG*16 + OFF`, with
-**no** `- 0x1000`; applying the Ghidra form to one of these *under*shoots by
-the same 64 KiB. Check any derived address against a landmark: `1000:b353`
-holds `9a 4b 11 78 0f` at file `0xcc23`; `0f78:114b` (== Ghidra `1f78:114b`)
-is file `0x1219b`, `0x18d0 + 0xf780 + 0x114b`.
+the authority for the rule; **`tools/addr.py` is its executable form** and the
+only place the arithmetic lives in code. Do not re-derive it by hand and do not
+restate it here -- import `addr.citation()`, which picks the form from the
+segment, or run `python3 tools/re_query.py resolve <citation>`. Each form's
+function rejects the other form's segment range, so the 64 KiB mix-up raises
+instead of returning a plausible number. Landmarks, if you want a sanity check
+without running anything: `1000:b353` holds `9a 4b 11 78 0f` at file `0xcc23`;
+`0f78:114b` (== Ghidra `1f78:114b`) is file `0x1219b`.
 
 Every RE miss caught here has been a two-to-five-byte drift — near enough to
 read as authoritative — with two exceptions: the address-convention error

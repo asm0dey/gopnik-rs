@@ -6,9 +6,9 @@ cite this file by section.
 Each entry states its evidence tier per `docs/re/METHODOLOGY.md`:
 **established from flow** (with an address), **corroborated** (by state or
 output, and by what), or **unverified** (and what would settle it). Every
-address below was re-derived from `orig/g.exe` — `file_off = 0x18d0 + off` for
-a `1000:off` code address, and a `mov di,<n>` / `push cs` string operand names
-the string at file offset `0x18d0 + n`.
+address below was re-derived from `orig/g.exe`; a `mov di,<n>` / `push cs`
+string operand names the string whose file offset is what `1000:<n>` resolves
+to. `docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is the authority for the rule; `tools/addr.py` is its executable form and `python3 tools/re_query.py resolve <citation>` checks any single address against the bytes.
 
 ---
 
@@ -513,12 +513,17 @@ input loop was not disassembled.
   representable target on `Fighter`.
 * **The joint (`kos`) heal formula** reuses beer's `FUN_1000_29c4` by analogy;
   the joint's own handler was not traced.
-* **The decline branch after a fight encounter.** The evade-vs-detected split
-  on the `Random(2)` at `1000:b725` (`1000:b721` is its `mov ax,2`,
-  `1000:b724` the `push`) is **established from flow**, but a second,
-  similarly-shaped path at `1000:b691` has no roll on decline at all. Which one
-  a real encounter reaches depends on `1000:b5fc`, untraced. The port always
-  takes the `Random(2)` branch.
+* ~~**The decline branch after a fight encounter.**~~ **Closed by Task 11f**
+  (stale entry corrected in Task 11g). The evade-vs-detected split on the
+  `Random(2)` at `1000:b725` (`1000:b721` is its `mov ax,2`, `1000:b724` the
+  `push`) is **established from flow**, and so now is the choice between it and
+  the similarly-shaped path at `1000:b691`, which has no roll on decline at
+  all: `1000:b5fc`..`1000:b61b` compares luck against the `1000:b5f1` notice
+  roll as a longint and applies a class threshold of **3** on the luck-lost arm
+  (`1000:b60a`) and **7** on the luck-won arm (`1000:b614`) — see "The
+  random-encounter opponent" above. `Game::wander_fight` in `src/game.rs`
+  models both arms and rolls at `1000:b725` only on the aggressive one, so the
+  port no longer "always takes the `Random(2)` branch".
 * **Shop modality** — `Mode::Shop`'s "accept a few keys, `w` to leave, ignore
   the rest" shape is **established from flow** only as far as each location
   writing its own prompt and `ReadLn`-ing into `DS:3a72` (`1000:bd08` /

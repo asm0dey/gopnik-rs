@@ -35,6 +35,11 @@ Check:       python3 tools/test_extract_tables.py
 import json
 import pathlib
 import re
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+import addr  # noqa: E402  -- the address convention, defined once
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 EXE = ROOT / "orig" / "g.exe"
@@ -49,16 +54,13 @@ OUT_ENEMIES_PROV = ROOT / "data" / "enemies.provenance.json"
 OUT_OTHER_PRICES = ROOT / "data" / "other_price_sites.json"
 
 # ---------------------------------------------------------------------------
-# Segment arithmetic.
-#
-# Ghidra loads g.exe with CODE_0 at 1000:0000 and the const/data segment at
-# 20ae:0000.  The file offset of a segment:offset pair is
-#     0x18D0 + (segment - 0x1000) * 16 + offset
-# (0x18D0 is the end of the MZ header, i.e. the file offset of 1000:0000).
-# Task 4b's data/string_pointers.json uses the identical formula.
-CODE_SEG = 0x1000
-DATA_SEG = 0x20AE
-FILE_BASE = 0x18D0
+# Segment arithmetic.  Defined once, in tools/addr.py -- not restated here.
+# docs/re/METHODOLOGY.md, "Address convention, and its range of validity", is
+# the human-readable authority; `python3 tools/re_query.py resolve <citation>`
+# checks any single address against the bytes.
+CODE_SEG = addr.GHIDRA_BASE_SEG
+DATA_SEG = addr.DATA_SEG_GHIDRA
+FILE_BASE = addr.file_off_of_image_off(0)
 
 
 def code_file_off(off: int) -> int:
@@ -645,8 +647,8 @@ VAR_NAMES = {DISTRICT_ADDR: "district"}
 def code_addr(file_off: int) -> str:
     """Ghidra `1000:off` for a file offset.
 
-    Derived, never transcribed: `file_off = 0x18d0 + (seg - 0x1000) * 16 +
-    off`, so with seg == 0x1000 the offset half is simply `file_off - 0x18d0`.
+    Derived, never transcribed: the inverse of tools/addr.py's Form A with
+    seg == 0x1000, i.e. the image offset is `file_off - FILE_BASE`.
     """
     return f"1000:{file_off - FILE_BASE:04x}"
 

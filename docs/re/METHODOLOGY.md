@@ -93,11 +93,118 @@ Form A addresses that overshoot when the term is dropped.
 **Established from flow.** All 86 `9a 4b 11 78 0f` far calls carry their
 segment word in the relocation table, so `0f78` is a relative segment awaiting
 a fixup, and following the call lands on `relseg 0x0f78`, offset `0x114b`.
-There the code is `e8 5a 00` (`call 0f78:11a8`, the LCG on `RandSeed` at
-DGROUP `0x367e`), `8b dc` (`mov bx,sp`), `36 f7 67 04` (`mul word [ss:bx+4]`,
-the pushed argument), `8b c2` (`mov ax,dx`, the high word) and `ca 02 00`
-(`retf 2`) — Borland's `Random(n)`, with a far return that pops the one
-argument the call pushed.
+There the code is Borland's `Random(n)` — eleven instructions, 29 bytes, ending
+in a far return that pops the one argument the call pushed:
+
+```
+0f78:114b  e8 5a 00        call 0f78:11a8      ; the LCG on RandSeed, DGROUP 0x367e
+0f78:114e  8b dc           mov bx,sp
+0f78:1150  8b ca           mov cx,dx
+0f78:1152  36 f7 67 04     mul word [ss:bx+4]  ; low half of the 32x16 multiply
+0f78:1156  8b c1           mov ax,cx
+0f78:1158  8b ca           mov cx,dx
+0f78:115a  36 f7 67 04     mul word [ss:bx+4]  ; high half -- the elided one
+0f78:115e  03 c1           add ax,cx
+0f78:1160  83 d2 00        adc dx,0
+0f78:1163  8b c2           mov ax,dx           ; the high word IS the result
+0f78:1165  ca 02 00        retf 2
+```
+
+Earlier versions of this passage quoted five of those byte groups. Nothing in
+that list was wrong and every byte string was at the right address in order,
+but the elision hid the **second** `36 f7 67 04`: `Random` does a 32x16
+widening multiply of the whole `RandSeed` longint, not a 16x16 one. The full
+listing is above so the abbreviation cannot be read as the whole routine.
+
+## How to check this mechanically
+
+The convention above is the human-readable authority; **`tools/addr.py` is its
+executable form**, and it is the only place the arithmetic is written in
+Python. Each form is a separate function that rejects the other form's segment
+range, so the 64 KiB mistake raises instead of returning a plausible number,
+and `addr.citation()` picks the form from the segment so a caller never gets to
+choose wrongly. Import it rather than recomputing `0x18d0` — which is itself
+derived there from the MZ header's `e_cparhdr`, not written down.
+
+`tools/re_query.py` answers the four questions this project keeps hand-rolling.
+Run the query instead of doing the sweep by eye; each subcommand prints
+evidence a `docs/re/` claim can quote directly. The outputs below were produced
+by running exactly these commands.
+
+**Resolve a citation, in either form.**
+
+```
+$ python3 tools/re_query.py resolve 0f78:114b -n 5 -i 1
+citation: 0f78:114b
+form: runtime
+seg: 0f78
+off: 114b
+ghidra_label: 1f78:114b
+image_off: 0x108cb
+file_off: 0x1219b
+bytes: e8 5a 00 8b dc
+function: FUN_1f78_114b
+instructions:
+  at: 0f78:114b
+  image_off: 0x108cb
+  file_off: 0x1219b
+  bytes: e8 5a 00
+  text: call 0x10928
+```
+
+(`call 0x10928` is an IMAGE offset — `0f78:11a8` — because the decoder renders
+branch targets as offsets in the buffer it was handed. Drop `-n`/`-i` for the
+default 16 bytes and 4 instructions.)
+
+**Is this address a call site?** Alignment and identity are separate signals
+and only identity decides. `1000:d83b` is the standing counter-example: it
+passes the alignment sweep and is still the wrong address.
+
+```
+$ python3 tools/re_query.py is-call-site 1000:d83b
+citation: 1000:d83b
+image_off: 0xd83b
+file_off: 0xf10b
+function: entry
+signature: 9a 4b 11 78 0f
+identity:
+  match: False
+  bytes_here: b8 06 00 50 9a
+  nearest_signature_deltas:
+    - 4
+alignment:
+  sweep_votes: 63
+  sweep_tried: 64
+  anchored_from_function_entry: True
+  first_misses:
+    - (53, 'decode failed before reaching the target')
+verdict: NOT a call site
+note: Alignment alone never answers yes: 1000:d83b scores all but one of the same sweeps and is still the wrong address -- a real instruction boundary four bytes before the call it was mistaken for.  Only `identity.match` settles it.
+```
+
+`b8 06 00 50` is `mov ax,6` / `push ax` — the argument idiom. The call is four
+bytes later, at `1000:d83f`.
+
+**What `n` does a draw site push?** The walk-back reproduces all 17 draw sites
+`data/wander.json` records by hand, byte for byte.
+
+```
+$ python3 tools/re_query.py pushed-n 1000:b2fa --json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['n_at'], '|', d['n_bytes'], '->', d['n_expr'] or d['n'])"
+1000:b2ef | a0 92 36 30 e4 ba 14 00 f7 e2 50 -> byte[0x3692] * 20
+```
+
+**Who references a data address?** A raw byte scan cannot tell an operand from
+two adjacent instructions that happen to spell the same word, so hits are kept
+only when they land on an operand FIELD of an aligned instruction, and the
+discards are printed with their reason.
+
+```
+$ python3 tools/re_query.py xrefs-to 20ae:3b74 --json | python3 -c "import json,sys; s=json.load(sys.stdin)['scan']; print(s['raw_hits'],'raw,',len(s['accepted']),'accepted,',len(s['discarded']),'discarded'); [print(' discarded',x['image_off'],x['why']) for x in s['discarded']]"
+7 raw, 6 accepted, 1 discarded
+ discarded 0xc358 the word straddles `jl 0xc3cd` (7c 74) and the instruction after it -- it is not one field
+```
+
+Tests: `python3 tools/test_addr.py` and `python3 tools/test_re_query.py`.
 
 ## Worked example: where do discovery probabilities live?
 

@@ -717,6 +717,8 @@ def main(argv=None):
                        help="citation -> file/image offset + bytes")
     r.add_argument("citation")
     r.add_argument("-n", "--bytes", type=int, default=16)
+    r.add_argument("-i", "--insns", type=int, default=4,
+                   help="how many instructions to decode from there")
 
     c = sub.add_parser("is-call-site", parents=[common],
                          help="alignment AND identity, separately")
@@ -735,7 +737,7 @@ def main(argv=None):
     a = p.parse_args(argv)
     prog = Program(a.exe, a.functions)
     if a.cmd == "resolve":
-        _print(resolve(prog, a.citation, a.bytes), a.json)
+        _print(resolve(prog, a.citation, a.bytes, a.insns), a.json)
     elif a.cmd == "is-call-site":
         _print(is_call_site(prog, a.citation,
                             bytes.fromhex(a.signature.replace(" ", ""))), a.json)

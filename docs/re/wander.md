@@ -3,8 +3,7 @@
 Machine-readable form: `data/wander.json`. This document is pure reverse
 engineering; it changes no Rust.
 
-Addresses here are dumped out of `orig/g.exe` — `file_off = 0x18d0 + off` for
-a `1000:off` code address, `0x123b0` for `20ae:0000` — and `data/wander.json`
+Addresses here are dumped out of `orig/g.exe`, and `data/wander.json`
 carries the literal opcode bytes at every address it cites, so a five-byte
 drift is checkable without a disassembler. Treat those bytes as the check.
 Do not treat "every address was verified" as a given: one was not, and the
@@ -24,16 +23,16 @@ tier: **established from flow**, **corroborated**, or **unverified**.
 > `live_trace` fields. Method, the seed patch, the guards, and the full
 > comparison: `docs/re/rng-trace.md` and `data/rng_trace.json`.
 
-> **The `0x18d0 + off` shorthand is for segment `1000` only.** Every citation
-> here whose segment is not `1000` — the runtime entry points `0f78:114b`
-> (`Random`), `0f78:06c6` (`ReadLn`), `0f78:0772` (`Rewrite`), `0f78:081e`
-> (`BlockRead`), `0f78:0825` (`BlockWrite`), `0eed:01c2` (`WriteLn`),
-> `0f16:031a` (the delay) — maps as
-> `file_off = 0x18d0 + seg*16 + off`. Worked and byte-verified:
-> `0f78:114b` → `0x18d0 + 0xf78*16 + 0x114b` = file `0x1219b`, which
-> disassembles to the 32×16 high-take `mul word [ss:bx+0x4]` pair and
-> `retf 0x2` — `Random` itself. Applying the segment-`1000` form to a far
-> target lands `0xf780` bytes short.
+> **Two citation forms are in play here, and they are not the same
+> arithmetic.** Most addresses below are Ghidra `1000:` labels, but the
+> runtime entry points — `0f78:114b` (`Random`), `0f78:06c6` (`ReadLn`),
+> `0f78:0772` (`Rewrite`), `0f78:081e` (`BlockRead`), `0f78:0825`
+> (`BlockWrite`), `0eed:01c2` (`WriteLn`), `0f16:031a` (the delay) — are real
+> runtime segments and take the other form. `docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is the authority for the rule; `tools/addr.py` is its executable form and `python3 tools/re_query.py resolve <citation>` checks any single address against the bytes. Worked and
+> byte-verified: `0f78:114b` is file `0x1219b`, which disassembles to the
+> 32×16 high-take `mul word [ss:bx+0x4]` pair and `retf 0x2` — `Random`
+> itself. Applying the Ghidra form to a far target lands `0xf780` bytes
+> short.
 
 > **One address in the first version of this catalogue was wrong**, and it was
 > wrong in the way `docs/re/METHODOLOGY.md` warns about: `data/wander.json`

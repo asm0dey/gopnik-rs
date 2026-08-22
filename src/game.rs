@@ -9,9 +9,12 @@
 //! its trailing padding. `crate::term` is the only writer; it applies the
 //! colour policy itself, so the markup must survive into what it receives.
 //!
-//! Ghidra convention used by every citation: a `1000:XXXX` code address is
-//! at file offset `0x18d0 + XXXX`, and a `mov di,<n>` / `push cs` string
-//! operand at `1000:XXXX` names the string at file offset `0x18d0 + n`.
+//! Address convention used by every citation below: `docs/re/METHODOLOGY.md`,
+//! "Address convention, and its range of validity", is the authority, and
+//! `tools/addr.py` is its executable form -- `python3 tools/re_query.py
+//! resolve <citation>` converts one and prints the bytes there. A `mov di,<n>`
+//! / `push cs` string operand at `1000:XXXX` names the string whose file
+//! offset is what `1000:<n>` resolves to.
 //!
 //! ## This module was substantially redesigned mid-task
 //!

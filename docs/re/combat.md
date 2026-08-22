@@ -579,7 +579,8 @@ constrain it.
   account for 15; these 12 do not, and a whole-battle differential replay
   (Task 12) will desynchronise on every one of them unless they are
   reproduced. Confirmed as real `call word 0xf78:0x114b` instructions by
-  disassembling each address (`ndisasm`, file offset `0x18D0 + addr`), not
+  disassembling each address (`python3 tools/re_query.py is-call-site
+  1000:XXXX`, which reports identity and alignment separately), not
   assumed from the address list alone:
   * Flee/other command handlers: `1000:4db7` (argument is a shifted
     variable, `shl ax,1` twice, not a literal), `1000:4e16` (`Random(2)`),

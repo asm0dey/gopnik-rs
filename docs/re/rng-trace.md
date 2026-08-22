@@ -66,11 +66,9 @@ before any breakpoint is set.
 
 ## Step 2 — finding `Random` in the guest, and proving it is `Random`
 
-Two address conventions, which must not be mixed:
-
-* a Ghidra citation `1000:XXXX` → image offset `XXXX`, file offset `0x18d0 + XXXX`;
-* a real runtime `seg:off` such as `0f78:114b` → image offset `seg*16 + off`,
-  file offset `0x18d0 + seg*16 + off`.
+Two address conventions, which must not be mixed. `docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is the authority for the rule; `tools/addr.py` is its executable form and `python3 tools/re_query.py resolve <citation>` checks any single address against the bytes. The
+two forms are separate functions there, each rejecting the other's segment
+range, so the 64 KiB mix-up raises rather than returning a plausible number.
 
 `0f78:114b` → image `0x108cb` → **file `0x1219b`**, re-derived here rather than
 taken from the Task 11b review. Disassembling `orig/g.exe` at that offset
@@ -473,10 +471,16 @@ performs on itself every run.
   The result columns in `data/rng_trace.json` are one seed's outcomes. Nothing
   here measures a distribution, and `docs/re/METHODOLOGY.md` forbids inferring
   one from counts.
-* **The three fight-flow questions `docs/re/gaps.md` records are untouched.**
-  The draws at `1000:b5f1`, `1000:b725`, `1000:b792` and inside
-  `FUN_1000_0d14` were logged but not analysed; which of `1000:b691` /
-  `1000:b721` a real encounter reaches is still open.
+* **The three fight-flow questions were untouched *by this trace*.** The draws
+  at `1000:b5f1`, `1000:b725`, `1000:b792` and inside `FUN_1000_0d14` were
+  logged here but not analysed. They were analysed later, from the
+  disassembly, by Task 11f: `docs/re/gaps.md`'s "The random-encounter
+  opponent" settles which of `1000:b691` / `1000:b721` a real encounter
+  reaches — `1000:b5fc`..`1000:b61b`, luck against the notice roll with a
+  class threshold of 3 on the luck-lost arm and 7 on the luck-won arm — and
+  `Game::wander_fight` models both. The limit that stands is the one this
+  section is about: the trace **corroborated** those draws, it did not
+  establish them.
 * **Bucket 4 and bucket 1 arms were not driven** beyond whatever the runs
   happened to hit, and the `y` path of bucket 2 was never taken.
 * **Only two districts were visited** (1 and 3), so `chapter*20` is corroborated

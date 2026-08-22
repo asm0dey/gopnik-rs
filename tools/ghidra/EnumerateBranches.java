@@ -48,8 +48,11 @@ import java.util.stream.Stream;
  * much of the image that is.
  *
  * Address convention: Ghidra loads the image at segment 0x1000, so a Ghidra
- * address SEG:OFF maps to file offset 0x18d0 + (SEG - 0x1000) * 16 + OFF, and
- * the real DOS segment is SEG - 0x1000. Every emitted branch carries its raw
+ * address SEG:OFF maps to file offset 0x18d0 + (SEG - 0x1000) * 16 + OFF --
+ * the Form A half of the rule in docs/re/METHODOLOGY.md, whose executable form
+ * is tools/addr.py; a Ghidra script is Java and cannot import it, so keep the
+ * two in step. This file only ever cites Ghidra labels, so Form A is all it
+ * needs. The real DOS segment is SEG - 0x1000. Every emitted branch carries its raw
  * opcode bytes AND the file offset computed both ways (arithmetic and Ghidra's
  * own file-byte mapping) so a drift is caught rather than propagated.
  */

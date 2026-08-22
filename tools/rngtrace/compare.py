@@ -18,14 +18,18 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "tools"))
+
+import addr  # noqa: E402  -- the address convention, defined once
+
 PREAMBLE_LO = 0xAE5A
 PREAMBLE_HI = 0xB3BA
 
 
 # The four class growth weights live at DS:(class*4 + 2 .. class*4 + 5); DS is
-# Ghidra 20ae, image offset 0x10ae0, file offset 0x18d0 + that.  Read straight
-# out of orig/g.exe rather than taken from another data file.
-DS_FILE_OFF = 0x18D0 + 0x10AE0
+# Ghidra 20ae.  The arithmetic comes from tools/addr.py, never restated here.
+# Read straight out of orig/g.exe rather than taken from another data file.
+DS_FILE_OFF = addr.file_off_of_image_off(addr.DATA_SEG_IMAGE_OFF)
 
 # The stored class value is the creation menu answer + 3 (1000:71b8).  Kept in
 # step with driver.CLASS_NAME_BY_VALUE by a test; this module is run as a

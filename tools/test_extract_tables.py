@@ -18,6 +18,10 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+import addr  # noqa: E402  -- the address convention, defined once
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
@@ -226,8 +230,8 @@ def test_other_price_sites():
 
     # Ghidra's `1000:XXXX` and the file offset are two numbers for one place,
     # and getting them out of step is this project's recurring defect. Every
-    # pair in the file must satisfy file_off == 0x18d0 + off, everywhere,
-    # whatever the key is called.
+    # pair in the file must agree with tools/addr.py -- the one definition of
+    # the convention -- everywhere, whatever the key is called.
     def check_addr_pairs(node, path="$"):
         n = 0
         if isinstance(node, dict):
@@ -237,8 +241,8 @@ def test_other_price_sites():
             ]:
                 a, f = node.get(a_key), node.get(f_key)
                 if isinstance(a, str) and isinstance(f, str) and a.startswith("1000:"):
-                    off = int(a.split(":")[1], 16)
-                    assert int(f, 16) == 0x18D0 + off, (path, a_key, a, f)
+                    want = addr.file_off_of_citation(a)
+                    assert int(f, 16) == want, (path, a_key, a, f, hex(want))
                     n += 1
             for k, v in node.items():
                 n += check_addr_pairs(v, f"{path}.{k}")

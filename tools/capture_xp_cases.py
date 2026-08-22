@@ -38,7 +38,9 @@ import pathlib
 import re
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "oracle"))
+import addr  # noqa: E402  -- the address convention, defined once
 import capture  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -104,12 +106,12 @@ RUNS = [
 ]
 
 # --- constants read straight out of orig/g.exe ------------------------------
-# Physical file offset of DS (Ghidra segment 20ae): the load image starts at
-# 0x18d0 and code segment 1000 is its origin, so DS:0000 is
-# 0x18d0 + (0x20ae - 0x1000) * 16. Cross-checked by decoding the rank-name
-# table at DS:002e, whose first entry reads "Дохляк".
-DS_FILE_BASE = 0x18D0 + (0x20AE - 0x1000) * 16
-CS_FILE_BASE = 0x18D0
+# The address convention lives in tools/addr.py (docs/re/METHODOLOGY.md is the
+# human-readable authority); it is imported, never restated here.  DS is
+# Ghidra segment 20ae.  Cross-checked by decoding the rank-name table at
+# DS:002e, whose first entry reads "Дохляк".
+DS_FILE_BASE = addr.file_off_of_image_off(addr.DATA_SEG_IMAGE_OFF)
+CS_FILE_BASE = addr.file_off_of_image_off(0)
 CLASS_WEIGHTS_AT = 0x0002  # DS:0002, four bytes per class (1000:25aa..25b6)
 CLASS_NAMES_AT = 0x002E  # DS:002e, 256-byte-stride shortstrings (1000:13dc)
 N_CLASSES = 11

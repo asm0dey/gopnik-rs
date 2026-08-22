@@ -889,12 +889,14 @@ For each instruction, for each operand, take scalar values via
 For each, compute the candidate file offset and write it out with the
 instruction's address and mnemonic so the artifact is auditable.
 
-The address mapping, already established: the program image begins at file
-offset `0x18D0` and loads at segment `0x1000`, so for a scalar `imm` used as a
-DS/CS-relative offset within the first code block, `file_offset = 0x18D0 + imm`.
-Record the mapping you use in `docs/re/string-pointers.md`; if a scalar's
-segment differs, derive its base from the containing memory block rather than
-assuming `0x1000`.
+The address mapping, already established: a scalar `imm` used as a DS/CS-relative
+offset within its own segment `S` resolves exactly as the citation `S:imm` does.
+`docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is
+the authority for the rule and `tools/addr.py` is its executable form (added in
+Task 11g; this paragraph predates it and is left as a record of what the step
+was told). Record the mapping you use in `docs/re/string-pointers.md`; if a
+scalar's segment differs, derive its base from the containing memory block
+rather than assuming `0x1000`.
 
 - [ ] **Step 2: Filter to genuine string starts**
 

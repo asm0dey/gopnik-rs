@@ -92,21 +92,13 @@ current extraction; see "Confirmed still present" below.
 
 ## Address mapping
 
-The program image begins at file offset `0x18D0` and loads at segment
-`0x1000` (verified in Task 4: `CODE_0` is `1000:0000`, 61008 bytes).
-Ghidra's memory blocks for this import (`CODE_0`..`CODE_5`, `DATA`, `HEADER`)
-are all part of one contiguous flat image. So for an instruction at segment
-`S`, a 16-bit value `imm` used as a near offset within that instruction's own
-segment maps to:
+Ghidra's memory blocks for this import (`CODE_0`..`CODE_5`, `DATA`,
+`HEADER`) are all part of one contiguous flat image, so a 16-bit value `imm`
+used as a near offset within an instruction's own segment `S` resolves exactly
+as the citation `S:imm` does. `docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is the authority for the rule; `tools/addr.py` is its executable form and `python3 tools/re_query.py resolve <citation>` checks any single address against the bytes.
 
-```
-file_offset = 0x18D0 + (S - 0x1000) * 16 + imm
-```
-
-For `S == 0x1000` (`CODE_0`, where the vast majority of instructions live)
-this is `file_offset = 0x18D0 + imm`. Verified example: instruction
-`1000:e558` is `MOV DI, 0xA40D`, giving `file_offset = 0x18D0 + 0xA40D =
-0xBCDD`. `blob[0xBCDD]` is `0x3D` (length 61, corrected from an earlier
+Verified example: instruction `1000:e558` is `MOV DI, 0xA40D`, so the operand
+is the citation `1000:a40d`, which resolves to file `0xBCDD`. `blob[0xBCDD]` is `0x3D` (length 61, corrected from an earlier
 misread of `0x3E`/62 in an older revision of this document), and the
 following 61 bytes CP866-decode to the complete string
 `'30^7  купить зубную защиту боксёров(-75% что сломают челюсть)'` —

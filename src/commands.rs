@@ -21,8 +21,10 @@
 //!    decompilation, `build/decomp/FUN_1f78_0bd8_1f78_0bd8.c`: it walks
 //!    `min(len1,len2)` bytes and stops on the first mismatch, leaving the
 //!    zero flag set for the caller's `jz`/`jnz`). Each call is
-//!    `push DS:3972 / push CS:<token>` -- reproducible with `ndisasm -b16`
-//!    at `file_off = 0x18D0 + addr` for a `1000:XXXX` address. On a mismatch
+//!    `push DS:3972 / push CS:<token>` -- reproducible with
+//!    `python3 tools/re_query.py resolve <citation>`, which converts a
+//!    citation of either form (see `docs/re/METHODOLOGY.md`, "Address
+//!    convention, and its range of validity") and prints the bytes. On a mismatch
 //!    the code falls through to the *next* token's compare; on a match it
 //!    runs that token's handler.
 //!
@@ -41,7 +43,7 @@
 //! second, unrelated variable `DS:3a72` is reused for sub-prompts, see
 //! `Command::Walk`'s doc). Every row below was independently re-verified by
 //! disassembling its own compare instruction and confirming the token string
-//! at `0x18D0 + off`:
+//! at the file offset the citation resolves to (`tools/re_query.py resolve`):
 //!
 //! | verb | compare at | token file off | confirmed handler behaviour |
 //! |---|---|---|---|

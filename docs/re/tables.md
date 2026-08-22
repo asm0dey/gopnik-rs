@@ -7,9 +7,7 @@ data_load`.
 
 Every address below is a Ghidra address in the load layout Task 4 used:
 `CODE_0` at `1000:0000` (file `0x18D0`), the const/data segment at
-`20ae:0000` (file `0x123B0`). File offset of `seg:off` is
-`0x18D0 + (seg - 0x1000) * 16 + off`, the same formula
-`data/string_pointers.json` documents.
+`20ae:0000` (file `0x123B0`). `docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is the authority for the rule; `tools/addr.py` is its executable form and `python3 tools/re_query.py resolve <citation>` checks any single address against the bytes.
 
 ## Runtime vs. provenance
 
@@ -546,8 +544,9 @@ segment prefix it was never assigned to. The real segment address is
 `[20ae:38c3]` (the крутизна counter), not `[20ae:3954]`. Confirmed by
 disassembling both file regions directly (`ndisasm -b16`). Every other
 `seg:off`/file-offset pair cited in this document and in
-`tools/extract_tables.py` was re-checked against the
-`0x18D0 + (seg-0x1000)*16 + off` formula at the top of this file and against
+`tools/extract_tables.py` was re-checked against the convention named at the
+top of this file (`tools/extract_tables.py` now imports `tools/addr.py`
+rather than recomputing it) and against
 a direct disassembly where one was available; none of the others had this
 error. See `.superpowers/sdd/task-10-report.md`, "Fix wave 1" for the list
 of what was checked.
