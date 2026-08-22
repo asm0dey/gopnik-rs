@@ -450,8 +450,20 @@ file offset and were verified by reading the shortstrings at those offsets
 straight out of `orig/g.exe`.
 
 Nine of the eleven `imm8` sites, the call-result site, and `20ae:3c82` carry
-`what: null` and are named nowhere: working out what each one charges for, and
-which item or service takes each price, is Task 11's job, not this task's.
+`what: null` and are named nowhere in this artifact: working out what each one
+charges for, and which item or service takes each price, is Task 11's job, not
+this task's.
+
+**Task 12 named eight of those nine**, in `docs/re/difftest.md`, by attributing
+each debit to the verb-dispatch span it falls in and to the key its nearest
+preceding string compare tests: `1000:d553` and `1000:d5d9` are the vet's two
+rows (7 and 3), `1000:d78e` is the `girl` visit (12), and `1000:e657`,
+`1000:e6e3`, `1000:e796`, `1000:e823`, `1000:e8b8` are the gym's five rows (20,
+20, 10, 30, 20). Only `1000:502c` (file `0x68fc`, 7) is still unidentified.
+`data/other_price_sites.json` is generated and Task 12 did not regenerate it,
+so its eight `what` fields still read `null`; the table above is likewise
+unchanged. Neither is wrong about the bytes — they are stale about what is
+known.
 
 ---
 

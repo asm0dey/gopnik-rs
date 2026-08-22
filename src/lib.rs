@@ -9,3 +9,4 @@ pub mod rng;
 pub mod save;
 pub mod term;
 pub mod text;
+pub mod trace;

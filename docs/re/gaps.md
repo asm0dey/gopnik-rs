@@ -529,7 +529,20 @@ pins the 11 bytes against `orig/g.exe`, so this needs no library to re-check.
 
 ## Other unreproduced behaviour
 
-* **`kl` / `trn` priced rows** — prices are not in `data/shops.json`.
+* ~~**`kl` / `trn` priced rows** — prices are not in `data/shops.json`.~~
+  **Closed by Task 12.** They are not in `data/shops.json` because their
+  prices are instruction immediates, not bytes of the `20ae:0b2e` array
+  `tools/extract_tables.py` scans; the same is true of the vet's two rows.
+  All nine are now **established from flow** — `1000:d410`, `1000:d465`
+  (`rep` 3, 7), `1000:df6f`, `1000:dfcb` (`kl` 15, 22), `1000:e400`,
+  `1000:e455`, `1000:e4c4`, `1000:e521`, `1000:e58f` (`trn` 20, 20, 10, 30,
+  20) — and the port prints them from `src/game.rs`'s `IMM_ROWS`.
+  `docs/re/difftest.md` has the enumeration, the gate per row, and the
+  `20ae:3e34` scratch byte the gym's fifth row is capped by. **Still open:**
+  none of the nine applies its effect when bought (same reason as "Shop
+  purchase effects" below), the club's card game and the gym's purchase
+  handlers are not implemented, and the gym is unreachable in the port
+  because nothing sets `20ae:369a`.
 * **The class-keyed combat-opener table** (`1000:3d32`..`1000:3e8a`, files
   `0x452E`, `0x453B`, `0x4548`, `0x4565`, `0x457A`, …).
 * **The rector death branch and the hospital rescue** (`1000:4f8c`,

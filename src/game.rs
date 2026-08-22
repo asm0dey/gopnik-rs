@@ -88,6 +88,128 @@ enum Mode {
     Shop(Location),
 }
 
+/// One priced menu row whose price is an **instruction immediate**, not a
+/// byte of the `20ae:0b2e` price array `data/shops.json` records.
+///
+/// The vet, the club and the gym build their rows with the same fixed
+/// instruction shape the market rows use, with one substitution: the
+/// affordability test is `cmp word [20ae:38c7],imm8` against a literal
+/// instead of `mov al,[20ae:0bNN] / xor ah,ah / cmp ax,[20ae:38c7]`. That is
+/// why `tools/extract_tables.py`'s price-array scan never saw them and why
+/// `data/shops.json` carries only `mar` and `bmar`.
+///
+/// `site` is the address of that `cmp`, i.e. where `price` is written down in
+/// the image. `prefix` and `text` are the two shortstrings the row is
+/// assembled from, in that order, with the affordability colour digit
+/// between them -- the same three-part shape [`Game::print_priced_rows`]
+/// uses. Both are quoted verbatim, markup included.
+///
+/// `tools/difftest.py` re-derives this whole table out of `orig/g.exe` by
+/// scanning for that instruction shape (nine hits, no more) and compares it
+/// against what the port emits; `docs/re/difftest.md` has the enumeration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImmRow {
+    /// The verb whose handler contains the row: `rep`, `kl` or `trn`.
+    pub shop: &'static str,
+    /// The key the player types, read off the row's own prefix string.
+    pub key: &'static str,
+    /// The immediate at `site`, in rubles.
+    pub price: i32,
+    /// Address of the `cmp word [20ae:38c7],imm8` that carries `price`.
+    pub site: &'static str,
+    /// The prefix shortstring, ending in the bare `^` the colour digit
+    /// completes.
+    pub prefix: &'static str,
+    /// The row's own shortstring. For these nine rows the price is part of
+    /// the text as literal digits, not a `#` placeholder.
+    pub text: &'static str,
+}
+
+/// Every immediate-priced menu row in the image, in address order.
+///
+/// Nine rows: two for the vet (`1000:d410`, `1000:d465`), two for the club
+/// (`1000:df6f`, `1000:dfcb`) and five for the gym (`1000:e400`,
+/// `1000:e455`, `1000:e4c4`, `1000:e521`, `1000:e58f`). Which handler a row
+/// belongs to is decided by the verb-dispatch span it falls in: `rep`'s
+/// token compare is at `1000:d3a6`, `girl`'s at `1000:d6ed`, `kl`'s at
+/// `1000:df06`, `trn`'s at `1000:e390` and `kos`'s at `1000:e973`, each with
+/// its own token string pushed five bytes earlier
+/// (`docs/re/command-dispatch.md`).
+pub const IMM_ROWS: [ImmRow; 9] = [
+    ImmRow {
+        shop: "rep",
+        key: "h",
+        price: 3,
+        site: "1000:d410",
+        prefix: "  ^2h^7 - за ^",
+        text: "3^7 рубля тебя залатают",
+    },
+    ImmRow {
+        shop: "rep",
+        key: "r",
+        price: 7,
+        site: "1000:d465",
+        prefix: "  ^2r^7 - за ^",
+        text: "7^7 рублей починят переломы",
+    },
+    ImmRow {
+        shop: "kl",
+        key: "1",
+        price: 15,
+        site: "1000:df6f",
+        prefix: " 1 -  ^",
+        text: "15^7  потусоваться на дискотеке(Ловкость +1)",
+    },
+    ImmRow {
+        shop: "kl",
+        key: "2",
+        price: 22,
+        site: "1000:dfcb",
+        prefix: " 2 -  ^",
+        text: "22^7  разузнать приемы мухлёжников(Удача +1)",
+    },
+    ImmRow {
+        shop: "trn",
+        key: "1",
+        price: 20,
+        site: "1000:e400",
+        prefix: " 1 -  ^",
+        text: "20^7  качаться гателями и шгангой(Сила +1)",
+    },
+    ImmRow {
+        shop: "trn",
+        key: "2",
+        price: 20,
+        site: "1000:e455",
+        prefix: " 2 -  ^",
+        text: "20^7  качаться на тренажерах(Выносливость +1)",
+    },
+    ImmRow {
+        shop: "trn",
+        key: "3",
+        price: 10,
+        site: "1000:e4c4",
+        prefix: " 3 -  ^",
+        text: "10^7  прокачать # качков опыта",
+    },
+    ImmRow {
+        shop: "trn",
+        key: "4",
+        price: 30,
+        site: "1000:e521",
+        prefix: " 4 -  ^",
+        text: "30^7  купить зубную защиту боксёров(-75% что сломают челюсть)",
+    },
+    ImmRow {
+        shop: "trn",
+        key: "5",
+        price: 20,
+        site: "1000:e58f",
+        prefix: " 5 -  ^",
+        text: "20^7  прокачать пресс(Броня +1)",
+    },
+];
+
 pub struct Game {
     pub player: Fighter,
     pub progress: Progress,
@@ -565,13 +687,10 @@ impl Game {
     /// District gating of a *printed* row is the same `district > N` test the
     /// row's `gate` records (`1000:bb80`, `1000:bc42`, `1000:bca5`).
     ///
-    /// **Not reproduced:** `kl`'s and `trn`'s numbered rows. Their prefixes
-    /// (` 1 -  ^` file `0xBA48`, ` 2 -  ^` file `0xBA7D`, ` 3 -  ^` `0xBCAE`,
-    /// ` 4 -  ^` `0xBCD5`, ` 5 -  ^` `0xBD1B`) and row texts exist, but
-    /// `data/shops.json` covers only `mar`/`bmar`, so their prices and
-    /// affordability thresholds were not traced by this task. Printing them
-    /// would mean guessing which prefix pairs with which text. Their intro
-    /// lines are printed; the rows are a reported gap.
+    /// `rep`, `kl` and `trn` price their rows with an instruction immediate
+    /// rather than a byte out of the `20ae:0b2e` array, so they are not in
+    /// `data/shops.json`; Task 12 traced all nine of them and they are in
+    /// [`IMM_ROWS`]. See `docs/re/difftest.md`.
     fn print_shop_intro(&mut self, loc: Location) {
         match loc {
             Location::Market => {
@@ -598,22 +717,17 @@ impl Game {
                 }
                 term::println("^0Док: не волнуйся всё зарастёт как на собаке");
                 // 1000:d423 / 1000:d478: prefix + affordability digit + text.
-                term::println(&format!(
-                    "  ^2h^7 - за ^{}3^7 рубля тебя залатают",
-                    self.afford(3)
-                ));
-                term::println(&format!(
-                    "  ^2r^7 - за ^{}7^7 рублей починят переломы",
-                    self.afford(7)
-                ));
+                self.print_imm_rows("rep");
             }
             Location::Den => self.print_den_intro(),
             Location::Club => {
                 term::println("Ты пришел в клуб напиши  ^6w^7  чтобы уйти");
                 term::println(" Здесь можно сыграть в карты (^6p^7 Минимальная ставка- 5р.)");
+                self.print_imm_rows("kl");
             }
             Location::Gym => {
                 term::println("Ты пришел в качалку напиши  ^6w^7  чтобы уйти");
+                self.print_imm_rows("trn");
             }
             Location::Girl | Location::Street | Location::Temple | Location::Dorm => {}
         }
@@ -651,6 +765,91 @@ impl Game {
                 self.afford(row.price),
                 text::fill(row.text, &[row.displayed_price as i64])
             ));
+        }
+    }
+
+    /// The [`IMM_ROWS`] belonging to `tag`, in image order, each gated by
+    /// [`Game::imm_row_visible`].
+    ///
+    /// Assembly is the same three parts as [`Game::print_priced_rows`]:
+    /// prefix, affordability colour digit, row text. The one `#` in the
+    /// whole table -- `trn` row 3's `10^7  прокачать # качков опыта` -- is
+    /// filled from a *separate* immediate, `1000:e505` `mov ax,0xa`, which
+    /// happens to equal that row's price at `1000:e4c4`; the fill below uses
+    /// `price` and both immediates are checked against the image by
+    /// `tools/difftest.py`.
+    fn print_imm_rows(&self, tag: &str) {
+        for row in IMM_ROWS.iter().filter(|r| r.shop == tag) {
+            if self.imm_row_visible(row) {
+                term::println(&self.render_imm_row(row));
+            }
+        }
+    }
+
+    /// One [`IMM_ROWS`] row as the original assembles it, markup and all.
+    fn render_imm_row(&self, row: &ImmRow) -> String {
+        format!(
+            "{}{}{}",
+            row.prefix,
+            self.afford(row.price),
+            text::fill(row.text, &[i64::from(row.price)])
+        )
+    }
+
+    /// Whether an [`IMM_ROWS`] row is printed at all.
+    ///
+    /// The vet's two rows have no gate of their own (the whole menu is
+    /// skipped when the player is unhurt, at `1000:d3d3`). The other seven
+    /// are gated, each by a test that sits immediately before the row's own
+    /// `cmp word [20ae:38c7],imm8`:
+    ///
+    /// | row | gate | address |
+    /// |---|---|---|
+    /// | `kl` 1 | none | -- |
+    /// | `kl` 2 | `district > 1` | `1000:dfc4` `cmp byte [0x3692],1` / `jbe 0xe020` |
+    /// | `trn` 1 | none | -- |
+    /// | `trn` 2 | none | -- |
+    /// | `trn` 3 | `district > 1` **and** `district * 10 - 3 > level` | `1000:e4aa`; `1000:e4b1`..`1000:e4c2` (`mul 10`, `sub ax,3`, `cmp ax,[0x38a6]`, `jle 0xe51a`) |
+    /// | `trn` 4 | `district > 1` | `1000:e51a` |
+    /// | `trn` 5 | `district > 2` **and** `abs < district * 2` | `1000:e576`; `1000:e57d`..`1000:e58d` (`shl ax,1`, `mov al,[0x3e34]`, `cmp ax,dx`, `jge 0xe5e4`) |
+    ///
+    /// `abs` is the scratch byte `20ae:3e34`, recomputed on every entry to
+    /// the gym at `1000:e3a4`..`1000:e3e2`: it starts as the armour byte
+    /// `20ae:38b2` and then has the armour that came from *equipment*
+    /// subtracted back out --
+    ///
+    /// * `1000:e3aa`..`1000:e3b8`: `-1` when `[0x38b4]` is set and
+    ///   `[0x38b7]` is not,
+    /// * `1000:e3bc`..`1000:e3c3`: `-2` when `[0x38b7]` is set,
+    /// * `1000:e3c8`..`1000:e3d6`: `-2` when `[0x38b6]` is set and
+    ///   `[0x38b9]` is not,
+    /// * `1000:e3db`..`1000:e3e2`: `-4` when `[0x38b9]` is set,
+    ///
+    /// so it is the part of the armour the player trained rather than
+    /// bought. Those four bytes are the ownership flags for four `mar` rows:
+    /// `1000:bf80` sets `[0x38b4]` (row 4, the abibas suit, "Смягчает пинок
+    /// на 1"), `1000:c183` sets `[0x38b7]` (row 7, adidas, "на 2"),
+    /// `1000:c0e0` sets `[0x38b6]` (row 6, the leather jacket, "защиты ... на
+    /// 2") and `1000:c2ca` sets `[0x38b9]` (row 9, "Броня +4") -- the four
+    /// subtrahends are those four rows' own advertised bonuses.
+    ///
+    /// **The port owns none of those four flags** (buying a `mar` row
+    /// deducts the price and prints the text but applies no effect -- see
+    /// `docs/re/gaps.md`), so all four adjustments are inert here and `abs`
+    /// is exactly `armor`. That is faithful to the state this port models
+    /// and diverges from the original the moment equipment exists; the
+    /// divergence is recorded in `docs/re/gaps.md` and `docs/re/difftest.md`
+    /// rather than papered over.
+    fn imm_row_visible(&self, row: &ImmRow) -> bool {
+        let district = i32::from(self.district);
+        let level = i32::from(self.player.level);
+        let abs = i32::from(self.player.armor);
+        match (row.shop, row.key) {
+            ("kl", "2") => district > 1,
+            ("trn", "3") => district > 1 && district * 10 - 3 > level,
+            ("trn", "4") => district > 1,
+            ("trn", "5") => district > 2 && abs < district * 2,
+            _ => true,
         }
     }
 
@@ -3090,6 +3289,115 @@ mod tests {
         let enemy = player();
         g.run_combat(enemy, &mut no_input()).unwrap();
         assert!(!g.running, "death must end the game");
+    }
+
+    /// Which [`IMM_ROWS`] rows [`Game::imm_row_visible`] lets through, for a
+    /// given district / level / armour.
+    fn visible(district: u8, level: u16, armor: u16) -> Vec<(&'static str, &'static str)> {
+        let mut g = game();
+        g.district = district;
+        g.player.level = level;
+        g.player.armor = armor;
+        IMM_ROWS
+            .iter()
+            .filter(|r| g.imm_row_visible(r))
+            .map(|r| (r.shop, r.key))
+            .collect()
+    }
+
+    /// The vet's two rows carry no gate of their own, and the club's second
+    /// and the gym's third, fourth and fifth are all shut at district 1:
+    /// `1000:dfc4`, `1000:e4aa`, `1000:e51a` and `1000:e576` are `jbe` on
+    /// `cmp byte [0x3692],1` (or `,2`), and district 1 fails every one.
+    #[test]
+    fn district_one_opens_only_the_ungated_imm_rows() {
+        assert_eq!(
+            visible(1, 0, 0),
+            [
+                ("rep", "h"),
+                ("rep", "r"),
+                ("kl", "1"),
+                ("trn", "1"),
+                ("trn", "2")
+            ]
+        );
+    }
+
+    /// `trn` row 3's second test is `district * 10 - 3 > level`
+    /// (`1000:e4b1`..`1000:e4c2`): at district 2 it opens up to level 16 and
+    /// shuts at 17.
+    #[test]
+    fn the_gyms_experience_row_closes_at_its_level_ceiling() {
+        assert!(visible(2, 16, 0).contains(&("trn", "3")));
+        assert!(!visible(2, 17, 0).contains(&("trn", "3")));
+        // The ceiling moves with the district: 3 * 10 - 3 = 27.
+        assert!(visible(3, 26, 0).contains(&("trn", "3")));
+        assert!(!visible(3, 27, 0).contains(&("trn", "3")));
+    }
+
+    /// `trn` row 5 needs `district > 2` and `abs < district * 2`
+    /// (`1000:e576`, `1000:e57d`..`1000:e58d`). `abs` is `20ae:3e34`, which
+    /// this port carries as plain armour -- see [`Game::imm_row_visible`].
+    #[test]
+    fn the_gyms_abs_row_needs_a_third_district_and_room_to_train() {
+        assert!(!visible(2, 0, 0).contains(&("trn", "5")));
+        assert!(visible(3, 0, 5).contains(&("trn", "5")));
+        assert!(!visible(3, 0, 6).contains(&("trn", "5")));
+    }
+
+    /// The composed line, for the two rows that exercise everything the
+    /// assembly can do: the affordability digit flipping between `^0` and
+    /// `^4`, and the one `#` in the whole table.
+    #[test]
+    fn an_imm_row_is_prefix_then_colour_digit_then_text() {
+        let mut g = game();
+        let gym3 = IMM_ROWS
+            .iter()
+            .find(|r| r.shop == "trn" && r.key == "3")
+            .unwrap();
+        let vet_h = IMM_ROWS
+            .iter()
+            .find(|r| r.shop == "rep" && r.key == "h")
+            .unwrap();
+
+        g.player.money = 0;
+        assert_eq!(
+            g.render_imm_row(gym3),
+            " 3 -  ^410^7  прокачать 10 качков опыта"
+        );
+        assert_eq!(
+            g.render_imm_row(vet_h),
+            "  ^2h^7 - за ^43^7 рубля тебя залатают"
+        );
+
+        g.player.money = 1000;
+        assert_eq!(
+            g.render_imm_row(gym3),
+            " 3 -  ^010^7  прокачать 10 качков опыта"
+        );
+        assert_eq!(
+            g.render_imm_row(vet_h),
+            "  ^2h^7 - за ^03^7 рубля тебя залатают"
+        );
+    }
+
+    /// Every gate open: all nine rows, in image order.
+    #[test]
+    fn a_high_district_opens_every_imm_row() {
+        assert_eq!(
+            visible(4, 0, 0),
+            [
+                ("rep", "h"),
+                ("rep", "r"),
+                ("kl", "1"),
+                ("kl", "2"),
+                ("trn", "1"),
+                ("trn", "2"),
+                ("trn", "3"),
+                ("trn", "4"),
+                ("trn", "5"),
+            ]
+        );
     }
 
     #[test]

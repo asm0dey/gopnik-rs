@@ -91,7 +91,29 @@ fn clock_seed() -> u32 {
         .unwrap_or(0)
 }
 
+/// `--trace-deterministic` writes `gopnik::trace`'s record stream to stdout
+/// and exits without starting a game: no terminal setup, no colour, no RNG,
+/// no input. `tools/difftest.py` is its only consumer.
+///
+/// An unrecognised argument is refused rather than ignored, so a typo in the
+/// flag cannot silently launch an interactive session that a harness then
+/// reads as an empty trace.
 fn main() -> io::Result<()> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
+        [] => {}
+        ["--trace-deterministic"] => {
+            let stdout = io::stdout();
+            let mut out = stdout.lock();
+            gopnik::trace::emit(&mut out)?;
+            return out.flush();
+        }
+        _ => {
+            eprintln!("usage: gopnik [--trace-deterministic]");
+            std::process::exit(2);
+        }
+    }
+
     term::init();
     term::println("^4Gopnik: ^7version 1.02 june,sept 2003");
     let stdin = io::stdin();
