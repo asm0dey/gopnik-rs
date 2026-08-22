@@ -45,10 +45,47 @@ different build* of the same library than this distribution's:
 
 | routine | what differs |
 |---|---|
-| `0f78:0c8f` (`Delete`) | this program's copy adds a five-byte clamp (`cmp word [bp+8],1` / `jge` / `mov word [bp+8],1`) that the library's copy does not have; everything after it is shifted by five bytes |
+| `0f78:0c8f` (`Delete`) | **11 bytes added, 6 removed** (net +5, which is why everything after is shifted by five). See below — the difference is behavioural, not just a size |
 | `0f16:003b` | uses `bl` where the library uses `al` in the CGA read-back loop |
 | `0f16:02a8` (`Delay`) | a different 32-byte body |
 | `0f16:02c8` | the snow-avoidance wait loop, `al` where the library uses `bl` |
+
+**`Delete`'s index clamp, exactly.**  `Delete(S, Index, Count)` passes `Count`
+at `[bp+6]` and `Index` at `[bp+8]`.  Both copies open the same way, and both
+clamp `Count` to 255.  The difference, decoded from `orig/g.exe` on one side
+and `TURBO.TPL`'s `SYSTEM` code on the other:
+
+```
+library                                  this program
+  +7  83 7e 06 00  cmp word [bp+6],0       +7  83 7e 06 00  cmp word [bp+6],0
+ +11  7e 5c        jle epilogue           +11  7e 61        jle epilogue
+ +13  83 7e 08 00  cmp word [bp+8],0       -- REMOVED, 6 bytes --
+ +17  7e 56        jle epilogue            --
+ +19  81 7e 08 ff 00  cmp [bp+8],255      +13  81 7e 08 ff 00  cmp [bp+8],255
+ +24  7f 4f        jg epilogue            +18  7f 5a        jg epilogue
+ +26  81 7e 06 ff 00  cmp [bp+6],255      +20  81 7e 06 ff 00  cmp [bp+6],255
+ +31  7e 05        jle +5                 +25  7e 05        jle +5
+ +33  c7 46 06 ff 00  mov [bp+6],255      +27  c7 46 06 ff 00  mov [bp+6],255
+                                          -- ADDED, 11 bytes --
+                                          +32  83 7e 08 01  cmp word [bp+8],1
+                                          +36  7d 05        jge +5
+                                          +38  c7 46 08 01 00  mov [bp+8],1
+ +38  8d be 00 ff  lea di,[bp-0x100]      +43  8d be 00 ff  lea di,[bp-0x100]
+```
+
+So it is **not** "a five-byte clamp added"; five is the net.  And the two
+copies do not merely differ in size: the library **returns without touching
+the string** when `Index <= 0`, while this build **clamps `Index` to 1** and
+deletes from the front.  `Delete(S, 0, 3)` is a no-op in the library and
+removes three characters here.  That is a behavioural difference and is
+recorded in `docs/re/gaps.md` as well.
+
+It changes nothing in this program: `0f78:0c8f` has **no caller anywhere in
+the image** — 0 far-call sites (`9a 8f 0c 78 0f`), 0 near `e8` calls to
+`0x0c8f` within segment `0f78`, and the far pointer `8f 0c 78 0f` occurs 0
+times as data.  `Delete` is linked in and never reached.  It is evidence about
+which *build* was linked, not a live semantic difference — and the port would
+only need it if it ever emulated the routine.
 
 That pattern — string-index clamping in `SYSTEM` and the `CRT` timing and snow
 loops — is what a 7.01 or a patched `CRT` would look like, but this
@@ -118,6 +155,29 @@ bytes against `SYSTEM` — `SYSTEM` block 35 opens with the same twelve bytes as
 `CRT` block 1 — of which 1127 differed.  That false positive is why the gate
 exists and why `reject` prints both sides rather than a verdict alone.
 
+### Why `fits()` alone proves nothing
+
+`rtlmatch.fits()` is the prefix gate, and on its own it is a **weak** test —
+weak enough that reusing it as a standalone "is this the same routine?"
+criterion would produce confident wrong matches.  It accepts any pair with a
+matching byte at least every five, so most of a byte string may differ and it
+still returns true.  Measured against segment `0eed`, which is not runtime at
+all, at the `PREFIX` length of 12:
+
+| library block | offset in `0eed` | `fits()` | bytes differing |
+|---|---|---|---:|
+| `SYSTEM` block 3 | `0eed:00b4` | yes | 9 of 12 |
+| `SYSTEM` block 15 | `0eed:00f5` | yes | 9 of 12 |
+| `CRT` block 0 (whole, 13 bytes) | `0eed:00f7` | yes | 11 of 13 |
+
+The third row survives `MAX_LONG_RUN_FRACTION` as well, because 11 differing
+bytes spread over three runs of at most four contain no long run to measure.
+Discrimination comes from three things in ascending order of strength: the
+prefix gate (nearly free), the long-run fraction **over the whole block**
+(which is what kills the 1139-byte `SYSTEM` block 35 false positive above),
+and above both the **coverage** the walk accumulates — 4958 of 4960 for a
+segment that is the unit, 37 of 656 for one that is not.
+
 ## Which unit each segment is
 
 Chosen by how much of the segment the alignment accounts for, not by the
@@ -130,10 +190,55 @@ segment number:
 | `0f16` | `CRT` | 1567 of 1568 | 3 of 3 | 20 |
 | `0f78` | `SYSTEM` | 4958 of 4960 | 17 of 47 | 81 |
 
-`0eed` matches no unit of the library at any offset, and the program's other
-three runtime segments each match exactly one.  It is the game's own second
-code segment — a Pascal unit of its own — and it is why the brief's "107
-Borland runtime functions" is three too many.  Its three routines call the
+`0eed` matches no unit of the library, and the program's other three runtime
+segments each match exactly one.  It is the game's own second code segment — a
+Pascal unit of its own — and it is why the brief's "107 Borland runtime
+functions" is three too many.
+
+**What "matches no unit" is measured over.** `python3 tools/rtlmatch.py
+reject` prints `0 of 656` for all five units, but `align()` only looks for the
+first block at offsets `0..SLACK` (24) from the segment start, so that run on
+its own cannot support the words "at any offset".  Restarting `align()` at
+**each of the 656 offsets** and taking the best coverage any start reaches:
+
+```
+$ python3 - <<'PY'
+import sys; sys.path.insert(0, 'tools')
+import addr, tpl, rtlmatch
+units = list(tpl.units(tpl.read_tpl()))
+img = addr.load_image(addr.read_exe())
+base, length = rtlmatch.SEGMENTS[0x0EED]
+seg = img[base:base + length]
+for u in units:
+    best = max((rtlmatch.align(seg[q:], u)[1], q) for q in range(length))
+    print("0eed vs %-8s: best coverage %4d of %d bytes over all %d start offsets"
+          % (u.name, best[0], length, length))
+PY
+0eed vs SYSTEM  : best coverage   36 of 656 bytes over all 656 start offsets
+0eed vs OVERLAY : best coverage    0 of 656 bytes over all 656 start offsets
+0eed vs CRT     : best coverage   37 of 656 bytes over all 656 start offsets
+0eed vs DOS     : best coverage   36 of 656 bytes over all 656 start offsets
+0eed vs PRINTER : best coverage    0 of 656 bytes over all 656 start offsets
+```
+
+(Needs the library: `GOPNIK_TPL=…/BIN/TURBO.TPL`.)
+
+37 of 656 is 5.6%, against 1567 of 1568 for `0f16` and 4958 of 4960 for
+`0f78`.  Those 37 bytes are not a partial match either: exhaustively testing
+every (offset, unit, block) triple — 46,728 of them — leaves **three**
+whole-block survivors of both gates, all of them the same 13-byte `CRT` block
+0 (the `Halt` stub) at `0eed:00f7`, `0eed:010c` and `0eed:0120`, each with
+**11 of its 13 bytes differing**.  That is `fits()` being weak on a short
+block, not a match; see "Why `fits()` alone proves nothing" above.
+
+**Positive evidence for what `0eed` is**, which is stronger than the negative:
+the encoding `31 c0` (`xor ax,ax`, the `0x31` direction) occurs **8 times in
+`0eed` and 3200 times in the game's own segment `1000`, and 0 times in all
+27,826 code bytes of the library** — see "The instruction-encoding
+observation" below for the full count, including why `55 89 e5` is *not* a
+discriminator.
+
+Segment `0eed`'s three routines call the
 runtime (`lcall 0f78:02cd`, the stack check, opens each of them) and one of
 them calls `CRT.TextColor`; `docs/re/command-dispatch.md` already cites
 `0eed:0000` as the game's colour-markup write and `0eed:0216` as its
@@ -172,6 +277,12 @@ Three kinds of name, and the difference is load-bearing:
 - **`behavioural`** — a name coined here for a routine with no user-visible
   Borland name: a helper, an operator, a device driver entry.  These are
   descriptions, not Borland symbols; do not cite one as if it were.
+  **All 72 carry an `rtl_` prefix**, so a coined name is unmistakable on
+  sight even where the `kind` field is not to hand.  One did not — the CRT
+  unit initialiser was `Crt_initialization`, which reads exactly like a
+  compiler-generated Pascal symbol, the misreading this convention exists to
+  prevent; it is `rtl_crt_initialization`.  A new coined name must keep the
+  prefix.
 
 Anything that could be more than one standard procedure keeps a behavioural
 name.  `0f78:081e` and `0f78:0825` are INT 21h AH=3Fh/AH=40h of `RecSize`
@@ -230,21 +341,70 @@ first like evidence of a different compiler.  It is not: `PRINTER`, whose 54
 bytes of code are a plain Pascal `Assign(Lst,'LPT1'); Rewrite(Lst)`, also
 encodes `55 89 e5`, and so do `CRT` and `OVERLAY` in their compiled parts.
 The split is between Borland's hand-written assembler (`SYSTEM`, `DOS`, most
-of `CRT`) and compiler output, not between compilers.  The `30`/`31` `xor`
-forms do not occur anywhere in the library's 28 KB of code, which is
-unexplained but is not, on its own, evidence about which compiler built the
-game.
+of `CRT`) and compiler output, not between compilers.  Counted:
+
+| encoding | seg `1000` (game) | seg `0eed` | seg `0f16` | seg `0f78` | library (27,826 bytes) |
+|---|---:|---:|---:|---:|---:|
+| `55 89 e5` | 15 | 3 | 2 | 0 | 4 |
+| `31 c0` | 3200 | 8 | 0 | 0 | **0** |
+| `30 c0` | — | — | — | — | 0 |
+
+So `55 89 e5` is **not** a discriminator — Borland emits it too, in `PRINTER`,
+`CRT` and `OVERLAY` — and any claim resting on it is retracted.  `31 c0` is:
+the `30`/`31` `xor` forms do not occur once in the library's 27,826 code
+bytes, and occur 8 times in `0eed` and 3200 times in the game's own segment.
+That asymmetry is what `tools/rtlmatch.py`'s `NON_RUNTIME_SEGMENTS` comment
+now cites.  It remains **unexplained**, and on its own it is a fact about
+encodings, not a conclusion about which compiler built the game — the
+alignment coverage above is what settles `0eed`.
 
 ## Decoder cross-check
 
-`tools/dis16.py` and `capstone` 5.0.1280 (`CS_ARCH_X86` + `CS_MODE_16`) were
-run over all four runtime segments and over every named routine.  **1282
-instructions compared, 1282 agreed, 0 disagreed** — no instruction-length
-disagreement anywhere.  `tools/test_rtlmatch.py`'s
-`TestCapstoneAgreesWithDis16` asserts it, so a future disagreement fails the
-suite rather than being noticed by accident.  `dis16` remains the shipped
-decoder; capstone is a third opinion, alongside the `ndisasm` validation
-`dis16` already carried.
+`tools/dis16.py` and `capstone` (`CS_ARCH_X86` + `CS_MODE_16`) draw the same
+instruction boundaries everywhere they were both run: **0 disagreements**.
+There are **two** comparisons, over two different populations, and an earlier
+version of this section reported the smaller one's count as if it were the
+whole thing.
+
+**1. A linear sweep of each runtime segment — 1282 instructions.**  A linear
+sweep starts at offset 0 and halts at the first byte it will not decode,
+whether or not that byte is code, so it is not a disassembly of the segment.
+Where each sweep stops:
+
+| segment | length | sweep stops at | why | `dis16` insns | capstone insns |
+|---|---:|---:|---|---:|---:|
+| `0ee5` | `0x0080` | `0x0080` (end) | ran to the end | 70 | 70 |
+| `0eed` | `0x0290` | `0x028f` | modrm runs off the end of the buffer | 260 | 260 |
+| `0f16` | `0x0620` | `0x061f` | modrm runs off the end of the buffer | 663 | 663 |
+| `0f78` | `0x1360` | **`0x0273`** | **`0x67`, an address-size prefix** | **289** | **2235** |
+
+`0f78:0273` is the letter `g` of `Copyright`, inside
+`Portions Copyright (c) 1983,92 Borland` at `0f78:0264` — the same string the
+version claim rests on.  `0x67` is the 386 address-size prefix and `dis16`
+refuses it by design, so the sweep stops there and **87% of the segment
+holding 81 of the 107 routines never entered this comparison**.  1282 is
+70 + 260 + 663 + 289, not a count over four whole segments.
+
+**2. Every named routine, anchored at its own entry — 2258 instructions.**
+This one is not sweep-limited, because each routine starts a fresh decode at
+an address the export says is an entry.  It covers **4973 of the 4975 bytes**
+of the 104 named routines; the two missing are the last two of `0f78:1117`,
+whose recorded 22 bytes are Ghidra over-reaching (see "One thing the
+assertion found" below).  This is the comparison that actually covers `0f78`.
+
+`tools/test_rtlmatch.py`'s `TestCapstoneAgreesWithDis16` asserts both, and now
+asserts the exact populations (1282 and 2258) and the sweep stop points rather
+than a `> 1000` floor — a sweep that silently shortens fails instead of still
+clearing the floor.  It also counts the offsets one decoder reached that the
+other did not start an instruction at, which the previous version skipped with
+a bare `continue`; that count is **0**, and is asserted to stay 0.
+
+`dis16` remains the shipped decoder; capstone is a third opinion, alongside
+the `ndisasm` validation `dis16` already carried.  The capstone here is
+`importlib.metadata.version("capstone")` = `5.0.9`, `capstone.__version__` =
+`5.0.7`, `capstone.cs_version()` = `(5, 0, 1280)`.  An earlier version of this
+section wrote that last tuple as "capstone 5.0.1280", which is not a release
+number.
 
 ## The routines
 
@@ -269,7 +429,7 @@ decoder; capstone is a third opinion, alongside the `ndisasm` validation
 | address | size | name | kind | match | game callers |
 |---|---:|---|---|---|---:|
 | `0f16:0000` | 13 | `rtl_crt_halt255` | behavioural | fixups_only | 0 |
-| `0f16:000d` | 46 | `Crt_initialization` | behavioural | fixups_only | 1 |
+| `0f16:000d` | 46 | `rtl_crt_initialization` | behavioural | fixups_only | 1 |
 | `0f16:003b` | 104 | `rtl_crt_detect_display` | behavioural | divergent | 0 |
 | `0f16:00a3` | 77 | `rtl_crt_set_mode` | behavioural | fixups_only | 0 |
 | `0f16:00f0` | 72 | `rtl_crt_read_window_size` | behavioural | fixups_only | 0 |
@@ -402,7 +562,7 @@ python3 tools/tpl.py [TURBO.TPL]        # the library's structure
 python3 tools/rtlmatch.py align         # the block alignment, per segment
 python3 tools/rtlmatch.py reject        # the negative controls
 python3 tools/rtlmatch.py emit          # rewrite data/rtl_names.json
-python3 tools/test_rtlmatch.py          # 16 tests, no library needed
+python3 tools/test_rtlmatch.py          # 18 tests, no library needed
 ```
 
 `emit` needs the library; point `GOPNIK_TPL` at a `TURBO.TPL` or pass the path.
@@ -412,15 +572,61 @@ regeneration against a different one is visible in the diff.
 ## Not wired: `tools/ghidra/ExportAll.java`
 
 The brief asked whether `ExportAll.java` should read the side table and emit
-the names.  It is **not** wired, deliberately.  Ghidra is not installed in
-this environment (`/opt/ghidra`, which `tools/ghidra/run_ghidra.sh` invokes,
-does not exist), so a change to that file could not be compiled, could not be
-run, and above all could not be checked against Task 11g's guarantee that two
-consecutive exports are byte-identical.  Shipping an unverifiable change to a
-generator is the defect this project keeps paying for.  The names are
-therefore consumed on the Python side, by `tools/re_query.py resolve`, which
-is tested.
+the names.  It is **not** wired, deliberately.
 
-Wiring it later is a small job: read `data/rtl_names.json`, key it by the
-`entry` string, and emit an extra `"rtl_name"` field — not a rename, because
-every existing citation in `docs/re/` and `src/` refers to the `FUN_*` names.
+**A correction.** An earlier version of this section gave the reason as
+"Ghidra is not installed in this environment (`/opt/ghidra` … does not
+exist)".  That is false, and it was committed here.  Ghidra *is* installed:
+
+```
+$ ls -l /opt/ghidra/support/analyzeHeadless
+-rwxr-xr-x 1 root root 2388 Jun 29 17:18 /opt/ghidra/support/analyzeHeadless
+$ command -v analyzeHeadless || echo "not on PATH"
+not on PATH
+```
+
+It is simply not on `PATH`, which is what a `command -v` check reports and
+what the wrong claim was inferred from; `tools/ghidra/run_ghidra.sh` invokes
+it by absolute path and does not need it on `PATH`.  Task 11g ran it — that
+is where `data/functions.json`'s `data_xrefs` field came from.  A second
+sentence in the task report, that the Python consumption path "is tested",
+was false too when it was written: `tools/test_re_query.py` gained no test in
+Task 11h.  It has them now (`TestResolveReportsTheRuntimeName`, 8 tests), and
+one of them found a real defect — see "One thing the assertion found" below.
+
+**The decision stands; the reasons are these.**
+
+1. The names must not become **renames**.  Every citation in `docs/re/` and in
+   `src/` refers to a routine by its `FUN_*` name, and `docs/re/functions.md`
+   documents the export by those names.  A rename invalidates all of them at
+   once.
+2. Wiring it means regenerating `data/functions.json`, and Task 11g's
+   guarantee — two consecutive `ExportAll` runs are byte-identical (`cmp`
+   exits 0) — would have to be re-established for the changed generator, on
+   an artifact this task was told to leave untouched.
+3. The side table is a **different kind of claim** from the export.  The
+   export is what Ghidra asserts; `data/rtl_names.json` carries a
+   `name_kind`, a tier and per-routine evidence, and 72 of its 104 names are
+   coined here rather than read from the library.  Flattening that into a
+   name field in a build artifact loses exactly the provenance that keeps a
+   coined name from being cited as a Borland symbol.
+
+Wiring it later is still a small job, and (1) is the constraint on how: read
+`data/rtl_names.json`, key it by the `entry` string, and emit an extra
+`"rtl_name"` field **beside** `name`, never in place of it — then re-run the
+byte-identical check.
+
+### One thing the assertion found
+
+`data/functions.json` contains exactly one pair of overlapping extents:
+`1f78:1117` is recorded as 22 bytes (`0x10897`..`0x108ad`), which swallows the
+entries `1f78:1121` and `1f78:1125`.  Its real body is the ten bytes
+`0f78:1117`..`0f78:1120` — `or cl,cl` / `jz` / `call` / `jb` / `retf` — and
+the recorded extent runs one byte into the `call` at `0f78:112b`.
+`re_query.Program.function_containing` returned the first matching range in
+file order, so `resolve 0f78:1125` answered `FUN_1f78_1117` and printed
+`rtl_real_op_div` as the runtime name — for an address `docs/re/tables.md`
+cites by name.  It now returns the innermost containing range;
+`test_the_one_overlapping_ghidra_extent_resolves_to_the_inner_routine` pins
+both the overlap set and the three names.  `data/functions.json` was not
+edited: it is a build artifact and the 22 is Ghidra's to fix.

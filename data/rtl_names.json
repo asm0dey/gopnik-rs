@@ -529,7 +529,7 @@
    "size": 46,
    "image_off": 61805,
    "file_off": 68157,
-   "name": "Crt_initialization",
+   "name": "rtl_crt_initialization",
    "name_kind": "behavioural",
    "tier": "flow",
    "evidence": "0f16:000d is the block CRT.TPU's entry +0x0000 resolves to. It probes the display through 0f16:003b, then runs AssignCrt (0f16:033c) plus SYSTEM entry +0x230 (Reset) on one TextRec and AssignCrt plus +0x238 (Rewrite) on the other -- Input and Output",

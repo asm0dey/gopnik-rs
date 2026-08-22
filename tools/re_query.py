@@ -73,10 +73,26 @@ class Program:
     # --- anchoring -----------------------------------------------------------
 
     def function_containing(self, image_off):
+        """The INNERMOST exported function whose extent covers `image_off`.
+
+        Ghidra's extents are not always disjoint.  `data/functions.json` has
+        exactly one overlap: `1f78:1117` is recorded as 22 bytes, `0x10897`..
+        `0x108ad`, and that swallows the entries `1f78:1121` and `1f78:1125`,
+        two of the six-byte real-arithmetic thunks that follow it (the real
+        body of `1f78:1117` is the ten bytes ending in the `retf` at
+        `0f78:1120`).  Returning the first match in file order therefore
+        answered `0f78:1125` -- which `docs/re/tables.md` cites by name -- with
+        `FUN_1f78_1117`, and `resolve` then reported the wrong runtime name for
+        it.  The innermost range is the right answer whenever they nest, so
+        prefer the latest entry, and among equal entries the tightest extent.
+        `data/functions.json` is a build artifact and is not hand-edited.
+        """
+        best = None
         for lo, hi, f in self._ranges:
-            if lo <= image_off < hi:
-                return f
-        return None
+            if lo <= image_off < hi and (best is None
+                                         or (lo, -hi) > (best[0], -best[1])):
+                best = (lo, hi, f)
+        return best[2] if best else None
 
     def anchored_stream(self, image_off):
         """Instructions covering `image_off`, and how the alignment was fixed.

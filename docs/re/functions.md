@@ -40,6 +40,16 @@ second code segment of the game's own. 104 carry a name in
 it. The "almost certainly Borland RTL" hedge above is discharged for the three
 runtime segments and refuted for `1eed`.
 
+**Those 104 names are not all Borland's.** Only 8 are read verbatim from the
+library's symbol table (`name_kind: tpl_symbol`) and 24 are Borland
+standard-procedure names established from the routine's own flow
+(`name_kind: borland`). The remaining **72 are coined in Task 11h**
+(`name_kind: behavioural`) — descriptions of what the routine does, not
+Borland identifiers, and they carry an `rtl_` prefix to say so. Do not cite
+one as a Borland symbol. `resolve` prints the `kind` beside every name, and
+`docs/re/rtl.md`, "Where the names come from, and where they cannot", says why
+`SYSTEM` — 81 of the 107 — cannot supply names at all.
+
 `entry` (1000:ab59, 17143 bytes) is very likely not itself "the main loop" in
 the traditional sense: it decompiles to a single enormous function full of
 `extraout_AH` locals, i.e. dozens of inlined DOS/BIOS interrupt calls — the

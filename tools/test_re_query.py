@@ -195,6 +195,98 @@ class TestResolve(unittest.TestCase):
                          re_query.resolve(PROG, "0f78:114b")["file_off"])
 
 
+class TestResolveReportsTheRuntimeName(unittest.TestCase):
+    """`docs/re/rtl.md` says the names are consumed here instead of being
+    written into `data/functions.json`.  Nothing asserted that until now: the
+    pre-existing `resolve` tests traverse the branch, so a crash would have
+    shown, but no test read the `rtl` block or its `kind`.
+
+    `data/rtl_names.json` is committed, so these need no library.
+    """
+
+    def test_an_entry_address_gets_the_name_its_kind_and_its_unit(self):
+        out = re_query.resolve(PROG, "0f78:114b")
+        self.assertIn("rtl", out)
+        self.assertEqual(out["rtl"]["name"], "Random")
+        self.assertEqual(out["rtl"]["kind"], "borland")
+        self.assertEqual(out["rtl"]["unit"], "SYSTEM")
+        self.assertTrue(out["rtl"]["is_entry"])
+        self.assertIn("0f78:114b", out["rtl"]["evidence"])
+
+    def test_an_interior_address_gets_the_containing_routine_not_entry(self):
+        out = re_query.resolve(PROG, "0f78:1152")
+        self.assertEqual(out["rtl"]["name"], "Random")
+        self.assertFalse(out["rtl"]["is_entry"])
+
+    def test_a_coined_name_is_reported_as_coined(self):
+        """The `kind` is the whole guard against citing a coined name as a
+        Borland symbol, so it must survive the trip through `resolve`."""
+        out = re_query.resolve(PROG, "0f16:000d")
+        self.assertEqual(out["rtl"]["name"], "rtl_crt_initialization")
+        self.assertEqual(out["rtl"]["kind"], "behavioural")
+        self.assertEqual(out["rtl"]["unit"], "CRT")
+
+    def test_a_symbol_table_name_is_reported_as_such(self):
+        out = re_query.resolve(PROG, "0ee5:0000")
+        self.assertEqual((out["rtl"]["name"], out["rtl"]["kind"],
+                          out["rtl"]["unit"]),
+                         ("FindFirst", "tpl_symbol", "DOS"))
+
+    def test_game_code_and_the_unnamed_segment_get_no_rtl_block(self):
+        self.assertNotIn("rtl", re_query.resolve(PROG, "1000:b353"))
+        # `0eed` is the game's own second code segment: named nowhere, so it
+        # must not acquire a runtime name by being outside segment 1000.
+        self.assertNotIn("rtl", re_query.resolve(PROG, "0eed:0000"))
+
+    def test_the_one_overlapping_ghidra_extent_resolves_to_the_inner_routine(self):
+        """`data/functions.json` has exactly one pair of overlapping extents:
+        `1f78:1117`'s recorded 22 bytes swallow the entries `1f78:1121` and
+        `1f78:1125`.  First-match-in-file-order answered both with
+        `FUN_1f78_1117` and `resolve` reported `rtl_real_op_div` for them.
+        `docs/re/tables.md` cites `0f78:1125` by name, so this is a name a
+        document depends on."""
+        overlaps = []
+        for lo, hi, f in PROG._ranges:
+            for lo2, _, g in PROG._ranges:
+                if f is not g and lo < lo2 < hi:
+                    overlaps.append((f["entry"], g["entry"]))
+        self.assertEqual(sorted(overlaps),
+                         [("1f78:1117", "1f78:1121"),
+                          ("1f78:1117", "1f78:1125")])
+        for cit, name in (("0f78:1121", "rtl_real_op_cmp"),
+                          ("0f78:1125", "rtl_real_op_from_longint"),
+                          ("0f78:1117", "rtl_real_op_div")):
+            with self.subTest(cit):
+                out = re_query.resolve(PROG, cit)
+                self.assertEqual(out["rtl"]["name"], name)
+                self.assertTrue(out["rtl"]["is_entry"])
+        # An address genuinely interior to the outer routine still gets it.
+        self.assertEqual(re_query.resolve(PROG, "0f78:1119")["rtl"]["name"],
+                         "rtl_real_op_div")
+
+    def test_every_named_routine_resolves_to_its_own_name(self):
+        doc = json.loads((REPO / "data" / "rtl_names.json").read_text())
+        n = 0
+        for r in doc["routines"]:
+            if not r["name"]:
+                continue
+            with self.subTest(r["citation"]):
+                out = re_query.resolve(PROG, r["citation"])
+                self.assertEqual(out["rtl"]["name"], r["name"])
+                self.assertEqual(out["rtl"]["kind"], r["name_kind"])
+                n += 1
+        self.assertEqual(n, 104)
+
+    def test_the_cli_prints_the_rtl_block(self):
+        out = subprocess.run(
+            [sys.executable, str(REPO / "tools" / "re_query.py"),
+             "resolve", "0f78:114b"], capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("rtl:", out.stdout)
+        self.assertIn("Random", out.stdout)
+        self.assertIn("borland", out.stdout)
+
+
 class TestIsCallSite(unittest.TestCase):
     """Alignment and identity, separately -- and alignment never decides."""
 

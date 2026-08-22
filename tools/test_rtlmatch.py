@@ -49,6 +49,28 @@ ANCHORS = {
 #: for a typed/untyped `File`.  Anything else repeating is a mistake.
 OVERLOADED = {"Assign", "Reset", "Rewrite", "Close"}
 
+#: The four routines this program links from a different build of the runtime
+#: than the library it was matched against (`docs/re/rtl.md`, "which build of
+#: TP 7").  Pinned by citation so a regeneration that loses one, or promotes a
+#: fifth, fails here instead of changing a count in a document.
+DIVERGENT = {"0f78:0c8f", "0f16:003b", "0f16:02a8", "0f16:02c8"}
+
+#: `Delete`'s divergence, at `0f78:0c8f` + 32, checkable WITHOUT the library:
+#: `cmp word [bp+8],1` / `jge +5` / `mov word [bp+8],1`.  The library's copy
+#: has no such clamp -- it has `cmp word [bp+8],0` / `jle` to the epilogue, 19
+#: bytes earlier.  See `docs/re/gaps.md`, "`Delete`'s index clamp".
+DELETE_CLAMP = (32, "83 7e 08 01 7d 05 c7 46 08 01 00")
+
+#: The one routine whose `data/functions.json` size does NOT tile into whole
+#: instructions.  Ghidra gives `0f78:1117` 22 bytes, but its body is the 10
+#: bytes `0f78:1117`..`0f78:1120` (`or cl,cl` / `jz` / `call` / `jb` / `retf`)
+#: and the recorded extent runs one byte into the `call` at `0f78:112b`.  The
+#: neighbouring records `0f78:1121` and `0f78:1125` start inside that extent,
+#: so the 22 is Ghidra over-reaching across a run of tiny thunks, not a
+#: citation error.  `data/functions.json` is a build artifact and is not
+#: hand-edited, so the exception is named here rather than removed.
+DOES_NOT_TILE = {"0f78:1117"}
+
 
 class TestTableAgainstTheImage(unittest.TestCase):
 
@@ -70,11 +92,28 @@ class TestTableAgainstTheImage(unittest.TestCase):
                 rec = next(r for r in ROUTINES if r["citation"] == cit)
                 self.assertEqual(rec["name"], name)
 
-    def test_every_routine_starts_on_a_decodable_instruction(self):
+    def test_every_routine_decodes_and_its_bytes_tile_into_instructions(self):
+        """`insn.length > 0` was trivially true whenever `decode` returned.
+
+        The check that can actually fail is that decoding forward from the
+        entry lands EXACTLY on the recorded end: an entry citation that
+        drifted into the interior of an instruction, or a size that no longer
+        agrees with the code, breaks the tiling.  One record legitimately does
+        not tile -- `DOES_NOT_TILE` says which and why -- and this asserts it
+        is still that one and no other.
+        """
+        ragged = {}
         for r in ROUTINES:
             with self.subTest(r["citation"]):
-                insn = dis16.decode(IMG, r["image_off"])
-                self.assertGreater(insn.length, 0)
+                end, pos = r["image_off"] + r["size"], r["image_off"]
+                first = dis16.decode(IMG, pos)
+                self.assertEqual(first.off, r["image_off"])
+                while pos < end:
+                    pos = dis16.decode(IMG, pos).end
+                if pos != end:
+                    ragged[r["citation"]] = (r["size"], pos - r["image_off"])
+        self.assertEqual(set(ragged), DOES_NOT_TILE,
+                         "recorded size vs bytes decoded: %r" % (ragged,))
 
     def test_sizes_and_membership_agree_with_functions_json(self):
         byentry = {f["entry"]: f for f in FUNCS}
@@ -130,12 +169,31 @@ class TestTableIsInternallyHonest(unittest.TestCase):
             with self.subTest(r["citation"]):
                 self.assertEqual(r["match"]["mode"], "not_runtime")
 
-    def test_divergent_routines_are_reported_not_hidden(self):
-        div = [r for r in ROUTINES if r["match"]["mode"] == "divergent"]
-        self.assertTrue(div, "the four known divergences must still be flagged")
-        for r in div:
-            with self.subTest(r["citation"]):
-                self.assertGreater(r["match"]["long_runs"], 0)
+    def test_divergent_routines_are_exactly_the_four_documented_ones(self):
+        """`long_runs > 0` was true by construction.
+
+        `rtlmatch.classify` sets `mode == "divergent"` if and only if `big` is
+        non-empty, and `long_runs` is `len(big)`, so asserting it restated the
+        implementation and could not fail.  What can fail: the divergent SET
+        drifting from the four `docs/re/rtl.md` names.
+        """
+        div = {r["citation"] for r in ROUTINES
+               if r["match"]["mode"] == "divergent"}
+        self.assertEqual(div, DIVERGENT)
+
+    def test_deletes_divergence_is_visible_in_the_image_itself(self):
+        """The divergence claim, re-derived without the library.
+
+        `docs/re/rtl.md` says this program's `Delete` carries an index clamp
+        the library's copy does not.  The clamp is IN `orig/g.exe`, so the
+        claim is checkable here: 11 bytes at `0f78:0c8f` + 32.
+        """
+        off = addr.file_off_of_citation("0f78:0c8f") + DELETE_CLAMP[0]
+        want = bytes.fromhex(DELETE_CLAMP[1])
+        self.assertEqual(EXE[off:off + len(want)], want)
+        rec = next(r for r in ROUTINES if r["citation"] == "0f78:0c8f")
+        self.assertEqual(rec["name"], "Delete")
+        self.assertEqual(rec["match"]["mode"], "divergent")
 
 
 class TestFitsCanReject(unittest.TestCase):
@@ -175,6 +233,29 @@ class TestFitsCanReject(unittest.TestCase):
         self.assertEqual(rtlmatch.diff_runs(b"abcd", b"XbYd"), [[0, 0], [2, 2]])
 
 
+#: Where a LINEAR sweep with `tools/dis16.py` stops in each runtime segment,
+#: and why.  A linear sweep is not a disassembly: it walks bytes from offset 0
+#: and halts at the first byte it will not decode, whether or not that byte is
+#: code.  Recorded per segment so the population the cross-check below runs on
+#: is a stated number rather than an implied "the whole segment".
+#:
+#: `0f78` is the one that matters: it halts 0x273 bytes into a 0x1360-byte
+#: segment, on the byte `0x67` -- the letter `g` of "Copyright" inside
+#: `Portions Copyright (c) 1983,92 Borland` at `0f78:0264`.  `0x67` is the
+#: address-size prefix, which `dis16` refuses by design.  So the sweep covers
+#: 289 of capstone's 2235 instructions for that segment; the other 87%, which
+#: holds 81 of the 107 routines, is reached by
+#: `test_named_routines_decode_identically` instead, which starts at each
+#: routine's own entry.
+SWEEP_STOP = {
+    0x0EE5: (0x0080, None),
+    0x0EED: (0x028F, "modrm runs off the end of the buffer at 0x28f"),
+    0x0F16: (0x061F, "modrm runs off the end of the buffer at 0x61f"),
+    0x0F78: (0x0273, "address-size prefix at 0x273: 32-bit addressing is not "
+                     "decoded here"),
+}
+
+
 class TestCapstoneAgreesWithDis16(unittest.TestCase):
     """Two independent decoders over the same bytes must draw the same boundaries.
 
@@ -182,6 +263,14 @@ class TestCapstoneAgreesWithDis16(unittest.TestCase):
     is a third opinion over the runtime segments.  A disagreement is a real
     defect in one of them and is worth more than whatever it was found while
     doing -- so this asserts agreement rather than reporting a ratio.
+
+    Both tests below report the POPULATION they ran on, and both fail if it
+    shrinks.  The earlier version of the segment test skipped offsets capstone
+    had no instruction at with a bare `continue`, and stopped its own sweep on
+    the first `DecodeError` with a bare `break`; between them a headline
+    "1282 instructions over all four runtime segments" was really 1282 over
+    one-and-a-bit segments.  Nothing was skipped for the first reason -- the
+    count is 0 and is now asserted -- and everything was lost to the second.
     """
 
     def setUp(self):
@@ -195,29 +284,50 @@ class TestCapstoneAgreesWithDis16(unittest.TestCase):
         self.md.detail = False
 
     def _lengths(self, base, length):
-        """Instruction lengths from both decoders over one straight run."""
+        """Both decoders over one straight run, plus where `dis16` stopped.
+
+        Returns `(cs_len, d_len, stop, why)`.  `stop` is the offset the linear
+        `dis16` sweep reached; `why` is the `DecodeError` that ended it, or
+        `None` when it ran to the end.  Callers MUST look at those -- a sweep
+        that halts early is the difference between "over the segment" and
+        "over the first 4% of the segment".
+        """
         buf = IMG[base:base + length]
-        cs_len, off = {}, 0
+        cs_len = {}
         for i in self.md.disasm(buf, 0):
             cs_len[i.address] = i.size
-            off = i.address + i.size
-        d_len = {}
-        off = 0
+        d_len, off, why = {}, 0, None
         while off < length:
             try:
                 insn = dis16.decode(buf, off)
-            except dis16.DecodeError:
+            except dis16.DecodeError as e:
+                why = str(e)
                 break
             d_len[off] = insn.length
             off += insn.length
-        return cs_len, d_len
+        return cs_len, d_len, off, why
+
+    def test_the_linear_sweep_stops_where_it_is_documented_to(self):
+        """The population the next test runs on, asserted rather than implied."""
+        for seg, (base, length) in sorted(rtlmatch.SEGMENTS.items()):
+            with self.subTest("%04x" % seg):
+                _, _, stop, why = self._lengths(base, length)
+                want_stop, want_why = SWEEP_STOP[seg]
+                self.assertEqual(stop, want_stop)
+                self.assertEqual(why, want_why)
+        base, length = rtlmatch.SEGMENTS[0x0F78]
+        self.assertEqual(IMG[base + 0x273], 0x67, "the `g` of Copyright")
+        self.assertIn(b"Portions Copyright (c) 1983,92 Borland",
+                      bytes(IMG[base + 0x240:base + 0x290]))
 
     def test_runtime_segments_decode_identically(self):
-        compared = 0
+        compared, unmatched, totals = 0, 0, {}
         for seg, (base, length) in sorted(rtlmatch.SEGMENTS.items()):
-            cs_len, d_len = self._lengths(base, length)
+            cs_len, d_len, stop, _ = self._lengths(base, length)
+            totals["%04x" % seg] = (len(d_len), len(cs_len), stop, length)
             for off, n in sorted(d_len.items()):
                 if off not in cs_len:
+                    unmatched += 1
                     continue
                 compared += 1
                 self.assertEqual(
@@ -225,23 +335,42 @@ class TestCapstoneAgreesWithDis16(unittest.TestCase):
                     "%04x:%04x: dis16 says %d bytes, capstone says %d (%s)"
                     % (seg, off, n, cs_len[off],
                        IMG[base + off:base + off + max(n, cs_len[off])].hex(" ")))
-        self.assertGreater(compared, 1000,
-                           "too few instructions compared for this to mean "
-                           "anything")
+        # Not "> 1000": the exact population, so a sweep that silently
+        # shortens fails instead of still clearing a floor.
+        self.assertEqual(compared, 1282, "population changed: %r" % (totals,))
+        self.assertEqual(unmatched, 0,
+                         "offsets dis16 decoded that capstone did not start an "
+                         "instruction at -- these were skipped silently: %r"
+                         % (totals,))
+        # And the honest coverage: the sweep reaches only 289 of the 2235
+        # instructions capstone finds in `0f78`.
+        self.assertEqual(totals["0f78"][0], 289)
+        self.assertEqual(totals["0f78"][1], 2235)
 
     def test_named_routines_decode_identically(self):
-        compared = 0
+        """The wide cross-check: entry-anchored, so it is not sweep-limited."""
+        compared, unmatched, covered, sized = 0, 0, 0, 0
         for r in ROUTINES:
             if not r["name"]:
                 continue
-            cs_len, d_len = self._lengths(r["image_off"], r["size"])
+            cs_len, d_len, stop, _ = self._lengths(r["image_off"], r["size"])
+            covered += stop
+            sized += r["size"]
             for off, n in sorted(d_len.items()):
                 if off not in cs_len:
+                    unmatched += 1
                     continue
                 compared += 1
                 self.assertEqual(n, cs_len[off],
                                  "%s +%#x" % (r["citation"], off))
-        self.assertGreater(compared, 500)
+        self.assertEqual(compared, 2258)
+        self.assertEqual(unmatched, 0)
+        # 4973 of 4975 bytes.  The two missing are the last two of
+        # `0f78:1117`, the same `DOES_NOT_TILE` record: Ghidra's 22 bytes run
+        # into the `call` at `0f78:112b`, so the sweep stops at +20 with
+        # "instruction at 0x14 runs off the end of the buffer".  No other
+        # named routine loses a byte.
+        self.assertEqual((covered, sized), (4973, 4975))
 
 
 if __name__ == "__main__":

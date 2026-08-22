@@ -19,9 +19,28 @@ UNRESOLVED -- a placeholder the linker overwrites -- so a correctly aligned
 block still differs from the linked copy at every fixup.  The test used here
 is therefore about the SHAPE of the difference: every maximal run of differing
 bytes must be at most `MAX_FIXUP_RUN` (4) bytes long, the width of a far
-pointer.  Unrelated code fails that immediately -- differences land in runs of
-tens of bytes -- and `reject` below demonstrates it failing rather than
-asserting that it would.
+pointer.
+
+`fits()` ALONE IS A WEAK TEST AND MUST NOT BE REUSED AS A STANDALONE
+CRITERION.  It accepts any pair with one matching byte at least every five, so
+unrelated code passes it routinely at the `PREFIX` (12) length: against
+segment `0eed`, which is not runtime at all, `SYSTEM` block 3's first 12 bytes
+`fits()` at `0eed:00b4` with 9 of the 12 differing, and block 15's at
+`0eed:00f5` with 9 of 12 differing as well.  Whole small blocks pass too --
+`CRT` block 0 (the 13-byte `Halt` stub) `fits()` at `0eed:00f7`, `0eed:010c`
+and `0eed:0120` with 11 of its 13 bytes differing each time -- and the
+`MAX_LONG_RUN_FRACTION` gate does not reject those three either, because 11
+differing bytes in three runs of at most four contains no long run at all.
+
+Discrimination therefore comes from all three of these, in ascending order of
+strength: the `PREFIX` gate (nearly free), `MAX_LONG_RUN_FRACTION` over the
+WHOLE block (which is what kills the 1139-byte `SYSTEM` block 35 vs `CRT`
+false positive described below), and above them the COVERAGE the walk
+accumulates -- restarted at each of `0eed`'s 656 offsets, the best any unit
+reaches is 37 bytes of 656, against 1567 of 1568 for `0f16` and 4958 of 4960
+for `0f78`.  A single block that "fits" says almost nothing; `reject` prints
+coverage for exactly that reason, and demonstrates the gates refusing rather
+than asserting that they would.
 
 A block that anchors (its first `PREFIX` bytes fit) but then diverges in a
 LONGER run is reported, not hidden: `long_runs` counts those runs.  That is
@@ -100,7 +119,13 @@ def diff_runs(a, b):
 
 
 def fits(a, b, max_run=MAX_FIXUP_RUN):
-    """True when every differing run is short enough to be one relocated field."""
+    """True when every differing run is short enough to be one relocated field.
+
+    NOT a match criterion on its own -- see the module docstring.  This accepts
+    anything with a matching byte at least every `max_run` + 1, so most of
+    `a` may differ from `b` and it still returns True.  `align()` uses it only
+    as a cheap prefix filter, behind `MAX_LONG_RUN_FRACTION` and coverage.
+    """
     return all(r[1] - r[0] + 1 <= max_run for r in diff_runs(a, b))
 
 
@@ -526,7 +551,10 @@ NAMES.update({
                   "0f16:0000 is `mov ax,0xff` then a far call to the runtime "
                   "halt at 0f78:0116; CRT.TPU's first fixup is a call to "
                   "SYSTEM entry +0x018, which resolves to 0f78:0116"),
-    "0f16:000d": ("Crt_initialization", "behavioural",
+    # NOT `Crt_initialization`: that reads like a compiler-generated Pascal
+    # symbol, and every other coined name here carries the `rtl_` prefix that
+    # marks it as coined rather than read from the library.
+    "0f16:000d": ("rtl_crt_initialization", "behavioural",
                   "0f16:000d is the block CRT.TPU's entry +0x0000 resolves to. "
                   "It probes the display through 0f16:003b, then runs "
                   "AssignCrt (0f16:033c) plus SYSTEM entry +0x230 (Reset) on "
@@ -579,11 +607,19 @@ NAMES.update({
 })
 
 
-#: Segments whose code is NOT the Borland runtime.  `0eed` links against the
-#: runtime (`lcall 0f78:02cd` in each prologue) but matches no unit of the
-#: library, and its instruction encodings are the game's, not Borland's -- see
-#: docs/re/rtl.md.  Recorded so the count of "runtime functions" stops
-#: including them.
+#: Segments whose code is NOT the Borland runtime.  `0eed` CALLS the runtime
+#: (`lcall 0f78:02cd`, the stack check, opens each of its three routines) but
+#: is not part of it: restarting `align()` at each of its 656 offsets, the
+#: best coverage any unit reaches is 37 bytes of 656, against 1567 of 1568 for
+#: `0f16` and 4958 of 4960 for `0f78`.
+#:
+#: `55 89 e5` is NOT a discriminator and an earlier version of this comment
+#: wrongly said it was: Borland's own `PRINTER`, `CRT` and `OVERLAY` emit it
+#: too (4 occurrences across the library).  The encoding that does
+#: discriminate is `31 c0` (`xor ax,ax`, the 0x31 direction): 8 occurrences in
+#: `0eed`, 3200 in the game's own segment `1000`, and 0 in all 27,826 code
+#: bytes of the library.  See docs/re/rtl.md.  Recorded here so the count of
+#: "runtime functions" stops including them.
 NON_RUNTIME_SEGMENTS = {0x0EED}
 
 

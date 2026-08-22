@@ -497,6 +497,36 @@ flow** via `FUN_1000_3d11`'s call into `FUN_1000_29c4` at `1000:4b00`. `k`
 verb everywhere else, but not independently confirmed. `FUN_1000_3d11`'s own
 input loop was not disassembled.
 
+## `Delete`'s index clamp — the linked runtime is not this library's
+
+**Established from flow** (`0f78:0c8f`, Task 11h; see `docs/re/rtl.md`, "which
+build of TP 7"). The Borland `Delete(S, Index, Count)` linked into `orig/g.exe`
+is **not** the one in the TP 7.0 `TURBO.TPL` it was matched against, and the
+difference is behavioural rather than cosmetic:
+
+* the library's copy tests `cmp word [bp+8],0` / `jle` and **returns without
+  touching the string** when `Index <= 0` — 6 bytes, at `+13`;
+* this build has no such test. At `+32` it has 11 bytes instead —
+  `83 7e 08 01` / `7d 05` / `c7 46 08 01 00`, i.e. `if Index < 1 then Index :=
+  1` — and then deletes.
+
+So `Delete(S, 0, 3)` is a no-op in the library and removes three characters
+from the front here. (The net size difference is +5 bytes, which is what shifts
+everything after; the edit itself is 11 added against 6 removed.)
+
+**It cannot affect this program, and the port does not need it today.**
+`0f78:0c8f` has no caller anywhere in the image: 0 far-call sites
+(`9a 8f 0c 78 0f`), 0 near `e8` calls to `0x0c8f` inside segment `0f78`, and
+the far pointer `8f 0c 78 0f` appears 0 times as data. It is dead code the
+smart-linker kept. Recorded here because it is the sharpest single piece of
+evidence that the build is not 7.0-as-shipped, and because a port that ever
+emulates `Delete` must pick the clamping semantics, not the library's.
+
+`tools/test_rtlmatch.py::test_deletes_divergence_is_visible_in_the_image_itself`
+pins the 11 bytes against `orig/g.exe`, so this needs no library to re-check.
+
+---
+
 ## Other unreproduced behaviour
 
 * **`kl` / `trn` priced rows** — prices are not in `data/shops.json`.
