@@ -1,7 +1,9 @@
 # The live `Random` tracer, and what it says about the wander catalogue (Task 11d)
 
 Harness: `tools/rngtrace/`. Tests: `tools/test_rngtrace.py`. Machine-readable
-result: `data/rng_trace.json`. This document changes no Rust.
+results: `data/rng_trace.json` (the draw oracle, Task 11d) and
+`data/state_trace.json` (the per-turn state oracle, Task 11i — see "The
+per-turn state channel" below). This document changes no Rust.
 
 `docs/re/wander.md` catalogues eighteen `Random` draws a wander turn can spend,
 every one of them **established from flow** out of the disassembly and none of
@@ -437,6 +439,138 @@ exactly right. It matters for the port, because a draw spent unconditionally
 where the original spends it only after a `y` puts the whole sequence out of
 step; `docs/re/gaps.md` carries that question.
 
+## The per-turn state channel (Task 11i) — `data/state_trace.json`
+
+`data/rng_trace.json` scores **draws**. It says nothing about whether a level-up
+granted the right stats or whether a theft credited the right money, and its
+`final_state` is one sample per run, at the end. The tracer now samples the same
+variables at **every turn marker** and writes them to a **separate** file,
+`data/state_trace.json`. `data/rng_trace.json` is a frozen oracle of 1387 draws
+and was **not** regenerated for this: the state capture writes beside it, never
+over it, and the fold refuses to publish a run whose draws are not identical to
+it (below).
+
+**Where the sample is taken.** At the same `1000:ae63` stop that already marked
+turns — the top-level prompt's `ReadLn` call, `9a c6 06 78 0f` at file
+`0xc733`, re-derived here with `python3 tools/re_query.py resolve 1000:ae63`.
+The gdb loop prints `P` and then one `S` line holding every variable
+`run.state_fields()` names, read out of guest memory while the guest is stopped
+there. So a sample is the state the prompt is about to be read against: sample
+`turn 1` is the state right after character creation (or after the save loads)
+and before the first `w`; sample `turn k+1` is the state after the k-th walk.
+
+**Targeted reads, and what that saved.** The 35 sampled variables are **57
+bytes**; the alternative, the monitor's `pmemsave`, pulls the whole 1 MiB.
+Measured, not assumed:
+
+| | |
+|---|---|
+| 35 targeted gdb reads (the actual `S` printf), 200 repetitions against a live guest | **0.58 ms** per sample |
+| the same loop with a printf that reads no memory (control) | 0.02 ms per sample |
+| one full `pmemsave` of 1 MiB, timed inside every run (`state_channel.full_dump_seconds`) | **0.401 s** |
+
+Two orders of magnitude is not the whole argument, though: a full dump is not
+reachable at this stop at all. `pmemsave` is issued by the harness's Python
+side over the qemu monitor, and that side does not know when a breakpoint
+stopped the guest — the two existing dumps are taken when the guest is idle and
+*running*. The per-turn sample has to be read by the thing that is stopped
+there, which is gdb.
+
+**Two transports, reconciled.** `run.state_fields()` is one table, and both
+paths into guest memory are built from it: gdb's per-turn reads, and
+`read_state` over a `pmemsave` dump. `tracelog.check_state_samples` requires the
+last per-turn sample to equal `final_state` field for field — two independent
+reads of the same memory, compared. It passed on all five runs. It is also the
+guard that would catch a wrong address or a wrong width in either path, which a
+table compared with itself never could.
+
+**Six variables the old table lacked**, each cited rather than guessed, and each
+a **word** because the instructions that touch them are word-sized
+(`1000:523e`..`1000:5251` is `a1 6a 39` / `01 06 c3 38` / `a1 6c 39` /
+`01 06 c7 38` / `a1 6e 39` / `01 06 c9 38` — three `mov ax,[enemy]` /
+`add [player],ax` pairs, re-derived from `orig/g.exe`):
+
+| field | address | cited at |
+|---|---|---|
+| `beer_38c3` | `20ae:38c3` — beer in half-litres | `docs/re/gaps.md`, "Loot"; `add [0x38c3],ax` at `1000:5241` |
+| `money_38c7` | `20ae:38c7` — the player's money | `docs/re/tables.md`, the shop compare `3B 06 C7 38`; `add [0x38c7],ax` at `1000:5248` |
+| `hlam_38c9` | `20ae:38c9` — Хлам | `docs/re/gaps.md`, "Loot"; `add [0x38c9],ax` at `1000:524f` |
+| `enemy_beer_396a` | `20ae:396a` — the rolled enemy's beer drop | `docs/re/progression.md`, the post-kill block; `mov ax,[0x396a]` at `1000:523e` |
+| `enemy_money_396c` | `20ae:396c` — its money drop | same; `mov ax,[0x396c]` at `1000:5245` |
+| `enemy_hlam_396e` | `20ae:396e` — its Хлам drop | same; `mov ax,[0x396e]` at `1000:524c` |
+
+### The capture
+
+Five runs, the same five configurations as the draw capture, re-executed with
+sampling on. Per-run counts as the harness printed them:
+
+```
+=== run A: --walks 30 --class-answer 0 --seed 0x12345678 ===
+draws=393 prompt_stops=31 state_samples=31 base=0x224B0 -> build/rngtrace/stateA.json
+=== run B: --walks 25 --class-answer 3 --seed 0x12345678 ===
+draws=325 prompt_stops=26 state_samples=26 base=0x224B0 -> build/rngtrace/stateB.json
+=== run C: --walks 3 --class-answer 0 --seed 0x4e1 ===
+draws=30 prompt_stops=4 state_samples=4 base=0x224B0 -> build/rngtrace/stateC.json
+=== run D: --walks 3 --class-answer 0 --seed 0x27c ===
+draws=29 prompt_stops=4 state_samples=4 base=0x224B0 -> build/rngtrace/stateD.json
+=== run E: --walks 25 --class-answer 0 --seed 0x12345678 --with-saves --district 3 ===
+draws=610 prompt_stops=26 state_samples=26 base=0x224B0 -> build/rngtrace/stateE.json
+```
+
+**91 samples, and the same 1387 draws.** `tools/rngtrace/statetrace.py` compares
+every run's draw stream against the run of the same label in
+`data/rng_trace.json` — count, call site, `n`, result and turn, draw for draw —
+and raises rather than folding a run that differs. That is what lets a sample's
+`turn` be read against the frozen file's draws. It printed:
+
+```
+run A: 31 samples over 30 walks, 393 draws aligned with data/rng_trace.json
+run B: 26 samples over 25 walks, 325 draws aligned with data/rng_trace.json
+run C: 4 samples over 3 walks, 30 draws aligned with data/rng_trace.json
+run D: 4 samples over 3 walks, 29 draws aligned with data/rng_trace.json
+run E: 26 samples over 25 walks, 610 draws aligned with data/rng_trace.json
+total 91 samples across 5 runs -> data/state_trace.json
+```
+
+Five separate VM runs, months after the originals, reproducing all 1387 draws
+exactly — which is also the strongest determinism evidence this harness has
+produced. `data/rng_trace.json` is byte-identical: sha256
+`148fe3c74ba7727754b9e14f7b24f25eac4cf1cc97ab6930bebc549625eb1025` before and
+after.
+
+### What it found immediately
+
+`tests/wander_sequence.rs`'s run E reconstruction built its character from
+`orig/SAVE_R3.SAV` but started it with **0** beer and **0** Хлам, where the
+guest starts that save with **20** half-litres (`20ae:38c3`, `.SAV 0x227`) and
+**65** Хлам (`20ae:38c9`, `.SAV 0x22d`). Nothing could see it before: the
+29-variable `final_state` carried neither address, and neither gates a draw, so
+both the draw channel and the end-state channel were blind to it. The first
+per-turn sample of run E is where it surfaced. Fixed in the test's save
+reconstruction, with the same `.SAV off = 0x200 + (addr - 0x389c)` arithmetic
+the money field already used.
+
+### The granularity limit — say it before someone reads more into the file
+
+One sample per **turn**. A pair of samples shows what a turn did to these
+variables **in net**; it never shows the order in which they changed inside the
+turn, and a value that moved and moved back within one turn leaves no trace here
+at all. A turn that heals and then takes damage back to the same HP is
+indistinguishable from a turn that did nothing. Anything needing intra-turn
+ordering needs its own breakpoint, not this file.
+
+Two more limits, in the same spirit as the draw channel's:
+
+* **This is state, not flow.** A delta can falsify a claim about what a routine
+  does, and can confirm a prediction — the claim itself still comes from the
+  disassembly with an address and a tier (`docs/re/METHODOLOGY.md`).
+* **Three of the 35 are captured but not asserted against the port.** The rolled
+  enemy's `20ae:396a`/`396c`/`396e` are globals the original writes on every
+  bucket-3 turn, ahead of the notice roll and the question; this port builds the
+  opponent as a value and retains one only after a fight, so it has nothing to
+  compare. They are captured (and read, so the column cannot rot) precisely so
+  that gap is measurable rather than invisible.
+
 ## Reproducing
 
 ```bash
@@ -451,8 +585,23 @@ python3 tools/rngtrace/run.py --boot-img <freedos.img> --walks 25 \
     --workdir build/rngtrace/runE --out build/rngtrace/traceE.json
 
 # the comparison against the catalogue -> data/rng_trace.json
+# NOTE: data/rng_trace.json is the FROZEN draw oracle -- 1387 draws that five
+# committed runs are proved against.  This command is recorded for provenance;
+# it is not something to re-run casually, and Task 11i deliberately did not.
 python3 tools/rngtrace/compare.py build/rngtrace/trace{A,B,C,D,E}.json \
     --labels A,B,C,D,E --out data/rng_trace.json
+
+# the per-turn state capture (Task 11i) -> data/state_trace.json, which is a
+# SEPARATE file and never overwrites the draw oracle above
+python3 tools/rngtrace/run.py --boot-img build/rngtrace/boot.img --walks 30 \
+    --class-answer 0 --seed 0x12345678 \
+    --workdir build/rngtrace/state-runA --out build/rngtrace/stateA.json
+# ... B: --walks 25 --class-answer 3 --seed 0x12345678
+# ... C: --walks 3  --class-answer 0 --seed 0x4e1
+# ... D: --walks 3  --class-answer 0 --seed 0x27c
+# ... E: --walks 25 --class-answer 0 --seed 0x12345678 --with-saves --district 3
+python3 tools/rngtrace/statetrace.py build/rngtrace/state{A,B,C,D,E}.json \
+    --labels A,B,C,D,E --out data/state_trace.json
 
 # the parts that need no emulator
 python3 tools/test_rngtrace.py
@@ -487,3 +636,7 @@ performs on itself every run.
   at two points, not across its whole range.
 * **The trace says nothing about the port.** No Rust was run, read, or compared
   here; ground truth is `orig/g.exe` alone.
+* **The per-turn state channel is per TURN.** `data/state_trace.json` shows a
+  turn's net effect on 35 variables, never the ordering of changes inside a
+  turn — see "The per-turn state channel" above for the full statement of that
+  limit and for the three of the 35 that are captured but not asserted.

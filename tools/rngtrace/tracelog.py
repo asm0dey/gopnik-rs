@@ -40,6 +40,13 @@ plausible from the outside:
      called, and no other near call reaches either from outside `Random`.
   9. `final seed` -- the guest's own RandSeed at the end must equal the seed
      stepped once per logged draw.
+ 10. `state samples` (Task 11i) -- every turn marker must carry one state
+     sample, there must be at least `walks + 1` of them, and the LAST one must
+     equal the `final_state` read out of a whole-memory dump.  The samples come
+     over gdb and `final_state` comes over the qemu monitor, so this compares
+     two independent paths into guest memory: a sample list that lost an entry
+     (and so sits on the wrong turns), or a field read at the wrong address or
+     the wrong width in either path, fails here rather than being published.
 
 Guards 4, 5, 6 and 7 were added in fix wave 1; 4/5/6 close the gdb-script-abort
 path, which passed every one of the original guards.
@@ -50,6 +57,12 @@ from . import rng
 
 RE_DRAW = re.compile(r"^R ([0-9a-f]{4}) ([0-9a-f]{4}) ([0-9a-f]{4}) ([0-9a-f]{4})\s*$")
 RE_PROMPT = re.compile(r"^P\s*$")
+# The per-turn state sample (Task 11i): `S` followed by one `%x` per name in
+# `run.state_fields()`, in that order.  Deliberately shape-only here -- the
+# count is checked against the caller's name list, so a widened table that the
+# reader was not told about produces an UNPARSED line (which fails the run)
+# rather than a silently shifted set of columns.
+RE_STATE = re.compile(r"^S ((?:[0-9a-f]+)(?: [0-9a-f]+)*)\s*$")
 # 1..8 digits deliberately: `printf "? %04x", $pc` pads to four but does not
 # truncate, so a $pc above 0xffff prints five and a {4}-only pattern would drop
 # the line instead of reporting the unexpected stop.
@@ -93,10 +106,19 @@ def strip_style(line: str) -> str:
     return RE_STYLE.sub("", line)
 
 
-def parse(text: str) -> dict:
-    """Turn a gdb log into {draws, prompts, unexpected, aborts, unparsed, ...}."""
+def parse(text: str, state_names=()) -> dict:
+    """Turn a gdb log into {draws, prompts, unexpected, aborts, unparsed, ...}.
+
+    `state_names` is the ordered field list the log's `S` lines were printed
+    from (`run.state_field_names()`).  It defaults to empty so the five
+    committed pre-Task-11i logs still parse; an `S` line seen without it, or
+    one whose value count differs from the name count, lands in `unparsed` and
+    therefore fails `check_unparsed`.
+    """
+    state_names = list(state_names)
     ready = None
     draws = []
+    state_samples = []
     prompts = 0
     unexpected = []
     bp_lines = []
@@ -143,6 +165,16 @@ def parse(text: str) -> dict:
             prompts += 1
             seq.append("P")
             continue
+        m = RE_STATE.match(line)
+        if m:
+            values = [int(v, 16) for v in m.group(1).split()]
+            if state_names and len(values) == len(state_names):
+                state_samples.append({"turn": prompts,
+                                      "values": dict(zip(state_names, values))})
+                seq.append("S")
+                continue
+            unparsed.append(line)
+            continue
         m = RE_UNEXPECTED.match(line)
         if m:
             unexpected.append(int(m.group(1), 16))
@@ -166,6 +198,7 @@ def parse(text: str) -> dict:
     return {"ready": ready, "draws": draws, "prompt_stops": prompts,
             "unexpected_stops": unexpected, "breakpoint_lines": bp_lines,
             "script_aborts": aborts, "unparsed": unparsed,
+            "state_samples": state_samples,
             "event_sequence": "".join(seq)}
 
 
@@ -307,6 +340,71 @@ def check_return_segments(parsed: dict, load_seg: int):
             "return_segment_equals_load_seg": True}
 
 
+def check_state_samples(parsed: dict, *, walks, names, final_state):
+    """The per-turn state channel: one sample per turn marker, and the last of
+    them must agree with the full-memory read.
+
+    Three failures this refuses, each of which would otherwise publish a state
+    trace that is quietly wrong rather than obviously missing:
+
+      * **a stop with no sample.** Every `1000:ae63` stop prints `P` and then
+        the sample; if the two counts disagree, some sample was lost (a failed
+        read aborts the sourced script, which `check_script_abort` catches --
+        but a sample dropped any other way would leave the remaining ones
+        shifted onto the wrong turns).
+      * **fewer samples than turns.** `walks + 1` stops are required by
+        `check_walk_completed` (once before the first `w`, once after each), so
+        a shorter sample list is a truncated trace by the same argument.
+      * **the two transports disagreeing.** The samples come over gdb's remote
+        protocol from `run.state_fields()`'s addresses; `final_state` is the
+        same table read out of a `pmemsave` dump of the whole guest after the
+        drive.  The guest sits in `ReadLn` between the two reads and changes
+        none of these variables there, so they must be equal -- and if they are
+        not, the addresses or the widths are wrong in one of the two paths and
+        nothing downstream could tell which.
+    """
+    samples = parsed["state_samples"]
+    names = list(names)
+    if not names:
+        raise TraceError("no state field names were given, so the per-turn "
+                         "state channel cannot be verified: an unverified "
+                         "channel must not be published")
+    if len(samples) != parsed["prompt_stops"]:
+        raise TraceError(
+            "the guest stopped at the top-level ReadLn %d times but only %d "
+            "state samples were logged: the samples that remain sit on the "
+            "wrong turns" % (parsed["prompt_stops"], len(samples)))
+    if len(samples) < walks + 1:
+        raise TraceError(
+            "%d state samples for %d walks: a healthy run samples once before "
+            "the first `w` and once after each turn (%d)"
+            % (len(samples), walks, walks + 1))
+    want_turns = list(range(1, len(samples) + 1))
+    if [s["turn"] for s in samples] != want_turns:
+        raise TraceError("state samples are not one per consecutive turn: %s"
+                         % [s["turn"] for s in samples])
+    for s in samples:
+        if sorted(s["values"]) != sorted(names):
+            raise TraceError("a state sample does not carry every field: %s"
+                             % sorted(set(names) ^ set(s["values"])))
+    last = samples[-1]["values"]
+    differ = {k: (last[k], final_state[k]) for k in names
+              if k in final_state and last[k] != final_state[k]}
+    if differ:
+        raise TraceError(
+            "the last per-turn state sample (gdb reads at 1000:ae63) disagrees "
+            "with final_state (a pmemsave dump after the drive) on %s -- the "
+            "two paths into guest memory do not agree, so neither can be "
+            "trusted: %r" % (sorted(differ), differ))
+    missing = [k for k in names if k not in final_state]
+    if missing:
+        raise TraceError("final_state is missing sampled field(s) %s, so the "
+                         "reconciliation covers less than it claims" % missing)
+    return {"state_samples": len(samples),
+            "state_fields_per_sample": len(names),
+            "final_state_matches_last_sample": True}
+
+
 def replay(draws, seed: int, max_skip: int = 0):
     """Verify the draw stream against the LCG.
 
@@ -382,7 +480,7 @@ def verify(parsed: dict, seed: int, min_draws=1, max_skip=0):
 
 def verify_run(parsed: dict, seed: int, *, walks, load_seg, screen_before,
                screen_after, randseed_at_attach, randseed_final,
-               min_draws=1, max_skip=0):
+               state_names, final_state, min_draws=1, max_skip=0):
     """Every guard, log-tier and run-tier.  Keyword-only ON PURPOSE.
 
     run.py calls exactly this and nothing else, so a guard cannot be forgotten
@@ -395,6 +493,8 @@ def verify_run(parsed: dict, seed: int, *, walks, load_seg, screen_before,
                                       randseed_at_attach, randseed_final))
     out.update(check_return_segments(parsed, load_seg))
     out.update(reconcile_final_randseed(parsed["draws"], seed, randseed_final))
+    out.update(check_state_samples(parsed, walks=walks, names=state_names,
+                                   final_state=final_state))
     return out
 
 

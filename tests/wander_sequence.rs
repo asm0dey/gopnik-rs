@@ -235,6 +235,14 @@ fn game_for(run: &Run) -> Game {
         broken_leg: b[0x215] != 0,
         armor: u16::from(b[0x216]), // 20ae:38b2, the church's "защиту" byte
         money: i32::from(u16at(0x22b)), // 20ae:38c7
+        // Task 11i: the per-turn capture reads `20ae:38c3` and `20ae:38c9`,
+        // which the 29-variable `final_state` never carried -- and run E's
+        // first sample showed the loaded save starting with 20 half-litres of
+        // beer and 65 Хлам while this reconstruction started it at zero. Same
+        // record arithmetic as the money above (`.SAV off = 0x200 + (addr -
+        // 0x389c)`), on addresses `docs/re/gaps.md:283` already names.
+        beer_dl: u16at(0x227),  // 20ae:38c3
+        junk: u16at(0x22d),     // 20ae:38c9
         ..Fighter::default()
     };
     let progress = Progress {
@@ -261,10 +269,13 @@ fn game_for(run: &Run) -> Game {
     // `places.sav`, and run E's guest ended with den/girl/club/gym clear
     // (`final_state`) while nothing in a wander turn can clear them -- so
     // this run began with them clear. Vet and Market are set during the run
-    // by draws 5 and 6 (turns 3 and 19 of `runs[E].draws`), which leaves
-    // their starting value undetermined by the capture; they are started
-    // clear here, and since no discovery flag gates any draw in the
-    // preamble the choice cannot move the sequence either way.
+    // by draws 5 and 6 (turns 3 and 19 of `runs[E].draws`), which used to
+    // leave their starting value undetermined by the capture. Task 11i's
+    // per-turn capture settles it: run E's `turn 1` sample -- the state at
+    // the first `1000:ae63` stop, before any `w` -- reads `20ae:3694 = 0`
+    // and `20ae:3698 = 0`, with only `20ae:3695` set. That is what this
+    // reconstruction already assumed, and it is now observed rather than
+    // argued.
     g.places.reset_for_new_district();
     // 1000:73bb runs on the load path too (`docs/re/wander.md`, "What
     // reaches 1000:73bb"): a Вор gets the dealers back.
@@ -719,4 +730,440 @@ fn the_church_cancels_an_already_rolled_bucket_three_turn() {
         "wander_roll 9 is bucket 3, but the church zeroed it at 1000:8282: \
          the turn must not reach an encounter prompt"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Task 11i: the per-turn state channel (`data/state_trace.json`).
+//
+// `data/rng_trace.json` scores draws, and its `final_state` is one sample per
+// run, at the end. `data/state_trace.json` holds the SAME variables sampled at
+// every turn marker (`1000:ae63`, the top-level prompt's `ReadLn`) of the same
+// five runs, plus six the end-of-run sample never carried: the purse
+// (`20ae:38c3` beer, `20ae:38c7` money, `20ae:38c9` Хлам) and the rolled
+// enemy's three loot words (`20ae:396a`/`396c`/`396e`).
+//
+// **Where the expected values come from.** Every number in
+// `data/state_trace.json` was read out of `orig/g.exe`'s own memory under
+// qemu+gdb by `tools/rngtrace/run.py`. None of it is computed by this port --
+// which is the only reason the comparison below is an oracle and not a mirror.
+// The capture tool refuses to publish a run whose draw stream is not
+// draw-for-draw identical to the same run in `data/rng_trace.json`, so a
+// sample's `turn` indexes the same turns that file's draws carry.
+//
+// **What it can and cannot say.** One sample per turn shows a turn's NET
+// effect. It does not order the changes inside a turn, and a value that moved
+// and moved back within one turn leaves no trace here. A mismatch falsifies a
+// claim about what the turn did; a match corroborates it. Neither establishes
+// flow -- that still comes from the disassembly, with an address and a tier
+// (`docs/re/METHODOLOGY.md`).
+
+/// One turn's sample. `#[serde(deny_unknown_fields)]` for the same reason
+/// [`FinalState`] has it: a variable the capture carries and this struct does
+/// not name would otherwise be silently ignored, and "all 35 are checked"
+/// would be a hope rather than a claim.
+///
+/// Three of the 35 are captured but NOT asserted below, and they are named
+/// here so that stays visible rather than becoming an accidental omission:
+/// `enemy_beer_396a`, `enemy_money_396c` and `enemy_hlam_396e` are the rolled
+/// opponent's loot words, which the original writes on every bucket-3 turn
+/// (`FUN_1000_0d14`, ahead of the notice roll and the question) and keeps in
+/// globals afterwards. This port has no such globals: it builds the opponent
+/// as a value and only retains one after a fight. Asserting them would need a
+/// port change, which is not this test's business; capturing them is what
+/// makes that gap measurable.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StateSample {
+    turn: usize,
+    strength_389e: u16,
+    agility_38a0: u16,
+    vitality_38a2: u16,
+    luck_38a4: u16,
+    level_38a6: u16,
+    dmg_min_38a8: u16,
+    dmg_max_38aa: u16,
+    hp_38ac: u16,
+    hpmax_38ae: u16,
+    class_389c: u16,
+    broken_jaw_38b0: u8,
+    broken_leg_38b1: u8,
+    unk_38b2: u16,
+    has_mobile_38bb: u8,
+    ring_38c1: u8,
+    street_cred_38cb: i32,
+    xp_38ce: u32,
+    xp_threshold_38d0: u32,
+    district_3692: u8,
+    flag_market_3694: u8,
+    flag_3695: u8,
+    flag_den_3696: u8,
+    flag_girl_3697: u8,
+    flag_vet_3698: u8,
+    flag_club_3699: u8,
+    flag_gym_369a: u8,
+    den_errand_1_3b78: u8,
+    den_errand_2_3b79: u8,
+    randseed_367e: u32,
+    /// `20ae:38c3`, beer in half-litres (`docs/re/gaps.md:283`; the victory
+    /// block's `add [0x38c3],ax` at `1000:5241`).
+    beer_38c3: u16,
+    /// `20ae:38c7`, the player's money (`docs/re/tables.md:191`, the shop
+    /// affordability compare `3B 06 C7 38`; `add [0x38c7],ax` at `1000:5248`).
+    money_38c7: u16,
+    /// `20ae:38c9`, Хлам (`docs/re/gaps.md:283`; `add [0x38c9],ax` at
+    /// `1000:524f`).
+    hlam_38c9: u16,
+    /// `20ae:396a`, the rolled enemy's beer drop (`docs/re/progression.md:233`;
+    /// `mov ax,[0x396a]` at `1000:523e`). Captured, not asserted -- see the
+    /// struct doc.
+    enemy_beer_396a: u16,
+    /// `20ae:396c`, the rolled enemy's money drop (`1000:5245`). Captured, not
+    /// asserted.
+    enemy_money_396c: u16,
+    /// `20ae:396e`, the rolled enemy's Хлам drop (`1000:524c`). Captured, not
+    /// asserted.
+    enemy_hlam_396e: u16,
+}
+
+#[derive(Deserialize)]
+struct Alignment {
+    equals_rng_trace_draws: bool,
+    draws_compared: usize,
+}
+
+#[derive(Deserialize)]
+struct StateRun {
+    label: String,
+    seed_hex: String,
+    walks_requested: usize,
+    alignment_with_rng_trace: Alignment,
+    samples: Vec<StateSample>,
+}
+
+#[derive(Deserialize)]
+struct StateTrace {
+    runs: Vec<StateRun>,
+}
+
+fn state_trace() -> StateTrace {
+    let bytes = std::fs::read(repo("data/state_trace.json")).expect("read data/state_trace.json");
+    serde_json::from_slice(&bytes).expect("parse data/state_trace.json")
+}
+
+fn state_run_named(label: &str) -> StateRun {
+    state_trace()
+        .runs
+        .into_iter()
+        .find(|r| r.label == label)
+        .unwrap_or_else(|| panic!("data/state_trace.json has no run {label}"))
+}
+
+/// Assert one turn's sample against the port's live [`Game`].
+///
+/// 32 of the capture's 35 variables; the three the port keeps no global for
+/// are named in [`StateSample`]'s doc with the reason.
+fn assert_state_sample(label: &str, s: &StateSample, g: &Game) {
+    let turn = s.turn;
+    let b = |v: u8| v != 0;
+    let found = |loc: Location| u8::from(g.places.is_found(loc));
+    let at = |what: &str| format!("{label} turn {turn}: {what}");
+
+    assert_eq!(g.player.strength, s.strength_389e, "{}", at("20ae:389e"));
+    assert_eq!(g.player.agility, s.agility_38a0, "{}", at("20ae:38a0"));
+    assert_eq!(g.player.vitality, s.vitality_38a2, "{}", at("20ae:38a2"));
+    assert_eq!(g.player.luck, s.luck_38a4, "{}", at("20ae:38a4"));
+    assert_eq!(g.player.level, s.level_38a6, "{}", at("20ae:38a6"));
+    assert_eq!(g.player.dmg_min, s.dmg_min_38a8, "{}", at("20ae:38a8"));
+    assert_eq!(g.player.dmg_max, s.dmg_max_38aa, "{}", at("20ae:38aa"));
+    assert_eq!(g.player.hp, s.hp_38ac, "{}", at("20ae:38ac"));
+    assert_eq!(g.player.hpmax, s.hpmax_38ae, "{}", at("20ae:38ae"));
+    assert_eq!(g.player.class, s.class_389c, "{}", at("20ae:389c"));
+    assert_eq!(
+        g.player.broken_jaw,
+        b(s.broken_jaw_38b0),
+        "{}",
+        at("20ae:38b0")
+    );
+    assert_eq!(
+        g.player.broken_leg,
+        b(s.broken_leg_38b1),
+        "{}",
+        at("20ae:38b1")
+    );
+    assert_eq!(g.player.armor, s.unk_38b2, "{}", at("20ae:38b2"));
+    assert_eq!(g.has_mobile, b(s.has_mobile_38bb), "{}", at("20ae:38bb"));
+    assert_eq!(
+        g.ring_gospodi_pomilui,
+        b(s.ring_38c1),
+        "{}",
+        at("20ae:38c1")
+    );
+    assert_eq!(
+        g.pontovost_street,
+        s.street_cred_38cb,
+        "{}",
+        at("20ae:38cb")
+    );
+    assert_eq!(g.progress.xp, s.xp_38ce, "{}", at("20ae:38ce"));
+    assert_eq!(
+        g.progress.threshold,
+        s.xp_threshold_38d0,
+        "{}",
+        at("20ae:38d0")
+    );
+    assert_eq!(g.district, s.district_3692, "{}", at("20ae:3692"));
+    assert_eq!(
+        found(Location::Market),
+        s.flag_market_3694,
+        "{}",
+        at("20ae:3694")
+    );
+    assert_eq!(
+        found(Location::BigMarket),
+        s.flag_3695,
+        "{}",
+        at("20ae:3695")
+    );
+    assert_eq!(found(Location::Den), s.flag_den_3696, "{}", at("20ae:3696"));
+    assert_eq!(
+        found(Location::Girl),
+        s.flag_girl_3697,
+        "{}",
+        at("20ae:3697")
+    );
+    assert_eq!(found(Location::Vet), s.flag_vet_3698, "{}", at("20ae:3698"));
+    assert_eq!(
+        found(Location::Club),
+        s.flag_club_3699,
+        "{}",
+        at("20ae:3699")
+    );
+    assert_eq!(found(Location::Gym), s.flag_gym_369a, "{}", at("20ae:369a"));
+    assert_eq!(
+        g.den_errand_1_pending,
+        b(s.den_errand_1_3b78),
+        "{}",
+        at("20ae:3b78")
+    );
+    assert_eq!(
+        g.den_errand_2_pending,
+        b(s.den_errand_2_3b79),
+        "{}",
+        at("20ae:3b79")
+    );
+    // The three Task 11i purse words. The original keeps them as words
+    // (`1000:5241`/`1000:5248`/`1000:524f` are `add [mem],ax`), and the port's
+    // money is a signed counter because shops debit it, so the comparison is
+    // made in i32 rather than truncating the port's value into a u16.
+    assert_eq!(
+        i32::from(g.player.beer_dl),
+        i32::from(s.beer_38c3),
+        "{}",
+        at("20ae:38c3 (beer)")
+    );
+    assert_eq!(
+        g.player.money,
+        i32::from(s.money_38c7),
+        "{}",
+        at("20ae:38c7 (money)")
+    );
+    assert_eq!(
+        i32::from(g.player.junk),
+        i32::from(s.hlam_38c9),
+        "{}",
+        at("20ae:38c9 (Хлам)")
+    );
+    assert_eq!(g.rng.state(), s.randseed_367e, "{}", at("20ae:367e RandSeed"));
+}
+
+/// Drive one run turn by turn, asserting the capture's sample after each.
+///
+/// Sample `turn 1` is the state at the FIRST stop at `1000:ae63`, which is the
+/// prompt the game reaches straight after character creation (or after loading
+/// the save) and before the first `w` is typed -- so it is asserted against the
+/// freshly built [`Game`], before any walk. Sample `turn k+1` is asserted after
+/// the k-th walk.
+fn replay_state(label: &str) {
+    let sr = state_run_named(label);
+    let run = run_named(label);
+    assert_eq!(
+        sr.seed_hex, run.seed_hex,
+        "{label}: the two captures used different seeds, so their turns are not the same turns"
+    );
+    assert_eq!(
+        sr.walks_requested, run.walks_requested,
+        "{label}: the two captures walked different numbers of turns"
+    );
+    assert!(
+        sr.alignment_with_rng_trace.equals_rng_trace_draws
+            && sr.alignment_with_rng_trace.draws_compared == run.draws.len(),
+        "{label}: data/state_trace.json is not aligned with data/rng_trace.json's \
+         run {label} ({} draws compared, {} in the draw oracle), so its samples \
+         describe a different history",
+        sr.alignment_with_rng_trace.draws_compared,
+        run.draws.len()
+    );
+    assert_eq!(
+        sr.samples.len(),
+        run.walks_requested + 1,
+        "{label}: a run of {} walks stops at the top-level prompt {} times \
+         (once before the first `w`, once after each)",
+        run.walks_requested,
+        run.walks_requested + 1
+    );
+    assert!(
+        sr.samples.iter().enumerate().all(|(i, s)| s.turn == i + 1),
+        "{label}: the samples are not one per consecutive turn"
+    );
+
+    let mut g = game_for(&run);
+    let mut input = declines(4 * run.walks_requested + 16);
+    assert_state_sample(label, &sr.samples[0], &g);
+    for s in &sr.samples[1..] {
+        g.walk(&mut input).expect("walk");
+        assert_state_sample(label, s, &g);
+    }
+}
+
+/// The state that a run's samples actually move, so a per-turn assertion
+/// cannot pass by comparing a constant with itself.
+fn fields_that_move(samples: &[StateSample]) -> Vec<&'static str> {
+    let mut moved = Vec::new();
+    let mut check = |name: &'static str, f: &dyn Fn(&StateSample) -> i64| {
+        if samples.iter().any(|s| f(s) != f(&samples[0])) {
+            moved.push(name);
+        }
+    };
+    check("20ae:389e strength", &|s| i64::from(s.strength_389e));
+    check("20ae:38a4 luck", &|s| i64::from(s.luck_38a4));
+    check("20ae:38a6 level", &|s| i64::from(s.level_38a6));
+    check("20ae:38ac hp", &|s| i64::from(s.hp_38ac));
+    check("20ae:38ae hpmax", &|s| i64::from(s.hpmax_38ae));
+    check("20ae:38ce xp", &|s| i64::from(s.xp_38ce));
+    check("20ae:38c7 money", &|s| i64::from(s.money_38c7));
+    check("20ae:38c3 beer", &|s| i64::from(s.beer_38c3));
+    check("20ae:38c9 hlam", &|s| i64::from(s.hlam_38c9));
+    check("20ae:3b78 errand 1", &|s| i64::from(s.den_errand_1_3b78));
+    check("20ae:3b79 errand 2", &|s| i64::from(s.den_errand_2_3b79));
+    check("20ae:3694 market", &|s| i64::from(s.flag_market_3694));
+    check("20ae:3698 vet", &|s| i64::from(s.flag_vet_3698));
+    check("20ae:367e RandSeed", &|s| i64::from(s.randseed_367e));
+    // The three enemy loot words are not asserted against the port (see
+    // `StateSample`'s doc), but they ARE read here: a captured column nothing
+    // ever looks at would rot silently.
+    check("20ae:396a enemy beer", &|s| i64::from(s.enemy_beer_396a));
+    check("20ae:396c enemy money", &|s| i64::from(s.enemy_money_396c));
+    check("20ae:396e enemy hlam", &|s| i64::from(s.enemy_hlam_396e));
+    moved
+}
+
+/// Run A, turn by turn: 31 samples over 30 walks. The variables that move here
+/// are the two den errands burning on their `0` (`1000:af71`, `1000:afd0`),
+/// the market/vet discovery flags, HP, and `RandSeed`.
+#[test]
+fn run_a_per_turn_state_matches() {
+    replay_state("A");
+}
+
+/// Run B, turn by turn: the Вор's thefts (`1000:b321` -> `add [0x38c7],ax` at
+/// `1000:b32d`) make `20ae:38c7` a moving value here, which is the point of
+/// widening the sampled table.
+#[test]
+fn run_b_per_turn_state_matches() {
+    replay_state("B");
+}
+
+/// Run C, turn by turn: four samples, and the church's forced level-up on its
+/// `Random(5) == 0` arm lands between two of them.
+#[test]
+fn run_c_per_turn_state_matches() {
+    replay_state("C");
+}
+
+/// Run D, turn by turn: four samples, the `Random(4)` stat blessing arm.
+#[test]
+fn run_d_per_turn_state_matches() {
+    replay_state("D");
+}
+
+/// Run E, turn by turn: the loaded save, at district 3, with the phone and the
+/// ring -- 26 samples over 25 walks.
+#[test]
+fn run_e_per_turn_state_matches() {
+    replay_state("E");
+}
+
+/// A per-turn comparison against a run whose state never changed would pass
+/// while checking nothing. Every run must move at least one sampled variable,
+/// and the thefts must make the money at `20ae:38c7` one of them somewhere in
+/// the five.
+#[test]
+fn the_per_turn_samples_are_not_all_the_same_state() {
+    let t = state_trace();
+    assert_eq!(t.runs.len(), 5, "data/state_trace.json must hold all five runs");
+    let mut money_moved_in = Vec::new();
+    for r in &t.runs {
+        assert!(
+            r.samples.len() >= 4,
+            "run {}: {} samples is too few to be a transition trace",
+            r.label,
+            r.samples.len()
+        );
+        let moved = fields_that_move(&r.samples);
+        assert!(
+            !moved.is_empty(),
+            "run {}: not one sampled variable changes across the whole run, so \
+             asserting it turn by turn proves nothing",
+            r.label
+        );
+        if moved.contains(&"20ae:38c7 money") {
+            money_moved_in.push(r.label.clone());
+        }
+    }
+    assert!(
+        !money_moved_in.is_empty(),
+        "no run moves 20ae:38c7, so the money column of the widened table is \
+         never actually exercised"
+    );
+}
+
+/// The two captures are separate runs of the original, in separate VMs, months
+/// apart -- so their end states agreeing is a real check on both, and on the
+/// determinism the pinned seed is supposed to buy. No port code takes part in
+/// this one.
+#[test]
+fn the_state_capture_ends_where_the_draw_capture_ended() {
+    for label in ["A", "B", "C", "D", "E"] {
+        let run = run_named(label);
+        let sr = state_run_named(label);
+        let last = sr.samples.last().expect("samples");
+        let f = &run.final_state;
+        assert_eq!(last.strength_389e, f.strength_389e, "{label}: 20ae:389e");
+        assert_eq!(last.agility_38a0, f.agility_38a0, "{label}: 20ae:38a0");
+        assert_eq!(last.vitality_38a2, f.vitality_38a2, "{label}: 20ae:38a2");
+        assert_eq!(last.luck_38a4, f.luck_38a4, "{label}: 20ae:38a4");
+        assert_eq!(last.level_38a6, f.level_38a6, "{label}: 20ae:38a6");
+        assert_eq!(last.hp_38ac, f.hp_38ac, "{label}: 20ae:38ac");
+        assert_eq!(last.hpmax_38ae, f.hpmax_38ae, "{label}: 20ae:38ae");
+        assert_eq!(last.class_389c, f.class_389c, "{label}: 20ae:389c");
+        assert_eq!(last.xp_38ce, f.xp_38ce, "{label}: 20ae:38ce");
+        assert_eq!(
+            last.xp_threshold_38d0, f.xp_threshold_38d0,
+            "{label}: 20ae:38d0"
+        );
+        assert_eq!(last.district_3692, f.district_3692, "{label}: 20ae:3692");
+        assert_eq!(
+            last.street_cred_38cb, f.street_cred_38cb,
+            "{label}: 20ae:38cb"
+        );
+        assert_eq!(
+            last.den_errand_1_3b78, f.den_errand_1_3b78,
+            "{label}: 20ae:3b78"
+        );
+        assert_eq!(
+            last.den_errand_2_3b79, f.den_errand_2_3b79,
+            "{label}: 20ae:3b79"
+        );
+        assert_eq!(last.randseed_367e, f.randseed_367e, "{label}: 20ae:367e");
+    }
 }

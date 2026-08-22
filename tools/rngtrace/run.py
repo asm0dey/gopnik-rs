@@ -10,6 +10,12 @@ mid-walk, whose walks did not all reach the top-level prompt, or whose draw
 stream does not replay against the pinned seed exits non-zero -- it never
 writes a short trace and calls it evidence.  tracelog.verify_run holds the
 guards and states what each one defends against.
+
+Two channels come out of one run.  The draws are the first; the second is a
+per-turn STATE sample -- every variable state_fields() names, read out of guest
+memory by gdb at each 1000:ae63 stop.  Both live in this file's output; the
+folds that publish them are separate tools writing separate files, because
+data/rng_trace.json (draws) is frozen and data/state_trace.json (state) is not.
 """
 import argparse
 import json
@@ -53,17 +59,67 @@ STATE_BYTES = {
     "den_errand_1_3b78": 0x3B78, "den_errand_2_3b79": 0x3B79,
 }
 
+# Task 11i widened STATE_WORDS with the six purse/loot words.  Every one of
+# them is a WORD because the instructions that touch them are word-sized, not
+# because a byte would have looked wrong: `1000:523e`..`1000:5251` is
+# `a1 6a 39` / `01 06 c3 38` / `a1 6c 39` / `01 06 c7 38` / `a1 6e 39` /
+# `01 06 c9 38`, i.e. three `mov ax,[enemy word]` / `add [player word],ax`
+# pairs (re-derived with `python3 tools/re_query.py resolve 1000:523e`).
+STATE_CITATIONS = {
+    "beer_38c3": ("20ae:38c3, beer in half-litres -- docs/re/gaps.md:283; "
+                  "`add [0x38c3],ax` at 1000:5241"),
+    "money_38c7": ("20ae:38c7, the player's money -- docs/re/tables.md:191 "
+                   "(`3B 06 C7 38  cmp ax,[0x38c7]`, the shop affordability "
+                   "compare); `add [0x38c7],ax` at 1000:5248"),
+    "hlam_38c9": ("20ae:38c9, Хлам -- docs/re/gaps.md:283; "
+                  "`add [0x38c9],ax` at 1000:524f"),
+    "enemy_beer_396a": ("20ae:396a, the rolled enemy's beer drop -- "
+                        "docs/re/progression.md:233, docs/re/gaps.md:281; "
+                        "`mov ax,[0x396a]` at 1000:523e"),
+    "enemy_money_396c": ("20ae:396c, the rolled enemy's money drop -- "
+                         "docs/re/progression.md:233, docs/re/gaps.md:280; "
+                         "`mov ax,[0x396c]` at 1000:5245"),
+    "enemy_hlam_396e": ("20ae:396e, the rolled enemy's Хлам "
+                        "drop -- docs/re/progression.md:233, "
+                        "docs/re/gaps.md:279; `mov ax,[0x396e]` at 1000:524c"),
+}
+STATE_WORDS.update({
+    "beer_38c3": 0x38C3, "money_38c7": 0x38C7, "hlam_38c9": 0x38C9,
+    "enemy_beer_396a": 0x396A, "enemy_money_396c": 0x396C,
+    "enemy_hlam_396e": 0x396E,
+})
+
+
+def state_fields():
+    """`[(name, image offset, width), ...]` -- the sampled variables, in ONE
+    order, defined once.
+
+    Both transports are built from this list: `read_state` below reads them out
+    of a full `pmemsave` dump, and `gdbsession.build_script` reads the same
+    addresses over gdb's remote protocol at every turn marker.  That is what
+    makes `tracelog.check_state_samples`'s last-sample-vs-`final_state`
+    reconciliation a real check -- two independent paths into guest memory,
+    compared -- rather than a table compared with itself.
+
+    The offsets are `20ae:` offsets (`addr.DATA_SEG_IMAGE_OFF` is the image
+    offset of DGROUP, derived in `tools/addr.py`, not written down here).
+    """
+    out = [(name, DS_IMAGE_OFF + off, 2) for name, off in sorted(STATE_WORDS.items())]
+    out += [(name, DS_IMAGE_OFF + off, 1) for name, off in sorted(STATE_BYTES.items())]
+    out.append(("randseed_367e", loadbase.IMAGE_OFF_RANDSEED, 4))
+    return out
+
+
+def state_field_names():
+    return [name for name, _, _ in state_fields()]
+
 
 def read_state(mem, base):
     """The state the gates were evaluated against, read out of guest memory."""
     out = {}
-    for name, off in sorted(STATE_WORDS.items()):
-        at = base + DS_IMAGE_OFF + off
-        out[name] = int.from_bytes(mem[at:at + 2], "little")
-    for name, off in sorted(STATE_BYTES.items()):
-        out[name] = mem[base + DS_IMAGE_OFF + off]
-    at = base + loadbase.IMAGE_OFF_RANDSEED
-    out["randseed_367e"] = int.from_bytes(mem[at:at + 4], "little")
+    for name, image_off, width in state_fields():
+        at = base + image_off
+        out[name] = int.from_bytes(mem[at:at + width], "little")
     return out
 
 
@@ -120,7 +176,8 @@ def main(argv=None):
 
         script = work / "trace.gdb"
         log = work / "trace.gdb.log"
-        script.write_text(gdbsession.build_script(base, args.gdb_port))
+        fields = state_fields()
+        script.write_text(gdbsession.build_script(base, args.gdb_port, fields))
         gdb = gdbsession.GdbSession(script, log).start()
         gdb.wait_ready()
 
@@ -145,8 +202,13 @@ def main(argv=None):
                                "(log stayed at %d bytes)" % log_before)
         # The guest is idle in the top-level ReadLn here (running, not stopped),
         # so a second dump is safe.  Its RandSeed is an independent check on the
-        # trace: it must equal the LCG stepped once per logged draw.
-        final_state = read_state(machine.dump_memory(), base)
+        # trace: it must equal the LCG stepped once per logged draw, and the
+        # rest of it is the reconciliation of the per-turn samples (which come
+        # over gdb) against a wholly separate path into guest memory.
+        t0 = time.time()
+        dump = machine.dump_memory()
+        dump_seconds = time.time() - t0
+        final_state = read_state(dump, base)
     finally:
         # Order matters: the VM must die first so gdb's `continue` fails and
         # gdb drops to a prompt where `quit` is read.  See GdbSession.stop.
@@ -155,7 +217,7 @@ def main(argv=None):
             gdb.stop()
 
     text = log.read_text(errors="replace")
-    parsed = tracelog.parse(text)
+    parsed = tracelog.parse(text, state_names=state_field_names())
     if parsed["ready"] is not None and parsed["ready"]["image_base"] != base:
         raise RuntimeError("gdb attached at a different base than derived")
     # EVERY guard, in one keyword-only call: leaving one out is a TypeError
@@ -169,6 +231,8 @@ def main(argv=None):
         screen_after=screen_after,
         randseed_at_attach=randseed,
         randseed_final=final_state["randseed_367e"],
+        state_names=state_field_names(),
+        final_state=final_state,
         min_draws=args.min_draws)
 
     result = {
@@ -194,6 +258,22 @@ def main(argv=None):
             "ghidra": "1000:ae63",
             "what": "the top-level prompt's ReadLn call (9a c6 06 78 0f)",
         },
+        "state_channel": {
+            "what": ("every variable in state_fields(), read out of guest "
+                     "memory by gdb at each 1000:ae63 stop -- the state the "
+                     "top-level prompt is about to be read against"),
+            "granularity_limit": ("one sample per TURN.  A sample pair shows a "
+                                  "turn's net effect on these variables, never "
+                                  "the order in which they changed inside it."),
+            "fields": [{"name": n, "ds_offset": "20ae:%04x" % (io - DS_IMAGE_OFF)
+                        if io >= DS_IMAGE_OFF else None,
+                        "image_off": "0x%x" % io, "width": w,
+                        "citation": STATE_CITATIONS.get(n)}
+                       for n, io, w in state_fields()],
+            "full_dump_seconds": round(dump_seconds, 3),
+            "full_dump_bytes": len(dump),
+            "sampled_bytes_per_turn": sum(w for _, _, w in state_fields()),
+        },
         "run": {
             "walks_requested": args.walks,
             # The class comes from the guest, never from the CLI answer: with a
@@ -208,14 +288,16 @@ def main(argv=None):
             "drive_log": drive_log,
         },
         "final_state": final_state,
+        "state_samples": parsed["state_samples"],
         "verification": verification,
         "draws": parsed["draws"],
     }
     out = Path(args.out) if args.out else work / "trace.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
-    print("draws=%d prompt_stops=%d base=%s -> %s"
-          % (len(parsed["draws"]), parsed["prompt_stops"], base_info["image_base_hex"], out))
+    print("draws=%d prompt_stops=%d state_samples=%d base=%s -> %s"
+          % (len(parsed["draws"]), parsed["prompt_stops"],
+             len(parsed["state_samples"]), base_info["image_base_hex"], out))
     return 0
 
 
