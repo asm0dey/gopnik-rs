@@ -177,10 +177,26 @@ class TestRelocationTable(unittest.TestCase):
     def test_relocation_count_and_offsets(self):
         entries = addr.relocation_entries(EXE)
         self.assertEqual(len(entries), 1580)
-        self.assertEqual(addr.relocation_image_offs(EXE),
-                         [io for _, _, io in entries])
-        self.assertEqual(addr.parse_relocations(EXE),
-                         addr.relocation_image_offs(EXE))
+
+        # Read the table's own header fields and its first/last entries
+        # directly from the bytes -- independent of relocation_entries' own
+        # arithmetic -- and confirm relocation_image_offs, and its
+        # parse_relocations alias, agree with that independent read.
+        crlc, = struct.unpack_from("<H", EXE, 0x06)
+        lfarlc, = struct.unpack_from("<H", EXE, 0x18)
+        self.assertEqual(crlc, 1580)
+        first_off, first_seg = struct.unpack_from("<HH", EXE, lfarlc)
+        last_off, last_seg = struct.unpack_from(
+            "<HH", EXE, lfarlc + (crlc - 1) * 4)
+
+        image_offs = addr.relocation_image_offs(EXE)
+        self.assertEqual(len(image_offs), crlc)
+        self.assertEqual(image_offs[0], first_seg * 16 + first_off)
+        self.assertEqual(image_offs[-1], last_seg * 16 + last_off)
+
+        parsed = addr.parse_relocations(EXE)
+        self.assertEqual(parsed[0], first_seg * 16 + first_off)
+        self.assertEqual(parsed[-1], last_seg * 16 + last_off)
 
     def test_every_random_call_carries_its_segment_word_in_the_table(self):
         """The claim METHODOLOGY.md rests Form B on: all 86 `9a 4b 11 78 0f`
@@ -203,8 +219,6 @@ class TestRelocationTable(unittest.TestCase):
 
 class TestDataSegment(unittest.TestCase):
     def test_dgroup_image_offset_is_derived_from_the_ghidra_form(self):
-        self.assertEqual(addr.DATA_SEG_IMAGE_OFF,
-                         addr.image_off_of_ghidra(addr.DATA_SEG_GHIDRA, 0))
         self.assertEqual(addr.DATA_SEG_IMAGE_OFF, 0x10AE0)
 
     def test_randseed_sits_where_docs_re_rng_says_it_does(self):

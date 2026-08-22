@@ -571,7 +571,7 @@ def _render(op, two_byte, prefixes, seg_prefix, opsize, mod, reg, rm,
         return "%s %s" % (("inc", "dec")[reg & 1],
                           _rm_text(mod, rm, operands, seg_prefix, False))
     if op == 0xFF:
-        wide = reg not in (0, 1) or True
+        wide = True  # Grp 5 (0xFF) has no byte form; every reg is word-sized.
         return "%s %s" % (_GRP5[reg],
                           _rm_text(mod, rm, operands, seg_prefix, wide))
     return "db %02x" % op
@@ -606,10 +606,10 @@ def boundary_votes(buf, target, back=64, lo=None):
     `target` land exactly on it?
 
     Returns `(hits, tried, misses)`.  A high score says only that `target` is a
-    plausible instruction boundary -- `1000:d83b` scores 64/64 and is still the
-    wrong address, four bytes before the call it was supposed to name.  So this
-    is never sufficient on its own; identity (the bytes at `target`) is the
-    separate, stronger signal.
+    plausible instruction boundary -- `1000:d83b` scores all but one of the
+    same sweeps and is still the wrong address, four bytes before the call it
+    was supposed to name.  So this is never sufficient on its own; identity
+    (the bytes at `target`) is the separate, stronger signal.
     """
     lo = 0 if lo is None else lo
     hits = tried = 0

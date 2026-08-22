@@ -13,10 +13,10 @@ command-shaped evidence a `docs/re/` claim can quote directly:
       mix-up cannot happen here.
 
   is-call-site CITATION
-      Alignment AND identity, reported separately.  `1000:d83b` scores 64/64
-      on the linear-sweep alignment test and is still the wrong address -- a
-      real instruction boundary four bytes before the call.  Alignment alone
-      never answers yes.
+      Alignment AND identity, reported separately.  `1000:d83b` scores all
+      but one of the same linear-sweep alignment votes as a real call site
+      and is still the wrong address -- a real instruction boundary four
+      bytes before the call.  Alignment alone never answers yes.
 
   pushed-n CITATION
       Given a `Random` call site, the `n` the preceding aligned idiom pushes.
@@ -382,7 +382,7 @@ def _is_push(insn):
         ((insn.modrm >> 3) & 7) == 6
 
 
-def _eval_run(insns, prog):
+def _eval_run(insns):
     """Forward-evaluate the idiom.  Returns the pushed `Val`."""
     regs = {r: Val.unknown() for r in _REG16_INDEX.values()}
     pushed = Val.unknown()
@@ -491,7 +491,7 @@ def pushed_n(prog, text, signature=RANDOM_CALL_BYTES, max_back=24):
         uses = {(reg, lane) for reg in r for lane in (0, 1)}
         needed = (needed - defs) | uses
 
-    value = _eval_run(run, prog)
+    value = _eval_run(run)
     start = run[0].off
     return {
         "citation": cit.text,
@@ -546,7 +546,7 @@ def _parse_data_target(text):
                 "%s is not a DGROUP address; xrefs-to takes a `%04x:xxxx` "
                 "citation or a bare DGROUP offset" % (t, addr.DATA_SEG_GHIDRA))
         return cit.off
-    return int(t, 16) if not t.lower().startswith("0x") else int(t, 16)
+    return int(t, 16)  # int(..., 16) already accepts an optional "0x" prefix
 
 
 def xrefs_to(prog, text, scan_lo=0, scan_hi=None):
@@ -564,10 +564,17 @@ def xrefs_to(prog, text, scan_lo=0, scan_hi=None):
             export_claims.append(dict(x, function=f["name"]))
     for claim in export_claims:
         io = addr.image_off_of_citation(claim["at"])
-        try:
-            insn = dis16.decode(prog.image, io)
-        except dis16.DecodeError as e:
-            export_rejected.append(dict(claim, why="does not decode: %s" % e))
+        # Anchored, not a blind decode from `io`: the byte-scan path two
+        # functions down never trusts a hit offset to be an instruction
+        # boundary on its own, and an export claim deserves the same
+        # scrutiny -- a garbage decode of an unaligned `at` could otherwise
+        # carry a matching operand by chance and be promoted to verified.
+        insns, anchor = prog.anchored_stream(io)
+        insn = dis16.instruction_covering(insns, io)
+        if insn is None or insn.off != io:
+            export_rejected.append(dict(
+                claim, why="does not decode: no aligned instruction starts "
+                           "there (anchor: %s)" % anchor.get("kind")))
             continue
         hit = next((o for o in insn.operands
                     if o.kind in ADDRESS_OPERANDS and o.value == data_off), None)
