@@ -973,6 +973,15 @@ impl Game {
         // (`cwd`, then `cmp dx,bx` / `cmp ax,cx` / `jnc 0xb614`), and the
         // class threshold differs between the two arms: 3 when luck lost the
         // compare (`1000:b60a`), 7 when it won (`1000:b614`).
+        //
+        // Not a like-for-like widening: at file 0xcec6 (`xor dx,dx`) the
+        // original zero-extends `notice` into `dx:ax`, but at file
+        // 0xcecc..0xcecf (`mov ax,[0x38a4]` / `cwd`) it *sign*-extends
+        // `luck`. This port widens both sides the same way, via
+        // `i32::from(u16)` (zero-extension), so it never reproduces the
+        // negative interpretation the original's `cwd` would give a `luck`
+        // value with bit 15 set. Unreachable at realistic luck values (never
+        // near 0x8000), but the port is wider than the original here.
         let aggressive = if i32::from(self.player.luck) < i32::from(notice) {
             enemy.class >= 3
         } else {
@@ -1739,6 +1748,16 @@ impl Game {
         let [strength, agility, vitality, luck] = stats;
         let hpmax = 10 + 5 * vitality + strength;
 
+        // Not a truncating port of the original here: at file 0x2907..0x290e
+        // (`1000:1037`), `mov ax,[0x3952]` / `mul word [0x395c]` leaves the
+        // full 32-bit `class * ponty` product in `dx:ax`, but the very next
+        // byte is `cwd` (0x290e), which overwrites `dx` with the sign
+        // extension of `ax` alone -- the high word of the product is
+        // discarded before the divide-by-5-and-round that follows. This
+        // port computes `2 * class * ponty` in `i32` and never truncates to
+        // 16 bits, so it is wider than the original here. Unreachable at
+        // realistic values (`class` caps at 9, `ponty` stays small), so
+        // behaviour is unaffected in practice.
         let k = ponty / 2 + (2 * i32::from(class) * ponty + 5) / 10;
         let junk_bonus = i32::from(self.rng.below_at("1000:102e", 6));
         let junk_roll = i32::from(self.rng.below_at("1000:109c", k as u16));
@@ -2018,9 +2037,13 @@ impl Game {
         ]
     }
 
-    /// `x` at the dealers: sell junk. `crate::model::Fighter` has no field
-    /// for carried junk items, so the "nothing to sell" branch is always
-    /// true (`^4Тебе нечего спихнуть.`, file `0xAFC2`).
+    /// `x` at the dealers: sell junk. `crate::model::Fighter::junk` exists
+    /// and is rolled onto a defeated enemy (`roll_enemy`), but combat
+    /// victory never awards it to the player -- `Game::run_combat` does not
+    /// yet reproduce `1000:523e`..`1000:5251` (see `docs/re/gaps.md`). The
+    /// player's `junk` therefore always stays at 0, so the "nothing to
+    /// sell" branch is always true (`^4Тебе нечего спихнуть.`, file
+    /// `0xAFC2`).
     fn sell_junk(&self) {
         term::println("^4Тебе нечего спихнуть.");
     }
@@ -2469,8 +2492,11 @@ mod tests {
     /// does read one.
     #[test]
     fn the_cop_encounter_fights_only_when_luck_loses_and_the_glasses_are_off() {
-        let cop = |g: &mut Game| {
-            g.rng.start_log();
+        // Takes `&mut Rng` rather than `&mut Game`: the only thing it does
+        // to the game is start the RNG log, which only the first of the
+        // three cases below goes on to read.
+        let cop = |rng: &mut Rng| {
+            rng.start_log();
             Fighter {
                 class: 8,
                 name: "Мент".to_string(),
@@ -2487,7 +2513,7 @@ mod tests {
         let mut g = game();
         g.player.luck = 10_000;
         g.prison_tattoo = true;
-        let e = cop(&mut g);
+        let e = cop(&mut g.rng);
         let mut lines = input(&["run", "run"]);
         g.cop_encounter(e, &mut lines).unwrap();
         assert_eq!(lines.count(), 2, "the stealth arm must read no line");
@@ -2503,7 +2529,7 @@ mod tests {
         let mut g = game();
         g.player.luck = 0;
         g.dark_glasses = true;
-        let e = cop(&mut g);
+        let e = cop(&mut g.rng);
         let mut lines = input(&["run", "run"]);
         g.cop_encounter(e, &mut lines).unwrap();
         assert_eq!(lines.count(), 2, "the glasses arm must read no line");
@@ -2511,7 +2537,7 @@ mod tests {
         // Luck loses with no glasses (1000:b801): the fight starts.
         let mut g = game();
         g.player.luck = 0;
-        let e = cop(&mut g);
+        let e = cop(&mut g.rng);
         let mut lines = input(&["run", "run"]);
         g.cop_encounter(e, &mut lines).unwrap();
         assert_eq!(
