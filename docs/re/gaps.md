@@ -59,9 +59,11 @@ each other in the original; that is recorded there, not resolved.
 from character creation and from the wander preamble's draws 6 and 5; Club from
 `girl`, from the class-3 bonus and from draw 7; Gym from draw 8; Girl from the
 wander bucket and the class-3 bonus; Den from the class-5 bonus; BigMarket from
-the class-6 bonus. Six setters remain unimplemented: the `a` token
-(`1000:dcf6`/`1000:dcfb`), the chapter-5 endgame (`1000:ae1f`), the de-level
-penalty (`1000:4aa5`) and the post-kill block (`1000:52b3`).
+the class-6 bonus. **Five** of the seventeen setters remain unimplemented —
+the table's five `no` rows: the `a` token (`1000:dcf6`, `1000:dcfb`), the
+chapter-5 endgame (`1000:ae1f`), the de-level penalty (`1000:4aa5`) and the
+post-kill block (`1000:52b3`). 12 `yes` + 5 `no` = 17. (An earlier revision
+said "Six" while naming these same five addresses.)
 
 ### Character creation grants Vet and Market — `1000:6dbe`
 
@@ -540,9 +542,17 @@ pins the 11 bytes against `orig/g.exe`, so this needs no library to re-check.
   `docs/re/difftest.md` has the enumeration, the gate per row, and the
   `20ae:3e34` scratch byte the gym's fifth row is capped by. **Still open:**
   none of the nine applies its effect when bought (same reason as "Shop
-  purchase effects" below), the club's card game and the gym's purchase
-  handlers are not implemented, and the gym is unreachable in the port
-  because nothing sets `20ae:369a`.
+  purchase effects" below), and the club's card game and the gym's purchase
+  handlers are not implemented.
+
+  An earlier revision of this entry ended "and the gym is unreachable in the
+  port because nothing sets `20ae:369a`". **That was false**, and it
+  contradicted this file's own setter inventory above. The gym's flag is set
+  by the wander preamble's draw 8 — `1000:b21c` `Random(100)`, store at
+  `1000:b22c`, ported at `src/game.rs:1421-1422` — so the gym is **rare, not
+  unreachable**: 1 in 100 per walk. The port's setter is
+  `mark_found(Location::Gym)` and `369a` appears near it only in a comment,
+  which is how a grep for the address literal produced the wrong answer.
 * **The class-keyed combat-opener table** (`1000:3d32`..`1000:3e8a`, files
   `0x452E`, `0x453B`, `0x4548`, `0x4565`, `0x457A`, …).
 * **The rector death branch and the hospital rescue** (`1000:4f8c`,

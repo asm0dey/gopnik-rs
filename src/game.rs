@@ -605,12 +605,25 @@ impl Game {
     ///   got both wrong.
     ///
     /// So the market and the vet are open from turn one, and `w` -> girl ->
-    /// club is a real, reachable chain. BigMarket, Den and Gym stay
-    /// unreachable: their setters live in the wander preamble, the
-    /// `[0x389c]` progression reveals (`1000:73bb`..`1000:73e0`), the `a`
-    /// token (`1000:dce5`) and the combat unit. The complete 17-row
-    /// inventory, with a trigger and an evidence tier per row, is in
-    /// `docs/re/gaps.md`, "Discovery flags: the complete store inventory".
+    /// club is a real, reachable chain.
+    ///
+    /// **All seven flags are reachable in this port** as of Task 11c, which
+    /// implemented both the wander preamble's four discovery rolls
+    /// ([`Game::wander_preamble`]) and the `[0x389c]` progression reveals
+    /// (`1000:73bb`..`1000:73e0`, [`Game::apply_class_bonus`]). Den comes
+    /// from the class-5 bonus (`1000:73c3`), BigMarket from the class-6 bonus
+    /// (`1000:73e0`), and Gym from draw 8 (`1000:b21c` `Random(100)`, store
+    /// at `1000:b22c`) — a 1-in-100 roll per walk, so *rare*, not
+    /// unreachable. A revision of this comment written before Task 11c said
+    /// "BigMarket, Den and Gym stay unreachable"; that is now false on all
+    /// three counts and contradicted `docs/re/gaps.md`'s own inventory.
+    ///
+    /// Five of the seventeen setters remain unimplemented: the `a` token
+    /// (`1000:dcf6`/`1000:dcfb`), the chapter-5 endgame (`1000:ae1f`), the
+    /// de-level penalty (`1000:4aa5`) and the post-kill block (`1000:52b3`).
+    /// The complete 17-row inventory, with a trigger and an evidence tier per
+    /// row, is in `docs/re/gaps.md`, "Discovery flags: the complete store
+    /// inventory".
     fn enter_shop(&mut self, loc: Location) {
         if !self.places.is_found(loc) {
             term::println(Self::undiscovered_line(loc));

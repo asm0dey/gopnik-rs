@@ -247,21 +247,36 @@ mod tests {
         }
     }
 
+    /// The literal numbering each menu prints, per `docs/re/difftest.md`'s
+    /// "The 27 priced rows".
+    ///
+    /// Deliberately NOT re-derived from the `priced_row` lines this same
+    /// emitter just wrote: [`emit`] builds both from one walk of
+    /// `data::shops()` / [`IMM_ROWS`], so comparing the two would be a list
+    /// against itself and could not fail except on a field-splitting bug.
+    /// Written out, it moves when a row is dropped, added or reordered.
     #[test]
-    fn every_priced_row_and_menu_order_agree() {
+    fn every_menu_order_is_the_numbering_that_shop_prints() {
         let lines = stream();
-        for tag in ["mar", "bmar", "rep", "kl", "trn"] {
-            let rows: Vec<String> = lines
-                .iter()
-                .filter_map(|l| l.strip_prefix(&format!("priced_row {tag} ")))
-                .map(|rest| rest.split(' ').next().unwrap().to_string())
-                .collect();
-            let order = lines
+        let want = [
+            ("mar", "1,2,3,4,5,6,7,8,9"),
+            ("bmar", "1,2,3,4,5,6,7,8,9"),
+            ("rep", "h,r"),
+            ("kl", "1,2"),
+            ("trn", "1,2,3,4,5"),
+        ];
+        for (tag, order) in want {
+            let got = lines
                 .iter()
                 .find_map(|l| l.strip_prefix(&format!("menu_order {tag} ")))
                 .unwrap_or_else(|| panic!("no menu_order for {tag}"));
-            assert_eq!(rows.join(","), order, "{tag}");
+            assert_eq!(got, order, "{tag}");
         }
+        let emitted = lines
+            .iter()
+            .filter(|l| l.starts_with("menu_order "))
+            .count();
+        assert_eq!(emitted, want.len(), "an unexpected menu_order was emitted");
     }
 
     #[test]

@@ -6,7 +6,7 @@ gains, starting stats per class, item bonuses, menu numbering. Nothing else.
 
     python3 tools/difftest.py               # runs `cargo build --release` itself
     python3 tools/difftest.py --oracle      # add the DOSBox-X screen channel
-    python3 tools/test_difftest.py          # 31 tests, 13 of which must see a failure
+    python3 tools/test_difftest.py          # 31 tests, 14 of which must see a failure
 
 ---
 
@@ -61,18 +61,75 @@ priced rows: 18 from the byte-array scan, 9 from the immediate scan
 OK   126 records match
 ```
 
-| quantity | records | what is compared | where the original's value is read |
-|---|---:|---|---|
-| `priced_row` | 27 | shop, key, price tested for affordability, price displayed, row text (colour markup stripped) | two instruction-shape scans, below |
-| `menu_order` | 5 | the keys of one location's rows, in the order the handler prints them | the same scans, in address order |
-| `xp_threshold` | 41 | levels 0..40 | `1000:6de0` `mov word [20ae:38d0],0xa` and `1000:2550` `add word [20ae:38d0],0xa` |
-| `scalar` | 4 | `threshold_base`, `threshold_step`, `max_level`, `gains_per_level` | the two above, plus `1000:2580` `cmp word [20ae:38a6],0x28` and `1000:287d` `cmp word [bp-8],2` |
-| `class_weights` | 11 | the growth-weight table, four bytes per class | `20ae:0002`, bounded by the rank-name table base `1000:1a3e` `add di,0x2e` |
-| `start_stats` | 4 | the four character-creation stat lines and the class each stores | `1000:7148`, `1000:7167`, `1000:7186`, `1000:71a0`, plus `1000:71b8` `add word [20ae:389c],3` |
-| `levelup_gain` | 10 | every record field one stat grant moves, and by how much | `FUN_1000_2526`, decoded per arm — below |
-| `item` | 15 | each item's bonus | the item's own `^1…(+N)` inventory string, scanned for in the whole image |
-| `imm_row_site` | 9 | the address each immediate-priced row's price is written down at | the offset of the `cmp` the scan matched |
-| **total** | **126** | | |
+| quantity | records | independent | what is compared | where the original's value is read |
+|---|---:|---:|---|---|
+| `priced_row` | 27 | 27 | shop, key, price tested for affordability, price displayed, row text (colour markup stripped) | two instruction-shape scans, below |
+| `menu_order` | 5 | **0** | the keys of one location's rows, in the order the handler prints them | the same scans, in address order |
+| `xp_threshold` | 41 | **0** | levels 0..40 | `1000:6de0` `mov word [20ae:38d0],0xa` and `1000:2550` `add word [20ae:38d0],0xa` |
+| `scalar` | 4 | 4 | `threshold_base`, `threshold_step`, `max_level`, `gains_per_level` | the two above, plus `1000:2580` `cmp word [20ae:38a6],0x28` and `1000:287d` `cmp word [bp-8],2` |
+| `class_weights` | 11 | 11 | the growth-weight table, four bytes per class | `20ae:0002`, bounded by the rank-name table base `1000:1a3e` `add di,0x2e` |
+| `start_stats` | 4 | 4 | the four character-creation stat lines and the class each stores | `1000:7148`, `1000:7167`, `1000:7186`, `1000:71a0`, plus `1000:71b8` `add word [20ae:389c],3` |
+| `levelup_gain` | 10 | 10 | every record field one stat grant moves, and by how much | `FUN_1000_2526`, decoded per arm — below |
+| `item` | 15 | 15 | each item's bonus | the item's own `^1…(+N)` inventory string, scanned for in the whole image |
+| `imm_row_site` | 9 | **0** | the address each immediate-priced row's price is written down at | the offset of the `cmp` the scan matched |
+| **total** | **126** | **71** | | |
+
+### Why 126 records are not 126 independent comparisons
+
+The tool prints 126 because 126 lines are compared. Three kinds are
+**structurally dependent** on records already in the stream, and reading the
+bolded 126 as 126 facts overstates the check by 55 lines:
+
+* **41 `xp_threshold` records carry no degree of freedom of their own.** Both
+  sides compute `base + step * level` from the same two immediates —
+  `tools/difftest.py:597` and `src/progress.rs:173-175` — and those two
+  immediates are *already* compared, as `scalar threshold_base` and
+  `scalar threshold_step`. The linear form itself is never checked against the
+  image: nothing here reads a curve out of `orig/g.exe`, because the original
+  holds no curve (it keeps the current requirement in `20ae:38d0` and adds 10
+  per level at `1000:2550`). If both sides shared a wrong *form* — quadratic,
+  or off by one level — all 41 would still match. Only `max_level` fixes how
+  many of them there are.
+* **5 `menu_order` records restate `priced_row`'s keys.** Each side re-derives
+  the order from the very list it just emitted the rows from
+  (`tools/difftest.py:641`, `src/trace.rs:202,210`), in the same iteration
+  order. They pin nothing the 27 `priced_row` lines do not already pin.
+* **9 `imm_row_site` records pin a citation against the scan that produced
+  it.** The reference address is the scan's own `m.start()`; the port's is the
+  literal Task 12 copied out of that same scan into `src/game.rs`'s
+  `IMM_ROWS`. This is a transcription check on the citation — worth having,
+  since a drifted citation is a real failure mode — but it is not an
+  independent reading of the image.
+
+`126 - 41 - 5 - 9 = 71`. **71 of the 126 records carry information no other
+record in the stream carries.** The remaining 55 are a regression pin: they catch a
+later edit that breaks the derivation on one side only, which is why they are
+compared rather than dropped.
+
+### The 27 priced rows do not all carry the same weight
+
+A fourth, weaker caveat, kept here rather than at the end of the file so a
+reader meets it before the bolded 126 has settled. The "27 match" line should
+not be read as if all 27 were equally independent:
+
+* **18** (`mar`, `bmar`) reach the port through
+  `tools/extract_tables.py` → `data/shops.json` → `build.rs`, all written in
+  earlier tasks. Comparing them against a fresh scan is a genuine
+  cross-pipeline check.
+* **2** (the vet's) were already hardcoded in `src/game.rs`, from an earlier
+  task, as one fused format string per row. Task 12 split each into the
+  prefix/text pair the image actually holds; the numbers are unchanged, and
+  the comparison now pins them.
+* **7** (the club's two and the gym's five) were transcribed into the port
+  **by this same task**, from the same disassembly the reference side reads.
+  For those seven this is a transcription check and a regression pin, not an
+  independent one.
+
+The reference side of those seven is not itself typed: it is a mechanical scan
+that finds nine matches, follows two string pointers per match and reads the
+CP866 shortstrings, so a slip in the shop, key, price or text would still be
+caught. What is genuinely circular is the *choice of instruction shape* the
+scan matches on, and `imm_row_site` above.
 
 ## Not covered — say it plainly
 
@@ -118,11 +175,20 @@ OK   126 records match
 ## How the two sides are kept apart
 
 The reference side is read out of `orig/g.exe` **by `tools/difftest.py`
-itself**. It does not import `tools/extract_tables.py` and does not open
-`data/shops.json`, `data/items.json` or `data/xp.json` — those are what the
-port is *built* from (`build.rs` bakes them into the binary), so reading them
-here would compare the port with its own input and could not fail. The port
-side is whatever `gopnik --trace-deterministic` prints.
+itself**. It does not import `tools/extract_tables.py` and does not open the
+three tables `build.rs` bakes into the binary: `data/items.json`,
+`data/shops.json` and `data/enemies.json`, which are exactly the three
+`build.rs:29-31` declares `rerun-if-changed` on and exactly the three
+`tools/difftest.py`'s `PORT_INPUTS` lists. Those are what the port is *built*
+from, so reading them here would compare the port with its own input and could
+not fail. The port side is whatever `gopnik --trace-deterministic` prints.
+
+`data/xp.json` is **not** one of them — an earlier revision of this paragraph
+named it as something `build.rs` bakes in, which is wrong. It is a capture
+artifact written by `tools/capture_xp_cases.py`; the port's thresholds are
+`src/progress.rs`'s own constants. `tools/difftest.py` does not read it
+either, so the separation-of-sides argument is unaffected, but the file list
+it rests on has to be the real one.
 
 `tools/difftest.py` runs `cargo build --release` itself before reading the
 binary, and then refuses a binary older than `src/`, `build.rs`, `Cargo.toml`
@@ -133,8 +199,9 @@ test is not in it — and it is easy to hit here by accident, since
 
 That the comparison *can* fail is not asserted, it is exercised.
 `tools/test_difftest.py` mutates a copy of the load image, at least once per
-covered quantity, and requires the mutation to move the reference stream *and*
-make `compare()` return a failure:
+covered quantity. Each mutation must either move the reference stream *and*
+make `compare()` return a failure, or — where moving one value alone would
+make the image self-contradictory — raise:
 
 | mutation | the record it must move |
 |---|---|
@@ -149,13 +216,20 @@ make `compare()` return a failure:
 | `1000:71b8`'s immediate | every `start_stats` class |
 | `1000:27c3`'s immediate | `levelup_gain vitality hpmax` |
 | the `9` in `^1Тесак(Урон+9) ` | `item 9 Тесак` -> `item 7 Тесак` |
+| `1000:df6f`'s immediate (`kl` row 1) | nothing — it must **raise**: the new price contradicts the digits in the row's own text |
 
-Two further checks cover the tool's own guards — changing an immediate-priced
-row's price so it contradicts the digits in its own text must *raise*, and
-blanking an instruction this file quotes must be refused rather than read past
-— and one drops a record from the stream instead of changing one, so the
-length check is exercised as well as the element check. Thirteen in all.
-`orig/g.exe` is never written to; every mutation is a `bytearray` copy.
+That is **twelve** mutations. A thirteenth blanks an instruction this file
+quotes (`1000:6de0`, overwritten with `0x90`) and must be refused rather than
+read past, and a fourteenth drops a record from the stream instead of changing
+one, so the length check is exercised as well as the element check.
+**Fourteen in all** — exactly the fourteen methods of
+`tools/test_difftest.py`'s `TheComparisonCanFail`. `orig/g.exe` is never
+written to; every mutation is a `bytearray` copy.
+
+An earlier revision of this paragraph said "Thirteen in all" while its table
+listed eleven rows and its prose added three more. The undercount erred safe,
+but in a file whose deliverable is enumerated counts the enumeration has to add
+up: 12 + 1 + 1 = 14.
 
 ---
 
@@ -345,13 +419,47 @@ screen channel: 13 values confirmed on the original's own screens, out of 126 re
   starting stat lines shown: 4 of 4
   threshold_base sightings: 4
   NOT confirmed by any screen: mar rows 6,7,8,9: their own `district > 1` test (1000:bb80, 1000:bc42, 1000:bca5) keeps them off a district-1 screen
-  NOT confirmed by any screen: the other 18 priced rows (bmar, rep, kl, trn): each location refuses entry until its discovery flag at 20ae:3694..369a is set, and the vet prints its two rows only to a hurt character (1000:d3d3). None of the five scripts here opens those menus; whether some longer script could is not settled by this run
+  NOT confirmed by any screen: the other 18 priced rows (bmar, rep, kl, trn): none of the five scripts here types those verbs at all, so this run says nothing about them either way. What the image says stands in their way: bmar, kl and trn each open with `cmp byte [flag],1` / jz / jmp past the handler -- 1000:c4c8 on 20ae:3695, 1000:df10 on 20ae:3699, 1000:e39a on 20ae:369a -- and none of those three flags is set at character creation (1000:6dbe sets only the vet and the market). rep's own gate at 1000:d3b0 IS open from turn one for that reason; what keeps its two rows off a screen is the health test at 1000:d3d3, which prints them only to a hurt character. Whether a longer script could reach any of the four is not settled by this run
   NOT confirmed by any screen: every xp_threshold above the first, class_weights, item bonuses and levelup_gain: no screen prints them as such
 ```
 
 **13 of 126.** The other 113 records rest on the image bytes alone. That is not
 a defect — flow outranks output — but it is the honest number, and it is
 printed rather than described.
+
+### What the "not confirmed" line rests on
+
+Two separate claims, and only the first is about this run:
+
+* **No script types `bmar`, `rep`, `kl` or `trn`.** Read the five files in
+  `data/difftest_scripts/`: each types exactly one verb, `mar` or `s`. Nothing
+  here opens those menus, so — per `docs/re/METHODOLOGY.md` — the run
+  establishes nothing about them in either direction. It is not evidence that
+  they are unreachable.
+* **What stands in their way, established from flow.** Each of the seven
+  street verbs with a discovery flag opens with the same ten-byte prologue,
+  `cmp byte [flag],1` / `jz body` / `jmp` past the whole handler, at exactly
+  ten bytes past its own token compare in the dispatch chain:
+
+  | verb | token compare | gate | flag |
+  |---|---|---|---|
+  | `mar` | `1000:b94a` | `1000:b954` | `20ae:3694` |
+  | `bmar` | `1000:c4be` | `1000:c4c8` | `20ae:3695` |
+  | `rep` | `1000:d3a6` | `1000:d3b0` | `20ae:3698` |
+  | `girl` | `1000:d6ed` | `1000:d6f7` | `20ae:3697` |
+  | `pr` | `1000:d802` | `1000:d80c` | `20ae:3696` |
+  | `kl` | `1000:df06` | `1000:df10` | `20ae:3699` |
+  | `trn` | `1000:e390` | `1000:e39a` | `20ae:369a` |
+
+  Character creation sets only two of the seven (`1000:6dc3` vet, `1000:6dc8`
+  market — `docs/re/gaps.md`, "Character creation grants Vet and Market"), so
+  `bmar`, `kl` and `trn` are shut on a fresh character. **`rep` is not**: its
+  flag is one of the two, so its gate is open from turn one, and what actually
+  keeps its two rows off a screen is the health test at `1000:d3d3` —
+  `hp >= hpmax && !jaw && !leg` sets `al := 1` and falls into the "you're
+  fine" arm; only a hurt character reaches the rows. An earlier revision of
+  this line filed `rep` under the flag reason, which is true of its gate and
+  wrong about why the rows are missing.
 
 `tools/test_difftest.py` runs this channel too, and skips it *with a message*
 when `dosbox-x` is not installed.
@@ -367,24 +475,25 @@ markup is not content, so it is neither printed nor compared. An unrecognised
 argument exits 2 rather than falling through to an interactive session, so a
 typo cannot look like an empty trace.
 
-The 27 priced rows do not all carry the same weight, and the "27 match" line
-should not be read as if they did:
+The gym **is** reachable in the port, but rarely. Its discovery flag
+`20ae:369a` is set by the wander preamble's fourth discovery roll — the
+original's `1000:b21c` `Random(100)` with `1000:b22c` `mov byte [0x369a],1`,
+implemented at `src/game.rs:1421-1422` and reached on every walk. The
+comparison constant IS the probability (`docs/re/METHODOLOGY.md`), so that is
+**1 in 100 per walk**, and the flag is cross-checked against the captured
+original in both oracle channels: `tests/wander_sequence.rs:484` against
+`data/rng_trace.json`'s `final_state` and `:941` per turn against
+`data/state_trace.json`. The club is reachable three ways — the class-3 bonus
+(`1000:73d4`), `girl`'s own reveal (`1000:d751`) and draw 7 (`1000:b1ea`).
 
-* **18** (`mar`, `bmar`) reach the port through
-  `tools/extract_tables.py` → `data/shops.json` → `build.rs`, all written in
-  earlier tasks. Comparing them against a fresh scan is a genuine
-  cross-pipeline check.
-* **2** (the vet's) were already hardcoded in `src/game.rs`, from an earlier
-  task, as one fused format string per row. Task 12 split each into the
-  prefix/text pair the image actually holds; the numbers are unchanged, and
-  the comparison now pins them.
-* **7** (the club's two and the gym's five) were transcribed into the port
-  **by this same task**, from the same disassembly the reference side reads.
-  For those seven this is a transcription check and a regression pin, not an
-  independent one.
+An earlier revision of this paragraph said the gym was unreachable because
+nothing set `20ae:369a`. That was established by grepping for the literal
+`369a`, which appears in the port only inside a comment — the setter is
+`mark_found(Location::Gym)`. Grep for the behaviour, not for the address.
 
-The gym is not reachable in the port — nothing sets its discovery flag
-`20ae:369a` — so its five rows reach a screen only through
-`--trace-deterministic` and `src/game.rs`'s
-`an_imm_row_is_prefix_then_colour_digit_then_text` today. The club is
-reachable: `girl` sets `20ae:3699` at `1000:d751`.
+What that rarity does explain is the screen channel: at 1 in 100 per walk, no
+fixed-length keystroke script in `data/difftest_scripts/` can be relied on to
+open the gym, which is why the `trn` rows are in the "not confirmed by any
+screen" list below rather than on a captured frame. The full seven-flag
+reachability inventory, setter by setter, is `docs/re/gaps.md`, "Discovery
+flags: the complete store inventory".

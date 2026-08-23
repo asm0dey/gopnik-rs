@@ -29,10 +29,13 @@ residue:
 The reference side of every comparison below is read **out of
 `orig/g.exe`, by this file**: it opens the image, scans for the instruction
 shapes the values live in, and reads the bytes.  It does not import
-`tools/extract_tables.py`, and it does not read `data/shops.json`,
-`data/items.json` or `data/xp.json` -- those are what the port was *built*
-from (`build.rs` bakes them in), so reading them here would compare the port
-against its own input and could not fail.  The port side is the record stream
+`tools/extract_tables.py`, and it does not read the three tables `build.rs`
+bakes into the binary -- `data/items.json`, `data/shops.json` and
+`data/enemies.json` (`build.rs:29-31`, and `PORT_INPUTS` below carries the
+same three).  Those are what the port was *built* from, so reading them here
+would compare the port against its own input and could not fail.
+`data/xp.json` is not in that list: it is a capture artifact, not a baked-in
+table, and nothing here reads it either.  The port side is the record stream
 `gopnik --trace-deterministic` prints.
 
 That still leaves a real limit, and it is stated rather than implied: this
@@ -89,8 +92,16 @@ GAINS_SITE = ("1000:287d", bytes.fromhex("837ef8"))
 RANK_TABLE_SITE = ("1000:1a3e", bytes.fromhex("81c7"))
 #: `add word [20ae:389c],3` -- class = answer + 3 at character creation.
 CLASS_OFFSET_SITE = ("1000:71b8", bytes.fromhex("83069c38"))
-#: `mov ax,0xa` -- the value pushed into `trn` row 3's `#`.
-TRN3_FILL_SITE = ("1000:e505", bytes.fromhex("b8"))
+#: `call 0f78:0b66` (the row-text `Write`) then `mov ax,0xa` -- the value
+#: pushed into `trn` row 3's `#`, which is written at `1000:e505`.
+#:
+#: The guard is anchored on the PRECEDING call rather than on `b8` alone.
+#: `b8` (`mov ax,imm16`) occurs all over the image, so a one-byte guard on a
+#: drifted citation would happily read a plausible WRONG number instead of
+#: raising.  It deliberately stops at the `b8` opcode: extending it over the
+#: `0a 00` operand would pin the very value the reader then reads, and a check
+#: that asserts its own answer cannot fail.
+TRN3_FILL_SITE = ("1000:e500", bytes.fromhex("9a660b780fb8"))
 
 #: The player's fighter record (`docs/re/progression.md`, "The state"), by the
 #: absolute `20ae:` address of each field -- which is what a `[disp16]` operand
@@ -661,8 +672,10 @@ def reference(img):
 
     # `trn` row 3 is the only row whose text keeps a `#`; the value pushed
     # into it is its own immediate, at a different address from the price.
+    # +6: past the five-byte `call 0f78:0b66` and the `b8` opcode, onto the
+    # imm16 the guard deliberately does not cover.
     ev["trn3_fill"] = struct.unpack_from(
-        "<H", img, site(img, TRN3_FILL_SITE, "trn row 3 fill") + 1
+        "<H", img, site(img, TRN3_FILL_SITE, "trn row 3 fill") + 6
     )[0]
     return lines, ev
 
@@ -794,12 +807,41 @@ SCREEN_STATS_RE = re.compile(r"Сл:(\d+)\s+Лв:(\d+)\s+Жв:(\d+)\s+Уд:(\d+)
 SCREEN_THRESHOLD_RE = re.compile(r"для прокачки надо (\d+)")
 
 
+#: How many screen frames each script must produce, by script stem.
+#:
+#: `capture.run`'s own docstring asks for this "for anything an oracle result
+#: depends on", and every value read below is read off a frame.  The guest
+#: side is deterministic -- a frame is emitted per key request and the Nth
+#: request always gets the Nth scripted key -- but the host side stops the run
+#: once SCREEN.BIN has been quiet for `settle` seconds, which is a wall-clock
+#: judgement.  Without a pinned count a settle-timed short capture looks
+#: exactly like a complete one: the reader just fails to find its value, and
+#: `confirmed` silently drops below 13.  With it, a truncated run raises.
+#:
+#: Measured by running each script once at `seed=1`; `market_rows_district1`
+#: types one verb more than the `stats_class*` scripts, which is the 18-vs-16.
+EXPECT_FRAMES = {
+    "market_rows_district1": 18,
+    "stats_class0": 16,
+    "stats_class1": 16,
+    "stats_class2": 16,
+    "stats_class3": 16,
+}
+
+
 def run_oracle(script, out_dir):
     sys.path.insert(0, str(HERE / "oracle"))
     import capture  # noqa: E402  (imported late: it needs dosbox-x)
 
+    if script.stem not in EXPECT_FRAMES:
+        raise DifftestError(
+            "no frame count pinned for %s; add one to EXPECT_FRAMES rather "
+            "than capturing without it" % script.name
+        )
     keys = script.read_text(encoding="utf-8")
-    return capture.run(keys, out_dir, seed=1)
+    return capture.run(
+        keys, out_dir, seed=1, expect_frames=EXPECT_FRAMES[script.stem]
+    )
 
 
 def oracle_channel(ref_lines, scratch):
@@ -903,11 +945,18 @@ def oracle_channel(ref_lines, scratch):
         "mar rows %s: their own `district > 1` test (1000:bb80, 1000:bc42, "
         "1000:bca5) keeps them off a district-1 screen"
         % (",".join(missing_rows) or "(none)"),
-        "the other %d priced rows (bmar, rep, kl, trn): each location refuses "
-        "entry until its discovery flag at 20ae:3694..369a is set, and the vet "
-        "prints its two rows only to a hurt character (1000:d3d3). None of the "
-        "five scripts here opens those menus; whether some longer script could "
-        "is not settled by this run" % other_rows,
+        "the other %d priced rows (bmar, rep, kl, trn): none of the five "
+        "scripts here types those verbs at all, so this run says nothing "
+        "about them either way. What the image says stands in their way: "
+        "bmar, kl and trn each open with `cmp byte [flag],1` / jz / jmp past "
+        "the handler -- 1000:c4c8 on 20ae:3695, 1000:df10 on 20ae:3699, "
+        "1000:e39a on 20ae:369a -- and none of those three flags is set at "
+        "character creation (1000:6dbe sets only the vet and the market). "
+        "rep's own gate at 1000:d3b0 IS open from turn one for that reason; "
+        "what keeps its two rows off a screen is the health test at "
+        "1000:d3d3, which prints them only to a hurt character. Whether a "
+        "longer script could reach any of the four is not settled by this "
+        "run" % other_rows,
         "every xp_threshold above the first, class_weights, item bonuses and "
         "levelup_gain: no screen prints them as such",
     ]

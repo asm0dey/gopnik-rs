@@ -3,9 +3,11 @@
 
 Three things are checked, in this order of importance:
 
-1. **The comparison can fail.**  Twelve mutations of the load image, at least
-   one per quantity the tool claims to cover, each have to move the reference
-   stream or raise; a thirteenth check drops a record instead of changing one.
+1. **The comparison can fail.**  Thirteen mutations of the load image, at
+   least one per quantity the tool claims to cover, each have to move the
+   reference stream or raise; a fourteenth check drops a record instead of
+   changing one.  That is the whole of `TheComparisonCanFail`, whose method
+   count is 14.
    A comparator nobody has ever seen fail is not evidence, and this
    project has shipped one before (`docs/re/METHODOLOGY.md`, "a completeness
    check printing 14/14 by formatting one value against itself").  `orig/g.exe`
@@ -70,17 +72,27 @@ class ReferenceEnumerations(unittest.TestCase):
             },
         )
 
-    def test_menu_order_matches_the_rows_of_each_shop(self):
+    def test_menu_order_is_the_literal_numbering_each_menu_prints(self):
+        # Deliberately NOT re-derived from the `priced_row` lines: both sides
+        # build `menu_order` by walking the same list they emitted the rows
+        # from, so comparing the two is a list against itself and cannot fail
+        # except on a field-splitting bug.  The expected orders are written
+        # out, so a reordered scan or a dropped row moves this test.
+        got = {}
         for line in REFERENCE:
-            if not line.startswith("menu_order "):
-                continue
-            _, shop, order = line.split()
-            rows = [
-                l.split()[2]
-                for l in REFERENCE
-                if l.startswith("priced_row %s " % shop)
-            ]
-            self.assertEqual(",".join(rows), order, shop)
+            if line.startswith("menu_order "):
+                _, shop, order = line.split()
+                got[shop] = order
+        self.assertEqual(
+            got,
+            {
+                "mar": "1,2,3,4,5,6,7,8,9",
+                "bmar": "1,2,3,4,5,6,7,8,9",
+                "rep": "h,r",
+                "kl": "1,2",
+                "trn": "1,2,3,4,5",
+            },
+        )
 
     def test_every_debit_pairs_with_exactly_one_row(self):
         self.assertEqual(EVIDENCE["debit_rows"], 27)
