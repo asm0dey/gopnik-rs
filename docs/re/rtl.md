@@ -698,12 +698,17 @@ byte-identical check.
 already said so before Task 11h began.  **`docs/re/branches.md`** states the
 rule under "`size` on a function record is `getNumAddresses()`, a set
 cardinality, not a span" (lines 248-258), and the note in its audit script
-(lines 603-611) names `1f78:1117` as the sole split body in the image, names
-`1f78:1121`..`112c` as its phantom range, and ends *"Do not copy this line
+(lines 612-628) names `1f78:1117` as the image's sole OVERLAPPING record,
+names `1f78:1121`..`112c` as its phantom range, names `1000:0d14` as the
+second non-contiguity and `1000:11c0`/`11c1` as the two addresses it
+under-reads past, and ends *"Do not copy this line
 into a check where the over-read would matter — use the address set, not the
 span."*  That comment is
 the authority for what follows; this section only records what the span model
-does in `tools/re_query.py` and what was confirmed by disassembly.
+does in `tools/re_query.py` and what was confirmed by disassembly.  (Until the
+final-review fix wave the note said "the sole split body in the image", which
+this section had already corrected below without the note following; both now
+say the same thing.)
 
 `data/functions.json` gives each function an `entry` and a `size`, and `size`
 is Ghidra's **address-set byte count**.  `re_query.Program.__init__` has no
@@ -774,11 +779,13 @@ again — `resolve 1000:11c0` and `1000:11c1` report `function: None` for the
 two operand bytes of that `ret 0x2`.  Naming it is all this task does with it;
 explaining it needs Ghidra, not this document.
 
-That makes `branches.md`'s "the sole split body in the image" one record too
-narrow, read literally: `1f78:1117` is the sole **overlapping** one, and the
-sentence's own use — the strings-overlap count — is unaffected either way,
-because `1000:0d14`'s two lost addresses are the operand bytes of a `ret` and
-no `data/strings.json` entry touches them (checked: 0).
+`branches.md` used to call `1f78:1117` "the sole split body in the image",
+which was one record too narrow read literally; both that paragraph and the
+audit-script note now say **overlapping** instead, and both name `1000:0d14`.
+The sentence's own use — the strings-overlap count — is unaffected either way,
+because `1000:0d14`'s two lost addresses are `1000:11c0`/`11c1`, the operand
+bytes of the `c2 02 00` (`ret 0x2`) at `1000:11bf`, and no
+`data/strings.json` entry touches them (checked: 0).
 
 **The span model's two failure directions**, both live and both now asserted in
 `tools/test_re_query.py`:

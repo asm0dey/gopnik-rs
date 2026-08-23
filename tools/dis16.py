@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 """A minimal 16-bit x86 decoder: instruction boundaries and operand spans.
 
-`capstone` is not available in this environment (standard library only), and
-the questions this project keeps asking do not need a full disassembler.  They
+This module itself is standard library only, so every tool that imports it
+stays runnable with nothing installed.  That is a dependency choice, not a
+statement about the environment: `capstone` **is** installed here and the
+owner approved it, and `tools/test_rtlmatch.py` uses it as this decoder's
+cross-check oracle -- decoding whole runtime segments with both and asserting
+the instruction lengths agree, over a population it also asserts does not
+shrink.  (An earlier revision of this line claimed capstone "is not available
+in this environment", which contradicted the strongest test written against
+this file.)
+
+The questions this project keeps asking do not need a full disassembler.  They
 need two things the existing byte-scan tools cannot give:
 
   * **where an instruction starts and ends** -- so "is this address an

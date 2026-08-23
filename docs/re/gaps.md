@@ -469,13 +469,81 @@ body was not traced, so nothing is printed rather than inventing a line: the
 game has no "not implemented" string to quote. Disassembling the handler
 settles it.
 
-## `rename`'s prompts
+## `rename`'s prompts — the retraction was wrong; there is no deviation
 
 *Cited from `src/game.rs`'s `rename`.*
 
-`^2Звали тебя:^7 ` and `^2А теперь будут:^7 ` are **this port's own wording**
-and are the one place the code knowingly departs from the byte-verbatim rule.
-`1000:ecf1`'s handler body was not traced, so the real prompts are unknown.
+An earlier revision of this entry said `^2Звали тебя:^7 ` and
+`^2А теперь будут:^7 ` were "this port's own wording … the one place the code
+knowingly departs from the byte-verbatim rule", because "`1000:ecf1`'s handler
+body was not traced". **Both prompts are the game's own strings**, and the
+handler is now traced. There is **no** knowing departure from byte-verbatim
+text anywhere in this port.
+
+**Established from flow**, `1000:ecfb`..`1000:ed9c`, the arm `name`'s compare
+at `1000:ecf1` takes:
+
+* `1000:ecfb`..`1000:ed24` — build a temp shortstring from the literal at
+  image `0xaab1` = file **`0xC381`** = `^2Звали тебя:^7 ` (`0f78:0ae7`,
+  `rtl_str_assign`), append the name variable `DS:379c` (`0f78:0b66`,
+  `rtl_str_append`), and `WriteLn` it (`0eed:01c2`).
+* `1000:ed29`..`1000:ed3d` — `Write` (`0eed:0000`, no newline) the literal at
+  image `0xaac2` = file **`0xC392`** = `^2А теперь будут:^7 `.
+* `1000:ed42`..`1000:ed5a` — `ReadLn(Input, DS:379c)` (`0f78:06c6` /
+  `0f78:059d` / `0f78:0291`, the three-call `ReadLn` idiom `docs/re/rtl.md`
+  names).
+
+The two file offsets are `data/strings.json` entries `0xC381` and `0xC392`,
+sitting immediately after the `name` token at `0xC37C` that
+`docs/re/command-dispatch.md` cites for this handler.
+
+### What `rename` really was missing
+
+Tracing the handler turned up two behaviours the port did not have. The first
+is now fixed; the second is registered here and still open.
+
+**1. An empty new name becomes `Раз^6дол^4бай` — fixed.** `1000:ed5f`
+`cmp byte [0x379c],0` / `jnz 0xed79` tests the length byte of what was just
+read; on zero, `1000:ed74` calls `0f78:0b01` (`rtl_str_assign_max`) with the
+literal at image `0xaad7` = file **`0xC3A7`** = `Раз^6дол^4бай` as source and
+`DS:379c` as destination. `0f78:0b01`'s operand layout settles which is which:
+`lds si,[ss:bx+0xa]` is the source, `les di,[ss:bx+6]` the destination,
+`mov cx,[ss:bx+4]` the length cap, and it ends `retf 0xa`.
+
+This is the same code the port already models at character creation
+(`1000:7220` / `1000:7227`, literal at file `0x80B4` — `src/main.rs`'s
+`create_character`), so the port kept the old name on an empty rename while
+substituting the default on an empty creation. `Game::rename` now substitutes.
+
+**2. The stored name is prefixed with `^7 ` — NOT modelled.** Both name-entry
+sites end with the same three-call idiom that rebuilds the variable as
+`<literal> + <name>`:
+
+| path | sequence | the three calls: assign / append / store | literal | file off |
+|---|---|---|---|---|
+| creation | `1000:723a`..`1000:725d` | `1000:7245` / `1000:724f` / `1000:725d` | `^7 ` | `0x80C2` |
+| `rename` | `1000:ed79`..`1000:ed9c` | `1000:ed84` / `1000:ed8e` / `1000:ed9c` | `^7 ` | `0xC3B5` |
+
+`0f78:0ae7` assigns the literal into a stack temp, `0f78:0b66` appends
+`DS:379c`, `0f78:0b01` assigns the temp back to `DS:379c`; the first two
+`retf 4`, popping only their source and leaving the destination pointer on the
+stack for the next call, which is why one `lea di,[bp-0x100]` serves all
+three. So the original's stored name is literally `^7 ` + whatever was typed.
+
+**Corroborated by state**, and this is what fixes the direction of the
+concatenation beyond the operand layout: all five saves in `orig/` carry the
+prefix in their `pstring` at `.SAV 0x100` — `^7 adg`, `^7 vor`, `^7 vor`,
+`^7 vor`, `^7 Mudila`. `docs/re/save-format.md` already records that field as
+"player name, colour-prefixed".
+
+This port stores the bare name in both paths. **Not implemented**: the prefix
+is part of the name the save writes, so adding it changes the `.SAV` bytes
+this port emits and every line that interpolates the name, and no capture in
+`data/rng_trace.json` or `data/state_trace.json` exercises a rename or a
+character creation whose name is compared. (Nothing is lost on the read side:
+`src/main.rs` never loads a save, and `tools/decode_save.py` round-trips the
+original files byte-for-byte, prefix included.) Registered here with both
+addresses rather than left as a silent difference.
 
 ## The vet's charged amounts
 
@@ -484,20 +552,153 @@ and are the one place the code knowingly departs from the byte-verbatim rule.
 **Established from flow** that the menu prints `3` and `7` (files `0xB2B2`,
 `0xB2D9`) and that the affordability colour compares money against the same
 literals (`cmp word [0x38c7],0x3` at `1000:d410`, `cmp word [0x38c7],0x7` at
-`1000:d465`). That the *debit* is also 3 and 7 is an **inference** — the vet's
-own submenu handler was not traced.
+`1000:d465`).
+
+**The debit is no longer an inference.** An earlier revision of this entry
+called it one because "the vet's own submenu handler was not traced"; the
+`difftest` task traced it, and this entry did not follow. Both purchase arms
+are in the image and are **established from flow**:
+
+| site | bytes | instruction | row |
+|---|---|---|---|
+| `1000:d553` (file `0xee23`) | `83 2e c7 38 07` | `sub word [0x38c7],0x7` | `r`, the broken bones |
+| `1000:d5d9` (file `0xeea9`) | `83 2e c7 38 03` | `sub word [0x38c7],0x3` | `h`, the jaw |
+
+Each arm's row is fixed by the nearest preceding token compare: `1000:d537`
+tests `r` (file `0xB320`), `1000:d5b9` tests `h` (file `0xB392`). Note the two
+arms are laid out in the **opposite** order to the two menu rows, which is why
+`docs/re/difftest.md`, "Eight of the nine unnamed `sub [money],imm8` sites are
+now named", pairs them by key rather than by position; that document carries
+the enumeration, and `data/other_price_sites.json` now records both.
 
 ## The in-combat verb set
 
 *Cited from `src/game.rs`'s `run_combat`.*
 
-**Corroborated** modal by the live capture (`mar` and `i` typed at `^0Битва\`
-were ignored, reprinting the prompt). `sv` (inspect) is corroborated by
-`docs/re/tables.md`'s oracle capture; `h`/`mh` (beer) are **established from
-flow** via `FUN_1000_3d11`'s call into `FUN_1000_29c4` at `1000:4b00`. `k`
-(attack) is **this port's own choice** — consistent with `k` being the fight
-verb everywhere else, but not independently confirmed. `FUN_1000_3d11`'s own
-input loop was not disassembled.
+**The verb set is established from flow.** An earlier revision of this entry
+said `FUN_1000_3d11`'s own input loop "was not disassembled" and called `k`
+"this port's own choice … not independently confirmed". Both statements were
+false by the time they were read, and neither survives the scan below.
+
+`FUN_1000_3d11` (entry `1000:3d11`) does its own token comparison with
+`0f78:0bd8`, the same Pascal shortstring compare `entry` uses
+(`docs/re/command-dispatch.md`), but against its **own** input buffer
+`DS:3a72` rather than `entry`'s `DS:3972` — which is exactly why
+`crate::commands::parse`'s table does not describe this prompt.
+
+The image holds 93 `9a d8 0b 78 0f` call sites in total. Scanning from
+`1000:3d11` to the **next function entry**, `1000:5f55`, returns exactly
+**nine** of them. That window is deliberately wider than the record's own
+`size` span (`1000:3d11`..`1000:584b`), so the count does not depend on
+reading `size` as a span — the trap `docs/re/branches.md` documents. Every one
+of the nine is preceded, byte for byte, by
+`bf 72 3a` / `1e` / `57` (`mov di,0x3a72` / `push ds` / `push di`) and
+`bf <lo> <hi>` / `0e` / `57` (`mov di,<token>` / `push cs` / `push di`), so
+each site's token is read out of the instruction, not guessed from proximity:
+
+| compare site | token | token file off |
+|---|---|---|
+| `1000:4440` | `k` | `0x4A52` |
+| `1000:48e1` | `run` | `0x4C8B` |
+| `1000:4b0d` | `kos` | `0x4D81` |
+| `1000:4c2e` | `s` | `0x4E6F` |
+| `1000:4c42` | `sv` | `0x4E71` |
+| `1000:4c56` | `e` | `0x4E74` |
+| `1000:4c75` | `k` (a second compare, gated on `[0x3c80] >= 1` at `1000:4c64`) | `0x4A52` |
+| `1000:4caa` | `v` | `0x4E96` |
+| `1000:4ea8` | `f` | `0x4FE4` |
+
+Check any single row with `python3 tools/re_query.py resolve 1000:4440`; the
+count is reproduced by finding `9a d8 0b 78 0f` over `[0x3d11, 0x5f55)` in the
+load image.
+
+So `k` **is** the in-combat attack verb — established from flow, at
+`1000:4440` — and `sv` (inspect, `1000:4c42`), whose only prior evidence was
+`docs/re/tables.md`'s oracle capture, is a dispatched verb here too. `h`/`mh`
+(beer) remain established from flow via `FUN_1000_3d11`'s call into
+`FUN_1000_29c4` at `1000:4b00`, which is a *subroutine* call and therefore not
+one of the nine.
+
+**What is NOT established.** The verb *set* is; the *effects* of most arms are
+not. Three of the nine arms have been followed into their bodies:
+
+* `1000:4440` `k` — the fight itself. `docs/re/combat.md` traces the blow
+  budget, accuracy and damage inside it (`1000:445c`..`1000:4660` and the
+  enemy's mirror); `Game::combat_round` is that reconstruction.
+* `1000:48e1` `run` — traced in full, `src/game.rs`'s `run_combat` doc.
+* `1000:4b0d` `kos` — traced in full by the final-review fix wave, below.
+
+Six arms are **not traced**, and the only thing quoted for each below is the
+instruction that was actually read at its jump target:
+
+| token | compare | first instruction of the arm | in the port? |
+|---|---|---|---|
+| `s` | `1000:4c2e` | `1000:4c35` `call 0x1a03` | no |
+| `sv` | `1000:4c42` | `1000:4c49` `call 0x1348` | yes, but from the oracle capture, not from this arm |
+| `e` | `1000:4c56` | `1000:4c5d` `xor ax,ax` / `call 0f78:0116` | no |
+| `k` (2nd) | `1000:4c75` | `1000:4c7c` `inc [0x3c80]`, then `cmp word [0x3c80],3` | no |
+| `v` | `1000:4caa` | `1000:4cb4` `cmp byte [0x3696],1` (the den flag) | no |
+| `f` | `1000:4ea8` | its own arm | no |
+
+Nothing beyond those instructions is claimed for any of the six. `sv`'s row is
+the one place where the port does something at a dispatch site whose arm it has
+not read: what it prints comes from `docs/re/tables.md`'s capture, which is
+output-tier evidence and is labelled as such in `Command::Inspect`'s doc.
+
+### `kos` inside a fight: the same handler with a shorter buff
+
+**Established from flow.** The arm `1000:4b0d`'s `jz 0x4b17` takes is the
+**269 bytes at `1000:4b17`**, ending with the `call 0eed:01c2` at
+`1000:4c1f`; the top-level `kos` handler is the **269 bytes at `1000:e97d`**,
+ending with its own `call 0eed:01c2` at `1000:ea85`. Compared byte for byte
+they differ in exactly **15** places: seven `mov di,imm16` string operands
+pointing into the combat string pool instead of the top-level one, and one
+immediate.
+
+The immediate is the whole behavioural difference: `1000:4b52`
+`c6 06 cd 38 03` sets the stoned countdown `20ae:38cd` to **3**, where
+`1000:e9b8` `c6 06 cd 38 0a` sets it to **10**. Everything else — the broken-jaw
+guard `cmp byte [0x38b0],1`, the already-stoned guard `cmp byte [0x38cd],0`,
+the no-joints guard `cmp word [0x38c5],0`, `dec [0x38c5]`,
+`add word [0x389e],2`, `inc [0x38a8]`, `add word [0x38aa],2` and the
+under-10/over-10 heal split — is the identical instruction sequence.
+
+Six of the seven strings are byte-identical to their top-level twins; the
+seventh differs by one letter. The combat copy at file `0x4DF0` is
+`^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косяков` (Pascal length
+byte 56) where the top-level copy at file `0xBF5E` ends `косякова` (57). Both
+are quoted verbatim where they are used; neither is a typo this port may fix,
+and `Joint::long_heal_line`'s test asserts the two differ by exactly the one
+trailing letter so a later edit cannot quietly unify them.
+
+| purpose | combat pool | top-level pool |
+|---|---|---|
+| broken jaw | `0x4D85` | `0xBEF3` |
+| heal prefix, shortfall < 10 | `0x4DB4` | `0xBF22` |
+| heal suffix | `0x4DCD` | `0xBF3B` |
+| heal line, shortfall >= 10 | `0x4DF0` | `0xBF5E` (one letter longer) |
+| `^2Сила +2.` | `0x4E29` | `0xBF98` |
+| no joints | `0x4E34` | `0xBFA3` |
+| already stoned | `0x4E49` | `0xBFB8` |
+
+This arm **is** implemented — `Game::smoke` takes the countdown and the
+long-heal line from its call site, so the fight prompt's `kos` sets 3 and the
+street prompt's sets 10.
+
+### The four arms this port drops, and what it prints instead
+
+`s`, `e`, `v` and `f` reach `run_combat`'s `match` and are **registered as
+unimplemented**, not silently discarded: `src/game.rs`'s `run_combat` names
+each with its compare address in the arm that ignores it. An earlier revision
+justified dropping them with the comment *"matches the live capture's mar/i
+rejection"*. That is evidence about `mar` and `i` — neither of which is one of
+the nine — and about nothing else; a verb the dispatcher compares may be
+dispatched and print nothing (`docs/re/METHODOLOGY.md`, "Absence of visible
+response is not absence of dispatch").
+
+Implementing them needs each arm's body traced first. `e` looks like a
+`Halt(0)` from its one quoted instruction and `v` like a den-gated call for
+backup, but *looks like* is not a tier and neither is written up as one.
 
 ## `Delete`'s index clamp — the linked runtime is not this library's
 
@@ -526,6 +727,54 @@ emulates `Delete` must pick the clamping semantics, not the library's.
 
 `tools/test_rtlmatch.py::test_deletes_divergence_is_visible_in_the_image_itself`
 pins the 11 bytes against `orig/g.exe`, so this needs no library to re-check.
+
+## The two ban countdowns are modelled and decremented but never set
+
+*Cited from `src/game.rs`'s `market_ban_countdown` / `club_ban_countdown`,
+`Game::walk_preamble` and `Game::visit_girl`.*
+
+`20ae:3b76` (market) and `20ae:3b77` (club) are two byte cooldowns. The port
+declares both at the right addresses, ticks both down once per walk, and reads
+both for a phone message — but **nothing in `src/` ever assigns either a
+non-zero value**, so the two `== 1` message branches and both `> 0` decrements
+are currently dead code. That is a real omission, registered here rather than
+left implicit; all six sites below are **established from flow** and were
+re-derived from `orig/g.exe` for this entry.
+
+| what | site | bytes | in the port? |
+|---|---|---|---|
+| set the market ban to 5 | `1000:c465` | `c6 06 76 3b 05` | **no** |
+| set the club ban to 5 | `1000:e23e` | `c6 06 77 3b 05` | **no** |
+| `mar`'s gate on it | `1000:b95e` | `80 3e 76 3b 00` + `jz 0xb968` | **no** |
+| `kl`'s gate on it | `1000:df1a` | `80 3e 77 3b 00` + `jbe 0xdf3d` | **no** |
+| `girl` clears the market ban | `1000:d793` | `c6 06 76 3b 00` | **no** |
+| both tick down, once per walk | `1000:b173` / `1000:b17e` | `fe 0e 76 3b` / `fe 0e 77 3b` | yes |
+
+The gates are what the countdowns are *for*, and each has its own refusal
+line. `1000:b95e` runs immediately after `mar`'s discovery-flag check at
+`1000:b954`: ban zero takes `jz 0xb968` into the market intro (file `0xA430`),
+ban non-zero takes `jmp 0xc480`, which prints file `0xA9C4`
+(`^6На базар пока нельзя там менты бродят, тебя ищут.`) and returns to the
+prompt. `1000:df1a` is the same gate with the branch polarity reversed: ban
+zero takes `jbe 0xdf3d` into the club, ban non-zero falls through to
+`1000:df21`, which prints file `0xB9BD`
+(`^6Тебе не стоит пока туда соваться`).
+
+Both refusal strings are in `data/strings.json` and neither is printed
+anywhere in `src/` — the port's `enter_shop` gates on the discovery flag only.
+Implementing the two setters without the two gates would be worse than the
+present state, so this entry lists them as one omission, not five.
+
+**Consequence, stated plainly:** `src/game.rs`'s two "it blew over" phone
+messages (`1000:b11e`, `1000:b145`) can never print in this port, and the
+decrements they share a preamble with can never run. They are left in place —
+at the right addresses, in the right order in the walk preamble — so that
+implementing the two setters and the `girl` clear is the only work needed to
+make them live. Nothing about them is *wrong*; they are unreachable.
+
+`Game::visit_girl`'s doc previously said the clear at `1000:d793` was "not
+modelled here" without saying that the field it would clear exists; it now
+points at this entry.
 
 ---
 
@@ -557,15 +806,24 @@ pins the 11 bytes against `orig/g.exe`, so this needs no library to re-check.
   `0x452E`, `0x453B`, `0x4548`, `0x4565`, `0x457A`, …).
 * **The rector death branch and the hospital rescue** (`1000:4f8c`,
   `1000:4fce`) — need fields `crate::model::Fighter` does not have.
-* **`sv`, `v`, `x`, `wes` token compare sites** — not located; those four
-  verbs are corroboration-only, not dispatch-confirmed.
+* ~~**`sv`, `v`, `x`, `wes` token compare sites** — not located.~~ **Half
+  closed by the final-review fix wave.** `sv` (`1000:4c42`) and `v`
+  (`1000:4caa`) are located and **established from flow** — they are combat
+  verbs, compared against `DS:3a72`, which is why a search of `entry`'s
+  `DS:3972` chain could never find them; see "The in-combat verb set" above.
+  `x` and `wes` remain corroboration-only, and are most likely `bmar`'s own
+  submenu keys.
 * **The quit message** (files `0xC3F3`, `0xC41A`, written at `1000:ee04`) and
   the university backstory (`0x7D81`..`0x7F1F`) — real strings, not wired up.
 * **Shop purchase effects** — `data/shops.json` rows deduct `price` and print
   their text, but never change `strength` / `armor` / etc.: most rows have no
   representable target on `Fighter`.
-* **The joint (`kos`) heal formula** reuses beer's `FUN_1000_29c4` by analogy;
-  the joint's own handler was not traced.
+* ~~**The joint (`kos`) heal formula** reuses beer's `FUN_1000_29c4` by
+  analogy; the joint's own handler was not traced.~~ **Closed.** Both copies of
+  the handler are traced: `1000:e97d` (top level) and `1000:4b17` (combat),
+  269 bytes each, differing in 15 bytes — see "`kos` inside a fight" above.
+  The heal is the handler's own `cmp ax,0xa` split at `1000:e9d2` /
+  `1000:4b6c`, not an analogy with beer's.
 * ~~**The decline branch after a fight encounter.**~~ **Closed by Task 11f**
   (stale entry corrected in Task 11g). The evade-vs-detected split on the
   `Random(2)` at `1000:b725` (`1000:b721` is its `mov ax,2`, `1000:b724` the

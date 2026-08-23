@@ -327,11 +327,31 @@ def test_other_price_sites():
     assert len(imm8) == len(raw_imm8) == 11, (len(imm8), len(raw_imm8))
     assert [(int(s["file_off"], 16), s["imm"]) for s in imm8] == raw_imm8
 
-    # Only the two Клуб rows are identified; the other nine stay null.
+    # Ten of the eleven are identified. The two Клуб rows were named by
+    # Task 10; the other eight by the final-review fix wave, from the verb
+    # span each falls in and the token its nearest preceding compare tests
+    # (docs/re/difftest.md). `0x68fc` is in no location handler and stays
+    # null -- unknown still means unknown, and this asserts WHICH one is
+    # unknown rather than just how many are.
     named = {s["file_off"]: s["what"] for s in imm8 if s["what"]}
-    assert set(named) == {"0xfb77", "0xfbec"}, named
+    assert set(named) == {
+        "0xee23", "0xeea9", "0xf05e", "0xfb77", "0xfbec",
+        "0xff27", "0xffb3", "0x10066", "0x100f3", "0x10188",
+    }, named
+    assert [s["file_off"] for s in imm8 if not s["what"]] == ["0x68fc"], imm8
+    # Each named row's `what` carries the debit's own address, so a shifted
+    # scan that re-attached an annotation to another site would say so.
     for s in imm8:
         assert isinstance(s["imm"], int)
+    # The eight new annotations state a price; it must be the site's own
+    # immediate, which is derived from the bytes, not from the annotation.
+    for off, imm in (("0xee23", 7), ("0xeea9", 3), ("0xf05e", 12),
+                     ("0xff27", 20), ("0xffb3", 20), ("0x10066", 10),
+                     ("0x100f3", 30), ("0x10188", 20)):
+        site = next(s for s in imm8 if s["file_off"] == off)
+        assert site["imm"] == imm, site
+        if off != "0xf05e":  # girl is not a menu row and quotes no price
+            assert named[off].split(": ", 1)[1].startswith(str(imm)), named[off]
 
     # --- the debited byte variable: 20ae:3c82 -----------------------------
     assert len(sites["var_sites"]) == 1

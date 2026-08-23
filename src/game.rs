@@ -301,9 +301,20 @@ pub struct Game {
     /// port -- see `docs/re/gaps.md`, "Opened by Task 11c".
     ///
     /// `20ae:3b76` -- the market ban's countdown, set to 5 at `1000:c465`
-    /// and decremented once per walk at `1000:b173`.
+    /// (`c6 06 76 3b 05`), gated on at `1000:b95e`, cleared by `girl` at
+    /// `1000:d793`, and decremented once per walk at `1000:b173`.
+    ///
+    /// **Only the decrement is implemented.** Nothing in this port assigns a
+    /// non-zero value, so the field is permanently 0 here and the two things
+    /// that read it -- the `== 1` phone message in [`Game::walk`] and the
+    /// decrement itself -- never fire. Registered in `docs/re/gaps.md`, "The
+    /// two ban countdowns are modelled and decremented but never set", with
+    /// every missing site's address.
     pub market_ban_countdown: u8,
-    /// `20ae:3b77` -- the club ban's countdown (`1000:e23e`, `1000:b17e`).
+    /// `20ae:3b77` -- the club ban's countdown: set to 5 at `1000:e23e`
+    /// (`c6 06 77 3b 05`), gated on at `1000:df1a`, decremented at
+    /// `1000:b17e`. Same state as [`Game::market_ban_countdown`] -- only the
+    /// decrement is implemented; see the same `docs/re/gaps.md` entry.
     pub club_ban_countdown: u8,
     /// `20ae:3b78` -- den errand one. Set by draw 1 at `1000:af71`, and set
     /// there **unconditionally**, before the flags that decide whether
@@ -535,7 +546,7 @@ impl Game {
             Command::Help => self.show_help(),
             Command::Version => self.banner(),
             Command::Name => self.rename(lines)?,
-            Command::Joint => self.smoke(),
+            Command::Joint => self.smoke(Joint::Street),
             Command::Drink => self.beer(Beer::One),
             Command::BingeDrink => self.beer(Beer::Binge),
             Command::SellJunk => self.sell_junk(),
@@ -587,9 +598,15 @@ impl Game {
     /// original's flags are set elsewhere, never by a failed entry.
     ///
     /// A scan of `orig/g.exe` for `c6 06 [94-9a] 36 imm8` finds 31 stores to
-    /// these seven bytes: 14 clears and **17** set-to-1. Four of the
-    /// seventeen are implemented here, all established from flow and all
-    /// re-derived from `orig/g.exe`:
+    /// these seven bytes: 14 clears and **17** set-to-1. **Twelve of the
+    /// seventeen are implemented in this port and five are not**, which is
+    /// the split `docs/re/gaps.md`'s 17-row inventory records. Of the twelve,
+    /// the four listed next predate Task 11c; the other eight are named in
+    /// the Task 11c paragraph below. All twelve are established from flow and
+    /// all were re-derived from `orig/g.exe`. (An earlier revision of this
+    /// comment said "Four of the seventeen … implemented here" and then "Five
+    /// … remain unimplemented", which adds to nine, not seventeen: it counted
+    /// only this list and forgot the eight it goes on to describe.)
     ///
     /// * `1000:6dc3` `c6 06 98 36 01` and `1000:6dc8` `c6 06 94 36 01` --
     ///   the **vet's** and the **market's** flags, written by the
@@ -608,9 +625,11 @@ impl Game {
     /// club is a real, reachable chain.
     ///
     /// **All seven flags are reachable in this port** as of Task 11c, which
-    /// implemented both the wander preamble's four discovery rolls
-    /// ([`Game::wander_preamble`]) and the `[0x389c]` progression reveals
-    /// (`1000:73bb`..`1000:73e0`, [`Game::apply_class_bonus`]). Den comes
+    /// implemented the other **eight** of the twelve: the wander preamble's
+    /// four discovery rolls (`1000:b196`, `1000:b1c8`, `1000:b1fa`,
+    /// `1000:b22c` -- [`Game::wander_preamble`]) and the four `[0x389c]`
+    /// progression reveals (`1000:73c3`, `1000:73cf`, `1000:73d4`,
+    /// `1000:73e0` -- [`Game::apply_class_bonus`]). Den comes
     /// from the class-5 bonus (`1000:73c3`), BigMarket from the class-6 bonus
     /// (`1000:73e0`), and Gym from draw 8 (`1000:b21c` `Random(100)`, store
     /// at `1000:b22c`) — a 1-in-100 roll per walk, so *rare*, not
@@ -618,12 +637,12 @@ impl Game {
     /// "BigMarket, Den and Gym stay unreachable"; that is now false on all
     /// three counts and contradicted `docs/re/gaps.md`'s own inventory.
     ///
-    /// Five of the seventeen setters remain unimplemented: the `a` token
-    /// (`1000:dcf6`/`1000:dcfb`), the chapter-5 endgame (`1000:ae1f`), the
-    /// de-level penalty (`1000:4aa5`) and the post-kill block (`1000:52b3`).
-    /// The complete 17-row inventory, with a trigger and an evidence tier per
-    /// row, is in `docs/re/gaps.md`, "Discovery flags: the complete store
-    /// inventory".
+    /// The remaining **five** of the seventeen are unimplemented: the `a`
+    /// token's two (`1000:dcf6`/`1000:dcfb`), the chapter-5 endgame
+    /// (`1000:ae1f`), the de-level penalty (`1000:4aa5`) and the post-kill
+    /// block (`1000:52b3`). 12 + 5 = 17. The complete 17-row inventory, with
+    /// a trigger and an evidence tier per row, is in `docs/re/gaps.md`,
+    /// "Discovery flags: the complete store inventory".
     fn enter_shop(&mut self, loc: Location) {
         if !self.places.is_found(loc) {
             term::println(Self::undiscovered_line(loc));
@@ -653,8 +672,16 @@ impl Game {
     ///   the club's discovery flag at `1000:d751`. This is one of the two
     ///   discovery paths in the game.
     /// * `1000:d756`/`1000:d76f` -- files `0xB4CD`, `0xB4F6`.
-    /// * `1000:d788`..`1000:d793` -- `hp := hpmax`, `money -= 12`, and clears
-    ///   the pursuit flag `20ae:3b76` (not modelled here).
+    /// * `1000:d788`..`1000:d793` -- `hp := hpmax`, `money -= 12`, and
+    ///   `1000:d793` `c6 06 76 3b 00` clears the market ban countdown
+    ///   `20ae:3b76`. **Not modelled here**, and the field it would clear
+    ///   *does* exist ([`Game::market_ban_countdown`]) -- nothing in this
+    ///   port ever sets it non-zero, so clearing it would be a no-op. The
+    ///   whole omission -- both setters, both gates and this clear -- is
+    ///   registered in `docs/re/gaps.md`, "The two ban countdowns are
+    ///   modelled and decremented but never set". An earlier revision of this
+    ///   line said "(not modelled here)" before the field existed and was
+    ///   never revisited.
     fn visit_girl(&mut self) {
         if self.player.money < 12 {
             term::println("^6Ну непойдёшь же как придурок без ничего.");
@@ -1397,6 +1424,14 @@ impl Game {
             }
             // seq 9/10, 1000:b11e and 1000:b145 -- the "it blew over" calls,
             // on the last turn of each ban and only with the den known.
+            //
+            // CURRENTLY UNREACHABLE. Both countdowns are permanently 0 in
+            // this port: no `mov byte [0x3b76],5` (1000:c465), no
+            // `mov byte [0x3b77],5` (1000:e23e), and no gate at 1000:b95e /
+            // 1000:df1a. Kept at the right addresses and in the right order
+            // so that implementing those three closes the gap in one place --
+            // see docs/re/gaps.md, "The two ban countdowns are modelled and
+            // decremented but never set".
             if self.market_ban_countdown == 1 && self.places.is_found(Location::Den) {
                 term::println(
                     "Телефон:^2Это ты там на базаре шухер наводил? Ну короче там менты свалили.",
@@ -1407,7 +1442,9 @@ impl Game {
             }
         }
 
-        // seq 11, 1000:b16c/1000:b177 -- both cooldowns tick down.
+        // seq 11, 1000:b16c/1000:b177 -- both cooldowns tick down
+        // (`fe 0e 76 3b` / `fe 0e 77 3b`). Dead for the same reason as the
+        // two branches above: nothing sets either field non-zero.
         if self.market_ban_countdown > 0 {
             self.market_ban_countdown -= 1;
         }
@@ -2055,10 +2092,38 @@ impl Game {
         Ok(filename)
     }
 
-    /// `name`. `^2Звали тебя:^7 ` / `^2А теперь будут:^7 ` are this port's
-    /// own prompts and are the one place the module knowingly departs from
-    /// the byte-verbatim rule; `1000:ecf1`'s handler body was not traced.
-    /// Flagged in `docs/re/gaps.md`.
+    /// `name`, the handler `1000:ecf1`'s compare dispatches. **Established
+    /// from flow**, `1000:ecfb`..`1000:ed9c`:
+    ///
+    /// * `1000:ecfb`..`1000:ed24` -- `^2Звали тебя:^7 ` (file `0xC381`,
+    ///   loaded at `1000:ed01` as image `0xaab1`) is assigned into a stack
+    ///   temp with `0f78:0ae7`, the name variable `DS:379c` is appended with
+    ///   `0f78:0b66`, and the result goes out through `0eed:01c2`
+    ///   (`WriteLn`).
+    /// * `1000:ed29`..`1000:ed3d` -- `^2А теперь будут:^7 ` (file `0xC392`,
+    ///   image `0xaac2`) through `0eed:0000` (`Write`, no newline).
+    /// * `1000:ed42`..`1000:ed5a` -- `ReadLn(Input, DS:379c)`.
+    /// * `1000:ed5f` `cmp byte [0x379c],0` / `jnz 0xed79` -- an **empty**
+    ///   line leaves the length byte at zero, and `1000:ed74` then assigns
+    ///   `Раз^6дол^4бай` (file `0xC3A7`, image `0xaad7`) over the name with
+    ///   `0f78:0b01`. Reproduced below; it is the same substitution
+    ///   `src/main.rs`'s `create_character` already models for character
+    ///   creation at `1000:7220`/`1000:7227` (file `0x80B4`).
+    ///
+    /// Both prompts are the game's own strings, not this port's wording. An
+    /// earlier revision of this comment claimed they were invented and called
+    /// itself "the one place the module knowingly departs from the
+    /// byte-verbatim rule". There is no such place; see `docs/re/gaps.md`,
+    /// "`rename`'s prompts -- the retraction was wrong; there is no
+    /// deviation".
+    ///
+    /// **Not reproduced:** `1000:ed79`..`1000:ed9c` then rebuilds the stored
+    /// name as `^7 ` + name (file `0xC3B5`, loaded at `1000:ed7f`) with the
+    /// same three calls character creation makes at `1000:7245` / `1000:724f`
+    /// / `1000:725d` (file `0x80C2`) -- which is why every
+    /// save in `orig/` holds a name beginning `^7 `. This port stores the
+    /// bare name in both paths; registered in the same `docs/re/gaps.md`
+    /// entry.
     fn rename(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
         term::print("^2Звали тебя:^7 ");
         term::println(&self.player.name);
@@ -2069,15 +2134,20 @@ impl Game {
         };
         let n = line?;
         let n = n.trim();
-        if !n.is_empty() {
-            self.player.name = n.to_string();
-        }
+        // 1000:ed5f/1000:ed74 -- an empty line is replaced by the default
+        // name, it does not leave the old one standing.
+        self.player.name = if n.is_empty() {
+            "Раз^6дол^4бай".to_string()
+        } else {
+            n.to_string()
+        };
         Ok(())
     }
 
-    /// `kos`, the joint. Traced at `1000:e97d`..`1000:ea6f` (the copy
-    /// `entry` dispatches; `FUN_1000_3d11` has its own near-identical copy
-    /// with slightly different strings at file `0x4D85`..`0x4E49`):
+    /// `kos`, the joint. The game has **two** copies of this handler and both
+    /// are now reproduced -- see [`Joint`] for which is which and for the
+    /// byte-level difference between them. This doc traces the top-level copy
+    /// at `1000:e97d`..`1000:ea85` (the one `entry` dispatches):
     ///
     /// * broken jaw (`DS:38b0`) -> `^4Ты не схавать колёса из-за сломаной
     ///   челюсти.` (file `0xBEF3`).
@@ -2085,9 +2155,10 @@ impl Game {
     ///   косяк.` (file `0xBFB8`).
     /// * no joints (`DS:38c5 <= 0`) -> `^4У тебя нет косяков` (file
     ///   `0xBFA3`).
-    /// * otherwise **exactly one** joint (`1000:e9b4`): stoned counter := 10,
-    ///   strength += 2, `dmg_min` += 1, `dmg_max` += 2, and heal a flat
-    ///   **+10** capped at `hpmax`, then `^2Сила +2.` (file `0xBF98`).
+    /// * otherwise **exactly one** joint (`1000:e9b4`): stoned counter := 10
+    ///   (`1000:e9b8` `c6 06 cd 38 0a`), strength += 2, `dmg_min` += 1,
+    ///   `dmg_max` += 2, and heal a flat **+10** capped at `hpmax`, then
+    ///   `^2Сила +2.` (file `0xBF98`).
     ///   The heal message splits like the beer routine's: when the shortfall
     ///   is under 10 it writes `^2Колёса прибавляют #з. ` (file `0xBF22`,
     ///   no newline) then `^2Здоровья:#/#. Осталось # косяков` (file
@@ -2095,8 +2166,9 @@ impl Game {
     ///   whose `косякова` typo is the original's.
     ///
     /// `crate::model::Fighter` has a `stoned: bool`, not the original's
-    /// 10-turn countdown, so the counter is modelled as "stoned or not".
-    fn smoke(&mut self) {
+    /// countdown, so the flag is modelled as "stoned or not" and the
+    /// countdown itself lives in [`Game::buff_countdown`].
+    fn smoke(&mut self, site: Joint) {
         if self.player.broken_jaw {
             term::println("^4Ты не схавать колёса из-за сломаной челюсти.");
             return;
@@ -2110,11 +2182,12 @@ impl Game {
             return;
         }
         self.player.joints -= 1;
-        // 1000:e9b4 sets the countdown at 20ae:38cd to 10; the walk
-        // preamble decays it (1000:aea8) and takes the buff back at zero.
-        // `Fighter::stoned` is the same event as a bool, kept in step here.
+        // 1000:e9b8 / 1000:4b52 set the countdown at 20ae:38cd -- to 10 at
+        // the street prompt, to 3 inside a fight; the walk preamble decays it
+        // (1000:aea8) and takes the buff back at zero. `Fighter::stoned` is
+        // the same event as a bool, kept in step here.
         self.player.stoned = true;
-        self.buff_countdown = 10;
+        self.buff_countdown = site.buff_turns();
         self.player.strength += 2;
         self.player.dmg_min += 1;
         self.player.dmg_max += 2;
@@ -2133,7 +2206,7 @@ impl Game {
         } else {
             self.player.hp += 10;
             term::println(&text::fill(
-                "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косякова",
+                site.long_heal_line(),
                 &[
                     10,
                     self.player.hp as i64,
@@ -2272,16 +2345,24 @@ impl Game {
     /// The price is the literal `3` of the menu line the vet prints (file
     /// `0xB2B2`), and the same literal is what the display's affordability
     /// test compares money against (`cmp word [0x38c7],0x3` at `1000:d410`).
-    /// The debiting code inside the vet's own submenu was not traced, so
-    /// "3 rubles is also what is charged" remains an inference; see
-    /// `docs/re/gaps.md`.
+    ///
+    /// **The debit is 3 as well -- established from flow**, not inferred:
+    /// `1000:d5d9` is `83 2e c7 38 03`, `sub word [0x38c7],0x3`, reached
+    /// through the submenu's `h` compare at `1000:d5b9` (token file
+    /// `0xB392`). An earlier revision of this comment called it an inference
+    /// because "the vet's own submenu handler was not traced"; the `difftest`
+    /// task traced it and this comment did not follow. See
+    /// `docs/re/gaps.md`, "The vet's charged amounts".
     fn heal_jaw(&mut self) {
         self.pay_and_heal(3, self.player.broken_jaw, |f| f.broken_jaw = false);
     }
 
     /// `r` at the vet: 7 rubles to fix a broken leg (file `0xB2D9`,
-    /// `cmp word [0x38c7],0x7` at `1000:d465`). Same caveat as
-    /// [`Game::heal_jaw`].
+    /// `cmp word [0x38c7],0x7` at `1000:d465`). Its debit is
+    /// `1000:d553` `83 2e c7 38 07`, reached through the `r` compare at
+    /// `1000:d537` (token file `0xB320`) -- **established from flow**, same
+    /// as [`Game::heal_jaw`]. Note the two arms sit in the opposite order to
+    /// the two menu rows, which is why they are paired by key, not position.
     fn heal_leg(&mut self) {
         self.pay_and_heal(7, self.player.broken_leg, |f| f.broken_leg = false);
     }
@@ -2347,12 +2428,48 @@ impl Game {
     }
 
     /// `^0Битва\` (file `0x4A49`). Confirmed modal by the live capture
-    /// (`mar`/`i` typed here were ignored, reprinting the prompt). The exact
-    /// in-combat verb set beyond `sv` (inspect) and `h`/`mh` (beer, confirmed
-    /// by `FUN_1000_3d11`'s own call into `FUN_1000_29c4` at `1000:4b00`) was
-    /// not traced; `k` (attack) is this port's own choice, consistent with
-    /// `k` being the fight verb everywhere else, but **not independently
-    /// confirmed as the in-combat attack key**. See `docs/re/gaps.md`.
+    /// (`mar`/`i` typed here were ignored, reprinting the prompt).
+    ///
+    /// ## The verb set -- established from flow
+    ///
+    /// `FUN_1000_3d11` compares the typed line itself, with `0f78:0bd8` (the
+    /// same Pascal shortstring compare `entry` uses) against its **own**
+    /// buffer `DS:3a72`. The image holds 93 `9a d8 0b 78 0f` call sites;
+    /// scanning from `1000:3d11` to the next function entry `1000:5f55` --
+    /// a window wider than the record's own `size` span, so the count does
+    /// not rest on reading `size` as a span -- returns exactly **nine** of
+    /// them, each preceded byte-for-byte by `bf 72 3a` / `1e` / `57` and
+    /// `bf <lo> <hi>` / `0e` / `57`, so each site's token is read out of the
+    /// instruction rather than inferred:
+    ///
+    /// | compare | token | token file |
+    /// |---|---|---|
+    /// | `1000:4440` | `k` | `0x4A52` |
+    /// | `1000:48e1` | `run` | `0x4C8B` |
+    /// | `1000:4b0d` | `kos` | `0x4D81` |
+    /// | `1000:4c2e` | `s` | `0x4E6F` |
+    /// | `1000:4c42` | `sv` | `0x4E71` |
+    /// | `1000:4c56` | `e` | `0x4E74` |
+    /// | `1000:4c75` | `k` again, gated on `[0x3c80] >= 1` at `1000:4c64` | `0x4A52` |
+    /// | `1000:4caa` | `v` | `0x4E96` |
+    /// | `1000:4ea8` | `f` | `0x4FE4` |
+    ///
+    /// So `k` **is** the in-combat attack verb, and `sv` is a dispatched verb
+    /// here rather than an oracle-capture inference. An earlier revision of
+    /// this comment said the input loop "was not traced" and called `k` "this
+    /// port's own choice"; both statements were false. `h`/`mh` are not among
+    /// the nine because they go through the subroutine call at `1000:4b00`.
+    ///
+    /// **What is not established** is what most of the arms *do*. Three were
+    /// followed into their bodies: `k` (`docs/re/combat.md` traces the blow
+    /// budget, accuracy and damage at `1000:445c`..`1000:4660`), `run`
+    /// (below) and `kos` ([`Joint`]). The other six -- `s`, `sv`, `e`, the
+    /// second `k`, `v` and `f` -- were not, and only the first instruction at
+    /// each jump target has been read. The `match` below registers `s`, `e`,
+    /// `v` and `f` by address instead of implementing them; `sv` is the one
+    /// place this port acts at a dispatch site whose arm it has not read, and
+    /// what it prints comes from `docs/re/tables.md`'s capture.
+    /// `docs/re/gaps.md`, "The in-combat verb set", carries the full write-up.
     ///
     /// Death and victory both come from `FUN_1000_3d11`'s own tail:
     ///
@@ -2440,11 +2557,40 @@ impl Game {
                 return Ok(());
             }
             match parse(&line) {
+                // 1000:4c42, token file 0x4E71.
                 Command::Inspect => self.print_enemy_block(&enemy),
+                // 1000:4440, token file 0x4A52. (1000:4c75 is a second `k`
+                // compare, gated on `[0x3c80] >= 1` at 1000:4c64, which this
+                // port does not model -- see run_combat's doc.)
                 Command::Fight => self.combat_round(&mut enemy),
+                // 1000:4b00 -- FUN_1000_3d11 calls FUN_1000_29c4, the same
+                // routine `entry` calls at 1000:e966, with its own DS:3a72.
                 Command::Drink => self.beer(Beer::One),
                 Command::BingeDrink => self.beer(Beer::Binge),
-                _ => {} // ignored: matches the live capture's mar/i rejection
+                // 1000:4b0d, token file 0x4D81 -> the arm at 1000:4b17.
+                Command::Joint => self.smoke(Joint::Fight),
+
+                // The four verbs `FUN_1000_3d11` compares that this port does
+                // NOT act on. Registered, not silently swallowed: each one's
+                // compare site is established from flow (see run_combat's
+                // doc), and only its *arm* is untraced, so implementing any
+                // of them starts by disassembling from the address here.
+                //
+                //   Command::Stats  `s`  1000:4c2e -> 1000:4c35 `call 0x1a03`
+                //   Command::Quit   `e`  1000:4c56 -> 1000:4c5d `xor ax,ax`
+                //                                     / `call 0f78:0116`
+                //   Command::Backup `v`  1000:4caa -> 1000:4cb4, gated on the
+                //                                     den flag `[0x3696]`
+                //   Command::Shoot  `f`  1000:4ea8 -> its own arm
+                Command::Stats | Command::Quit | Command::Backup | Command::Shoot => {}
+
+                // Everything else really is not compared here. The nine
+                // compares are the whole in-combat table, so a street verb
+                // typed at `^0Битва\` reaches no handler at all -- which is
+                // what the live capture saw for `mar` and `i`. That capture
+                // is evidence about `mar` and `i`; the line above is what
+                // covers the four verbs it never tested.
+                _ => {}
             }
         }
 
@@ -2554,6 +2700,60 @@ impl Game {
 enum Beer {
     One,
     Binge,
+}
+
+/// Which of the game's **two** `kos` handlers is running.
+///
+/// The image carries the joint handler twice: once at `1000:e97d`, dispatched
+/// by `entry`'s compare at `1000:e973` against its input buffer `DS:3972`,
+/// and once at `1000:4b17`, dispatched by `FUN_1000_3d11`'s own compare at
+/// `1000:4b0d` against the combat buffer `DS:3a72`. That second copy is why
+/// `kos` works mid-fight without going through `crate::commands::parse`'s
+/// street table.
+///
+/// **Established from flow.** Both bodies are 269 bytes -- `1000:4b17` and
+/// `1000:e97d`, each ending in its own `call 0eed:01c2` (`1000:4c1f` and
+/// `1000:ea85`) -- and compared byte for byte they differ in exactly **15**
+/// places: seven `mov di,imm16` string operands pointing at the
+/// combat string pool instead of the top-level one, and one immediate --
+/// `1000:4b52` `c6 06 cd 38 03` against `1000:e9b8` `c6 06 cd 38 0a`. Every
+/// guard, every stat grant and the whole heal split are the identical
+/// instruction sequence, so the only two things that vary are modelled here.
+///
+/// Six of the seven strings are byte-identical between the pools. The seventh
+/// is not, and the difference is one letter: the combat copy at file `0x4DF0`
+/// ends `косяков`, the top-level copy at file `0xBF5E` ends `косякова`. Both
+/// are quoted verbatim -- a typo in the original is not this port's to fix,
+/// and neither is a typo the original made only once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Joint {
+    /// `1000:e97d`, reached from the street prompt.
+    Street,
+    /// `1000:4b17`, reached from `^0Битва\`.
+    Fight,
+}
+
+impl Joint {
+    /// The value written to the stoned countdown `20ae:38cd`: `1000:e9b8`
+    /// stores 10, `1000:4b52` stores 3.
+    fn buff_turns(self) -> u8 {
+        match self {
+            Joint::Street => 10,
+            Joint::Fight => 3,
+        }
+    }
+
+    /// The single combined heal line, used when the hp shortfall is >= 10.
+    /// The two pools disagree by one trailing letter; the other six strings
+    /// this handler prints are identical and are written inline.
+    fn long_heal_line(self) -> &'static str {
+        match self {
+            // file 0xBF5E, loaded by `bf 8e a6` at 1000:ea1e.
+            Joint::Street => "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косякова",
+            // file 0x4DF0, loaded by `bf 20 35` at 1000:4bb8.
+            Joint::Fight => "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косяков",
+        }
+    }
 }
 
 /// Extension impl, deliberately **not** in `crate::model` -- that module is
@@ -2823,6 +3023,29 @@ mod tests {
         );
     }
 
+    /// `1000:4b0d`'s arm, reached through the combat prompt rather than
+    /// through `Game::dispatch`: `kos` is one of the nine tokens
+    /// `FUN_1000_3d11` compares, and its arm sets the 3-turn buff.
+    #[test]
+    fn kos_typed_at_the_combat_prompt_smokes_a_joint() {
+        let enemy = || Fighter {
+            name: "Дохляк".to_string(),
+            hp: 50,
+            hpmax: 50,
+            ..Fighter::default()
+        };
+
+        let mut g = game();
+        g.player.hp = 1;
+        g.player.joints = 2;
+        let mut lines = input(&["kos"]);
+        g.run_combat(enemy(), &mut lines).unwrap();
+        assert_eq!(g.player.joints, 1, "1000:4b4e dec [0x38c5]");
+        assert_eq!(g.player.hp, 11, "the flat +10 heal");
+        assert_eq!(g.buff_countdown, 3, "1000:4b52 stores 3, not 10");
+        assert!(g.player.stoned);
+    }
+
     #[test]
     fn every_gated_location_has_its_own_refusal_string() {
         let mut seen = std::collections::HashSet::new();
@@ -2948,7 +3171,7 @@ mod tests {
         let mut g = game();
         g.player.hp = 1;
         g.player.joints = 2;
-        g.smoke();
+        g.smoke(Joint::Street);
         assert_eq!(g.player.joints, 1);
         assert_eq!(g.player.hp, 11);
         assert_eq!(g.player.strength, 7);
@@ -2956,8 +3179,74 @@ mod tests {
         assert_eq!(g.player.dmg_max, 5);
         assert!(g.player.stoned);
 
-        g.smoke();
+        g.smoke(Joint::Street);
         assert_eq!(g.player.joints, 1, "already stoned: no second joint");
+    }
+
+    /// The combat copy of the handler (`1000:4b17`) grants the identical
+    /// stats and spends one joint the same way -- the only thing it does
+    /// differently is `1000:4b52` `c6 06 cd 38 03` where `1000:e9b8` stores
+    /// `0a`. Both are asserted here, because "same except one immediate" is
+    /// only worth writing down if the "same" half is checked too.
+    #[test]
+    fn kos_in_a_fight_is_the_same_handler_with_a_three_turn_buff() {
+        let mut street = game();
+        street.player.hp = 1;
+        street.player.joints = 2;
+        street.smoke(Joint::Street);
+
+        let mut fight = game();
+        fight.player.hp = 1;
+        fight.player.joints = 2;
+        fight.smoke(Joint::Fight);
+
+        assert_eq!(fight.player.joints, street.player.joints);
+        assert_eq!(fight.player.hp, street.player.hp);
+        assert_eq!(fight.player.strength, street.player.strength);
+        assert_eq!(fight.player.dmg_min, street.player.dmg_min);
+        assert_eq!(fight.player.dmg_max, street.player.dmg_max);
+        assert!(fight.player.stoned);
+
+        assert_eq!(street.buff_countdown, 10, "1000:e9b8 stores 10");
+        assert_eq!(fight.buff_countdown, 3, "1000:4b52 stores 3");
+    }
+
+    /// The two pools' long heal lines differ by one trailing letter and both
+    /// are quoted verbatim. Asserting them against each other is what stops
+    /// a later edit "fixing" the original's typo in one place.
+    #[test]
+    fn the_two_joint_pools_long_heal_lines_differ_by_one_letter() {
+        let street = Joint::Street.long_heal_line();
+        let fight = Joint::Fight.long_heal_line();
+        assert_ne!(street, fight);
+        assert_eq!(
+            street,
+            "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косякова"
+        );
+        assert_eq!(
+            fight,
+            "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косяков"
+        );
+        assert_eq!(street.chars().count(), fight.chars().count() + 1);
+        assert!(street.starts_with(fight));
+    }
+
+    /// `1000:ed5f` / `1000:ed74`: an empty rename does not keep the old
+    /// name, it installs the default -- the same substitution character
+    /// creation already makes at `1000:7220` / `1000:7227`.
+    #[test]
+    fn an_empty_rename_installs_the_default_name() {
+        let mut g = game();
+        g.player.name = "Вася".to_string();
+        let mut lines = input(&["   "]);
+        g.rename(&mut lines).unwrap();
+        assert_eq!(g.player.name, "Раз^6дол^4бай");
+
+        let mut g = game();
+        g.player.name = "Вася".to_string();
+        let mut lines = input(&["Петя"]);
+        g.rename(&mut lines).unwrap();
+        assert_eq!(g.player.name, "Петя");
     }
 
     #[test]

@@ -73,22 +73,39 @@ compare instruction directly and reading the token bytes out of
 | `exit` | `1000:ede9` | `0xC3EE` | quit; **not in the help text** |
 | `e` | `1000:edfa` | `0xB43E` | quit |
 
-## Verbs not found in this chain (corroboration only)
+## Verbs not found in this chain
 
 `sv`, `v`, `x`, `wes` do not appear among the `DS:3972`-first
-`FUN_1f78_0bd8` calls this pass found. They are still implemented in
-`src/commands.rs` (not dropped), on the following corroborating evidence
-only:
+`FUN_1f78_0bd8` calls this pass found. For two of them the reason is now
+known: they are compared, just not here.
 
-- `sv`: `docs/re/tables.md` section 4's oracle capture (typing `sv`
-  mid-fight against the original prints the enemy's stat block) plus the
-  help text's own line (file `0xC195`). **`0xC195` is that whole help line,
-  not a token string** -- no `sv` token was located anywhere.
-- `v`: help text only (file `0xC210`, again a whole help line, not a token).
-- `x`, `wes`: `bmar`'s own submenu text (files `0xAA58`, `0xAA8A`), not the
-  top-level help block at all. Their token strings at `0xAF9E`/`0xAFDA`
-  **are** real tokens; they are most likely compared inside `bmar`'s own
-  `^0Барыги\` submenu loop rather than in `entry`.
+### `sv` and `v` are combat verbs (resolved)
+
+**Established from flow**, by the final-review fix wave. `FUN_1000_3d11` runs
+its own token chain through the same `FUN_1f78_0bd8`, against its own buffer
+`DS:3a72` instead of `entry`'s `DS:3972` -- nine call sites, listed in
+`docs/re/gaps.md`, "The in-combat verb set". Two of the nine are these:
+
+| token | file off | bytes | compared at |
+|---|---|---|---|
+| `sv` | `0x4E71` | `02 73 76` | `1000:4c42` |
+| `v` | `0x4E96` | `01 76` | `1000:4caa` |
+
+So the earlier note that "no `sv` token was located anywhere" was looking in
+the right way in the wrong segment of the input: the token exists, at
+`0x4E71`, inside the combat string pool. `0xC195` and `0xC210` really are
+whole help lines rather than tokens, and that part stands.
+
+`docs/re/tables.md` section 4's oracle capture (typing `sv` mid-fight against
+the original prints the enemy's stat block) now corroborates a traced
+dispatch instead of standing alone for it.
+
+### `x` and `wes` -- still corroboration only
+
+`bmar`'s own submenu text (files `0xAA58`, `0xAA8A`), not the top-level help
+block at all. Their token strings at `0xAF9E`/`0xAFDA` **are** real tokens;
+they are most likely compared inside `bmar`'s own `^0Барыги\` submenu loop
+rather than in `entry` -- the same shape `sv` and `v` turned out to have.
 
 ### `h` and `mh` are dispatched, by a subroutine (resolved)
 
@@ -110,10 +127,10 @@ the line is neither); the rest choose which messages get written and whether
 the drink loop repeats. `FUN_1000_3d11` calls the same routine at
 `1000:4b00` with its own `DS:3a72`, which is why beer also works in a fight.
 
-A follow-up should grep each token's file offset in
-`data/string_pointers_audit.tsv` and disassemble the referencing
-instruction the way every row above was, to either confirm a `DS:3972`
-(or other) compare site or establish that none exists (e.g. because the
+A follow-up should grep the remaining tokens' file offsets (`x`=`0xAF9E`,
+`wes`=`0xAFDA`) in `data/string_pointers_audit.tsv` and disassemble the
+referencing instruction the way every row above was, to either confirm a
+`DS:3972` (or other) compare site or establish that none exists (e.g. because the
 token is compared inline as a raw byte pair rather than through
 `FUN_1f78_0bd8`, as turned out to be true of `w`/`run` never showing up in
 `data/strings.json`'s own extraction despite being real length-1
@@ -186,16 +203,24 @@ side:
 10. `1000:b81f`/`1000:b826`: if the accept flag is set, `call FUN_1000_3d11`
     (combat) with `param_1 = 0`.
 
-## Combat modality
+## Combat modality, and combat's own verb table (resolved)
 
 The live capture (`docs/re/oracle-captures/command-table-and-combat.md`)
 shows `mar` and `i` typed at the `Битва\` prompt being ignored (the prompt
-just reprints). This task did not disassemble `FUN_1000_3d11`'s own input
-loop to enumerate its accepted verbs; `src/game.rs`'s `run_combat` accepts
-only `sv` (inspect, corroborated) and `k` (attack, this port's own choice,
-not confirmed as the in-combat key -- the capture's three `w` presses in
-combat produced no visible output, consistent with `w` either doing
-nothing there or doing something silent).
+just reprints).
+
+The task that wrote this section did not disassemble `FUN_1000_3d11`'s own
+input loop, and said so; the final-review fix wave did. **Established from
+flow:** the loop compares nine tokens -- `k`, `run`, `kos`, `s`, `sv`, `e`,
+`k` again, `v`, `f` -- through the same `FUN_1f78_0bd8`, against `DS:3a72`.
+The nine compare sites and their token file offsets are tabulated in
+`docs/re/gaps.md`, "The in-combat verb set".
+
+So `k` is confirmed as the in-combat attack key rather than being this port's
+choice, and `sv` is a dispatched verb rather than a corroborated-only one.
+`w` is **not** among the nine, which is consistent with the capture's three
+`w` presses producing no visible output -- though the capture alone never
+settled that, and it is the compare chain that does.
 
 ## Shop modality (was inferred, now confirmed)
 

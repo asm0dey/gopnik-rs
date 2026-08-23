@@ -331,8 +331,16 @@ to the key its nearest preceding string compare tests names eight of the nine:
 location handler — it sits below `mar`'s token compare at `1000:b94a`, i.e.
 before the first of them — and Ghidra puts it inside `FUN_1000_3d11`, the
 combat routine.
-`data/other_price_sites.json` is a generated artifact this task did not
-regenerate, so its `what` fields still read `null` for these eight.
+`data/other_price_sites.json` is a generated artifact. The final-review fix
+wave added all eight to `SUB_IMM8_WHAT` in `tools/extract_tables.py` and
+regenerated it, re-deriving each attribution from `orig/g.exe` rather than
+copying this table: the nearest preceding `call 0f78:0bd8` before `1000:d553`
+is `1000:d537` on the token `r` (file `0xB320`), before `1000:d5d9` it is
+`1000:d5b9` on `h` (file `0xB392`), before `1000:d78e` it is `girl`'s own
+`1000:d6ed`, and the five `trn` sites are preceded by the digit tokens `1`..`5`
+at `1000:e62e`, `1000:e6ba`, `1000:e73c`, `1000:e7f3` and `1000:e875`. Ten of
+the eleven `imm8` sites now carry a `what`; `0x68fc` is still `null`, and
+`tools/test_extract_tables.py` asserts exactly which one that is.
 
 ### `20ae:3e34`, the gym's scratch byte
 

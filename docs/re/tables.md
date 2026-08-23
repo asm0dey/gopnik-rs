@@ -383,19 +383,35 @@ takes. Do not "fix" this in the port -- reproduce it. Flow, byte-verified;
 Price baked straight into the instruction, rather than read from the
 `20ae:0b2e` array (found by scanning `83 2E C7 38 ib`):
 
-| addr | file off | imm | what |
-|---|---|---|---|
-| `1000:502c` | `0x68fc` | 7 | unidentified |
-| `1000:d553` | `0xee23` | 7 | unidentified |
-| `1000:d5d9` | `0xeea9` | 3 | unidentified |
-| `1000:d78e` | `0xf05e` | 12 | unidentified |
-| `1000:e2a7` | `0xfb77` | 15 | Клуб: `15^7  потусоваться на дискотеке(Ловкость +1)` (file `0xba50`) |
-| `1000:e31c` | `0xfbec` | 22 | Клуб: `22^7  разузнать приемы мухлёжников(Удача +1)` (file `0xba85`) |
-| `1000:e657` | `0xff27` | 20 | unidentified |
-| `1000:e6e3` | `0xffb3` | 20 | unidentified |
-| `1000:e796` | `0x10066` | 10 | unidentified |
-| `1000:e823` | `0x100f3` | 30 | unidentified |
-| `1000:e8b8` | `0x10188` | 20 | unidentified |
+`what` and `compare` below are as `data/other_price_sites.json` records them;
+each debit's row is fixed by the nearest **preceding** `call 0f78:0bd8`, whose
+token is quoted:
+
+| addr | file off | imm | compare | what |
+|---|---|---|---|---|
+| `1000:502c` | `0x68fc` | 7 | — | **unidentified** — in no location handler; Ghidra puts it inside `FUN_1000_3d11` |
+| `1000:d553` | `0xee23` | 7 | `1000:d537` `r` | `rep` row `r`: `7^7 рублей починят переломы` (file `0xb2d9`) |
+| `1000:d5d9` | `0xeea9` | 3 | `1000:d5b9` `h` | `rep` row `h`: `3^7 рубля тебя залатают` (file `0xb2b2`) |
+| `1000:d78e` | `0xf05e` | 12 | `1000:d6ed` `girl` | the `girl` visit's flat 12 rubles; not a menu row |
+| `1000:e2a7` | `0xfb77` | 15 | — | Клуб: `15^7  потусоваться на дискотеке(Ловкость +1)` (file `0xba50`) |
+| `1000:e31c` | `0xfbec` | 22 | — | Клуб: `22^7  разузнать приемы мухлёжников(Удача +1)` (file `0xba85`) |
+| `1000:e657` | `0xff27` | 20 | `1000:e62e` `1` | `trn` row 1 (file `0xbc55`) |
+| `1000:e6e3` | `0xffb3` | 20 | `1000:e6ba` `2` | `trn` row 2 (file `0xbc80`) |
+| `1000:e796` | `0x10066` | 10 | `1000:e73c` `3` | `trn` row 3 (file `0xbcb6`) |
+| `1000:e823` | `0x100f3` | 30 | `1000:e7f3` `4` | `trn` row 4 (file `0xbcdd`) |
+| `1000:e8b8` | `0x10188` | 20 | `1000:e875` `5` | `trn` row 5 (file `0xbd23`) |
+
+Nine of the eleven sites are the nine immediate-priced menu rows, and each
+one's debit `imm` equals the price its row displays: `rep` h=3 / r=7, `kl`
+1=15 / 2=22, `trn` 1..5 = 20 / 20 / 10 / 30 / 20. That agreement is the
+independent second signal that the span-and-compare attribution put each debit
+on the right row. (What `tools/difftest.py`'s `imm_row_site` quantity
+re-derives from the image is the *displayed and affordability-checked* price
+at `1000:d410` and friends; that the **debit** takes the same amount is a
+separate fact, established from the `sub` immediates in this table — see
+`docs/re/gaps.md`, "The vet's charged amounts".) The two Клуб rows carry no
+`compare` because they were named from their row text, not from a token, and
+`1000:d78e` is a compare-attributed debit that is **not** a menu row.
 
 The two Клуб (gambling) rows print their own price as the first characters
 of the row text itself -- `15^7 ...`, `22^7 ...` -- rather than through the
@@ -444,26 +460,31 @@ story about them.
 multiplier, call target, formula, and the category each debit site falls into
 -- including the `computed` row, which is now scanned rather than hand-listed.
 **Hand-annotated:** only the `what` text and its supporting cross-references --
-the two Клуб strings (`SUB_IMM8_WHAT`) and the save-game service's name,
-guard address and string fields (`COMPUTED_WHAT`). Both tables are keyed by
-file offset and were verified by reading the shortstrings at those offsets
+the ten named `imm8` strings (`SUB_IMM8_WHAT`) and the save-game service's
+name, guard address and string fields (`COMPUTED_WHAT`). Both tables are keyed
+by file offset and were verified by reading the shortstrings at those offsets
 straight out of `orig/g.exe`.
 
-Nine of the eleven `imm8` sites, the call-result site, and `20ae:3c82` carry
-`what: null` and are named nowhere in this artifact: working out what each one
-charges for, and which item or service takes each price, is Task 11's job, not
-this task's.
+**Task 12 named eight of the nine unnamed `imm8` sites**, in
+`docs/re/difftest.md`, by attributing each debit to the verb-dispatch span it
+falls in and to the key its nearest preceding string compare tests:
+`1000:d553` and `1000:d5d9` are the vet's two rows (7 and 3), `1000:d78e` is
+the `girl` visit (12), and `1000:e657`, `1000:e6e3`, `1000:e796`, `1000:e823`,
+`1000:e8b8` are the gym's five rows (20, 20, 10, 30, 20).
 
-**Task 12 named eight of those nine**, in `docs/re/difftest.md`, by attributing
-each debit to the verb-dispatch span it falls in and to the key its nearest
-preceding string compare tests: `1000:d553` and `1000:d5d9` are the vet's two
-rows (7 and 3), `1000:d78e` is the `girl` visit (12), and `1000:e657`,
-`1000:e6e3`, `1000:e796`, `1000:e823`, `1000:e8b8` are the gym's five rows (20,
-20, 10, 30, 20). Only `1000:502c` (file `0x68fc`, 7) is still unidentified.
-`data/other_price_sites.json` is generated and Task 12 did not regenerate it,
-so its eight `what` fields still read `null`; the table above is likewise
-unchanged. Neither is wrong about the bytes — they are stale about what is
-known.
+Task 12 did not regenerate the artifact, so its eight `what` fields stayed
+`null` while this document said they were known. **The final-review fix wave
+closed that gap**: the eight attributions are in `SUB_IMM8_WHAT`, the file is
+regenerated, and `tools/test_extract_tables.py` now asserts the exact set of
+ten named offsets and that the one remaining `null` is `0x68fc`. Each
+attribution was re-derived from `orig/g.exe` for that commit rather than copied
+from `difftest.md`, and each annotation quotes the site's own immediate, which
+the test checks against the scanned byte.
+
+Two rows still carry `what: null` and are named nowhere: the `imm8` site
+`1000:502c` (file `0x68fc`, 7), which is in no location handler and which
+Ghidra places inside `FUN_1000_3d11`, and the call-result site `1000:5014`.
+`20ae:3c82` is likewise unnamed. Unknown still means unknown.
 
 ---
 

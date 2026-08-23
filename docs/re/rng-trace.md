@@ -461,13 +461,23 @@ and before the first `w`; sample `turn k+1` is the state after the k-th walk.
 
 **Targeted reads, and what that saved.** The 35 sampled variables are **57
 bytes**; the alternative, the monitor's `pmemsave`, pulls the whole 1 MiB.
-Measured, not assumed:
 
-| | |
-|---|---|
-| 35 targeted gdb reads (the actual `S` printf), 200 repetitions against a live guest | **0.58 ms** per sample |
-| the same loop with a printf that reads no memory (control) | 0.02 ms per sample |
-| one full `pmemsave` of 1 MiB, timed inside every run (`state_channel.full_dump_seconds`) | **0.401 s** |
+The three figures below are **not equally reproducible, and an earlier
+revision of this section labelled all three "Measured, not assumed" without
+saying so.** The last row is committed data; the first two are one-off
+readings taken by hand against a live guest during the task that wrote this
+section, and **no benchmark was committed to re-run them**. Nothing in this
+repository will reproduce them, and nothing checks them; treat them as an
+order-of-magnitude observation, not as a measurement anyone can repeat.
+
+| | | reproducible? |
+|---|---|---|
+| 35 targeted gdb reads (the actual `S` printf), 200 repetitions against a live guest | **0.58 ms** per sample | no — one-off, uncommitted |
+| the same loop with a printf that reads no memory (control) | 0.02 ms per sample | no — one-off, uncommitted |
+| one full `pmemsave` of 1 MiB, timed by the harness | **0.401 s** | yes — `state_channel.full_dump_seconds` in `data/state_trace.json` |
+
+(The third row also said "timed inside every run". It is one value, written
+once at the top level of `data/state_trace.json`, not one per run.)
 
 Two orders of magnitude is not the whole argument, though: a full dump is not
 reachable at this stop at all. `pmemsave` is issued by the harness's Python

@@ -610,18 +610,51 @@ CMP_BYTE_IMM_RE = CMP_GATE_RE
 # offsets straight out of orig/g.exe, and they are keyed by file offset so a
 # shifted scan cannot silently re-attach them to the wrong site.
 
-# Two of the eleven immediate-price sites are identified: the two Клуб
+# Ten of the eleven immediate-price sites are identified. The two Клуб
 # (gambling) rows print their price as the literal `#` at the front of their
 # own row text (docs/re/tables.md), rather than through the shop `#`
 # placeholder, which is why they are not `mar`/`bmar` rows. Verified by
 # reading the shortstrings at these exact file offsets straight out of
 # orig/g.exe -- not inferred from proximity to the charge site, which
 # false-matches more than once when tried (see
-# .superpowers/sdd/task-10-report.md). Every other site stays `what: null`;
-# identifying them is Task 11's job, not this one's.
+# .superpowers/sdd/task-10-report.md).
+#
+# The other eight were added by the final-review fix wave, from the same two
+# signals `docs/re/difftest.md`, "Eight of the nine unnamed `sub [money],imm8`
+# sites are now named", records -- the verb-dispatch span the site falls in and
+# the token the nearest PRECEDING `call 0f78:0bd8` compares -- both re-derived
+# from orig/g.exe rather than copied from that document:
+#
+#   site        nearest preceding compare   token (file)   imm
+#   1000:d553   1000:d537                   `r`  (0xb320)   7
+#   1000:d5d9   1000:d5b9                   `h`  (0xb392)   3
+#   1000:d78e   1000:d6ed                   `girl` (0xb46a) 12
+#   1000:e657   1000:e62e                   `1`  (0xa69a)  20
+#   1000:e6e3   1000:e6ba                   `2`  (0xa71b)  20
+#   1000:e796   1000:e73c                   `3`  (0xa775)  10
+#   1000:e823   1000:e7f3                   `4`  (0xa7c7)  30
+#   1000:e8b8   1000:e875                   `5`  (0xa83b)  20
+#
+# Each debit's immediate equals the price its menu row displays (`IMM_ROWS` in
+# src/game.rs, cross-checked by tools/difftest.py's `imm_row_site` quantity),
+# which is the independent second signal: `rep` `h`=3 / `r`=7 and `trn`
+# 1..5 = 20/20/10/30/20. `girl` is not a menu row -- it is the flat 12 rubles
+# `1000:d78e` takes inside the visit at `1000:d701`..`1000:d798`.
+#
+# `0x68fc` (`1000:502c`, 7) stays `what: null`: it is in no location handler,
+# and Ghidra puts it inside FUN_1000_3d11, the combat routine. Unknown means
+# unknown.
 SUB_IMM8_WHAT = {
+    0xEE23: 'rep row `r` (compare 1000:d537): 7^7 рублей починят переломы, string at file 0xb2d9',
+    0xEEA9: 'rep row `h` (compare 1000:d5b9): 3^7 рубля тебя залатают, string at file 0xb2b2',
+    0xF05E: 'girl: the flat 12 rubles the visit takes at 1000:d78e (compare 1000:d6ed); not a menu row',
     0xFB77: 'Клуб: 15^7  потусоваться на дискотеке(Ловкость +1), string at file 0xba50',
     0xFBEC: 'Клуб: 22^7  разузнать приемы мухлёжников(Удача +1), string at file 0xba85',
+    0xFF27: 'trn row `1` (compare 1000:e62e): 20^7  качаться гателями и шгангой(Сила +1), string at file 0xbc55',
+    0xFFB3: 'trn row `2` (compare 1000:e6ba): 20^7  качаться на тренажерах(Выносливость +1), string at file 0xbc80',
+    0x10066: 'trn row `3` (compare 1000:e73c): 10^7  прокачать # качков опыта, string at file 0xbcb6',
+    0x100F3: 'trn row `4` (compare 1000:e7f3): 30^7  купить зубную защиту боксёров(-75% что сломают челюсть), string at file 0xbcdd',
+    0x10188: 'trn row `5` (compare 1000:e875): 20^7  прокачать пресс(Броня +1), string at file 0xbd23',
 }
 
 # The one `mul` charge site. The formula falls out of the scan; the service
@@ -896,10 +929,14 @@ def build_other_price_sites(blob: bytes, charge_map: dict, shop_rows: dict) -> d
             "file offset, immediate, multiplier, call target, formula and "
             "category. HAND-ANNOTATED (verified by reading the shortstrings "
             "at the cited file offsets out of orig/g.exe, see SUB_IMM8_WHAT "
-            "and COMPUTED_WHAT in tools/extract_tables.py): the two Клуб "
-            "`what` strings, and the computed row's `what`, `guard_addr` and "
-            "`string_*` fields. A null `what` means the purpose is not "
-            "established -- identifying them is Task 11's job, not this one's."
+            "and COMPUTED_WHAT in tools/extract_tables.py): the ten named "
+            "imm8 `what` strings, and the computed row's `what`, `guard_addr` "
+            "and `string_*` fields. Each imm8 annotation names the verb-"
+            "dispatch span the site falls in and the token the nearest "
+            "preceding `call 0f78:0bd8` compares; see docs/re/difftest.md. "
+            "A null `what` means the purpose is not established -- one imm8 "
+            "site (0x68fc, inside FUN_1000_3d11) and the one `other` ax site "
+            "are still unidentified."
         ),
         "ax_debit_sites": {
             "idiom": "29 06 C7 38 -- sub word [20ae:38c7],ax",

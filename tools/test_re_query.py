@@ -241,9 +241,10 @@ class TestResolveReportsTheRuntimeName(unittest.TestCase):
     def test_the_one_overlapping_ghidra_extent_resolves_to_the_inner_routine(self):
         """`size` is Ghidra's ADDRESS-SET byte count and `Program._ranges`
         reads it as a span, so a split body produces overlapping spans.
-        `data/functions.json` has one such record -- `1f78:1117`, named as the
-        image's sole split body in `docs/re/branches.md` (lines 248-258 and
-        603-611) -- and its
+        `data/functions.json` has one such OVERLAPPING record -- `1f78:1117`,
+        named as the image's sole overlapping one in `docs/re/branches.md`
+        (lines 248-258 and 612-628; the second non-contiguous record,
+        `1000:0d14`, under-reads instead and overlaps nothing) -- and its
         span `1117`..`112c` covers the two later entries `1f78:1121` and
         `1f78:1125`, hence two overlapping pairs from one outer record.
         First-match-in-file-order answered both with `FUN_1f78_1117` and

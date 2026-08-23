@@ -273,9 +273,18 @@ script below: `1f78:1117` is the sole **overlapping** record, not the sole
 non-contiguous one.  A tiling census over all 123 records found a second,
 `1000:0d14` in the game's own code — `size: 1196` where the contiguous body up
 to the next entry `1000:11c2` is 1198 bytes.  It creates no overlap (its span
-is short, not long), and the strings-overlap count below is 10 either way: the
-two addresses it loses are the operand bytes of a `ret 0x2` and no
-`strings.json` entry touches them.
+is short, not long), and the strings-overlap count below is 10 either way.
+
+**Which two addresses `1000:0d14` loses, settled from the image.**  They are
+`1000:11c0` and `1000:11c1`: the last instruction inside the body is `c2 02 00`
+(`ret 0x2`) at `1000:11bf`, and the next function entry is `55` (`push bp`) at
+`1000:11c2` — check either with `python3 tools/re_query.py resolve 1000:11bf`.
+So the span `[0d14, 0d14+1196)` stops one instruction short, on the two operand
+bytes of that `ret`, and **no `data/strings.json` entry touches them**
+(checked: 0).  This needs no Ghidra re-run to say; `docs/re/rtl.md`, "How many
+records this affects, measured over all 123", is where the census lives, and
+what remains unexplained there is *why* Ghidra's address set omits those two
+bytes, not which two they are.
 
 The bodies really are disjoint, and the argument does not need the chunk
 boundaries: the sum of `getNumAddresses()` over all 123 functions is 43,890, and
@@ -603,10 +612,18 @@ print('unaccounted runs', len(grp),
 # --- strings.json entries that overlap a function body (10) ----------------
 # NOTE: this line reads `size` as the span [entry, entry+size), which is the
 # very trap described above -- `size` is a count of addresses in a body that
-# may be non-contiguous, so a span over-reads for the few split functions.
-# It is safe HERE and only here: the sole split body in the image is
-# 1f78:1117, whose phantom range 1f78:1121..112c contains no strings.json
-# entry, so the count is 10 either way.  Do not copy this line into a check
+# may be non-contiguous, so a span misses the body's real extent in EITHER
+# direction.  Two records in the image are non-contiguous, and they fail in
+# opposite directions:
+#   1f78:1117 OVER-reads -- it is the image's sole overlapping record, and
+#     its phantom range 1f78:1121..112c contains no strings.json entry.
+#   1000:0d14 UNDER-reads by 2 -- its span stops before 1000:11c0/11c1, the
+#     operand bytes of the `c2 02 00` (`ret 0x2`) at 1000:11bf, and no
+#     strings.json entry touches those two either.
+# So the count is 10 either way and this line is safe HERE and only here.  An
+# earlier revision of this note called 1f78:1117 "the sole split body in the
+# image", which is one record too narrow: it is the sole OVERLAPPING one.
+# Do not copy this line into a check
 # where the over-read would matter -- use the address set, not the span.
 iv = [(f['entry_file_off'], f['entry_file_off']+f['size']) for f in d['functions']]
 print('entries overlapping a function body',

@@ -83,15 +83,24 @@
 //! are not top-level verbs at all does not hold -- `FUN_1000_3d11`'s call at
 //! `1000:4b00` is a *second* call site, not the only one.
 //!
-//! `sv`, `v`, `x`, `wes` are still **not** in this `DS:3972` list -- this
-//! task did not find their compare instructions. They are kept as parsed
-//! commands on corroborating evidence only, documented individually below.
-//! A follow-up should grep for their token file offsets (`sv`=`0xC195`,
-//! `v`=`0xC210`/`0x4E96`, `x`=`0xAF9E`, `wes`=`0xAFDA`) in
-//! `data/string_pointers_audit.tsv` and disassemble each referencing
-//! instruction the way this table's rows were. `x` and `wes` are the
-//! dealers' own submenu keys, read at `^0Барыги\\` rather than at the
-//! top-level prompt, so they may well have no `DS:3972` compare at all.
+//! `sv`, `v`, `x`, `wes` are **not** in this `DS:3972` list, and the reason
+//! for two of them is now known rather than open.
+//!
+//! **`sv` and `v` are dispatched -- by `FUN_1000_3d11`, against `DS:3a72`.**
+//! The follow-up this paragraph used to ask for was done by the final-review
+//! fix wave: combat runs its own nine-token compare chain through the same
+//! `0f78:0bd8`, and `sv` is at `1000:4c42` (token file `0x4E71`) and `v` at
+//! `1000:4caa` (token file `0x4E96`). Both are **established from flow**; see
+//! [`crate::game::Game::run_combat`] for the whole table. So neither is a
+//! corroboration-only verb any more -- they are *combat* verbs, which is why
+//! they were never going to turn up in `entry`'s list. What is still untraced
+//! is what each arm does, not whether it is reached.
+//!
+//! `x` and `wes` remain corroboration-only (token file offsets `0xAF9E` and
+//! `0xAFDA`). They are the dealers' own submenu keys, read at `^0Барыги\\`
+//! rather than at the top-level prompt, so they may well have no `DS:3972`
+//! compare at all -- the same shape as `sv`/`v` turning out to belong to the
+//! combat prompt.
 //!
 //! ## Corrections this makes to the brief
 //!
@@ -130,16 +139,22 @@ pub enum Command {
     /// `f`. Dispatcher entry confirmed at `1000:ec96`; "shoot" is
     /// corroboration the same way.
     Shoot,
-    /// `sv`. **Not found in the `DS:3972` dispatch chain this task traced**
-    /// -- corroborated only by `docs/re/tables.md` section 4's oracle
-    /// capture (typing `sv` mid-fight against the original printed the
-    /// enemy's stat block) and by the help text's `"приглядеться к
-    /// пинаемому мудаку"`. Kept, not dropped, per the task's "flag
-    /// unverified, don't invent and don't drop" instruction. Definitely
-    /// not `Save` -- the owner confirmed no typed save verb exists.
+    /// `sv`. Not in `entry`'s `DS:3972` chain, because it is a **combat**
+    /// verb: `FUN_1000_3d11` compares it at `1000:4c42` against its own
+    /// `DS:3a72` buffer, token file `0x4E71`. **Established from flow.** The
+    /// oracle capture in `docs/re/tables.md` section 4 (typing `sv` mid-fight
+    /// printed the enemy's stat block) and the help text's `"приглядеться к
+    /// пинаемому мудаку"` were the only evidence when this variant was
+    /// written; they now corroborate a traced dispatch instead of standing
+    /// alone. Definitely not `Save` -- the owner confirmed no typed save verb
+    /// exists.
     Inspect,
-    /// `v`. Not found in the dispatch chain; corroborated only by the help
-    /// text (`"чтобы позвать подкрепление"`, file `0xC210`).
+    /// `v`. Also a combat verb, compared at `1000:4caa`, token file `0x4E96`
+    /// -- **established from flow**. Its arm at `1000:4cb4` opens with
+    /// `cmp byte [0x3696],1`, the den's discovery flag, which fits the help
+    /// text's `"чтобы позвать подкрепление"` (file `0xC210`); the arm itself
+    /// is not traced and this port does not act on the verb. See
+    /// `docs/re/gaps.md`, "The in-combat verb set".
     Backup,
     /// `i`. Confirmed at `1000:ea94`: prints the 13-line command list.
     CommandList,

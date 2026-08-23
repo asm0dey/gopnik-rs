@@ -25,14 +25,19 @@ command-shaped evidence a `docs/re/` claim can quote directly:
       value, and evaluates it symbolically.
 
   xrefs-to ADDRESS
-      Who references a data address.  A raw byte scan for the operand bytes
+      Who references a **DGROUP** data address -- `20ae:xxxx` or a bare
+      DGROUP offset; any other segment is rejected rather than silently
+      scanned for.  A raw byte scan for the operand bytes
       of `20ae:3b74` returns 7 hits, one of which (`1000:c358`) is the
       straddle of a `jl` and a `cmp` and not an operand at all.  Hits are
       kept only when they fall on an operand field of a decoded instruction,
       and the output says how many were discarded and why.
 
-Standard library only; `tools/dis16.py` does the decoding because `capstone`
-is not available here.  `docs/re/METHODOLOGY.md` is the authority for the
+Standard library only, so this runs with nothing installed; `tools/dis16.py`
+does the decoding.  (`capstone` IS installed here and is what
+`tools/test_rtlmatch.py` cross-checks `dis16` against -- see that file's
+header. Earlier revisions of both said it was unavailable.)
+`docs/re/METHODOLOGY.md` is the authority for the
 address convention; `tools/addr.py` is its executable form.
 """
 import argparse
