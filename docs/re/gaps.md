@@ -354,10 +354,14 @@ add that carry into the *magnitude*, before the sign is applied at
 * `1000:48eb`'s `[0x3c83] == 1` arm (file `0x4C8F`, the rector refusing to
   let you run). Nothing in this port sets `[0x3c83]`, so the arm is
   unreachable rather than wrong.
-* The three loot words are rolled and stored on the returned `Fighter`
-  (`beer_dl`, `money`, `junk`) but **not awarded** on victory: this port's
-  `Game::run_combat` tail does not yet reproduce `1000:523e`..`1000:5251`.
-  Costs no draw.
+* ~~The three loot words are rolled and stored on the returned `Fighter`
+  (`beer_dl`, `money`, `junk`) but **not awarded** on victory.~~ **Closed by
+  Task 13.** `Game::claim_spoils` reproduces `1000:523e`..`1000:5251` (and the
+  whole victory block after it), and `data/combat_trace.json`'s run B — six
+  fights, all won, `SAVE_R2` loaded — asserts the resulting `20ae:38c3`,
+  `20ae:38c7` and `20ae:38c9` against the guest's own memory. That is also
+  what makes `Fighter::junk` non-zero, so the dealers' sell-junk branch is no
+  longer always the one taken.
 
 ### Wander buckets 1 and 4 — their text is still not modelled
 
@@ -803,9 +807,19 @@ points at this entry.
   `mark_found(Location::Gym)` and `369a` appears near it only in a comment,
   which is how a grep for the address literal produced the wrong answer.
 * **The class-keyed combat-opener table** (`1000:3d32`..`1000:3e8a`, files
-  `0x452E`, `0x453B`, `0x4548`, `0x4565`, `0x457A`, …).
-* **The rector death branch and the hospital rescue** (`1000:4f8c`,
-  `1000:4fce`) — need fields `crate::model::Fighter` does not have.
+  `0x452E`, `0x453B`, `0x4548`, `0x4565`, `0x457A`, …). Its **text** is still
+  not extracted; what Task 13 settled is that it cannot matter to the
+  generator: scanning `[0x3d11, 0x3f00)` for `9a 4b 11 78 0f` returns **zero**
+  hits, so the whole `cmp [0x3952],N` chain is print-only.
+* **The rector death branch** (`1000:4f8c`) — nothing in this port sets
+  `[0x3c83]`, so it is unreachable rather than wrong. ~~**and the hospital
+  rescue** (`1000:4fce`) — need fields `crate::model::Fighter` does not
+  have.~~ **The hospital rescue is implemented** (Task 13,
+  `Game::hospital_rescue`): it needs the den flag, `20ae:38cb` and
+  `20ae:38c7`, all of which `Game` already carried. It is **UNVERIFIED by
+  observation** — see `docs/re/combat.md`, "What Task 13's capture did and did
+  not reach": both captured deaths are of characters whose den flag is clear,
+  so the branch was never taken in the original either.
 * ~~**`sv`, `v`, `x`, `wes` token compare sites** — not located.~~ **Half
   closed by the final-review fix wave.** `sv` (`1000:4c42`) and `v`
   (`1000:4caa`) are located and **established from flow** — they are combat
@@ -1014,3 +1028,105 @@ are the questions that pass left open, and the ones it created.
   * **`church_visits`'s three transitions** (`1000:7dc7`, `1000:7f5b`, and the
     `1000:8247` read). The stage byte selects sermon text only; no draw
     depends on it, so the replay is blind to it.
+
+---
+
+## Opened and closed by Task 13 (the fight capture)
+
+*Cited from `data/combat_trace.json`, `tests/combat_sequence.rs`,
+`src/game.rs`'s `run_combat`/`crowd`/`claim_spoils`/`hospital_rescue` and
+`src/combat.rs`'s `Swing`.*
+
+Combat now has a control-flow oracle: four live runs of `orig/g.exe`, **1900
+draws, 15 fights**, all four replayed draw-for-draw. `data/rng_trace.json` and
+`data/state_trace.json` were not read, written or regenerated to build it, and
+the new file records their SHA-256 so that is checkable. Method:
+`docs/re/rng-trace.md`, "The fight channel".
+
+### Closed
+
+* ~~**The crowd's draws were not modelled at all.**~~ `1000:4135`
+  `Random(10)` and `1000:4145` `Random(18)` are recovered and ported as
+  `Game::crowd`, including the shape that is easy to get wrong: the counter at
+  `[bp-0x113]` is initialised **outside** the prompt loop (`1000:40ed`, whose
+  only back edge is `1000:583e`) and STOPS at 5, so `Random(10)` fires at every
+  `Битва\` prompt from the fifth onward. Run A's 30-prompt fight shows 26 of
+  them.
+* ~~**The victory block after the XP award.**~~ `1000:523e`..`1000:57cc` is
+  ported as `Game::claim_spoils`: the loot award, `hp += 5`, the street-cred
+  term, the den flag, the `Random(30)` gift chain and both luck-gated item
+  rolls. Run B asserts the whole 35-variable end state that results.
+* ~~**The зубная защита's extra `Random(4)`** — "not modelled at all, because
+  `Fighter` as the brief specifies it has no field for the item".~~ It is
+  modelled as `Game::tooth_guard` + `combat::Swing::enemy`. It had to be:
+  `SAVE_R3`, `SAVE_R4` and `SAVE_R5` all ship it, so a save-loaded replay
+  desynchronises at the first player jaw break without it.
+* ~~**The break rolls were asserted by nothing.**~~ Before this task the only
+  `broken_jaw`/`broken_leg` assertion in the suite was `tests/data_load.rs`'s
+  check that a *fresh* fighter has neither. `data/combat_trace.json`'s
+  per-round channel samples `20ae:38b0`/`38b1`/`3966`/`3967` at every
+  `1000:441d` stop, and run A (player's jaw) and run B (enemy's jaw, in two of
+  six fights) now pin the **effect**, not just the roll.
+
+### Three defects the capture found in code that was already there
+
+None of these moves a draw; all three are output or state the replay caught.
+
+* **The player's half never set the enemy's break flags.** `1000:45be`
+  (`mov byte [0x3966],1`) and `1000:45e5` have no counterpart in the old
+  `combat_round`, which printed the break line and left the enemy's record
+  untouched. The per-round channel's `20ae:3966` is what caught it.
+* **Both halves printed a break line the original suppresses.** `1000:459e`,
+  `1000:45c5`, `1000:47c7` and `1000:4842` all test the flag first and print
+  only on the transition.
+* **The crit's `Random(3)` was drawn and discarded.** The port printed
+  `^2Точный удар!!!` whatever it returned, and printed nothing at all for an
+  ENEMY crit. All six lines (files `0x4A54`/`0x4A65`/`0x4A7B` and
+  `0x4B52`/`0x4B67`/`0x4B7F`) are now selected by the roll.
+
+### Opened
+
+* **`Fighter::hp` is a `u16` and the original's is a signed word.** The
+  killing blow drives `20ae:38ac` below zero — run A's post-death dump reads
+  `-2` — while this port saturates the STORED value at 0.
+
+  The half of this that costs draws is fixed: `Game::combat_round` keeps each
+  round's running hp as an `i32` and drives both loop exits from it, because
+  the two exits are different signed tests and the difference is a draw count.
+  `1000:4629` `jg` leaves the PLAYER's loop at `enemy hp <= 0`, while
+  `1000:48cd` `jl` leaves the ENEMY's only at `player hp < 0` — so a player
+  sitting at exactly 0 gets swung at again, and that swing spends draws. A
+  `u16` saturated at 0 cannot tell "exactly 0" from "would have gone
+  negative", which is why the local is signed. The printed `У тебя осталось #`
+  is the signed value too, as the original prints it.
+
+  What is still open is the stored field: `player.hp` is 0 where the guest
+  holds `-2`, so `final_state.hp_38ac` after a death is not comparable, and
+  `tests/combat_sequence.rs` asserts the whole end state only for a run that
+  ended at the turn marker. Fixing it means widening the field, which touches
+  `src/model.rs`, `src/save.rs` and every test that reads it.
+* **The two blow loops are not mirrors at the tail.** `src/combat.rs` calls
+  them "the same instruction sequence twice with the two records' addresses
+  swapped", which is true of the blow BODY and not of the loop tail: the
+  player's half tests the defender before printing
+  `Из-за большой ловкости ты можешь пнуть ещё раз` (`1000:4629` ahead of
+  `1000:4639`) and the enemy's half has no such test before its own line
+  (`1000:48a6` guards `1000:48ad` on the budget alone). Both are now written
+  out separately in `combat_round`. It is text, not draws — but the shape
+  matters, because "one function covers both" was the argument for not reading
+  the second copy.
+* **Four item arms are implemented but never observed.**
+  `1000:5482`/`1000:5530`/`1000:5617`/`1000:5681` are gated on
+  `luck >= Random(district * 40)`; the gate was reached eight times across the
+  captures and passed once, against a class-2 enemy, which has no arm. Their
+  damage-gating arithmetic rests on the disassembly alone.
+* **A leg break has never been observed.** All five limb picks captured
+  returned 0 (the jaw).
+* **The class-keyed opener's text** (`1000:3d32`..`1000:3e8a`) is still not
+  extracted. Task 13 established only that it spends no draw.
+* **The port advances the district inside `run_combat`**, at the end; the
+  original does it at the top of the next turn (`1000:ab75`..`1000:ab92`,
+  which also clears `[0x3698]`/`[0x3694]` and conditionally `[0x3699]`). The
+  order is equivalent for everything the captures reach — the new victory
+  draws at `1000:5402`/`1000:5454` read the district and are made before the
+  advance — but it is a placement difference, not an identity.

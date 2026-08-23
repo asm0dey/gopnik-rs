@@ -65,7 +65,7 @@
 //! explicitly out of bounds per the task's own instruction. That is the
 //! reported blocker, scoped to this one method.
 
-use crate::combat::{blows_per_round, resolve_blow_nth, Break};
+use crate::combat::{blows_per_round, resolve_blow_nth, Break, Swing};
 use crate::commands::{parse, Command};
 use crate::data;
 use crate::locations::{Location, Places};
@@ -210,6 +210,41 @@ pub const IMM_ROWS: [ImmRow; 9] = [
     },
 ];
 
+/// What a replay of a captured fight needs that the draw stream cannot show.
+///
+/// Populated only while [`Game::start_fight_log`] is in force. The two lists
+/// mirror `data/combat_trace.json`'s two fight channels exactly, marker for
+/// marker: `fights` is one entry per `1000:3d11` stop and `prompts` one per
+/// `1000:441d` stop.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FightLog {
+    /// The opponent as `Game::run_combat` received it, before any blow --
+    /// the guest's `20ae:3952`.. record at the combat function's prologue --
+    /// paired with the number of draws already spent when the fight started.
+    pub fights: Vec<(usize, Fighter)>,
+    /// One entry per `^0Битва\` prompt, in order.
+    pub prompts: Vec<PromptState>,
+}
+
+/// Both fighters at one `^0Битва\` prompt: what the previous round left.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptState {
+    /// 1-based index of the fight this prompt belongs to.
+    pub fight: usize,
+    /// Draws made before this prompt, from [`crate::rng::Rng::draws_logged`].
+    /// It is what ties this channel to the draw stream: a prompt recorded at
+    /// the wrong point fails even when both channels are individually right.
+    pub draws_before: usize,
+    pub player_hp: u16,
+    pub player_hpmax: u16,
+    pub enemy_hp: u16,
+    pub enemy_hpmax: u16,
+    pub player_broken_jaw: bool,
+    pub player_broken_leg: bool,
+    pub enemy_broken_jaw: bool,
+    pub enemy_broken_leg: bool,
+}
+
 pub struct Game {
     pub player: Fighter,
     pub progress: Progress,
@@ -331,11 +366,41 @@ pub struct Game {
     /// `20ae:3e35` -- the den's loan credit. Set to 5 at `1000:73e5` and
     /// topped up once per walk while below `district * 10` (`1000:af19`).
     pub den_loan_credit: u8,
+    /// `20ae:394a` / `.SAV 0x2ae` -- зубная защита. The ONLY thing it
+    /// changes is a jaw break landing on the player: `1000:47e8`
+    /// `cmp byte [0x394a],0` splits the break into the plain arm
+    /// (`1000:47ee` sets the jaw) and a `Random(4)` at `1000:47fe` whose 0
+    /// breaks it anyway and whose 1..3 does not. It is therefore a **draw
+    /// count** difference, not just flavour: `docs/re/combat.md` listed it as
+    /// unmodelled gap 3, and a save that ships it (`SAVE_R3`, `SAVE_R4`,
+    /// `SAVE_R5` all hold 1 at `.SAV 0x2ae`) desynchronises any replay
+    /// without it.
+    pub tooth_guard: bool,
+    /// `20ae:38bd` / `.SAV 0x221` -- the крестик, `luck += 2`, granted once
+    /// by the post-kill item table (`1000:548c` gate, `1000:54b1` flag).
+    pub charm_krestik_38bd: bool,
+    /// `20ae:38be` / `.SAV 0x222` -- кольцо "Господи спаси", `luck += 1`
+    /// (`1000:54bd` gate, `1000:54e1` flag).
+    pub charm_ring_38be: bool,
+    /// `20ae:38ba` / `.SAV 0x21e` -- кастет. The four weapon flags gate each
+    /// other's damage bonuses in the post-kill item table
+    /// (`1000:552c`..`1000:57cc`), so all four have to be carried even
+    /// though none of them is read anywhere else.
+    pub weapon_kastet_38ba: bool,
+    /// `20ae:394b` / `.SAV 0x2af` -- дубинка (`1000:55a0` gate).
+    pub weapon_dubinka_394b: bool,
+    /// `20ae:38c2` / `.SAV 0x226` -- ножик (`1000:568e` gate).
+    pub weapon_nozhik_38c2: bool,
+    /// `20ae:394c` / `.SAV 0x2b0` -- тесак (`1000:5734` gate).
+    pub weapon_tesak_394c: bool,
     /// `20ae:3951` / `.SAV 0x2b5` -- the church's sermon stage, 0..2. Read
     /// at `1000:7c76`/`1000:7ceb`/`1000:7dcb` to pick which sermon runs and
     /// at `1000:8247` to pick the parting line.
     pub church_visits: u8,
     mode: Mode,
+    /// The fight recorder, `None` unless [`Game::start_fight_log`] asked for
+    /// it. See that method for what it is for.
+    fight_log: Option<FightLog>,
     /// The most recently fought opponent, shown by `Command::Inspect` (`sv`).
     last_enemy: Option<Fighter>,
     /// The original save this game was loaded from, kept only for its
@@ -424,6 +489,14 @@ impl Game {
             dealer_delivery_counter: 0,
             den_loan_credit: 0,
             church_visits: 0,
+            fight_log: None,
+            tooth_guard: false,
+            charm_krestik_38bd: false,
+            charm_ring_38be: false,
+            weapon_kastet_38ba: false,
+            weapon_dubinka_394b: false,
+            weapon_nozhik_38c2: false,
+            weapon_tesak_394c: false,
             mode: Mode::Street,
             last_enemy: None,
             save_template_bytes: None,
@@ -2535,11 +2608,42 @@ impl Game {
         mut enemy: Fighter,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
     ) -> io::Result<()> {
+        if self.fight_log.is_some() {
+            let at = self.rng.draws_logged();
+            if let Some(log) = self.fight_log.as_mut() {
+                log.fights.push((at, enemy.clone()));
+            }
+        }
+        // 1000:40ed `c6 86 ed fe 00` -- `mov byte [bp-0x113],0`, OUTSIDE the
+        // prompt loop whose top is 1000:40f2 (its back edge is 1000:583e
+        // `jmp 0x40f2`, the only branch in the whole function that targets
+        // it). So the counter is per FIGHT, not per session.
+        let mut prompts_seen: u8 = 0;
         loop {
             if self.player.hp == 0 || enemy.hp == 0 {
                 break;
             }
+            self.crowd(&mut prompts_seen);
             term::print("^0Битва\\");
+            // 1000:441d, the prompt's own ReadLn: the sample point.
+            if self.fight_log.is_some() {
+                let draws_before = self.rng.draws_logged();
+                let state = PromptState {
+                    fight: self.fight_log.as_ref().map_or(0, |l| l.fights.len()),
+                    draws_before,
+                    player_hp: self.player.hp,
+                    player_hpmax: self.player.hpmax,
+                    enemy_hp: enemy.hp,
+                    enemy_hpmax: enemy.hpmax,
+                    player_broken_jaw: self.player.broken_jaw,
+                    player_broken_leg: self.player.broken_leg,
+                    enemy_broken_jaw: enemy.broken_jaw,
+                    enemy_broken_leg: enemy.broken_leg,
+                };
+                if let Some(log) = self.fight_log.as_mut() {
+                    log.prompts.push(state);
+                }
+            }
             let Some(line) = lines.next() else {
                 self.running = false;
                 return Ok(());
@@ -2605,6 +2709,13 @@ impl Game {
 
         self.last_enemy = Some(enemy.clone());
         if self.player.hp == 0 {
+            // 1000:4f82 `cmp word [0x38ac],0` / `jle 0x4f8c` -- the death
+            // test, and it runs BEFORE the victory test at 1000:507b.
+            if self.hospital_rescue() {
+                return Ok(());
+            }
+            // 1000:5053, file 0x5127, then FUN_1000_074b and the RTL's
+            // `mov ah,0x4c` / `int 0x21`: death ends the process.
             term::println("^4Ты сдох.");
             self.running = false;
             return Ok(());
@@ -2616,6 +2727,17 @@ impl Game {
             "^6За отпин врага ты получаешь # качков опыта",
             &[award as i64],
         ));
+        // 1000:51ed..1000:5238: the award is added first, and only then is
+        // `xp >= threshold` tested -- `progress::apply_levels` does both, so
+        // the branch that has to be reproduced here is the OTHER one, the
+        // two lines printed at 1000:5202 (file 0x528A) and 1000:521b (file
+        // 0x52C8) when the award was not enough.
+        // The test is `1000:51ed`..`1000:51f4` -- `mov ax,[0x38ce]` /
+        // `cmp ax,[0x38d0]` / `jge 0x5238`, evaluated on the xp AFTER the add
+        // at 1000:51e9. Taken from the numbers rather than from whether
+        // `apply_levels` reported a level: at MAX_LEVEL it reports none while
+        // the original still takes the `jge` arm and prints nothing here.
+        let short_of_the_threshold = self.progress.xp + award < self.progress.threshold;
         progress::apply_levels(
             &mut self.progress,
             &mut self.player,
@@ -2623,6 +2745,14 @@ impl Game {
             award,
             false,
         );
+        if short_of_the_threshold {
+            term::println("^6Ты запинал слишком слабого мудака для увеличения понтовости");
+            term::println(&text::fill(
+                "^6Сейчас у тебя # качков опыта, А для прокачки надо #",
+                &[self.progress.xp as i64, self.progress.threshold as i64],
+            ));
+        }
+        self.claim_spoils(&enemy);
 
         while self.district < 5 && self.player.level >= u16::from(self.district) * 10 {
             self.district += 1;
@@ -2643,61 +2773,605 @@ impl Game {
     /// `0x4A8D`/`0x4ABA`, whose inner `^4` is part of the string, and the
     /// mirrors `^4Враг сломал тебе челюсть.` / `^4Враг сломал тебе ногу.`
     /// files `0x4B95`/`0x4C08`).
+    /// Begin recording the fight channels, discarding anything recorded.
+    ///
+    /// The same design as [`crate::rng::Rng::start_log`], and for the same
+    /// reason: `data/combat_trace.json` carries two channels the draw stream
+    /// cannot see -- the enemy record each fight was entered with
+    /// (`1000:3d11`) and both fighters' hp and break flags at every `Битва\`
+    /// prompt (`1000:441d`) -- and a replay that could not produce them would
+    /// leave `Fighter::broken_jaw`/`broken_leg` asserted by nothing, which is
+    /// where they stood before Task 13. `None` for every game the binary
+    /// builds, so a real session allocates nothing.
+    pub fn start_fight_log(&mut self) {
+        self.fight_log = Some(FightLog::default());
+    }
+
+    /// Take the recorded fight channels and stop recording.
+    pub fn take_fight_log(&mut self) -> FightLog {
+        self.fight_log.take().unwrap_or_default()
+    }
+
+    /// `1000:4fba`..`1000:5051` -- the hospital rescue that turns a death
+    /// into a survivable turn. Returns `true` when it fired, i.e. the player
+    /// lives and the fight is left.
+    ///
+    /// **Established from flow.** `1000:4fba` `cmp byte [0x3696],1` (the den
+    /// flag) and `1000:4fc4` `cmp word [0x38cb],0xa` / `jge` (street cred at
+    /// least 10) are the two gates; anything else falls to `1000:5053` and
+    /// the end screen. The body, in order:
+    ///
+    /// ```text
+    /// 4fce  file 0x50DF, `^1Тебе повезло знакомые пацаны отвезли тебя в больницу...`
+    /// 4fe7  83 2e cb 38 0a   sub word [0x38cb],10
+    /// 4fec  a1 ae 38 / 99    mov ax,[0x38ae] / cdq        ; hpmax as a real
+    /// 4ff0  call 0f78:1125                                ; int -> real
+    /// 4ff5  cx=0x83 si=0 di=0x2000 / call 0f78:1117       ; divide by 5.0
+    /// 5002  cx=0x82 si=0 di=0x4000 / call 0f78:1111       ; multiply by 3.0
+    /// 500f  call 0f78:1131                                ; Round
+    /// 5014  29 06 c7 38      sub [0x38c7],ax              ; the bill
+    /// 5018  a1 ae 38 / a3 ac 38   hp := hpmax
+    /// 501e  a jaw or a leg broken -> `sub [0x38c7],7` and clear BOTH
+    /// 503b  money < 0 -> `[0x38cb] += [0x38c7]`, `[0x38c7] := 0`
+    /// ```
+    ///
+    /// The two six-byte reals are decoded, not guessed: Borland's Real is
+    /// `[exp][m0..m4]` with an implicit leading one, so `exp 0x83` with the
+    /// top mantissa byte `0x20` is `1.25 * 2^(0x83-129) = 5.0`, and `exp
+    /// 0x82` with `0x40` is `1.5 * 2^(0x82-129) = 3.0`. `0f78:1117` is the
+    /// divide and `0f78:1111` the multiply (`docs/re/gaps.md`, "The
+    /// random-encounter opponent"), so the bill is `Round(hpmax / 5 * 3)`.
+    /// `Round` is Borland's, half away from zero -- [`Self::round_half`].
+    ///
+    /// **No draw**: there is no `9a 4b 11 78 0f` anywhere in
+    /// `1000:4f82`..`1000:5077`.
+    fn hospital_rescue(&mut self) -> bool {
+        if !self.places.is_found(Location::Den) || self.pontovost_street < 10 {
+            return false;
+        }
+        term::println("^1Тебе повезло знакомые пацаны отвезли тебя в больницу а то бы ты сдох.");
+        self.pontovost_street -= 10;
+        // Round(hpmax / 5 * 3), computed exactly rather than through two
+        // truncating divisions: `round_half(x)` rounds `x / 2` half away from
+        // zero, so feeding it `6 * hpmax / 5` as a doubled numerator gives
+        // `Round(3 * hpmax / 5)`. (The half case never arises -- `3h/5` has
+        // fractional part 0, .2, .4, .6 or .8 -- but the rounding is written
+        // the original's way rather than assumed away.)
+        let bill = Self::round_half(6 * i32::from(self.player.hpmax) / 5);
+        self.player.money -= bill;
+        self.player.hp = self.player.hpmax;
+        if self.player.broken_jaw || self.player.broken_leg {
+            self.player.money -= 7;
+            self.player.broken_jaw = false;
+            self.player.broken_leg = false;
+        }
+        if self.player.money < 0 {
+            self.pontovost_street += self.player.money;
+            self.player.money = 0;
+        }
+        true
+    }
+
+    /// `1000:523e`..`1000:57cc` -- everything the victory block does after
+    /// the XP award, in the order the instructions do it.
+    ///
+    /// **Established from flow**, disassembled forward from `1000:5189`.
+    /// `docs/re/progression.md` already carried the shape of this block and
+    /// `data/xp.json`'s `post_kill_stat_events` the one-shot deltas; the
+    /// addresses below were re-derived from `orig/g.exe` for this
+    /// implementation and every `Random` site named carries the
+    /// `9a 4b 11 78 0f` signature.
+    ///
+    /// | address | what |
+    /// |---|---|
+    /// | `1000:523e` | `[0x38c3] += [0x396a]`, `[0x38c7] += [0x396c]`, `[0x38c9] += [0x396e]` -- the loot |
+    /// | `1000:526c` | `hp += 5`, clamped to `hpmax` at `1000:5271` |
+    /// | `1000:5280` | `[0x38cb] += enemy.class + 1 + enemy.level div 3` |
+    /// | `1000:5295` | den flag, when `level - (district-1)*10 >= 3` (`1000:52ae` `cmp ax,3` / `jl`) |
+    /// | `1000:52d5` | `Random(30)`; only `0` (`or ax,ax` / `jbe`) reaches the one-shot gift chain |
+    /// | `1000:5402` | `Random(district*25)`; `luck >= r` AND enemy class 2 -> `1000:5427` `Random(3)` joints |
+    /// | `1000:5454` | `Random(district*40)`; `luck >= r` -> a class-keyed item, each arm with its own draw |
+    ///
+    /// Both luck comparisons are Borland's 32-bit pair with the roll
+    /// **zero**-extended (`xor dx,dx` at `1000:5407` / `1000:5459`) and luck
+    /// **sign**-extended (`cwd` at `1000:5410` / `1000:5462`), taken as
+    /// `luck >= roll` -- `jg` on the high words, then `jb`/`jae` on the low.
+    /// This port widens both sides with `i32::from(u16)`, exactly as
+    /// [`Game::walk`] does at `1000:b5fc`, so it never reproduces the
+    /// negative reading a `luck` with bit 15 set would get.
+    fn claim_spoils(&mut self, enemy: &Fighter) {
+        // 1000:523e..1000:5251 -- three `mov ax,[enemy] / add [player],ax`
+        // pairs. `docs/re/gaps.md` recorded this as NOT reproduced; it is now.
+        self.player.beer_dl += enemy.beer_dl;
+        self.player.money += enemy.money;
+        self.player.junk += enemy.junk;
+        term::println("^1Пиво победителю!"); // file 0x52FE
+        self.player.hp = (self.player.hp + 5).min(self.player.hpmax);
+        self.pontovost_street += i32::from(enemy.class) + 1 + i32::from(enemy.level) / 3;
+        // 1000:5295..1000:52cc. `[0x3692]` is the district; the level is
+        // measured within it, so three levels into a district opens the den.
+        if !self.places.is_found(Location::Den)
+            && i32::from(self.player.level) - (i32::from(self.district) - 1) * 10 >= 3
+        {
+            self.places.mark_found(Location::Den);
+            term::println(
+                "^1Поновость улутшилась на столько, что тебе можно заходить в местный притон!",
+            );
+        }
+        if self.rng.below_at("1000:52d5", 30) == 0 {
+            self.grant_oneshot_gift();
+        }
+        // 1000:53f7..1000:5444 -- the Нарк's joints.
+        let roll = self
+            .rng
+            .below_at("1000:5402", u16::from(self.district) * 25);
+        if i32::from(self.player.luck) >= i32::from(roll) && enemy.class == 2 {
+            self.player.joints += self.rng.below_at("1000:5427", 3);
+            term::println("^1А у нарка был косячок"); // file 0x540B
+        }
+        // 1000:5449..1000:57cc -- the class-keyed item table.
+        let roll = self
+            .rng
+            .below_at("1000:5454", u16::from(self.district) * 40);
+        if i32::from(self.player.luck) < i32::from(roll) {
+            return;
+        }
+        match enemy.class {
+            1 => self.spoil_charm(),
+            3..=6 => self.spoil_club(),
+            7 => self.spoil_glasses(),
+            9 => self.spoil_blade(),
+            _ => {}
+        }
+    }
+
+    /// `1000:52e1`..`1000:53f2` -- the first one-shot gift that has not
+    /// fired yet, on `Random(30) == 0`.
+    ///
+    /// **Established from flow, and byte-identical to the church's copy**:
+    /// `docs/re/progression.md` records that the 56 bytes at `1000:8101` and
+    /// at `1000:532f` compare equal through each block's `c6 06 bf 38 01`
+    /// flag store. `Game::church`'s arm 2 is the same three grants; the
+    /// deltas are `data/xp.json`'s `post_kill_stat_events`.
+    ///
+    /// The preamble line (file `0x535E`) is printed when ANY of the three is
+    /// still unfired -- `1000:52e1`/`1000:52e8`/`1000:52ed` are three `je`s
+    /// onto one common target.
+    fn grant_oneshot_gift(&mut self) {
+        if !self.oneshot_gift_1 || !self.oneshot_gift_2 || !self.ring_gospodi_pomilui {
+            term::println("^1Оба на! Колечко! Вот свезло, так свезло!");
+        }
+        if !self.oneshot_gift_1 {
+            term::println("^1Кольцо \"Помоги Господи\"");
+            self.player.strength += 1;
+            self.player.agility += 1;
+            self.player.vitality += 1;
+            self.player.luck += 1;
+            self.player.hpmax += 6;
+            self.player.hp += 6;
+            self.player.dmg_max += 1;
+            if self.player.strength.is_multiple_of(2) {
+                self.player.dmg_min += 1; // 1000:534d..1000:5361
+            }
+            self.oneshot_gift_1 = true;
+        } else if !self.oneshot_gift_2 {
+            term::println("^1\"Мега Кольцо\"!");
+            self.player.strength += 4;
+            self.player.agility += 4;
+            self.player.vitality += 4;
+            self.player.luck += 4;
+            self.player.hpmax += 24;
+            self.player.hp += 24;
+            self.player.dmg_max += 4;
+            self.player.dmg_min += 2;
+            self.oneshot_gift_2 = true;
+        } else if !self.ring_gospodi_pomilui {
+            term::println("^1Ваще полезное кольцо \"Господи помилуй\"");
+            term::println("^1Восст. жизни - 3, 5% - самозарост переломов");
+            self.ring_gospodi_pomilui = true;
+        }
+    }
+
+    /// Enemy class 1 (Нефор): `1000:547e`..`1000:5512`, `Random(3)`.
+    fn spoil_charm(&mut self) {
+        match self.rng.below_at("1000:5482", 3) {
+            0 => {
+                // 1000:548c gate, 1000:5493 `add [0x38a4],2`, 1000:54b1 flag.
+                if !self.charm_krestik_38bd {
+                    self.player.luck += 2;
+                    term::println("^1Ты нашёл крестик: удача +2");
+                    self.charm_krestik_38bd = true;
+                }
+            }
+            1 => {
+                // 1000:54bd gate, 1000:54c4 `inc [0x38a4]`, 1000:54e1 flag.
+                if !self.charm_ring_38be {
+                    self.player.luck += 1;
+                    term::println("^1Ты нашёл кольцо \"Господи спаси\": удача +1");
+                    self.charm_ring_38be = true;
+                }
+            }
+            _ => {
+                // 1000:54ed gate, 1000:550d flag. No stat change.
+                if !self.has_mobile {
+                    term::println("^1Ты нашёл мобилу");
+                    self.has_mobile = true;
+                }
+            }
+        }
+    }
+
+    /// Enemy classes 3..6: `1000:552c`..`1000:560b`, `Random(2)`.
+    ///
+    /// Both arms grant a weapon and both add to `dmg_min`/`dmg_max` only when
+    /// no BETTER weapon is already owned -- the "better" set differs between
+    /// them, which is why the two are written out rather than folded.
+    fn spoil_club(&mut self) {
+        match self.rng.below_at("1000:5530", 2) {
+            0 => {
+                if self.weapon_kastet_38ba {
+                    return;
+                }
+                self.weapon_kastet_38ba = true; // 1000:5541
+                term::println("^1Ты надыбал кастет(урон+2)");
+                // 1000:555f/1000:5566/1000:556d -- ножик, дубинка, тесак.
+                if !self.weapon_nozhik_38c2 && !self.weapon_dubinka_394b && !self.weapon_tesak_394c
+                {
+                    self.player.dmg_min += 2; // 1000:5574
+                    self.player.dmg_max += 2;
+                } else {
+                    term::println("^6Но у тебя есть более мощное оружие");
+                }
+            }
+            _ => {
+                if self.weapon_dubinka_394b {
+                    return;
+                }
+                self.weapon_dubinka_394b = true; // 1000:55a7
+                term::println("^1Ты отобрал у врага дубинку(урон+4)");
+                // 1000:55c5/1000:55cc -- ножик, тесак.
+                if self.weapon_nozhik_38c2 || self.weapon_tesak_394c {
+                    term::println("^6Но у тебя есть более мощное оружие");
+                } else if self.weapon_kastet_38ba {
+                    self.player.dmg_min += 2; // 1000:55da
+                    self.player.dmg_max += 2;
+                } else {
+                    self.player.dmg_min += 4; // 1000:55e6
+                    self.player.dmg_max += 4;
+                }
+            }
+        }
+    }
+
+    /// Enemy class 7 (Беспредельщик): `1000:5613`..`1000:5672`, `Random(2)`.
+    fn spoil_glasses(&mut self) {
+        match self.rng.below_at("1000:5617", 2) {
+            0 => {
+                // 1000:5621 gate, 1000:5628 flag. No stat change.
+                if !self.dark_glasses {
+                    self.dark_glasses = true;
+                    term::println("^1Ты нашёл тёмные очки.");
+                }
+            }
+            _ => {
+                // 1000:564d gate, 1000:566d flag.
+                if !self.has_mobile {
+                    term::println("^1Ты нашёл мобилу");
+                    self.has_mobile = true;
+                }
+            }
+        }
+    }
+
+    /// Enemy class 9 (Маньячок): `1000:567d`..`1000:57cc`, `Random(2)`.
+    ///
+    /// The damage terms are a chain of independent `if`s, not a `match`:
+    /// each arm can add more than one of them. `1000:56b6` `mov al,1` /
+    /// `or al,al` / `jz` is a never-taken branch the compiler left in, so
+    /// the first term's condition is only what follows it.
+    fn spoil_blade(&mut self) {
+        match self.rng.below_at("1000:5681", 2) {
+            0 => {
+                if self.weapon_nozhik_38c2 {
+                    return;
+                }
+                self.weapon_nozhik_38c2 = true; // 1000:5698
+                term::println("^1Ты нашел ножик(урон+6).");
+                // 1000:56bc..1000:56cd: al := (394b == 0); `cmp al,[0x38ba]`.
+                if !self.weapon_dubinka_394b == self.weapon_kastet_38ba {
+                    self.player.dmg_min += 4; // 1000:56cf
+                    self.player.dmg_max += 4;
+                }
+                if self.weapon_dubinka_394b {
+                    self.player.dmg_min += 2; // 1000:56e0
+                    self.player.dmg_max += 2;
+                }
+                if !self.weapon_kastet_38ba && !self.weapon_dubinka_394b && !self.weapon_tesak_394c
+                {
+                    self.player.dmg_min += 6; // 1000:56ff
+                    self.player.dmg_max += 6;
+                }
+                if self.weapon_tesak_394c {
+                    term::println("^6Но утебя есть тесак который круче."); // file 0x5516
+                }
+            }
+            _ => {
+                if self.weapon_tesak_394c {
+                    return;
+                }
+                self.weapon_tesak_394c = true; // 1000:573e
+                term::println("^1Ты нашел тесак(урон+9)!!! - ужасное оружие.");
+                // 1000:5762..1000:577a: al := (394b == 0 && 38c2 == 0).
+                if (!self.weapon_dubinka_394b && !self.weapon_nozhik_38c2)
+                    == self.weapon_kastet_38ba
+                {
+                    self.player.dmg_min += 7; // 1000:577c
+                    self.player.dmg_max += 7;
+                }
+                if self.weapon_dubinka_394b && !self.weapon_nozhik_38c2 {
+                    self.player.dmg_min += 5; // 1000:5794
+                    self.player.dmg_max += 5;
+                }
+                if self.weapon_nozhik_38c2 {
+                    self.player.dmg_min += 3; // 1000:57a5
+                    self.player.dmg_max += 3;
+                }
+                if !self.weapon_kastet_38ba && !self.weapon_dubinka_394b && !self.weapon_nozhik_38c2
+                {
+                    self.player.dmg_min += 9; // 1000:57c4
+                    self.player.dmg_max += 9;
+                }
+            }
+        }
+    }
+
+    /// `1000:40f2`..`1000:4168` -- the crowd that gathers around a long
+    /// fight, and the two draws it spends.
+    ///
+    /// **Established from flow**, disassembled from `1000:40ed` (the
+    /// `c6 86 ed fe 00` that zeroes the counter) forward, so every address
+    /// below sits on a confirmed instruction boundary; both call sites carry
+    /// the `9a 4b 11 78 0f` signature.
+    ///
+    /// ```text
+    /// 40ed  c6 86 ed fe 00   mov byte [bp-0x113],0     ; once per fight
+    /// 40f2  80 be ed fe 05   cmp byte [bp-0x113],5     ; loop top
+    /// 40f7  73 24            jae 0x411d                ; already 5: no inc
+    /// 40f9  fe 86 ed fe      inc byte [bp-0x113]
+    /// 40fd  80 be ed fe 05   cmp byte [bp-0x113],5
+    /// 4102  75 19            jne 0x411d
+    /// 4104  bf 74 2e         mov di,0x2e74             ; file 0x4744
+    /// 411d  80 3e 83 3c 00   cmp byte [0x3c83],0       ; the rector flag
+    /// 4122  74 03            je 0x4127 / jmp 0x43f6
+    /// 4127  80 be ed fe 05   cmp byte [bp-0x113],5
+    /// 412c  74 03            je 0x4131 / jmp 0x43f6
+    /// 4131  b8 0a 00 / 50    mov ax,10 / push ax
+    /// 4135  9a 4b 11 78 0f   call Random               ; nonzero -> 0x43f6
+    /// 4141  b8 12 00 / 50    mov ax,18 / push ax
+    /// 4145  9a 4b 11 78 0f   call Random               ; picks the line
+    /// ```
+    ///
+    /// The counter stops at 5 (`jae` skips the `inc`), so `== 5` stays true
+    /// for every later prompt: **`Random(10)` fires at every `Битва\` prompt
+    /// from the fifth onward**, not once. The live capture is the
+    /// corroboration -- a fight with 14 prompts shows exactly 10 draws at
+    /// `1000:4135`.
+    ///
+    /// `[0x3c83]` is the rector flag; nothing in this port sets it, so the
+    /// `1000:411d` gate is always open here.
+    ///
+    /// Called BEFORE the prompt is written, because `1000:43f6` (the
+    /// `^0Битва\` write) is what this block falls through to.
+    fn crowd(&mut self, prompts_seen: &mut u8) {
+        if *prompts_seen < 5 {
+            *prompts_seen += 1;
+            if *prompts_seen == 5 {
+                // file 0x4744
+                term::println("^7Начинают собираться зрители");
+            }
+        }
+        if *prompts_seen != 5 {
+            return;
+        }
+        if self.rng.below_at("1000:4135", 10) != 0 {
+            return;
+        }
+        let which = self.rng.below_at("1000:4145", 18);
+        // The eighteen lines at code offsets 0x2e92..0x314d (files
+        // 0x4762..0x4A1D), in the order the `cmp ax,N` chain at 1000:414a
+        // onwards tests them. Two are built from a name: 4 splices the
+        // PLAYER'S RANK name (`[0x389c] * 0x100 + 0x2e`, the DS:002e table
+        // `data/enemies.json` carries) and 17 the player's own name
+        // (`DS:379c`).
+        match which {
+            0 => term::println("Зрители:^6Мочи его, мочи!"),
+            1 => term::println("Зрители:^6Врежь ему!"),
+            2 => term::println("Зрители:^6Блин долго ты ещё будешь мудиться?"),
+            3 => term::println("Зрители:^6Да вы только посмотрите на эти пинки!"),
+            4 => {
+                term::print("Зрители:^6Не подкачай ");
+                term::print(&Self::rank_name(self.player.class));
+                term::println(", я на тебя трёшку поставил!");
+            }
+            5 => term::println("Зрители:^6Чё-тут за батва?"),
+            6 => term::println("Зрители:^6Я знаю вон того мудака, он уже нескольких запинал!"),
+            7 => term::println("Зрители:^6Чё так слабо бьёшь?! Пинай сильнее!"),
+            8 => {
+                term::println("Зрители:^6Дерьмово дерётесь придурки");
+                term::println("^2А ты: Заткнись мудак, а то щас тебя запинаю!");
+            }
+            9 => term::println(
+                "Зрители:^6Да, а помнишь мы вчера также одного пинали, пинали.. \
+                 А потом подошла его братва..",
+            ),
+            10 => term::println("Зрители:^6Это чё реслинг?"),
+            11 => term::println("Зрители:^6Двинь ему в рыло!"),
+            12 => term::println("Зрители:^6И куда менты смотрят?"),
+            13 => term::println("Зрители:^6Пинай!"),
+            14 => term::println("Зрители:^6Врежь гаду!"),
+            15 => term::println("Зрители:^6Господа делайте ваши ставки!"),
+            16 => term::println("Зрители:^6Ну чё там? Какой счет?"),
+            _ => {
+                term::print("Зрители:^6Ну и кого там ");
+                term::print(&self.player.name);
+                term::println(" ^6сегодня пинает?");
+            }
+        }
+    }
+
+    /// The rank name at `DS:002e + class * 0x100` -- the same eleven-row
+    /// table `1000:13dc`..`1000:13e4` indexes for the enemy's display name,
+    /// which `data/enemies.json` carries one row per class of.
+    fn rank_name(class: u16) -> String {
+        data::enemies()
+            .iter()
+            .find(|e| e.class == class)
+            .map(|e| e.name.to_string())
+            .unwrap_or_else(|| panic!("data/enemies.json has no row for class {class}"))
+    }
+
     fn combat_round(&mut self, enemy: &mut Fighter) {
+        // Both loops' exits are SIGNED tests on a defender's hp word, and the
+        // two are not the same test:
+        //
+        //   1000:4629  cmp word [0x3962],0 / jg 0x4632   leave at enemy hp <= 0
+        //   1000:4659  cmp word [0x3962],0 / jl 0x4663   ... and again at < 0
+        //   1000:48cd  cmp word [0x38ac],0 / jl 0x48d7   leave at player hp < 0
+        //
+        // so a defender sitting at EXACTLY 0 stops the player's loop and does
+        // NOT stop the enemy's -- the enemy swings again, and that swing costs
+        // draws. `Fighter::hp` is a `u16` this port saturates at 0, which
+        // cannot tell "exactly 0" from "would have gone negative", so the
+        // running hp is kept here as an `i32` and the loop exits are driven
+        // from it. Only the STORED value saturates; see `docs/re/gaps.md`,
+        // "Opened by Task 13", for what that still costs.
+        let mut ehp = i32::from(enemy.hp);
         let player_blows = blows_per_round(&self.player, enemy);
         for i in 0..player_blows {
-            if enemy.hp == 0 {
+            if ehp <= 0 {
                 break;
             }
-            let blow = resolve_blow_nth(&mut self.rng, &self.player, enemy, i);
+            let blow = resolve_blow_nth(&mut self.rng, &self.player, enemy, i, Swing::player());
             if !blow.hit {
                 term::println("^4Ты промазал");
                 continue;
             }
-            if blow.critical {
-                term::println("^2Точный удар!!!");
-            }
-            enemy.hp = enemy.hp.saturating_sub(blow.damage);
-            term::println(&text::fill(
-                "^2Ты пнул врага на #з. У него осталось #",
-                &[blow.damage as i64, enemy.hp as i64],
-            ));
-            match blow.broke {
-                Some(Break::Jaw) => term::println("^2Ты сломал врагу челюсть. ^4Враг: А! козёл!"),
-                Some(Break::Leg) => {
-                    term::println("^2Ты сломал врагу ногу. ^4Враг: Ну что за урод!")
-                }
+            // 1000:44ed/1000:450d/1000:452d -- the crit's `Random(3)` picks
+            // ONE of three lines (files 0x4A54, 0x4A65, 0x4A7B). This port
+            // used to draw it and print the first line whatever it returned.
+            match blow.taunt {
+                Some(0) => term::println("^2Точный удар!!!"),
+                Some(1) => term::println("^2Не хило приложил!!!"),
+                Some(_) => term::println("^2Двойной урон!!!"),
                 None => {}
             }
+            ehp -= i32::from(blow.damage);
+            enemy.hp = ehp.max(0) as u16;
+            term::println(&text::fill(
+                "^2Ты пнул врага на #з. У него осталось #",
+                &[blow.damage as i64, ehp as i64],
+            ));
+            // 1000:459e/1000:45be and 1000:45c5/1000:45e5: the message is
+            // suppressed when that limb is ALREADY broken, and the flag is
+            // set on the enemy's record. This port printed unconditionally
+            // and never set either flag -- the enemy's `20ae:3966`/`3967` in
+            // `data/combat_trace.json`'s per-round channel is what caught it.
+            match blow.broke {
+                Some(Break::Jaw) if !enemy.broken_jaw => {
+                    enemy.broken_jaw = true;
+                    term::println("^2Ты сломал врагу челюсть. ^4Враг: А! козёл!");
+                }
+                Some(Break::Leg) if !enemy.broken_leg => {
+                    enemy.broken_leg = true;
+                    term::println("^2Ты сломал врагу ногу. ^4Враг: Ну что за урод!");
+                }
+                // Already broken, or no break at all: 1000:45a3 and 1000:45ca
+                // jump past the message, leaving the flag as it was.
+                _ => {}
+            }
+            // 1000:4624 subtracts 18; 1000:4629 `cmp word [0x3962],0` /
+            // `jg 0x4632` leaves the loop with NO message when the enemy is
+            // down; 1000:4639 prints file 0x4B21 when the budget still has
+            // room (`cmp [bp-0x10e],0` / `jle 0x4652` at 1000:4632).
+            if ehp > 0 && i + 1 < player_blows {
+                term::println("^2Из-за большой ловкости ты можешь пнуть ещё раз");
+            }
         }
-        if enemy.hp == 0 {
+        // 1000:4675 `cmp word [0x3962],0` / `jg 0x467f` -- the enemy swings
+        // only if it is still up; anything else jumps straight to the verb
+        // dispatch at 1000:48d7.
+        if ehp <= 0 {
             return;
         }
+        let mut php = i32::from(self.player.hp);
         let enemy_blows = blows_per_round(enemy, &self.player);
         for i in 0..enemy_blows {
-            if self.player.hp == 0 {
+            if php < 0 {
                 break;
             }
-            let blow = resolve_blow_nth(&mut self.rng, enemy, &self.player, i);
+            let blow = resolve_blow_nth(
+                &mut self.rng,
+                enemy,
+                &self.player,
+                i,
+                Swing::enemy(self.tooth_guard),
+            );
             if !blow.hit {
                 term::println("^2Враг промазал");
                 continue;
             }
-            self.player.hp = self.player.hp.saturating_sub(blow.damage);
+            // 1000:4710/1000:4730/1000:4750 -- the enemy's copy of the crit
+            // lines (files 0x4B52, 0x4B67, 0x4B7F). This port printed nothing
+            // at all for an enemy crit.
+            match blow.taunt {
+                Some(0) => term::println("^4Враг:Сдохни урод!!"),
+                Some(1) => term::println("^4Тебе не хило врезали!"),
+                Some(_) => term::println("^4Враг:Получи гнида!!"),
+                None => {}
+            }
+            php -= i32::from(blow.damage);
+            self.player.hp = php.max(0) as u16;
             term::println(&text::fill(
                 "^4Он пнул тебя на #з. У тебя осталось #",
-                &[blow.damage as i64, self.player.hp as i64],
+                &[blow.damage as i64, php as i64],
             ));
             match blow.broke {
-                Some(Break::Jaw) => {
-                    self.player.broken_jaw = true;
-                    term::println("^4Враг сломал тебе челюсть.");
-                }
-                Some(Break::Leg) => {
+                // 1000:47c7..1000:4840. Without the зубная защита this is
+                // the plain `cmp byte [0x38b0],0` gate at 1000:47c7 plus the
+                // set at 1000:47ee; with it, the `Random(4)` at 1000:47fe has
+                // already been drawn inside `resolve_blow_nth` and its result
+                // is what picks between the two lines here.
+                Some(Break::Jaw) => match blow.jaw_guard {
+                    Some(true) => {
+                        // 1000:4807, file 0x4BB1, then 1000:4820 sets it.
+                        self.player.broken_jaw = true;
+                        term::println("^4Враг сломал тебе челюсть, даже защита не помогла.");
+                    }
+                    // 1000:4827, file 0x4BE5 -- the jaw is NOT broken.
+                    Some(false) => term::println("^2Защита спасла твои кривые клыки."),
+                    None => {
+                        if !self.player.broken_jaw {
+                            self.player.broken_jaw = true;
+                            term::println("^4Враг сломал тебе челюсть.");
+                        }
+                    }
+                },
+                // 1000:4842 `cmp byte [0x38b1],0` / `jnz 0x4867`: same
+                // suppression as the jaw's.
+                Some(Break::Leg) if !self.player.broken_leg => {
                     self.player.broken_leg = true;
                     term::println("^4Враг сломал тебе ногу.");
                 }
-                None => {}
+                _ => {}
+            }
+            // 1000:48a1 subtracts 18 and 1000:48a6 `cmp [bp-0x10e],0` /
+            // `jle 0x48c6` guards file 0x4C59 -- and that is ALL it guards.
+            // The player half has a defender-is-down test ahead of its
+            // message (1000:4629) and this one does not, so the two "mirror"
+            // halves really do differ here: the enemy announces another blow
+            // even on the swing that finished the player.
+            if i + 1 < enemy_blows {
+                term::println("^4Из-за большой ловкости враг может пнуть ещё раз");
             }
         }
     }

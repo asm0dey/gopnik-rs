@@ -55,10 +55,70 @@ pub struct BlowOutcome {
     /// The `Точный удар!!!` / `Двойной урон!!!` roll landed: `dmg_max` was
     /// added to the damage.
     pub critical: bool,
+    /// Which of the three crit lines the `Random(3)` at `1000:44e3` /
+    /// `1000:4706` picked, `None` when there was no crit. The draw was always
+    /// made and always discarded before Task 13 -- it decides only which line
+    /// is printed, but it steps the generator, and now it also decides what
+    /// the player reads.
+    pub taunt: Option<u16>,
     /// The blow broke the defender's jaw or leg. `None` when the break roll
     /// failed. A limb that is *already* broken still reports here -- the
     /// original re-rolls regardless and only suppresses the message.
     pub broke: Option<Break>,
+    /// The зубная защита's roll, and only when it happened: `Some(true)` the
+    /// guard failed and the jaw broke anyway (`1000:4820`), `Some(false)` the
+    /// guard held and the jaw did NOT break (`1000:4827`). `None` means no
+    /// `Random(4)` was drawn -- the break was a leg, or the defender does not
+    /// own the guard, or the jaw was already broken.
+    pub jaw_guard: Option<bool>,
+}
+
+/// Which half of the round is swinging, and the one piece of defender state
+/// that is not on [`Fighter`].
+///
+/// The blow code exists TWICE in the original -- `1000:445c`..`1000:4660`
+/// with the player swinging and `1000:467f`..`1000:4867` with the enemy --
+/// and the two copies are the same instruction sequence with the records
+/// swapped. One function covers both, but the `Random` CALL SITES differ, and
+/// `data/combat_trace.json` records the site of every draw, so which copy is
+/// running has to be said rather than inferred.
+///
+/// The enemy-swinging copy also has a branch its mirror does not: the
+/// зубная защита at `20ae:394a`. It is a player-only item that lives outside
+/// the fighter record, so it is carried here rather than on [`Fighter`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Swing {
+    /// `true` for `1000:445c`..`1000:4660`, `false` for the enemy's mirror.
+    pub player_attacking: bool,
+    /// `20ae:394a` -- only ever true when the PLAYER is the defender, i.e.
+    /// when `player_attacking` is false.
+    pub defender_tooth_guard: bool,
+}
+
+impl Swing {
+    /// The player's half of the round.
+    pub fn player() -> Swing {
+        Swing {
+            player_attacking: true,
+            defender_tooth_guard: false,
+        }
+    }
+
+    /// The enemy's half, with the player's зубная защита as it stands.
+    pub fn enemy(defender_tooth_guard: bool) -> Swing {
+        Swing {
+            player_attacking: false,
+            defender_tooth_guard,
+        }
+    }
+
+    fn site(self, player: &'static str, enemy: &'static str) -> &'static str {
+        if self.player_attacking {
+            player
+        } else {
+            enemy
+        }
+    }
 }
 
 /// The attacker's agility budget for a round, after the defender's agility
@@ -167,7 +227,7 @@ fn budget_at(budget: i16, blow_index: u16) -> i16 {
 
 /// Resolve the round's first blow. See [`resolve_blow_nth`] for later ones.
 pub fn resolve_blow(rng: &mut Rng, attacker: &Fighter, defender: &Fighter) -> Blow {
-    let o = resolve_blow_nth(rng, attacker, defender, 0);
+    let o = resolve_blow_nth(rng, attacker, defender, 0, Swing::player());
     Blow {
         hit: o.hit,
         damage: o.damage,
@@ -182,6 +242,14 @@ pub fn resolve_blow(rng: &mut Rng, attacker: &Fighter, defender: &Fighter) -> Bl
 /// sequence twice with the two records' addresses swapped, which is why one
 /// function covers both directions. Addresses below are given as
 /// player-swinging / enemy-swinging.
+///
+/// Two places where they are NOT the same sequence, both outside this
+/// function: the enemy-swinging copy has the зубная защита branch
+/// (`1000:47c7`..`1000:4840`, see [`Swing`]), and the two loop TAILS test the
+/// defender differently -- `1000:4629` `jg` against `1000:48cd` `jl`, plus a
+/// defender check before the player's `ещё раз` line that the enemy's copy
+/// does not have. `crate::game::Game::combat_round` writes those out
+/// separately; `docs/re/gaps.md`, "Opened by Task 13", has the addresses.
 ///
 /// Draw order, and it matters:
 ///
@@ -211,16 +279,19 @@ pub fn resolve_blow_nth(
     attacker: &Fighter,
     defender: &Fighter,
     blow_index: u16,
+    swing: Swing,
 ) -> BlowOutcome {
     let miss = BlowOutcome {
         hit: false,
         damage: 0,
         critical: false,
+        taunt: None,
         broke: None,
+        jaw_guard: None,
     };
 
     // 1. Hit roll: Random(100) + 1 must be within budget*5 and at most 90.
-    let roll = (rng.below(100) as i16).wrapping_add(1);
+    let roll = (rng.below_at(swing.site("1000:4460", "1000:4683"), 100) as i16).wrapping_add(1);
     let budget = budget_at(blow_budget(attacker, defender), blow_index);
     if budget.wrapping_mul(5) < roll || roll > ACCURACY_CAP {
         return miss;
@@ -230,7 +301,7 @@ pub fn resolve_blow_nth(
     //    dmg_min+1 ..= dmg_max. The subtraction is a 16-bit `sub` whose
     //    result is passed to Random as a Word (1000:448f / 1000:46b5).
     let span = attacker.dmg_max.wrapping_sub(attacker.dmg_min);
-    let rolled = rng.below(span);
+    let rolled = rng.below_at(swing.site("1000:4497", "1000:46ba"), span);
     let mut damage = attacker.dmg_min.wrapping_add(rolled).wrapping_add(1) as i16;
 
     // 3./4. Crit: Random(100) + 1 < attacker.luck * 3, compared as a signed
@@ -238,12 +309,13 @@ pub fn resolve_blow_nth(
     //       in 16 bits, then `cwd` sign-extends it, and the comparison is
     //       Borland's high-word-signed/low-word-unsigned pair
     //       (1000:44cd..1000:44d6 / 1000:46f0..1000:46f9).
-    let crit_roll = (rng.below(100) as i32) + 1;
+    let crit_roll = (rng.below_at(swing.site("1000:44b8", "1000:46db"), 100) as i32) + 1;
     let attacker_luck3 = (attacker.luck.wrapping_mul(3)) as i16 as i32;
     let critical = attacker_luck3 > crit_roll;
+    let mut taunt = None;
     if critical {
         damage = damage.wrapping_add(attacker.dmg_max as i16);
-        let _taunt = rng.below(3);
+        taunt = Some(rng.below_at(swing.site("1000:44e3", "1000:4706"), 3));
     }
 
     // Armour is a byte in the record, zero-extended before the subtraction,
@@ -258,13 +330,25 @@ pub fn resolve_blow_nth(
     //       compared the same way as the crit, then Random(2) picks jaw (0)
     //       or leg (1) (1000:4564..1000:4595 / 1000:4787..1000:47be).
     let break_bound = defender.luck.wrapping_mul(3).wrapping_add(200);
-    let break_roll = (rng.below(break_bound) as i32) + 1;
+    let break_roll = (rng.below_at(swing.site("1000:4571", "1000:4794"), break_bound) as i32) + 1;
+    let mut jaw_guard = None;
     let broke = if attacker_luck3 > break_roll {
-        Some(if rng.below(2) == 0 {
-            Break::Jaw
+        if rng.below_at(swing.site("1000:4595", "1000:47be"), 2) == 0 {
+            // 7. The зубная защита, enemy-swinging only. `1000:47c7`
+            //    `cmp byte [0x38b0],0` / `jnz 0x4840` skips everything when
+            //    the jaw is ALREADY broken -- including the draw -- and
+            //    `1000:47f3` `cmp byte [0x394a],0` / `jz 0x4840` skips it
+            //    when the guard is not owned. So the extra `Random(4)` at
+            //    `1000:47fe` costs a draw only on the first jaw break of a
+            //    guarded player, and `0` (`or ax,ax` / `jnz 0x4827`) breaks
+            //    it anyway.
+            if swing.defender_tooth_guard && !defender.broken_jaw {
+                jaw_guard = Some(rng.below_at("1000:47fe", 4) == 0);
+            }
+            Some(Break::Jaw)
         } else {
-            Break::Leg
-        })
+            Some(Break::Leg)
+        }
     } else {
         None
     };
@@ -273,7 +357,9 @@ pub fn resolve_blow_nth(
         hit: true,
         damage: damage as u16,
         critical,
+        taunt,
         broke,
+        jaw_guard,
     }
 }
 

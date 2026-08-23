@@ -581,6 +581,112 @@ Two more limits, in the same spirit as the draw channel's:
   compare. They are captured (and read, so the column cannot rot) precisely so
   that gap is measurable rather than invisible.
 
+## The fight channel (Task 13) — `data/combat_trace.json`
+
+`tools/rngtrace/driver.py`'s `walk` types `run` at the `Битва\` prompt and `n`
+at every question, so **not one** of the five runs above ever fights. Checked
+rather than assumed: `data/rng_trace.json`'s 1387 draws contain **zero** call
+sites inside `[0x3d11, 0x584c)`, the whole span of `FUN_1000_3d11`.
+
+`tools/rngtrace/fightrun.py` is the same harness with two answers changed —
+`y` at a question (the ACCEPT arm of the literal-`y` compare at `1000:b548` /
+`1000:b696` / `1000:b718`, file `0x9BF3`) and `k` or `run` at `Битва\`. It
+writes a **third** file, `data/combat_trace.json`. `data/rng_trace.json` and
+`data/state_trace.json` are not read, written or regenerated to produce it, and
+the new file records both their SHA-256 digests so a reader can check that
+instead of taking it on trust — the same discipline Task 11i used for the state
+channel.
+
+### Two more breakpoints, and why each one exists
+
+`gdbsession.build_fight_script` installs four rather than two.
+`build_script`, which produced the two frozen oracles, is untouched.
+
+| stop | marker | what it samples |
+|---|---|---|
+| `0f78:1165` | `R` | the draw — unchanged |
+| `1000:ae63` | `P`+`S` | the per-turn state — unchanged |
+| `1000:3d11` | `F`+`E` | the whole enemy record at `20ae:3952`.., once per fight |
+| `1000:441d` | `C`+`B` | both fighters' hp and all four break flags, once per `Битва\` prompt |
+
+`1000:3d11` is `FUN_1000_3d11`'s own prologue, so the opponent
+`FUN_1000_0d14` rolled is already in memory there. That makes the fight
+channel a **second** check on the encounter generator: the port has to roll the
+same fighter, not merely spend the same draws.
+
+`1000:441d` is the combat prompt's own `ReadLn` (`9a c6 06 78 0f`, with the
+combat buffer `DS:3a72` pushed at `1000:4414`) — the same runtime entry
+`1000:ae63` calls, against a different buffer. Sampling there is what pins the
+jaw and leg break **effect**: before this file, the only
+`broken_jaw`/`broken_leg` assertion in the whole suite was
+`tests/data_load.rs`'s check that a *fresh* fighter has neither, so the break
+formulas at `1000:4564`..`1000:45ea` and `1000:4787`..`1000:4867` were
+recovered, documented, implemented — and asserted by nothing.
+
+### The input is captured, not scripted
+
+`tests/wander_sequence.rs` feeds one constant string (`run`) because that
+answers every prompt in a declining run exactly as the driver's `n`/`run` did.
+A fight needs **two** different answers, so instead each run records
+`lines_the_game_read`: the ordered list of lines the game's own `ReadLn`s
+consumed, which is what `tests/combat_sequence.rs` is fed.
+
+That list is only the game's input if the driver's screen classification agreed
+with what the guest did, so it is cross-checked rather than trusted. The guest's
+own `1000:441d` breakpoint counts the `Битва\` prompts, and `fightrun.py`
+refuses a run where that count differs from the number of lines the driver typed
+at a screen it called `combat`. The driver also waits for a **settled** screen
+(two identical consecutive reads) before classifying, because a half-written
+mid-round screen reads as `other` — and the Enter that answers it *is* consumed
+by the combat prompt's `ReadLn`, which is exactly how the list could have gone
+silently wrong.
+
+### The guard that had to change, and what replaced it
+
+Guard 10's last half — the last per-turn sample must equal the `pmemsave`
+`final_state` — rests on the guest sitting in the top-level `ReadLn` between the
+two reads. A fight capture can end somewhere else: `^4Ты сдох.` at `1000:5053`
+goes to `FUN_1000_074b` and out of the process, so the final dump is of a guest
+that left the game **mid-turn**. Forcing the comparison there would compare two
+different moments.
+
+It is replaced, not dropped, and the substitution is stronger rather than
+weaker. Every gdb-read sample — per turn, per fight and per combat prompt — now
+carries `RandSeed`, and `tracelog.check_sample_seeds` requires each to equal the
+LCG stepped once per draw logged before it. So instead of checking the gdb path
+against the `pmemsave` path, **each is checked against `docs/re/rng.md`'s
+recurrence**: `reconcile_final_randseed` for the dump, `check_sample_seeds` for
+every gdb sample. A sample read at the wrong address or width fails, and so does
+one sitting at the wrong point in the draw stream. `verify_combat_run` still
+runs the two-transport comparison as well on any run that *did* end at the turn
+marker, and records in so many words which of the two applied.
+
+One more check the drive gets: the final memory dump is only usable at all if
+the image is still the image. `fightrun.verify_image_after_drive` re-verifies
+every code-region relocation at the same base, `Random`'s 29 bytes and the seed
+patch, against the **post-drive** dump. DOS does not scrub a block it freed, but
+"does not scrub" is an assumption and this makes it a checked one.
+
+### What was captured
+
+Four runs, **1900 draws, 15 fights**, all four replayed exactly by
+`tests/combat_sequence.rs`.
+
+| run | character | answer | turns | fights | draws | ends |
+|---|---|---|---|---|---|---|
+| A | fresh Подтсан, district 1 | `k` | 1 + the fatal one | 1 (30 prompts) | 208 | died |
+| B | `SAVE_R2.SAV`, district 2 | `k` | 25 | 6, all won | 894 | at the turn marker |
+| C | `SAVE_R3.SAV`, district 3 | `k` | 9 + the fatal one | 3 (2 won) | 496 | died |
+| D | fresh Вор, district 1 | `run` | 20 | 5, all fled | 302 | at the turn marker |
+
+Run A's single fight is the longest captured — 30 prompts — which is what
+pins the crowd's `Random(10)` at `1000:4135` firing **once per prompt from the
+fifth onward** (26 of them) rather than once per fight. Run B is the only run
+whose whole 35-variable end state can be asserted, and the only one that reaches
+the victory block's own draws in quantity. Run C loads the one save corpus entry
+with the зубная защита. Run D is the live form of "no arm of the flee path
+draws": five fights, five prompts, zero draws anywhere in `[0x3d11, 0x584c)`.
+
 ## Reproducing
 
 ```bash
@@ -600,6 +706,28 @@ python3 tools/rngtrace/run.py --boot-img <freedos.img> --walks 25 \
 # it is not something to re-run casually, and Task 11i deliberately did not.
 python3 tools/rngtrace/compare.py build/rngtrace/trace{A,B,C,D,E}.json \
     --labels A,B,C,D,E --out data/rng_trace.json
+
+# the FIGHT capture (Task 13) -> data/combat_trace.json, a THIRD file that
+# never touches either oracle above.  These are the exact four commands that
+# produced the committed file.
+python3 tools/rngtrace/fightrun.py --boot-img <freedos.img> \
+    --district 1 --class-answer 0 --walks 20 --combat-answer k \
+    --seed 0x12345678 --workdir build/rngtrace/fw-A \
+    --out build/rngtrace/fight-A.json
+python3 tools/rngtrace/fightrun.py --boot-img <freedos.img> \
+    --district 2 --class-answer 0 --walks 25 --combat-answer k \
+    --seed 0x0BADC0DE --with-saves --workdir build/rngtrace/fw-B \
+    --out build/rngtrace/fight-B.json
+python3 tools/rngtrace/fightrun.py --boot-img <freedos.img> \
+    --district 3 --class-answer 0 --walks 25 --combat-answer k \
+    --seed 0x5EED1234 --with-saves --workdir build/rngtrace/fw-C \
+    --out build/rngtrace/fight-C.json
+python3 tools/rngtrace/fightrun.py --boot-img <freedos.img> \
+    --district 1 --class-answer 3 --walks 20 --combat-answer run \
+    --seed 0x00C0FFEE --workdir build/rngtrace/fw-D \
+    --out build/rngtrace/fight-D.json
+python3 tools/rngtrace/combattrace.py build/rngtrace/fight-{A,B,C,D}.json \
+    --labels A,B,C,D --out data/combat_trace.json
 
 # the per-turn state capture (Task 11i) -> data/state_trace.json, which is a
 # SEPARATE file and never overwrites the draw oracle above

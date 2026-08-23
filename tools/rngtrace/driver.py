@@ -7,6 +7,7 @@ prompt it is answering, so the character that gets created is the one asked
 for -- which matters, because the class decides whether draws 10 and 11 of
 docs/re/wander.md are gated on at all.
 """
+import re
 import time
 
 TITLE = "\u041d\u0430\u0436\u043c\u0438 \u043a\u0430\u043a\u0443\u044e-\u043d\u0438\u0431\u0443\u0434\u044c \u043a\u043d\u043e\u043f\u043a\u0443"   # "Нажми какую-нибудь кнопку"
@@ -194,3 +195,152 @@ def walk(vm, turns: int, timeout=60, max_actions=None):
             break
         time.sleep(0.8)
     return log
+
+
+class FightLog(dict):
+    """The drive's own record, kept as a dict so it serialises straight out."""
+
+
+# ---------------------------------------------------------------------------
+# Task 13: driving a fight.
+#
+# `walk` above types `run` at the `Битва\\` prompt and `n` at every question,
+# which is why not one of the five runs in `data/rng_trace.json` contains a
+# draw from inside the blow loop.  `fight` below changes exactly two answers:
+#
+#   * a question gets `y`.  `1000:b548`, `1000:b696` and `1000:b718` compare
+#     the line against the literal `y` (file 0x9BF3) and `jnz` on anything
+#     else, so this is the ACCEPT arm of the same compare `walk` declined --
+#     and it is what makes fights happen at all.  Declining produced 0 fights
+#     in 30 walks on a high-luck save: the aggressive block that can start a
+#     fight without consent needs `luck < notice` (`1000:b5fc`), which a lucky
+#     character rarely loses.
+#   * the `Битва\\` prompt gets `combat_answer` -- `k` (1000:4440) to swing or
+#     `run` (1000:48e1) to flee.
+#
+# A turn counts as DONE when the street prompt comes back, not when `w` is
+# typed, because a fight can end the process (`^4Ты сдох.` -> FUN_1000_074b ->
+# Halt) and a turn that ended that way was never taken.
+#
+# Two answers means the port replaying this run cannot feed one constant
+# string the way `tests/wander_sequence.rs` does.  So the drive records the
+# ordered list of lines it typed at the prompts the game READS A LINE at --
+# every question and every `Битва\\` prompt -- and the port is fed exactly
+# that.  Enter typed at an any-key page is NOT in the list: no `ReadLn` of the
+# game's own consumes it.
+#
+# That list is only usable if the driver's screen classification agreed with
+# what the guest actually did, so it is cross-checked rather than trusted: the
+# guest's own breakpoint at `1000:441d` counts the `Битва\\` prompts, and
+# `fightrun.py` refuses a run where that count differs from the number of
+# lines this driver typed at a screen it called `combat`.
+DEAD = "Ты сдох"        # "Ты сдох"
+ACCEPT = "y"            # file 0x9BF3 -- the literal 1000:b548/b696/b718 compare against
+
+# `C:\>` -- the FreeDOS command prompt.  Matched on its whole shape rather than
+# on a trailing `>`, so a game line that happens to end in `>` cannot be read as
+# the game having exited.
+RE_DOS_PROMPT = re.compile(r"^[A-Za-z]:\\[^>]*>$")
+
+
+def game_gone(screen: str) -> bool:
+    """The game is no longer running: the guest is back at a DOS prompt.
+
+    Judged on the shape DOS leaves behind, not on the death message -- the
+    death message scrolls off under `FUN_1000_074b`'s end screen, so looking
+    for it would miss the very case this is here to detect.
+    """
+    return RE_DOS_PROMPT.match(last_line(screen)) is not None
+
+
+def settled_screen(vm, tries=6, pause=0.35):
+    """A screen the game has finished writing.
+
+    Classifying a half-written screen is how a fight capture loses its
+    alignment: mid-round the last line is a blow message, which reads as
+    `other`, and the Enter that answers it IS consumed by the `Битва\\`
+    prompt's `ReadLn` -- a line the game read that the driver would not have
+    recorded.  Two identical consecutive reads mean the guest is blocked on
+    input, which is the only state it stays still in.
+    """
+    prev = vm.screen()
+    for _ in range(tries):
+        time.sleep(pause)
+        cur = vm.screen()
+        if cur == prev:
+            return cur
+        prev = cur
+    return prev
+
+
+def fight(vm, turns: int, combat_answer: str = "k", timeout=60,
+          max_actions=None):
+    """Walk `turns` times, accepting every encounter and answering the
+    `Битва\\` prompt with `combat_answer`.
+
+    Returns a record with the action log, the ordered list of lines the game's
+    own `ReadLn`s consumed, how many turns actually completed, whether the
+    guest left the game, and the last screen -- all of which the capture
+    publishes, because "the drive stopped early" must be a stated fact and not
+    something inferred from a short trace.
+    """
+    if combat_answer not in ("k", "run"):
+        raise DriveError("combat_answer must be `k` or `run`, not %r: those are "
+                         "the two arms of FUN_1000_3d11's dispatch this driver "
+                         "knows how to reach (1000:4440 and 1000:48e1)"
+                         % combat_answer)
+    log = []
+    lines = []
+    combat_typings = 0
+    done = 0
+    started = 0
+    budget = max_actions if max_actions is not None else 40 * turns + 200
+    actions = 0
+    exited = False
+    while done < turns:
+        actions += 1
+        if actions > budget:
+            raise DriveError("driver used %d actions for %d turns; last screen:\n%s"
+                             % (actions, turns, vm.screen()))
+        screen = settled_screen(vm)
+        if game_gone(screen):
+            exited = True
+            break
+        what = classify(screen)
+        if what == "street":
+            if started > done:
+                done = started
+            if done >= turns:
+                break
+            vm.type("w\n")
+            started = done + 1
+            typed = "w"
+        elif what == "combat":
+            vm.type(combat_answer + "\n")
+            typed = combat_answer
+            combat_typings += 1
+            lines.append(typed)
+        elif what == "question":
+            vm.type(ACCEPT + "\n")
+            typed = ACCEPT
+            lines.append(typed)
+        else:
+            vm.type("\n")
+            typed = "<enter>"
+        log.append({"turn": done, "prompt": what, "typed": typed})
+    end = time.time() + timeout
+    while time.time() < end:
+        s = settled_screen(vm)
+        if game_gone(s):
+            exited = True
+            break
+        if classify(s) == "street":
+            done = started
+            break
+        if classify(s) in ("combat", "question"):
+            break
+    return FightLog(actions=log, turns_requested=turns, turns_completed=done,
+                    combat_answer=combat_answer, guest_left_the_game=exited,
+                    lines_the_game_read=lines,
+                    combat_prompts_typed_at=combat_typings,
+                    last_screen=vm.screen())

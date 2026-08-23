@@ -43,43 +43,24 @@ from pathlib import Path
 OFF_RANDOM_ENTRY = 0x114B      # 0f78:114b
 OFF_RANDOM_RETF = 0x1165       # 0f78:1165, the `retf word 0x2`
 OFF_MAIN_READLN = 0xAE63       # 1000:ae63, the top-level prompt's ReadLn call
+# Task 13's two extra markers, both inside FUN_1000_3d11 and both on confirmed
+# instruction boundaries (`python3 tools/re_query.py resolve 1000:3d11` /
+# `... 1000:441d`):
+#   * 1000:3d11 is the combat function's own entry (`55` `89 e5`), reached once
+#     per fight, and the enemy record at 20ae:3952.. is already rolled there.
+#   * 1000:441d is the `Битва\` prompt's ReadLn (`9a c6 06 78 0f`), the same
+#     runtime entry 1000:ae63 calls but with combat's own buffer DS:3a72
+#     (`bf 72 3a` / `1e` / `57` at 1000:4414).  One stop per combat prompt.
+OFF_COMBAT_ENTRY = 0x3D11      # 1000:3d11, FUN_1000_3d11's prologue
+OFF_COMBAT_READLN = 0x441D     # 1000:441d, the `Битва\` prompt's ReadLn call
 
 IMAGE_OFF_RANDOM_RETF = 0xF78 * 16 + OFF_RANDOM_RETF     # 0x108e5
 IMAGE_OFF_MAIN_READLN = OFF_MAIN_READLN                  # segment 1000 == image base
+IMAGE_OFF_COMBAT_ENTRY = OFF_COMBAT_ENTRY                # segment 1000 == image base
+IMAGE_OFF_COMBAT_READLN = OFF_COMBAT_READLN              # segment 1000 == image base
 
 
 GDB_C_TYPE = {1: "unsigned char", 2: "unsigned short", 4: "unsigned int"}
-
-
-def state_printf(image_base: int, state_fields) -> str:
-    """The per-turn state sample, as one gdb `printf`.
-
-    `state_fields` is `[(name, image_off, width), ...]` -- `run.state_fields()`.
-    Targeted reads on purpose: the sampled variables are ~70 bytes, and the
-    only other way to read guest memory here is the monitor's `pmemsave`, which
-    pulls the whole 1 MiB AND cannot be aimed at this moment at all -- the
-    Python side does not know when a breakpoint stopped the guest.  gdb is
-    stopped at `1000:ae63` when this runs, so the sample is the state the
-    top-level prompt is about to be read against.
-
-    The values are printed in the order of `state_fields`, and the reader
-    (`tracelog.parse`) is handed that same order, so a widened table cannot
-    silently shift the columns: a line whose value count does not match the
-    name count is an unparsed line, which fails the run.
-    """
-    if not state_fields:
-        raise ValueError("no state fields: the per-turn state channel would be "
-                         "silently absent, and a missing channel must not look "
-                         "like an empty one")
-    reads = []
-    for name, image_off, width in state_fields:
-        try:
-            ctype = GDB_C_TYPE[width]
-        except KeyError:
-            raise ValueError("%s: width %d has no gdb type" % (name, width))
-        reads.append("*(%s*)(%s)" % (ctype, hex(image_base + image_off)))
-    fmt = " ".join("%x" for _ in reads)
-    return 'printf "S %s\\n", %s' % (fmt, ", ".join(reads))
 
 
 def build_script(image_base: int, port: int, state_fields) -> str:
@@ -113,6 +94,119 @@ while 1
       {sample}
     else
       printf "? %04x\\n", $pc
+    end
+  end
+  disable
+  stepi
+  enable
+end
+"""
+
+
+def _sample_printf(tag: str, image_base: int, fields) -> str:
+    """One gdb `printf` that prints `<tag> <hex> <hex> ...` for `fields`.
+
+    Same shape and the same guarantees as `state_printf` (which keeps its own
+    name because `data/state_trace.json`'s reader is keyed to the `S` tag):
+    the values come out in the order of `fields`, and the reader is handed the
+    same order, so a widened table cannot silently shift columns -- a line
+    whose value count does not match the name count is an UNPARSED line, which
+    fails the run.
+    """
+    if not fields:
+        raise ValueError("no fields for the %r sample: a missing channel must "
+                         "not look like an empty one" % tag)
+    reads = []
+    for name, image_off, width in fields:
+        try:
+            ctype = GDB_C_TYPE[width]
+        except KeyError:
+            raise ValueError("%s: width %d has no gdb type" % (name, width))
+        reads.append("*(%s*)(%s)" % (ctype, hex(image_base + image_off)))
+    fmt = " ".join("%x" for _ in reads)
+    return 'printf "%s %s\\n", %s' % (tag, fmt, ", ".join(reads))
+
+
+def state_printf(image_base: int, state_fields) -> str:
+    """The per-turn state sample, as one gdb `printf`.
+
+    `state_fields` is `[(name, image_off, width), ...]` -- `run.state_fields()`.
+    Targeted reads on purpose: the sampled variables are ~70 bytes, and the
+    only other way to read guest memory here is the monitor's `pmemsave`, which
+    pulls the whole 1 MiB AND cannot be aimed at this moment at all -- the
+    Python side does not know when a breakpoint stopped the guest.  gdb is
+    stopped at `1000:ae63` when this runs, so the sample is the state the
+    top-level prompt is about to be read against.
+
+    The values are printed in the order of `state_fields`, and the reader
+    (`tracelog.parse`) is handed that same order, so a widened table cannot
+    silently shift the columns: a line whose value count does not match the
+    name count is an unparsed line, which fails the run.
+    """
+    return _sample_printf("S", image_base, state_fields)
+
+
+def build_fight_script(image_base: int, port: int, state_fields,
+                       fight_fields, round_fields) -> str:
+    """Task 13's trace loop: `build_script`'s two breakpoints plus two more.
+
+    `build_script` is left exactly as it was -- it is what produced
+    `data/rng_trace.json` and `data/state_trace.json`, and neither is ever
+    regenerated -- so the fight capture gets its own builder rather than a
+    parameter that could change the frozen path.
+
+    The two extra stops:
+
+      * `1000:3d11` prints `F` and one line of `fight_fields` (the enemy
+        record, already rolled by `FUN_1000_0d14` before combat is entered).
+        One stop per fight, so it is also the fight delimiter the draw stream
+        otherwise has no marker for.
+      * `1000:441d` prints `C` and one line of `round_fields` (both fighters'
+        hp and their four break flags).  One stop per `Битва\\` prompt, i.e.
+        the state the previous round left behind.
+
+    Four breakpoints, four `$pc` values, and an `else` that still reports an
+    unexpected stop -- the dispatch cannot silently absorb one.
+    """
+    retf = image_base + IMAGE_OFF_RANDOM_RETF
+    readln = image_base + IMAGE_OFF_MAIN_READLN
+    fight = image_base + IMAGE_OFF_COMBAT_ENTRY
+    croom = image_base + IMAGE_OFF_COMBAT_READLN
+    sample = state_printf(image_base, state_fields)
+    fsample = _sample_printf("E", image_base, fight_fields)
+    csample = _sample_printf("B", image_base, round_fields)
+    return f"""set confirm off
+set pagination off
+set height 0
+set width 0
+set architecture i8086
+target remote :{port}
+break *{hex(retf)}
+break *{hex(readln)}
+break *{hex(fight)}
+break *{hex(croom)}
+info breakpoints
+printf "READY base=%x retf=%x readln=%x\\n", {hex(image_base)}, {hex(retf)}, {hex(readln)}
+while 1
+  continue
+  if $pc == {hex(OFF_RANDOM_RETF)}
+    printf "R %04x %04x %04x %04x\\n", *(unsigned short*)($ss*16+$sp), *(unsigned short*)($ss*16+$sp+2), *(unsigned short*)($ss*16+$sp+4), $ax
+  else
+    if $pc == {hex(OFF_MAIN_READLN)}
+      printf "P\\n"
+      {sample}
+    else
+      if $pc == {hex(OFF_COMBAT_ENTRY)}
+        printf "F\\n"
+        {fsample}
+      else
+        if $pc == {hex(OFF_COMBAT_READLN)}
+          printf "C\\n"
+          {csample}
+        else
+          printf "? %04x\\n", $pc
+        end
+      end
     end
   end
   disable

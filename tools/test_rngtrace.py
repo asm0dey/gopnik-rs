@@ -20,7 +20,11 @@ WHAT IS COVERED HERE (no emulator needed, runs anywhere):
     (wrong bytes at Random, the seed patch absent, RandSeed already stepped),
     and the final-RandSeed reconciliation, on synthetic memory;
   * the gdb script shape, as a regression on the reason it is a `while` loop
-    (qemu reports $pc as the 16-bit offset, so breakpoint `commands` never run).
+    (qemu reports $pc as the 16-bit offset, so breakpoint `commands` never run);
+  * Task 13's FIGHT capture: the four-breakpoint script, the two extra log
+    channels and every way one of their payloads can go missing, the
+    per-sample LCG check that replaces the two-transport reconciliation on a
+    run that died mid-turn, and the fight-span arithmetic the fold publishes.
 
 WHAT IS NOT COVERED HERE (needs the emulator, and is NOT faked):
   * booting FreeDOS under qemu, the monitor protocol, sendkey, pmemsave, and
@@ -45,8 +49,8 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "tools"))
 
 import addr  # noqa: E402  -- the address convention, defined once
-from rngtrace import (compare, driver, gdbsession, loadbase, rng,  # noqa: E402
-                      seedpatch, tracelog, vm)
+from rngtrace import (combattrace, compare, driver, fightrun,  # noqa: E402
+                      gdbsession, loadbase, rng, seedpatch, tracelog, vm)
 from rngtrace import run as runmod  # noqa: E402
 
 
@@ -1177,6 +1181,335 @@ class FoldTest(unittest.TestCase):
         b = self.entry(7, "corroborated", observed_count=3, observed_n=[9])
         [out] = compare.fold([("A", [a]), ("B", [b])])
         self.assertEqual(out["per_run"], {"B": [9]})
+
+
+# ---------------------------------------------------------------------------
+# Task 13: the fight capture.
+
+
+def fight_log(lines):
+    return "\n".join(lines) + "\n"
+
+
+class FightScriptTest(unittest.TestCase):
+    """`gdbsession.build_fight_script` -- four breakpoints, four dispatches."""
+
+    BASE = 0x224B0
+
+    def fields(self, names, width=2, off=0x3952):
+        return [(n, loadbase.DATA_SEG_IMAGE_OFF + off + 2 * i, width)
+                for i, n in enumerate(names)]
+
+    def script(self):
+        return gdbsession.build_fight_script(
+            self.BASE, 1234,
+            self.fields(["a", "b"]),
+            self.fields(["e1", "e2"]),
+            self.fields(["r1"]))
+
+    def test_it_installs_four_breakpoints(self):
+        s = self.script()
+        self.assertEqual(s.count("\nbreak *"), 4)
+        for off in (gdbsession.IMAGE_OFF_RANDOM_RETF,
+                    gdbsession.IMAGE_OFF_MAIN_READLN,
+                    gdbsession.IMAGE_OFF_COMBAT_ENTRY,
+                    gdbsession.IMAGE_OFF_COMBAT_READLN):
+            self.assertIn("break *%s" % hex(self.BASE + off), s)
+
+    def test_every_breakpoint_has_a_pc_dispatch_and_an_unexpected_arm(self):
+        s = self.script()
+        for off in (gdbsession.OFF_RANDOM_RETF, gdbsession.OFF_MAIN_READLN,
+                    gdbsession.OFF_COMBAT_ENTRY, gdbsession.OFF_COMBAT_READLN):
+            self.assertIn("if $pc == %s" % hex(off), s)
+        # A stop at none of the four must still be reported, not absorbed.
+        self.assertIn('printf "? %04x\\n", $pc', s)
+
+    def test_it_steps_over_the_breakpoint_by_hand(self):
+        # The reason the loop exists at all: qemu re-traps forever otherwise.
+        s = self.script()
+        self.assertIn("disable\n  stepi\n  enable", s)
+
+    def test_the_frozen_builder_is_untouched_by_it(self):
+        # build_script produced data/rng_trace.json and data/state_trace.json.
+        s = gdbsession.build_script(self.BASE, 1234, self.fields(["a", "b"]))
+        self.assertEqual(s.count("\nbreak *"), 2)
+        self.assertNotIn(hex(gdbsession.OFF_COMBAT_ENTRY), s)
+        self.assertNotIn('printf "F', s)
+
+    def test_an_empty_channel_is_refused(self):
+        with self.assertRaises(ValueError):
+            gdbsession.build_fight_script(self.BASE, 1234,
+                                          self.fields(["a"]), [],
+                                          self.fields(["r"]))
+        with self.assertRaises(ValueError):
+            gdbsession.build_fight_script(self.BASE, 1234,
+                                          self.fields(["a"]),
+                                          self.fields(["e"]), [])
+
+
+class FightParseTest(unittest.TestCase):
+    ENEMY = ["ec", "eseed"]
+    ROUND = ["rhp", "rseed"]
+
+    def parse(self, lines):
+        return tracelog.parse(fight_log(lines), state_names=["s", "randseed_367e"],
+                              enemy_names=self.ENEMY, round_names=self.ROUND)
+
+    def test_a_fight_marker_takes_the_next_enemy_line(self):
+        p = self.parse(["F", "E 5 abc", "C", "B 1f 0"])
+        self.assertEqual(len(p["fights"]), 1)
+        self.assertEqual(p["fights"][0]["enemy"], {"ec": 5, "eseed": 0xABC})
+        self.assertEqual(p["fights"][0]["prompts"], 1)
+        self.assertEqual(p["combat_prompts"][0]["values"], {"rhp": 0x1F, "rseed": 0})
+        self.assertEqual(p["combat_prompts"][0]["fight"], 1)
+        self.assertEqual(p["unparsed"], [])
+
+    def test_draw_counts_are_recorded_per_marker(self):
+        p = self.parse(["R 1234 224b 0064 0007", "F", "E 1 0",
+                        "R 1234 224b 0064 0007", "C", "B 2 0"])
+        self.assertEqual(p["fights"][0]["draws_before"], 1)
+        self.assertEqual(p["combat_prompts"][0]["draws_before"], 2)
+
+    def test_a_second_payload_for_one_marker_is_unparsed(self):
+        p = self.parse(["F", "E 1 0", "E 2 0"])
+        self.assertEqual(p["unparsed"], ["E 2 0"])
+
+    def test_a_payload_with_the_wrong_column_count_is_unparsed(self):
+        p = self.parse(["F", "E 1 2 3"])
+        self.assertEqual(p["unparsed"], ["E 1 2 3"])
+        self.assertIsNone(p["fights"][0]["enemy"])
+
+    def test_a_fight_log_parsed_without_the_names_drops_nothing_silently(self):
+        p = tracelog.parse(fight_log(["F", "E 1 0"]), state_names=["s"])
+        self.assertEqual(p["unparsed"], ["E 1 0"])
+
+    def test_a_build_script_log_still_parses_exactly_as_before(self):
+        # The five committed runs' logs carry no F/E/C/B lines at all.
+        p = tracelog.parse(fight_log(["R 1234 224b 0064 0007", "P", "S 3"]),
+                           state_names=["s"])
+        self.assertEqual(p["unparsed"], [])
+        self.assertEqual(p["fights"], [])
+        self.assertEqual(p["combat_prompts"], [])
+        self.assertEqual(len(p["state_samples"]), 1)
+
+
+class FightMarkerGuardTest(unittest.TestCase):
+    NAMES = (["ec"], ["rhp"])
+
+    def check(self, parsed):
+        return tracelog.check_fight_markers(parsed, enemy_names=self.NAMES[0],
+                                            round_names=self.NAMES[1])
+
+    def parsed(self, fights, rounds):
+        return {"fights": fights, "combat_prompts": rounds}
+
+    def fight(self, i=1, enemy={"ec": 1}, prompts=1, draws=0):
+        return {"index": i, "turn": 1, "draws_before": draws,
+                "enemy": dict(enemy) if enemy is not None else None,
+                "prompts": prompts}
+
+    def rnd(self, i=1, values={"rhp": 5}, fight=1):
+        return {"index": i, "turn": 1, "fight": fight, "draws_before": 0,
+                "values": dict(values) if values is not None else None}
+
+    def test_a_good_pair_passes(self):
+        out = self.check(self.parsed([self.fight()], [self.rnd()]))
+        self.assertTrue(out["every_fight_has_an_enemy_record"])
+        self.assertEqual(out["fights"], 1)
+
+    def test_a_fight_without_its_enemy_record_fails(self):
+        with self.assertRaises(tracelog.TraceError):
+            self.check(self.parsed([self.fight(enemy=None)], [self.rnd()]))
+
+    def test_a_prompt_without_its_sample_fails(self):
+        with self.assertRaises(tracelog.TraceError):
+            self.check(self.parsed([self.fight()], [self.rnd(values=None)]))
+
+    def test_a_fight_that_never_reached_its_prompt_fails(self):
+        with self.assertRaises(tracelog.TraceError):
+            self.check(self.parsed([self.fight(prompts=0)], []))
+
+    def test_a_prompt_before_any_fight_marker_fails(self):
+        with self.assertRaises(tracelog.TraceError):
+            self.check(self.parsed([self.fight()], [self.rnd(fight=0)]))
+
+    def test_a_record_missing_a_field_fails(self):
+        with self.assertRaises(tracelog.TraceError):
+            self.check(self.parsed([self.fight(enemy={"other": 1})],
+                                   [self.rnd()]))
+
+    def test_no_field_names_at_all_fails(self):
+        with self.assertRaises(tracelog.TraceError):
+            tracelog.check_fight_markers(self.parsed([], []),
+                                         enemy_names=[], round_names=["rhp"])
+
+
+class SampleSeedTest(unittest.TestCase):
+    SEED = 0x12345678
+
+    def sample(self, draws_before, value, field="randseed_367e"):
+        return {"draws_before": draws_before, "values": {field: value}}
+
+    def stepped(self, n):
+        s = self.SEED
+        for _ in range(n):
+            s = rng.step(s)
+        return s
+
+    def test_correct_seeds_pass_and_are_counted(self):
+        out = tracelog.check_sample_seeds(
+            {}, self.SEED,
+            channels=[("turn", [self.sample(0, self.SEED),
+                                self.sample(3, self.stepped(3))],
+                       "randseed_367e")])
+        self.assertEqual(out["turn_seeds_match_lcg"], 2)
+
+    def test_a_sample_at_the_wrong_point_in_the_stream_fails(self):
+        with self.assertRaises(tracelog.TraceError):
+            tracelog.check_sample_seeds(
+                {}, self.SEED,
+                channels=[("turn", [self.sample(2, self.stepped(3))],
+                           "randseed_367e")])
+
+    def test_an_empty_channel_is_refused_rather_than_passing_vacuously(self):
+        with self.assertRaises(tracelog.TraceError):
+            tracelog.check_sample_seeds({}, self.SEED,
+                                        channels=[("fight", [], "x")])
+
+    def test_a_sample_without_the_field_fails(self):
+        with self.assertRaises(tracelog.TraceError):
+            tracelog.check_sample_seeds(
+                {}, self.SEED,
+                channels=[("turn", [self.sample(0, 1, field="other")],
+                           "randseed_367e")])
+
+
+class StateSampleSplitTest(unittest.TestCase):
+    """The refactor that let the fight capture reuse the shape checks."""
+
+    def parsed(self, samples, prompts=None):
+        return {"state_samples": samples,
+                "prompt_stops": len(samples) if prompts is None else prompts}
+
+    def sample(self, turn, values):
+        return {"turn": turn, "draws_before": 0, "values": dict(values)}
+
+    def test_shape_alone_does_not_look_at_final_state(self):
+        p = self.parsed([self.sample(1, {"a": 1}), self.sample(2, {"a": 9})])
+        out = tracelog.check_state_sample_shape(p, walks=1, names=["a"])
+        self.assertEqual(out["state_samples"], 2)
+
+    def test_check_state_samples_still_runs_both_halves(self):
+        p = self.parsed([self.sample(1, {"a": 1}), self.sample(2, {"a": 9})])
+        out = tracelog.check_state_samples(p, walks=1, names=["a"],
+                                           final_state={"a": 9})
+        self.assertEqual(out["state_samples"], 2)
+        self.assertTrue(out["final_state_matches_last_sample"])
+        with self.assertRaises(tracelog.TraceError):
+            tracelog.check_state_samples(p, walks=1, names=["a"],
+                                         final_state={"a": 8})
+
+
+class FightRunFieldTest(unittest.TestCase):
+    def test_every_sampled_field_is_inside_the_data_segment(self):
+        for fields in (fightrun.enemy_fields(), fightrun.round_fields()):
+            for name, image_off, width in fields:
+                self.assertGreaterEqual(image_off, loadbase.DATA_SEG_IMAGE_OFF,
+                                        name)
+                self.assertIn(width, (1, 2, 4), name)
+
+    def test_the_enemy_record_offsets_match_the_documented_layout(self):
+        by_name = {n: o - loadbase.DATA_SEG_IMAGE_OFF
+                   for n, o, _ in fightrun.enemy_fields()}
+        # docs/re/combat.md, "The fighter record": the enemy's copy starts at
+        # 20ae:3952 and the field name carries its own offset.
+        for name, off in by_name.items():
+            if name.startswith("e_randseed"):
+                continue
+            self.assertEqual("%04x" % off, name.rsplit("_", 1)[1], name)
+
+    def test_both_channels_carry_randseed(self):
+        for key, fields in (("fight", fightrun.enemy_fields()),
+                            ("round", fightrun.round_fields())):
+            names = fightrun.field_names(fields)
+            self.assertIn(fightrun.SEED_FIELD[key], names)
+            [(_, off, width)] = [f for f in fields
+                                 if f[0] == fightrun.SEED_FIELD[key]]
+            self.assertEqual(off, loadbase.IMAGE_OFF_RANDSEED)
+            self.assertEqual(width, 4)
+
+    def test_the_post_drive_image_check_rejects_a_clobbered_image(self):
+        exe = (REPO / "orig" / "g.exe").read_bytes()
+        base = 0x30000
+        seed = 0x12345678
+        patch = seedpatch.build_patch(seed)
+        # `guest_memory` does not apply relocations (its callers do not need
+        # them); this check does, so the fixture applies them the way DOS
+        # would -- memory word = file word + load segment.
+        mem = bytearray(guest_memory(exe, base, seed))
+        load_seg = base // 16
+        for r in loadbase.parse_relocations(exe):
+            at = base + r
+            w = int.from_bytes(mem[at:at + 2], "little")
+            mem[at:at + 2] = ((w + load_seg) & 0xFFFF).to_bytes(2, "little")
+        out, got = fightrun.verify_image_after_drive(mem, exe, base, patch)
+        self.assertTrue(out["random_bytes_intact"])
+        self.assertEqual(out["relocations_checked"], out["relocations_total"])
+        self.assertEqual(got, 0)
+        # COMMAND.COM's transient landing on Random is exactly what this is
+        # here to catch.
+        mem[base + loadbase.IMAGE_OFF_RANDOM] ^= 0xFF
+        with self.assertRaises(loadbase.GuestCodeError):
+            fightrun.verify_image_after_drive(mem, exe, base, patch)
+
+
+class FightFoldTest(unittest.TestCase):
+    def trace(self, fights, ndraws):
+        return {"fights": fights,
+                "draws": [{"ordinal": i + 1, "turn": 1, "call_site_offset": 0x4460,
+                           "n": 100, "result": 1} for i in range(ndraws)]}
+
+    def f(self, i, at, prompts=1):
+        return {"index": i, "turn": 1, "draws_before": at,
+                "enemy": {"e_class_3952": 3}, "prompts": prompts}
+
+    def test_a_fight_spans_up_to_the_next_one(self):
+        t = self.trace([self.f(1, 10), self.f(2, 40)], 100)
+        rows = combattrace.fight_records(t, combattrace.compact_draws(t))
+        self.assertEqual([r["draws_until_next_fight"] for r in rows], [30, 60])
+        self.assertEqual([r["first_draw_index"] for r in rows], [10, 40])
+
+    def test_one_fight_runs_to_the_end_of_the_stream(self):
+        t = self.trace([self.f(1, 7)], 20)
+        [row] = combattrace.fight_records(t, combattrace.compact_draws(t))
+        self.assertEqual(row["draws_until_next_fight"], 13)
+
+    def test_the_frozen_oracles_are_only_ever_read(self):
+        # combattrace records their digests; it must never name them as an
+        # output.  This is the file-level form of the Task 11i rule.
+        src = (REPO / "tools" / "rngtrace" / "combattrace.py").read_text()
+        for name in combattrace.FROZEN:
+            self.assertIn(name, src)
+        self.assertNotIn("write_text(", src.split("def digest")[0])
+
+
+class FightDriverTest(unittest.TestCase):
+    def test_the_dos_prompt_is_recognised_and_game_prompts_are_not(self):
+        self.assertTrue(driver.game_gone("x\nC:\\>"))
+        self.assertTrue(driver.game_gone("x\nA:\\GAME>"))
+        self.assertFalse(driver.game_gone("x\n\\"))
+        self.assertFalse(driver.game_gone("x\n\u0411\u0438\u0442\u0432\u0430\\"))
+        # A game line that merely ends in `>` is not the guest having exited.
+        self.assertFalse(driver.game_gone("x\nfoo>"))
+
+    def test_only_the_two_dispatched_verbs_are_accepted(self):
+        for bad in ("y", "kos", "", "K"):
+            with self.assertRaises(driver.DriveError):
+                driver.fight(None, 1, combat_answer=bad)
+
+    def test_the_accept_token_is_the_literal_the_original_compares(self):
+        # file 0x9BF3, compared at 1000:b548 / 1000:b696 / 1000:b718.
+        self.assertEqual(driver.ACCEPT, "y")
 
 
 if __name__ == "__main__":

@@ -63,6 +63,17 @@ impl Rng {
         self.log.take().unwrap_or_default()
     }
 
+    /// How many draws have been recorded so far, or 0 when not recording.
+    ///
+    /// `data/combat_trace.json`'s fight and per-round markers each carry the
+    /// number of draws the guest had spent when the marker fired, so a replay
+    /// can check that its own markers sit at the same points in the draw
+    /// stream -- not merely that the stream and the markers are each right on
+    /// their own.
+    pub fn draws_logged(&self) -> usize {
+        self.log.as_ref().map_or(0, Vec::len)
+    }
+
     /// The current `RandSeed` value, e.g. to snapshot a generator for later
     /// restoration (`state` / `set_state` round-trip).
     pub fn state(&self) -> u32 {

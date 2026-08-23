@@ -63,6 +63,17 @@ RE_PROMPT = re.compile(r"^P\s*$")
 # reader was not told about produces an UNPARSED line (which fails the run)
 # rather than a silently shifted set of columns.
 RE_STATE = re.compile(r"^S ((?:[0-9a-f]+)(?: [0-9a-f]+)*)\s*$")
+# Task 13's two extra markers, same shape-only discipline as `S`:
+#   `F` + `E <values>`  -- one fight, and the enemy record it was entered with
+#                          (1000:3d11).
+#   `C` + `B <values>`  -- one `Битва\` prompt, and both fighters' hp and break
+#                          flags at that moment (1000:441d).
+# A value list whose length does not match the name list the reader was handed
+# lands in `unparsed`, which fails the run.
+RE_FIGHT = re.compile(r"^F\s*$")
+RE_ENEMY = re.compile(r"^E ((?:[0-9a-f]+)(?: [0-9a-f]+)*)\s*$")
+RE_ROUND_MARK = re.compile(r"^C\s*$")
+RE_ROUND = re.compile(r"^B ((?:[0-9a-f]+)(?: [0-9a-f]+)*)\s*$")
 # 1..8 digits deliberately: `printf "? %04x", $pc` pads to four but does not
 # truncate, so a $pc above 0xffff prints five and a {4}-only pattern would drop
 # the line instead of reporting the unexpected stop.
@@ -106,7 +117,7 @@ def strip_style(line: str) -> str:
     return RE_STYLE.sub("", line)
 
 
-def parse(text: str, state_names=()) -> dict:
+def parse(text: str, state_names=(), enemy_names=(), round_names=()) -> dict:
     """Turn a gdb log into {draws, prompts, unexpected, aborts, unparsed, ...}.
 
     `state_names` is the ordered field list the log's `S` lines were printed
@@ -114,11 +125,22 @@ def parse(text: str, state_names=()) -> dict:
     committed pre-Task-11i logs still parse; an `S` line seen without it, or
     one whose value count differs from the name count, lands in `unparsed` and
     therefore fails `check_unparsed`.
+
+    `enemy_names` / `round_names` are the same contract for Task 13's fight
+    channels (`E` and `B` lines, written only by
+    `gdbsession.build_fight_script`).  They also default to empty, so a log
+    from `build_script` -- which never emits those tags -- parses exactly as it
+    did before, and a fight log parsed WITHOUT the names fails rather than
+    dropping the lines.
     """
     state_names = list(state_names)
+    enemy_names = list(enemy_names)
+    round_names = list(round_names)
     ready = None
     draws = []
     state_samples = []
+    fights = []
+    rounds = []
     prompts = 0
     unexpected = []
     bp_lines = []
@@ -170,8 +192,43 @@ def parse(text: str, state_names=()) -> dict:
             values = [int(v, 16) for v in m.group(1).split()]
             if state_names and len(values) == len(state_names):
                 state_samples.append({"turn": prompts,
+                                      "draws_before": len(draws),
                                       "values": dict(zip(state_names, values))})
                 seq.append("S")
+                continue
+            unparsed.append(line)
+            continue
+        if RE_FIGHT.match(line):
+            fights.append({"index": len(fights) + 1, "turn": prompts,
+                           "draws_before": len(draws), "enemy": None,
+                           "prompts": 0})
+            seq.append("F")
+            continue
+        m = RE_ENEMY.match(line)
+        if m:
+            values = [int(v, 16) for v in m.group(1).split()]
+            if enemy_names and len(values) == len(enemy_names) and fights \
+                    and fights[-1]["enemy"] is None:
+                fights[-1]["enemy"] = dict(zip(enemy_names, values))
+                seq.append("E")
+                continue
+            unparsed.append(line)
+            continue
+        if RE_ROUND_MARK.match(line):
+            rounds.append({"index": len(rounds) + 1, "turn": prompts,
+                           "fight": len(fights), "draws_before": len(draws),
+                           "values": None})
+            if fights:
+                fights[-1]["prompts"] += 1
+            seq.append("C")
+            continue
+        m = RE_ROUND.match(line)
+        if m:
+            values = [int(v, 16) for v in m.group(1).split()]
+            if round_names and len(values) == len(round_names) and rounds \
+                    and rounds[-1]["values"] is None:
+                rounds[-1]["values"] = dict(zip(round_names, values))
+                seq.append("B")
                 continue
             unparsed.append(line)
             continue
@@ -199,6 +256,7 @@ def parse(text: str, state_names=()) -> dict:
             "unexpected_stops": unexpected, "breakpoint_lines": bp_lines,
             "script_aborts": aborts, "unparsed": unparsed,
             "state_samples": state_samples,
+            "fights": fights, "combat_prompts": rounds,
             "event_sequence": "".join(seq)}
 
 
@@ -363,6 +421,23 @@ def check_state_samples(parsed: dict, *, walks, names, final_state):
         not, the addresses or the widths are wrong in one of the two paths and
         nothing downstream could tell which.
     """
+    out = check_state_sample_shape(parsed, walks=walks, names=names)
+    out.update(reconcile_last_sample(parsed, names=names,
+                                     final_state=final_state))
+    return out
+
+
+def check_state_sample_shape(parsed: dict, *, walks, names):
+    """The first three failures `check_state_samples` refuses -- a stop with no
+    sample, fewer samples than turns, and a sample missing a field.
+
+    Split out (Task 13) so the fight capture can require exactly these while
+    reconciling the two transports differently: a run that ends inside a fight
+    is not sitting at the turn marker when the final dump is taken, so
+    `reconcile_last_sample`'s premise does not hold there.  Nothing about the
+    shape checks changes -- `check_state_samples` still runs both halves, in
+    the same order, and is what `run.py` calls.
+    """
     samples = parsed["state_samples"]
     names = list(names)
     if not names:
@@ -387,6 +462,24 @@ def check_state_samples(parsed: dict, *, walks, names, final_state):
         if sorted(s["values"]) != sorted(names):
             raise TraceError("a state sample does not carry every field: %s"
                              % sorted(set(names) ^ set(s["values"])))
+    return {"state_samples": len(samples),
+            "state_fields_per_sample": len(names)}
+
+
+def reconcile_last_sample(parsed: dict, *, names, final_state):
+    """The two transports must agree: the LAST per-turn sample (gdb reads at
+    1000:ae63) against `final_state` (a `pmemsave` dump of the whole guest).
+
+    Its premise is that the guest sits in `ReadLn` at the top-level prompt
+    between the two reads and changes none of these variables there.  That is
+    true of every `run.py` drive, which always ends at the street prompt; it is
+    NOT true of a fight capture whose player died mid-turn, and
+    `verify_combat_run` therefore only calls this when the drive ended at the
+    turn marker -- verifying both transports against the LCG instead when it
+    did not.
+    """
+    samples = parsed["state_samples"]
+    names = list(names)
     last = samples[-1]["values"]
     differ = {k: (last[k], final_state[k]) for k in names
               if k in final_state and last[k] != final_state[k]}
@@ -400,9 +493,50 @@ def check_state_samples(parsed: dict, *, walks, names, final_state):
     if missing:
         raise TraceError("final_state is missing sampled field(s) %s, so the "
                          "reconciliation covers less than it claims" % missing)
-    return {"state_samples": len(samples),
-            "state_fields_per_sample": len(names),
-            "final_state_matches_last_sample": True}
+    return {"final_state_matches_last_sample": True}
+
+
+def check_sample_seeds(parsed: dict, seed: int, *, channels):
+    """Every gdb-read `RandSeed` must equal the LCG stepped once per draw
+    logged before it.
+
+    This is what replaces the two-transport comparison on a run that cannot
+    end at the turn marker, and it is not a weaker substitute: instead of
+    checking the gdb path against the `pmemsave` path, it checks EACH of them
+    against `docs/re/rng.md`'s recurrence.  `reconcile_final_randseed` already
+    pins the `pmemsave` value that way; this pins every gdb sample the same
+    way, at every turn, every fight and every combat prompt -- so a sample read
+    at the wrong address or the wrong width fails here, and so does a sample
+    sitting at the wrong point in the draw stream.
+
+    `channels` is `[(label, samples, field), ...]`; each sample must carry
+    `draws_before` and `values[field]`.  An empty channel is refused: a channel
+    that verified nothing must not report a pass.
+    """
+    out = {}
+    for label, samples, field in channels:
+        if not samples:
+            raise TraceError(
+                "the %s channel has no samples, so `check_sample_seeds` would "
+                "pass by checking nothing" % label)
+        for s in samples:
+            if field not in s["values"]:
+                raise TraceError("%s sample %r carries no %s"
+                                 % (label, s, field))
+            want = seed
+            for _ in range(s["draws_before"]):
+                want = rng.step(want)
+            got = s["values"][field]
+            if got != want:
+                raise TraceError(
+                    "%s sample after %d draws holds RandSeed 0x%08X, but the "
+                    "LCG stepped %d times from 0x%08X gives 0x%08X: the sample "
+                    "was read at the wrong address/width, or it does not sit "
+                    "where the draw stream says it does"
+                    % (label, s["draws_before"], got, s["draws_before"], seed,
+                       want))
+        out["%s_seeds_match_lcg" % label] = len(samples)
+    return out
 
 
 def replay(draws, seed: int, max_skip: int = 0):
@@ -495,6 +629,137 @@ def verify_run(parsed: dict, seed: int, *, walks, load_seg, screen_before,
     out.update(reconcile_final_randseed(parsed["draws"], seed, randseed_final))
     out.update(check_state_samples(parsed, walks=walks, names=state_names,
                                    final_state=final_state))
+    return out
+
+
+def check_fight_markers(parsed: dict, *, enemy_names, round_names):
+    """Task 13: every fight marker carries its enemy record, every combat
+    prompt carries its round sample, and no fight is empty.
+
+    Each `F` (1000:3d11) is followed by exactly one `E` line and each `C`
+    (1000:441d) by exactly one `B` line; `parse` only attaches a payload to a
+    marker that has none, so a lost or duplicated payload leaves a marker with
+    `None` here -- and an EXTRA payload lands in `unparsed`, which
+    `check_unparsed` already fails on.  Without this the fight channel could be
+    published with holes that look like fights the guest never had.
+
+    `prompts == 0` for a fight is refused as well: a stop at 1000:3d11 that
+    never reached 1000:441d would mean the combat function was entered and left
+    without its own prompt ever being read, which no path in
+    `docs/re/gaps.md`'s nine-verb dispatch does -- so it is a lost marker, not
+    a short fight.
+    """
+    enemy_names = list(enemy_names)
+    round_names = list(round_names)
+    if not enemy_names or not round_names:
+        raise TraceError("the fight channel has no field names, so it cannot "
+                         "be verified: an unverified channel must not be "
+                         "published")
+    fights = parsed["fights"]
+    rounds = parsed["combat_prompts"]
+    missing = [f["index"] for f in fights if f["enemy"] is None]
+    if missing:
+        raise TraceError(
+            "fight marker(s) %s carry no enemy record: the 1000:3d11 stop was "
+            "logged but its `E` sample was not, so those fights would be "
+            "published with a hole" % missing)
+    missing = [r["index"] for r in rounds if r["values"] is None]
+    if missing:
+        raise TraceError(
+            "combat prompt(s) %s carry no round sample: the 1000:441d stop was "
+            "logged but its `B` sample was not" % missing)
+    for f in fights:
+        if not f["prompts"]:
+            raise TraceError(
+                "fight %d logged no combat prompt at all: FUN_1000_3d11 was "
+                "entered at 1000:3d11 and 1000:441d never fired, which no arm "
+                "of its dispatch does -- a marker was lost"
+                % f["index"])
+    for f in fights:
+        if sorted(f["enemy"]) != sorted(enemy_names):
+            raise TraceError("fight %d's enemy record does not carry every "
+                             "field: %s" % (f["index"],
+                                            sorted(set(enemy_names) ^ set(f["enemy"]))))
+    for r in rounds:
+        if sorted(r["values"]) != sorted(round_names):
+            raise TraceError("combat prompt %d does not carry every field: %s"
+                             % (r["index"],
+                                sorted(set(round_names) ^ set(r["values"]))))
+    stray = [r["index"] for r in rounds if r["fight"] == 0]
+    if stray:
+        raise TraceError(
+            "combat prompt(s) %s were logged before any fight marker: the "
+            "1000:3d11 breakpoint missed a fight the 1000:441d one saw" % stray)
+    return {"fights": len(fights), "combat_prompts": len(rounds),
+            "fight_fields": len(enemy_names),
+            "round_fields": len(round_names),
+            "every_fight_has_an_enemy_record": True,
+            "every_combat_prompt_has_a_round_sample": True}
+
+
+def verify_combat_run(parsed: dict, seed: int, *, walks_completed, load_seg,
+                      screen_before, screen_after, randseed_at_attach,
+                      randseed_final, state_names, final_state, enemy_names,
+                      round_names, ended_at_turn_marker, seed_field,
+                      min_draws=1, max_skip=0):
+    """Task 13's whole-run verification.  Keyword-only, for the same reason
+    `verify_run` is: leaving a guard out must be a TypeError.
+
+    It is `verify_run` plus `check_fight_markers`, with ONE substitution:
+    `check_walk_completed` is passed the number of walks the driver saw
+    COMPLETE (a turn that came back to the street prompt) rather than the
+    number it set out to do.  A fight capture can end its drive early -- the
+    player dying inside a turn takes the guest to `FUN_1000_074b` and out of
+    the process, and that turn never returns to 1000:ae63 -- so requiring
+    `requested + 1` stops would fail every losing run.  The bound is otherwise
+    the identical `n + 1` argument: one stop before the first `w`, one after
+    each completed turn.
+
+    `expect_breakpoints=4`, because `build_fight_script` installs four.
+    """
+    check_install(parsed, expect_breakpoints=4)
+    check_nonempty(parsed, min_draws=min_draws)
+    out = {}
+    out.update(check_unparsed(parsed))
+    out.update(check_script_abort(parsed))
+    skip, states = replay(parsed["draws"], seed, max_skip=max_skip)
+    for d, st in zip(parsed["draws"], states):
+        d["seed_after"] = st
+    out.update({"lcg_replay": "match", "leading_states_skipped": skip,
+                "draws_verified": len(parsed["draws"])})
+    out.update(check_walk_completed(parsed, walks_completed))
+    out.update(check_guest_progressed(screen_before, screen_after,
+                                      randseed_at_attach, randseed_final))
+    out.update(check_return_segments(parsed, load_seg))
+    out.update(reconcile_final_randseed(parsed["draws"], seed, randseed_final))
+    out.update(check_state_sample_shape(parsed, walks=walks_completed,
+                                        names=state_names))
+    out.update(check_fight_markers(parsed, enemy_names=enemy_names,
+                                   round_names=round_names))
+    out.update(check_sample_seeds(parsed, seed, channels=[
+        ("turn", parsed["state_samples"], "randseed_367e"),
+        ("fight", [dict(values=f["enemy"], draws_before=f["draws_before"])
+                   for f in parsed["fights"]], seed_field["fight"]),
+        ("combat_prompt", parsed["combat_prompts"], seed_field["round"]),
+    ]))
+    if ended_at_turn_marker:
+        out.update(reconcile_last_sample(parsed, names=state_names,
+                                         final_state=final_state))
+    else:
+        # Stated, never silent.  The premise of the two-transport comparison is
+        # that the guest sits in the top-level `ReadLn` between the gdb sample
+        # and the `pmemsave` dump; a drive that ended inside a fight (the
+        # player died, and `1000:5053` -> FUN_1000_074b -> Halt took the guest
+        # out of the process) does not satisfy it, and forcing the comparison
+        # there would compare two different moments.  Both transports are still
+        # verified, each against the LCG rather than against each other:
+        # `check_sample_seeds` above for the gdb path and
+        # `reconcile_final_randseed` for the `pmemsave` path.
+        out["final_state_matches_last_sample"] = (
+            "not applicable: the drive did not end at the turn marker, so the "
+            "last 1000:ae63 sample and the final dump are different moments.  "
+            "Both transports are verified against the LCG instead -- see "
+            "turn_seeds_match_lcg and final_randseed_matches_replay.")
     return out
 
 

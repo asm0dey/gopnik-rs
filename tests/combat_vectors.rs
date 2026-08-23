@@ -1,4 +1,4 @@
-use gopnik::combat::{blows_per_round, resolve_blow, resolve_blow_nth};
+use gopnik::combat::{blows_per_round, resolve_blow, resolve_blow_nth, Swing};
 use gopnik::model::Fighter;
 use gopnik::rng::Rng;
 use serde::Deserialize;
@@ -57,6 +57,13 @@ struct Case {
     /// of `expected_blows`/`resolve_blow_nth`. See the `blows_in_round`
     /// assertion below.
     blows_in_round: u16,
+    /// Which half of the round the case captured -- `"player"` or `"enemy"`.
+    /// It has been in `data/combat_vectors.json` since the file was first
+    /// written; Task 13 gave `resolve_blow_nth` a [`Swing`] argument (the two
+    /// mirrors have different `Random` call sites, and
+    /// `data/combat_trace.json` records the site of every draw), so this
+    /// column is now read instead of ignored.
+    attacker_is: String,
 }
 
 #[derive(Deserialize)]
@@ -86,7 +93,19 @@ fn combat_matches_original() {
         // always index 0 -- exercises budget_at's per-blow accuracy for
         // every index a capture reached, not just a round's opening blow.
         for (bi, want) in case.expected_blows.iter().enumerate() {
-            let o = resolve_blow_nth(&mut rng, &a, &d, bi as u16);
+            // `defender_tooth_guard` is false for every case on purpose:
+            // `tools/capture_combat_vectors.py` SKIPS rounds where the player
+            // owns the зубная защита (`docs/re/combat.md`, "Enemy-as-attacker
+            // cases"), because a jaw break there spends the extra
+            // `Random(4)` at 1000:47fe. So no case here can exercise it, and
+            // asserting anything else would be asserting about data that does
+            // not exist.
+            let swing = match case.attacker_is.as_str() {
+                "player" => Swing::player(),
+                "enemy" => Swing::enemy(false),
+                other => panic!("case {ci}: unknown attacker_is {other:?}"),
+            };
+            let o = resolve_blow_nth(&mut rng, &a, &d, bi as u16, swing);
             assert_eq!(o.hit, want.hit, "case {ci} blow {bi}: hit");
             assert_eq!(o.damage, want.damage, "case {ci} blow {bi}: damage");
         }

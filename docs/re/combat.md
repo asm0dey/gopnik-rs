@@ -243,11 +243,30 @@ on the math.
 
 **Player-only branch.** When the *player* is the defender and owns the
 зубная защита (`DS:394a`), a jaw break draws one more `Random(4)`
-(`1000:47fa`): a 0 breaks the jaw anyway
-(`^4Враг сломал тебе челюсть, даже защита не помогла.`), anything else prints
-`^2Защита спасла твои кривые клыки.` and leaves the jaw intact. `Fighter` has
-no field for the item, so `src/combat.rs` does not model this — see Open
-questions.
+(`1000:47fe`): a 0 breaks the jaw anyway
+(`^4Враг сломал тебе челюсть, даже защита не помогла.`, file `0x4BB1`),
+anything else prints `^2Защита спасла твои кривые клыки.` (file `0x4BE5`) and
+leaves the jaw intact.
+
+Three corrections to the first version of this passage, all from re-deriving
+the block at `1000:47b3`..`1000:4867`:
+
+* **The call is at `1000:47fe`, not `1000:47fa`.** `1000:47fa` is
+  `b8 04 00` / `50` — `mov ax,4` / `push ax`, the argument idiom — and the
+  `9a 4b 11 78 0f` is four bytes later. `python3 tools/re_query.py
+  is-call-site 1000:47fa` says so, and this is the same near-miss shape
+  `docs/re/METHODOLOGY.md` warns about with `1000:d83b`.
+* **The draw is gated on the jaw not already being broken.** `1000:47c7`
+  `cmp byte [0x38b0],0` / `jnz 0x4840` jumps past the whole block — the
+  guard's `Random(4)` included — when the jaw is already broken. So it is not
+  "one extra draw per jaw break"; it is one extra draw on the *first* jaw
+  break of a guarded player. (The `Random(2)` at `1000:47be` is unaffected:
+  it sits before that test, which is why it is drawn regardless.)
+* **It is now modelled**, as `Game::tooth_guard` + `combat::Swing`, and it had
+  to be: `SAVE_R3`, `SAVE_R4` and `SAVE_R5` all ship a 1 at `.SAV 0x2ae`, so a
+  replay of a save-loaded fight without it desynchronises at the first player
+  jaw break. Still **UNVERIFIED by observation** — see "What Task 13's capture
+  did and did not reach".
 
 ### Draw order per blow
 
@@ -262,7 +281,7 @@ enemy-swinging addresses:
 | 4 | `Random(3)` | on a crit | `1000:44e3` / `1000:4706` |
 | 5 | `Random(defender.luck*3 + 200)` | on a hit | `1000:4571` / `1000:4794` |
 | 6 | `Random(2)` | on a break | `1000:4595` / `1000:47be` |
-| 7 | `Random(4)` | jaw break, player defending, has the guard | `1000:47fa` |
+| 7 | `Random(4)` | jaw break, player defending, has the guard, jaw **not already broken** | `1000:47fe` |
 
 A miss consumes exactly one draw and nothing else: `1000:445c` →
 `1000:447a`/`1000:4486` → `1000:460b`, a straight jump to the miss message
@@ -307,6 +326,178 @@ image, character creation, and 30 kills captured from the original that
 confirm both the award and the threshold arithmetic. `src/progress.rs` is the
 port. It is recorded here as well because the award is computed inside the
 combat function.
+
+## The whole fight, not just the blow — Task 13
+
+`data/combat_vectors.json` covers the blow arithmetic: 295 seed-pinned cases
+from the original asserting per-blow `hit` and `damage`. What a per-blow vector
+set structurally cannot cover is the fight as a **control flow** — which draws
+a whole fight spends, in what order, and what happens after the last blow. The
+five runs of `data/rng_trace.json` could not fill that in either: they decline
+or flee every encounter, and between them contain **zero** `Random` sites
+inside `[0x3d11, 0x584c)`.
+
+`data/combat_trace.json` (`tools/rngtrace/fightrun.py`) is that oracle: four
+live runs, **1900 draws, 15 fights**, replayed draw for draw by
+`tests/combat_sequence.rs`. Method and guards: `docs/re/rng-trace.md`, "The
+fight channel". Three blocks had to be recovered to make it replay.
+
+### The crowd — `1000:40f2`..`1000:4168`, and it fires every prompt
+
+**Established from flow.** Disassembled from `1000:40ed`, the
+`c6 86 ed fe 00` (`mov byte [bp-0x113],0`) that zeroes the counter. That store
+is **outside** the prompt loop: the loop's top is `1000:40f2` and its only
+back edge in the whole function is `1000:583e` `jmp 0x40f2`, so the counter is
+per **fight**.
+
+```
+40ed  c6 86 ed fe 00   mov byte [bp-0x113],0     ; once per fight
+40f2  80 be ed fe 05   cmp byte [bp-0x113],5     ; loop top
+40f7  73 24            jae 0x411d                ; already 5: skip the inc
+40f9  fe 86 ed fe      inc byte [bp-0x113]
+40fd  80 be ed fe 05   cmp byte [bp-0x113],5
+4102  75 19            jne 0x411d
+4104  bf 74 2e         mov di,0x2e74             ; file 0x4744
+411d  80 3e 83 3c 00   cmp byte [0x3c83],0       ; the rector flag
+4127  80 be ed fe 05   cmp byte [bp-0x113],5
+4131  b8 0a 00 / 50    mov ax,10 / push ax
+4135  9a 4b 11 78 0f   call Random               ; nonzero -> the prompt
+4141  b8 12 00 / 50    mov ax,18 / push ax
+4145  9a 4b 11 78 0f   call Random               ; picks one of 18 lines
+```
+
+The counter **stops** at 5 (`jae` skips the `inc`), so `== 5` stays true for
+every later prompt. `Random(10)` at `1000:4135` therefore fires at every
+`Битва\` prompt **from the fifth onward**, not once, and `Random(18)` at
+`1000:4145` follows on a 0.
+
+The reading that gets this wrong — "a one-off event on round 5" — is exactly
+what a live capture settles. Run A's single 30-prompt fight shows **26** stops
+at `1000:4135` (30 − 4), run B's six fights of 8/5/4/4/3/3 prompts show 5
+(4+1+0+0+0+0), run C's three of 4/5/3 show 1, and run D's five one-prompt
+fleeing fights show 0. Per-fight, not per-session, and per-prompt, not
+per-fight.
+
+`[0x3c83]` is the rector flag and nothing in this port sets it, so the
+`1000:411d` gate is always open here. The eighteen lines are the crowd
+heckling (`Зрители:^6Мочи его, мочи!` and so on, files `0x4762`..`0x4A1D`);
+`r = 4` splices the **player's rank name** (`[0x389c] * 0x100 + 0x2e`, the
+`DS:002e` table) and `r = 17` the player's own name (`DS:379c`, `.SAV 0x100`).
+
+### The class-keyed opener — `1000:3d32`..`1000:3e8a` — costs no draw
+
+**Established from flow.** It is a `cmp [0x3952],N` chain over the enemy class
+that writes one or two intro lines per arm and nothing else. Scanning
+`[0x3d11, 0x3f00)` for `9a 4b 11 78 0f` returns **zero** hits, so this block
+cannot move the generator whatever it prints. Its text is still not extracted
+— registered in `docs/re/gaps.md`.
+
+### The victory block — `1000:5189`..`1000:57cc`
+
+**Established from flow**, disassembled forward from `1000:5189`.
+`docs/re/progression.md` already carried the shape of this block and
+`data/xp.json`'s `post_kill_stat_events` the one-shot deltas; the addresses
+were re-derived here and every `Random` site named carries the signature.
+
+| address | what |
+|---|---|
+| `1000:51b9`..`1000:51e9` | `award := enemy.str+agi+vit+luck`, `[0x38ce] += award` (skipped for `param_1` 3 or 4) |
+| `1000:51ed` | `xp >= threshold` -> `1000:523b call 0x2526`; otherwise files `0x528A` and `0x52C8` |
+| `1000:523e`..`1000:5251` | the loot: `[0x38c3] += [0x396a]`, `[0x38c7] += [0x396c]`, `[0x38c9] += [0x396e]` |
+| `1000:526c` | `hp += 5`, clamped to `hpmax` at `1000:5271` |
+| `1000:5280` | `[0x38cb] += enemy.class + 1 + enemy.level div 3` |
+| `1000:5295` | den flag when `level - (district-1)*10 >= 3` (`1000:52ae` `cmp ax,3` / `jl`) |
+| `1000:52d5` | `Random(30)`; only `0` reaches the one-shot gift chain |
+| `1000:5402` | `Random(district*25)`; `luck >= r` **and** enemy class 2 -> `1000:5427` `Random(3)` joints |
+| `1000:5454` | `Random(district*40)`; `luck >= r` -> a class-keyed item, each arm with its own draw |
+
+The `1000:5454` arms, and the draw each spends:
+
+| enemy class | site | `n` | grants |
+|---|---|---|---|
+| 1 | `1000:5482` | 3 | крестик (`luck+2`, `[0x38bd]`), кольцо (`luck+1`, `[0x38be]`), or the mobile (`[0x38bb]`) |
+| 3..6 | `1000:5530` | 2 | кастет (`[0x38ba]`, урон +2) or дубинка (`[0x394b]`, +4 or +2) |
+| 7 | `1000:5617` | 2 | тёмные очки (`[0x38b3]`) or the mobile |
+| 9 | `1000:5681` | 2 | ножик (`[0x38c2]`) or тесак (`[0x394c]`) |
+| 0, 2, 8 | — | — | no draw at all |
+
+Both luck comparisons are Borland's 32-bit pair with the roll **zero**-extended
+(`xor dx,dx` at `1000:5407` / `1000:5459`) and luck **sign**-extended (`cwd` at
+`1000:5410` / `1000:5462`): `luck >= roll`.
+
+The weapon arms' damage bonuses are gated on which *other* weapons are already
+owned, and the gate differs per arm — `1000:555f`/`1000:5566`/`1000:556d` for
+the кастет, `1000:55c5`/`1000:55cc`/`1000:55d3` for the дубинка, and two
+chains of independent `if`s for the ножик and тесак (`1000:56bc`..`1000:5709`
+and `1000:5762`..`1000:57c9`, whose leading `mov al,1` / `or al,al` / `jz` is a
+never-taken branch the compiler left in). All four flags are therefore carried
+on `Game` even though nothing else reads them.
+
+### Death, and the hospital — `1000:4f82`..`1000:5077`
+
+The death test at `1000:4f82` (`cmp word [0x38ac],0` / `jle`) runs **before**
+the victory test at `1000:507b`. **No arm of it draws**: there is no
+`9a 4b 11 78 0f` anywhere in `1000:4f82`..`1000:5077`.
+
+* `[0x3c83] == 1` (the rector) -> file `0x509C`, then `FUN_1000_074b`.
+* `[0x3696]` set **and** `[0x38cb] >= 10` -> the rescue at `1000:4fce`: file
+  `0x50DF`, `[0x38cb] -= 10`, a bill of `Round(hpmax / 5 * 3)` off `[0x38c7]`,
+  `hp := hpmax`, and — if either limb is broken — 7 more roubles and both
+  flags cleared. A negative purse is paid out of the street cred
+  (`1000:5042`). The player lives and leaves the fight.
+* otherwise `1000:5053` -> file `0x5127` (`^4Ты сдох.`) and `FUN_1000_074b`,
+  which ends the process.
+
+The two constants in the bill are six-byte Borland reals decoded from their
+register loads, not guessed: `cx=0x83, si=0, di=0x2000` is
+`1.25 * 2^(0x83-129) = 5.0` (the divisor, `0f78:1117`) and
+`cx=0x82, si=0, di=0x4000` is `1.5 * 2^(0x82-129) = 3.0` (the multiplier,
+`0f78:1111`), with `0f78:1131` rounding half away from zero.
+
+### What Task 13's capture did and did not reach
+
+Stated because a capture that reaches less than the recovery claims is exactly
+the defect this project keeps paying for.
+
+**Reached, and asserted by `tests/combat_sequence.rs`:** every site in the
+blow loop on both sides; `1000:4135` and `1000:4145`; `1000:52d5`,
+`1000:5402`, `1000:5427` and `1000:5454`; the loot award; a **player** jaw
+break (run A, `20ae:38b0` from prompt 13 on) and an **enemy** jaw break (run B,
+`20ae:3966` in two of its six fights); the death block at `1000:5053` (runs A
+and C); and the whole flee path with zero draws (run D).
+
+**Not reached by any captured run**, and so still UNVERIFIED by observation:
+
+* **the зубная защита's `Random(4)`** at `1000:47fe`. Run C loads the one
+  save that ships it (`.SAV 0x2ae` = 1) and spends six break rolls at
+  `1000:4794`, but none of them passed the luck comparison, so the branch was
+  never entered. It is modelled anyway, because a `SAVE_R3`/`R4`/`R5` replay
+  desynchronises at the first player jaw break without it.
+* **the hospital rescue** at `1000:4fce`. Both deaths captured are of
+  characters without the den flag (run A is a fresh character; run C's
+  `SAVE_R3` is level 20 in district 3, so `1000:52b3`'s
+  `level - (district-1)*10 >= 3` never fires and the flag stays clear).
+* **a leg break on either side.** All five limb picks captured
+  (`1000:4595` three times, `1000:47be` twice) returned **0**, the jaw. The
+  leg arms at `1000:45c5` and `1000:4842` are therefore still text-only
+  predictions.
+* **the four class-keyed item arms** `1000:5482` / `1000:5530` / `1000:5617` /
+  `1000:5681`. The `1000:5454` gate was reached eight times and passed once —
+  run B fight 6, roll 14 against luck 17 — and that fight's enemy was class 2,
+  which has no arm. The other seven rolls (69, 69, 54, 24, 52 in run B, 101
+  and 106 in run C) all beat the player's luck. So none of the four draws has
+  ever been observed, and the weapon-gating arithmetic above rests on the
+  disassembly alone.
+
+**Reached after all, and worth naming because the first draft of this list got
+it wrong:** the one-shot gift chain at `1000:52e1` **does** fire. Run B's
+fight 5 rolled `1000:52d5` = 0, and `SAVE_R2` ships `[0x38bf]` and `[0x38c0]`
+already set with `[0x38c1]` clear, so the chain reached its third arm and
+granted the ring "Господи помилуй". The capture's `final_state.ring_38c1` is
+`1` where the save's `.SAV 0x225` was `0`, and `tests/combat_sequence.rs`'s
+`run_b_final_state_matches` asserts it. The joint arm is exercised too: run B
+fight 2 passed `1000:5402` (roll 12 against luck 17) against a class-2 Нарк
+and drew `1000:5427`.
 
 ## Seed pinning
 
