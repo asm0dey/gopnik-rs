@@ -2108,7 +2108,11 @@ impl Game {
     ///   `Раз^6дол^4бай` (file `0xC3A7`, image `0xaad7`) over the name with
     ///   `0f78:0b01`. Reproduced below; it is the same substitution
     ///   `src/main.rs`'s `create_character` already models for character
-    ///   creation at `1000:7220`/`1000:7227` (file `0x80B4`).
+    ///   creation at `1000:7220`/`1000:7227` (file `0x80B4`). The test is on
+    ///   the shortstring's **length byte**, not on whether the content is
+    ///   all whitespace -- a line of only spaces has nonzero length and is
+    ///   kept, not substituted. `Game::rename` must not `.trim()` the line
+    ///   before this check.
     ///
     /// Both prompts are the game's own strings, not this port's wording. An
     /// earlier revision of this comment claimed they were invented and called
@@ -2133,13 +2137,18 @@ impl Game {
             return Ok(());
         };
         let n = line?;
-        let n = n.trim();
-        // 1000:ed5f/1000:ed74 -- an empty line is replaced by the default
-        // name, it does not leave the old one standing.
+        // 1000:ed5f `cmp byte [0x379c],0` tests the just-read shortstring's
+        // LENGTH BYTE, not its trimmed content: a line of only spaces has a
+        // nonzero length byte and is kept verbatim, only a genuinely empty
+        // line (length byte zero) triggers `1000:ed74`'s substitution. Do
+        // not `.trim()` `n` before this check -- that would substitute on
+        // whitespace-only input, which the original does not do. `lines`
+        // already strips the line terminator (`BufRead::lines`), so `n` here
+        // is exactly the length-byte-tested string.
         self.player.name = if n.is_empty() {
             "Раз^6дол^4бай".to_string()
         } else {
-            n.to_string()
+            n
         };
         Ok(())
     }
@@ -3238,7 +3247,7 @@ mod tests {
     fn an_empty_rename_installs_the_default_name() {
         let mut g = game();
         g.player.name = "Вася".to_string();
-        let mut lines = input(&["   "]);
+        let mut lines = input(&[""]);
         g.rename(&mut lines).unwrap();
         assert_eq!(g.player.name, "Раз^6дол^4бай");
 
@@ -3247,6 +3256,21 @@ mod tests {
         let mut lines = input(&["Петя"]);
         g.rename(&mut lines).unwrap();
         assert_eq!(g.player.name, "Петя");
+    }
+
+    /// `1000:ed5f` `cmp byte [0x379c],0` tests the shortstring's LENGTH
+    /// BYTE, not whether its content is all whitespace. A line of three
+    /// spaces has length 3, so `jnz 0xed79` is taken and `1000:ed74`'s
+    /// substitution never runs -- the typed spaces are kept verbatim. Before
+    /// `Game::rename` stopped `.trim()`-ing the line, this case wrongly
+    /// installed the default name instead.
+    #[test]
+    fn a_whitespace_only_rename_is_kept_not_substituted() {
+        let mut g = game();
+        g.player.name = "Вася".to_string();
+        let mut lines = input(&["   "]);
+        g.rename(&mut lines).unwrap();
+        assert_eq!(g.player.name, "   ");
     }
 
     #[test]

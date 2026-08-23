@@ -28,9 +28,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 ///    sets the class's stats -- that half is `progress::new_character`.
 /// 6. `1000:71ea` writes `^2А зовут тебя:^7 ` (file `0x80A1`) with
 ///    `Write`, not `WriteLn`, then `1000:7211` reads the name and
-///    `1000:7227` substitutes `Раз^6дол^4бай` (file `0x80B4`) when it is
-///    empty. That default name carries `^N` markup of its own; it is stored
-///    verbatim, exactly as the original stores it.
+///    `1000:7220`/`1000:7227` substitutes `Раз^6дол^4бай` (file `0x80B4`)
+///    when the just-read shortstring's **length byte** is zero -- the same
+///    idiom `Game::rename` traces at `1000:ed5f`/`1000:ed74`. That test is on
+///    length, not on whitespace content: a line of only spaces is kept, not
+///    substituted, so only the line terminator is stripped here, never a
+///    full trim. That default name carries `^N` markup of its own; it is
+///    stored verbatim, exactly as the original stores it.
 ///
 /// **Note the order:** the original asks for the class *first* and the name
 /// *second*. **Not reproduced:** the university backstory the game prints
@@ -61,7 +65,13 @@ fn create_character(stdin: &mut impl BufRead) -> (Fighter, Progress) {
     term::print("^2А зовут тебя:^7 ");
     let mut name = String::new();
     let _ = stdin.read_line(&mut name);
-    let name = name.trim();
+    // 1000:7220 `cmp byte [0x379c],0` tests the just-read shortstring's
+    // LENGTH BYTE, not its trimmed content -- see `Game::rename`'s doc for
+    // the identical idiom at `1000:ed5f`. `read_line` (unlike
+    // `BufRead::lines`) keeps the line terminator, so only that terminator
+    // is stripped here, not general whitespace: a line of only spaces must
+    // stay nonempty and be kept, exactly like `rename`.
+    let name = name.trim_end_matches(['\n', '\r']);
     let name = if name.is_empty() {
         "Раз^6дол^4бай"
     } else {
