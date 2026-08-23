@@ -11,13 +11,65 @@
 ## Global Constraints
 
 - **Fidelity target is game logic, not terminal bytes.** Damage rolls, hit chance, XP thresholds, prices, RNG sequence, and save file bytes must match the original exactly. Screen layout/ANSI output need only be faithful in content and colour index, not in exact cursor positioning.
-- **Source text is CP866.** All extracted strings are converted to UTF-8 exactly once, at extraction time, and stored as UTF-8 in JSON. No CP866 handling anywhere in the Rust crate.
+- **Source text is CP866.** All extracted *game text* is converted to UTF-8
+  exactly once, at extraction time by the Python tooling, and stored as UTF-8 in
+  JSON. The Rust crate handles UTF-8 only, with ONE exception: **save file I/O**,
+  where CP866 is the live on-disk encoding and no extraction-time conversion can
+  apply, because the bytes are produced at runtime from a player-typed name.
+  That conversion uses the `encoding_rs` crate and is confined to `src/save.rs`.
+  (Owner-approved amendment, Task 7. The original wording forbade CP866 anywhere
+  in the crate, which `Save::parse`/`Save::to_bytes` cannot satisfy.)
+- **`^0`–`^7` are markup, not content.** They are colour-change directives in
+  the original's own display language. Never treat them as literal characters:
+  never print them, never measure string width with them included, never let
+  them reach a comparison of user-visible text, and never concatenate them into
+  a name or label as if they were part of it. Parse them into structured spans
+  at the boundary and re-emit styling on output. The only place the raw
+  sigils are permitted is inside byte-exact save round-trips, where they are
+  part of the original file's bytes and must be preserved verbatim.
 - **All Russian game text is preserved verbatim.** No translation, no censoring, no rewording. The game contains deliberate crude slang; that is the content.
 - **Ghidra is driven by Java scripts only.** PyGhidra requires `jpype1`, which does not build on Python 3.14. Do not attempt `pip install pyghidra`.
 - **Python tooling uses the standard library only.** No pip installs, no venv.
-- **Rust dependencies limited to `serde` + `serde_json`.** Anything else requires explicit sign-off.
+- **Rust dependencies limited to `serde` + `serde_json` + `encoding_rs` + `colored`.**
+  Amended by Task 10c (owner-requested): `serde` and `serde_json` move to
+  `[build-dependencies]` and must not appear in the shipped binary's runtime
+  dependency graph. `build.rs` parses the extracted JSON at compile time and
+  emits `static` tables, so `data::items()`/`shops()`/`enemies()` return
+  `&'static [T]` rather than `Vec<T>` and no JSON parser is linked in.
+  Anything else requires explicit sign-off. `encoding_rs` was signed off by the
+  owner for Task 7: the owner prefers a crate to a hand-written codepage table.
+  The encoding is `encoding_rs::IBM866` — there is no `CP866` constant; IBM866
+  is the WHATWG label for the same codepage.
+
+  **Use the strict APIs, not the convenience ones.** `IBM866.encode()` is lossy
+  by WHATWG mandate: an unmappable char is silently replaced with an HTML
+  numeric character reference (verified — `漢` encodes to the bytes `&#28450;`),
+  which would write a corrupt save that still round-trips. Use
+  `new_encoder()` + `encode_from_utf8_without_replacement`, which returns
+  `EncoderResult::Unmappable(char)` naming the offending character, and
+  `decode_without_bom_handling_and_without_replacement` on the way in.
+
+  `colored` was signed off by the owner for Task 10b (cross-platform colour). It
+  is used as a policy oracle only — `SHOULD_COLORIZE.should_colorize()` for the
+  decision and `set_virtual_terminal(true)` for the Windows `SetConsoleMode` FFI
+  call that Rust's `std` cannot make — NOT as a styling API. `text::render` stays
+  pure and unconditional; `term` picks between `render` and `strip`. No second
+  terminal crate: the game is line-based and needs no cursor control or raw mode.
 - **Never modify files under `orig/`.** They are the reference corpus and are checked in read-only.
 - **Every RE finding lands in two places:** a human-readable note under `docs/re/` citing the Ghidra address, and a machine-readable artifact under `data/`. A finding that exists only in a commit message does not count.
+- **Recover program FLOW, not program OUTPUT.** The question is never "what did
+  the game print?" but "what does the code do, and under what conditions?"
+  Evidence ranks: (1) flow — instructions, branches and their conditions, from
+  the disassembly or a live breakpoint; (2) state — memory, save bytes,
+  extracted tables; (3) output — screens, printed strings, the in-game help
+  text, which is the weakest evidence there is because it is a claim the
+  program makes about itself. **Output can falsify a flow claim; it can never
+  establish one.** Absence of a visible response is not absence of dispatch.
+  Symmetry with another subsystem is a hypothesis to test, not a finding to
+  record. Probabilities come from the comparison constants that bucket a
+  `Random` result, never from counting observed outcomes. Every behavioural
+  claim must state its tier and cite an address: established from flow,
+  corroborated, or unverified. See `docs/re/METHODOLOGY.md`.
 - **Unknown means unknown.** If a field's meaning is not established, name it `unk_<hex_offset>` and preserve its bytes. Never guess a semantic name to make a table look finished.
 
 ## Reference facts (already verified — do not re-derive)
@@ -37,7 +89,24 @@
 | Command verbs | `bmar mar rep girl pr kl trn s w f i hp sv name kos wes help` + keys `a d e h k t x` |
 
 **Explicitly NOT established** (these are RE tasks, not assumptions):
-- The RNG algorithm. Borland's `0x08088405` LCG multiplier is **absent** from this binary; the constant does not appear contiguously and there is no `mov ax,8405`/`mov dx,0808` pair. Task 8 must identify the actual generator from disassembly.
+- ~~The RNG algorithm.~~ **RESOLVED by Task 8 — and the old wording below was
+  a false conclusion drawn from a true observation.** The byte-level facts were
+  right: `05 84 08 08` occurs 0 times in the file, `b8 05 84` 0 times, `ba 08 08`
+  0 times. The inference that the multiplier is therefore absent was wrong. It
+  **is** the stock Borland LCG, `RandSeed := RandSeed * $08088405 + 1 (mod
+  2^32)`, at `System.@Rand` `1f78:11a8`. The compiler never materialises the
+  dword: it multiplies by the low word `$8405` (the single literal `05 84` at
+  `1f78:11de`) and synthesises the `$0808` partial products from a shift/add
+  chain (`lo<<3` then `add ch,cl` contributes `lo*0x0808` at bit 16). No byte
+  search could ever have found it. Verified against the binary's own bytes, and
+  by mutating the multiplier byte in a *copy* of the exe and observing the
+  emitted vectors change. See `docs/re/rng.md`.
+  **Also established:** `Random(n)` at `1f78:114b` is `(RandSeed * n) >> 32`, a
+  high-take, **not** a modulo — this changes the distribution of every roll.
+  `Randomize` at `1f78:11e0` seeds from DOS `INT 21h/AH=2Ch`.
+  **Task 9 must mirror the original's 16-bit wrapping at `Random(Integer)` call
+  sites, not clamp** — several call sites compute `n` from `Integer`
+  expressions (e.g. `Random(hi - lo)`, `Random(level*0x19)`).
 - The meaning of state words at save offset `0x200+0x00`–`0x0E` and everything past `0x14`.
 - The `02 3x 3x` repeating records near the end of the save (Pascal `string[2]` of ASCII digits `1`–`4`, count varies 10–39 across saves).
 
@@ -176,7 +245,26 @@ git commit -m "chore: init gopnik-rs with verified reference corpus"
 
 **Interfaces:**
 - Consumes: `orig/g.exe`.
-- Produces: `data/strings.json` — a JSON array of objects `{"off": <int file offset>, "text": <UTF-8 string>}`, sorted ascending by `off`. Tasks 10 and 11 read this file.
+- Produces: `data/strings.json` — a JSON array of objects
+  `{"off": <int file offset>, "text": <UTF-8 string>, "plain": <UTF-8 string>,
+  "suspect": <bool>}`, sorted ascending by `off`. `text` is the raw string
+  including `^N` markup; `plain` is the same string with markup removed.
+  Consumers that match or display content use `plain`; only the renderer uses
+  `text`. Tasks 10 and 11 read this file.
+
+**On `suspect`.** The length-prefix scan is a heuristic, so a small number of
+machine-code byte sequences satisfy it and appear as entries — e.g.
+`'к8бЮ8Щ'`, `'D6гN6г'`, `'X9ыUЛ>'`. These are flagged, never deleted: removing
+them would change the entry count and destabilise offsets that other tasks
+reference. Consumers that iterate the table for display MUST filter on
+`suspect == false`; consumers that select by known offset may ignore it.
+
+The rule is: `suspect = (longest run of consecutive Cyrillic letters < 3) and
+(no space character in plain)`. Measured against this binary it flags 39 of
+696 entries, of which 37 are genuine noise. It has exactly two known false
+positives, both real game text: `0x2F87` `'Сл:^'` and `0x92D1` `'Ну..'`. The
+flag is a hint for filtering, not a correctness claim — do not "fix" those two
+by special-casing them.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -186,6 +274,7 @@ Create `tools/test_extract_strings.py`:
 #!/usr/bin/env python3
 import json
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -215,7 +304,39 @@ def test_extraction():
     for i in items:
         assert "\x00" not in i["text"]
 
-    print(f"OK {len(items)} strings extracted and validated")
+    # ^N is markup, not content: it must survive in `text` and be absent
+    # from `plain`, and stripping must not disturb anything else.
+    plain = {i["off"]: i["plain"] for i in items}
+    assert plain[0x2B44] == "Не в этой жизни.", "plain equals text when no markup"
+    assert plain[0x3173] == "Тесак(Урон+9) "
+    assert plain[0x4548] == "Пацан ты из какого района?"
+
+    markup = re.compile(r"\^[0-7]")
+    for i in items:
+        assert not markup.search(i["plain"]), (
+            f"markup survived stripping at {i['off']:#x}: {i['plain']!r}"
+        )
+    assert any(markup.search(i["text"]) for i in items), (
+        "no markup found in any raw text -- the extractor or the test is wrong"
+    )
+
+    # `suspect` flags probable machine-code noise. Entries are flagged, never
+    # dropped, so the total stays 696 and offsets stay stable.
+    suspects = [i for i in items if i["suspect"]]
+    assert len(suspects) == 39, f"expected 39 suspect entries, got {len(suspects)}"
+
+    suspect_offs = {i["off"] for i in suspects}
+    for off in (0x285E, 0x3F50, 0x654D, 0x11075, 0x11C34):
+        assert off in suspect_offs, f"known-noise entry {off:#x} not flagged"
+    for off in (0x2B44, 0x3173, 0x4548, 0x2FB2):
+        assert off not in suspect_offs, f"real game text {off:#x} wrongly flagged"
+
+    # Two known false positives -- documented, deliberately not special-cased.
+    assert 0x2F87 in suspect_offs and 0x92D1 in suspect_offs, (
+        "the two known false positives changed; re-check the heuristic"
+    )
+
+    print(f"OK {len(items)} strings extracted, {len(suspects)} flagged suspect")
 
 
 if __name__ == "__main__":
@@ -242,6 +363,7 @@ text from machine code that happens to look string-shaped.
 """
 import json
 import pathlib
+import re
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 EXE = ROOT / "orig" / "g.exe"
@@ -261,6 +383,37 @@ def is_printable(b: int) -> bool:
     return 32 <= b < 127 or is_cyrillic(b) or b == 0xB0
 
 
+MARKUP_RE = re.compile(r"\^[0-7]")
+CYRILLIC_RE = re.compile(r"[А-Яа-яЁё]")
+
+
+def strip_markup(s: str) -> str:
+    """Remove the original's ^N colour directives, leaving displayable text."""
+    return MARKUP_RE.sub("", s)
+
+
+def longest_cyrillic_run(s: str) -> int:
+    best = cur = 0
+    for ch in s:
+        if CYRILLIC_RE.match(ch):
+            cur += 1
+            best = max(best, cur)
+        else:
+            cur = 0
+    return best
+
+
+def is_suspect(plain: str) -> bool:
+    """Heuristic flag for entries that are probably machine code, not text.
+
+    Real game text either contains a space or has a run of three or more
+    consecutive Cyrillic letters. Byte sequences that merely satisfy the
+    length-prefix scan tend to alternate letters with digits and symbols.
+    Flagged entries are kept, never deleted -- see the plan for why.
+    """
+    return longest_cyrillic_run(plain) < 3 and " " not in plain
+
+
 def extract(blob: bytes) -> list[dict]:
     out = []
     i = 0
@@ -272,7 +425,16 @@ def extract(blob: bytes) -> list[dict]:
             if all(is_printable(c) for c in payload) and sum(
                 is_cyrillic(c) for c in payload
             ) >= MIN_CYRILLIC:
-                out.append({"off": i, "text": payload.decode("cp866")})
+                text = payload.decode("cp866")
+                plain = strip_markup(text)
+                out.append(
+                    {
+                        "off": i,
+                        "text": text,
+                        "plain": plain,
+                        "suspect": is_suspect(plain),
+                    }
+                )
                 i += 1 + n
                 continue
         i += 1
@@ -649,6 +811,556 @@ git commit -m "feat: Ghidra headless decompilation export pipeline"
 
 ---
 
+### Task 4b: Recover string pointers from code immediates
+
+**Why this task exists.** Task 2's length-prefix scan is structurally ambiguous:
+an ASCII space (`0x20`) is indistinguishable from a length byte of 32, so the
+scanner resynchronises mid-string and emits plausible-looking fragments.
+Measured against this binary, roughly 60–90 of its 657 non-suspect entries are
+misframed — e.g. offset `0xBCF8` yields `'боксёров(-75% что сломают челюст'`,
+truncated before the closing `ь)`.
+
+The fix is to stop guessing where strings start. Borland Pascal passes a string
+constant's address to the RTL as a 16-bit immediate, so the true starts are
+exactly the immediate operands the code actually uses as pointers. A naive byte
+scan for opcode `BA`/`B8`/`BF`/`BE`/`68` is NOT sufficient — it produced 218
+false starts. You must work from Ghidra's real disassembly so that only genuine
+instruction operands are considered.
+
+**On the run of offsets at `0x18D0`–`0x18DA`:** this plan has now been wrong
+about these twice; here is the established truth. They are **artefacts of
+operand mis-extraction**, but not of byte scanning. They arise when a memory
+operand's *displacement* is treated as a string offset — e.g. the audit trail
+records `LDS SI,[BP + 0x4]` yielding candidate `0x18D0 + 4 = 0x18D4`. A stack
+frame displacement is not a string address. The small displacements 0, 2, 4, 6…
+collide with the image base and produce that consecutive run.
+
+The correct handling is neither to assert they are absent (revision 1's error)
+nor to declare them legitimate scrolling references (revision 2's error), but to
+extract only genuine immediate operands so they never become candidates.
+
+**Operand extraction rule.** Use `instruction.getScalar(opIndex)`, which yields
+the scalar of an *immediate* operand. Do NOT walk `instruction.getOpObjects()`
+and treat every scalar found inside a memory expression as a candidate — that
+decomposes `[BP + 0x4]`, `word ptr [0x38C5]`, and branch targets into false
+candidates. Apply `getScalar` across **all** mnemonics: the breadth requirement
+is about not restricting to `MOV`/`PUSH`, not about accepting address arithmetic.
+
+**Reject candidates that fall inside an already-accepted string's payload.**
+An offset interior to another string is a framing collision, not a distinct
+string — this is the same space-as-length-byte pathology the task exists to
+eliminate. For example `0x5195` is byte 8 of `'^1После этого сразу началась
+анархия и полный беспредел.'` at `0x518D`, and must not be emitted as its own
+pointer.
+
+**Do not add a reuse-count or reference-frequency filter.** How many times the
+code references a string is not evidence about whether it is a string. Common
+UI messages like `'Не хватает'` are printed from many call sites precisely
+because they are generic. An earlier attempt used a reuse threshold and
+discarded real game text (`0xA71D` `'Не хватает'`, `0xB00C` `'Продать вещи'`).
+
+**Extraction breadth:** do not restrict to `MOV`/`PUSH`. String addresses also
+reach the RTL via `LES`/`LDS` far-pointer loads and other forms. Consider every
+instruction's scalar operands, and let the content filter and the coverage
+assertion decide what qualifies.
+
+**Verified viability (do not re-derive):** the immediate-operand approach
+recovers `0xBCDD` → `'30^7  купить зубную защиту боксёров(-75% что сломают
+челюсть)'`, complete and correctly terminated, and 558 of its candidate starts
+agree with Task 2's scan.
+
+**Files:**
+- Create: `tools/ghidra/DumpImmediates.java`
+- Create: `data/string_pointers.json`
+- Create: `docs/re/string-pointers.md`
+- Test: `tools/test_string_pointers.py`
+
+**Interfaces:**
+- Consumes: the Ghidra project created in Task 4.
+- Produces: `data/string_pointers.json` — `{"note": str, "pointers": [int]}`,
+  a sorted, deduplicated list of **file offsets** that code uses as string
+  constant addresses. Task 2b consumes this.
+
+- [ ] **Step 1: Write the Ghidra script**
+
+`tools/ghidra/DumpImmediates.java` iterates `currentProgram.getListing().getInstructions(true)`.
+For each instruction, for each operand, take scalar values via
+`instr.getScalar(opIndex)`. Keep 16-bit scalars in the range `0x0000..0xFFFF`.
+For each, compute the candidate file offset and write it out with the
+instruction's address and mnemonic so the artifact is auditable.
+
+The address mapping, already established: a scalar `imm` used as a DS/CS-relative
+offset within its own segment `S` resolves exactly as the citation `S:imm` does.
+`docs/re/METHODOLOGY.md`, "Address convention, and its range of validity", is
+the authority for the rule and `tools/addr.py` is its executable form (added in
+Task 11g; this paragraph predates it and is left as a record of what the step
+was told). Record the mapping you use in `docs/re/string-pointers.md`; if a
+scalar's segment differs, derive its base from the containing memory block
+rather than assuming `0x1000`.
+
+- [ ] **Step 2: Filter to genuine string starts**
+
+A candidate offset qualifies as a string pointer when `blob[off]` is a length
+`N` in `3..=250`, `off + 1 + N <= len(blob)`, and every payload byte is either
+printable ASCII (`0x20..0x7E`), CP866 high-range (`0x80..0xF1`), or one of the
+separators `0x07`, `0x0A`, `0x0D`. `0x07` is the original's line separator
+inside multi-line menu strings — it is legitimate content, not noise.
+
+- [ ] **Step 3: Write the failing test**
+
+Create `tools/test_string_pointers.py`:
+
+```python
+#!/usr/bin/env python3
+import json
+import pathlib
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def test_pointers():
+    data = json.loads((ROOT / "data" / "string_pointers.json").read_text(encoding="utf-8"))
+    ptrs = data["pointers"]
+
+    assert ptrs == sorted(ptrs), "pointers must be sorted"
+    assert len(set(ptrs)) == len(ptrs), "pointers must be unique"
+    assert len(ptrs) >= 400, f"expected >=400 string pointers, got {len(ptrs)}"
+
+    blob = (ROOT / "orig" / "g.exe").read_bytes()
+
+    # Every pointer must land on a well-formed length-prefixed string.
+    for off in ptrs:
+        n = blob[off]
+        assert 3 <= n <= 250, f"{off:#x}: implausible length {n}"
+        assert off + 1 + n <= len(blob), f"{off:#x}: payload runs past EOF"
+
+    # The known-truncated case from Task 2 must now resolve completely.
+    assert 0xBCDD in ptrs, "0xBCDD (the боксёров line) not recovered"
+    n = blob[0xBCDD]
+    text = blob[0xBCDE : 0xBCDE + n].decode("cp866")
+    assert text.endswith("челюсть)"), f"still truncated: {text!r}"
+
+    # Coverage must not regress against the blind scan. Every non-suspect
+    # entry the old scanner found must either appear as a pointer or fall
+    # inside some pointer's payload span (i.e. be superseded by a correctly
+    # framed, longer string). Anything else is real game text we lost.
+    # Elements of the indexed string-array tables are reached by index
+    # arithmetic (base + i*256), so no literal pointer to them exists and
+    # this task structurally cannot recover them. Task 4c handles those;
+    # exclude their ranges here rather than counting them as losses.
+    TABLE_RANGES = ((0x123DE, 0x12DDE), (0x12EF2, 0x158F2))
+
+    def in_table(off):
+        return any(lo <= off <= hi and (off - lo) % 256 == 0 for lo, hi in TABLE_RANGES)
+
+    old = json.loads((ROOT / "data" / "strings.json").read_text(encoding="utf-8"))
+    ptr_set = set(ptrs)
+    missing = []
+    for entry in old:
+        if entry["suspect"] or in_table(entry["off"]):
+            continue
+        off = entry["off"]
+        if off in ptr_set:
+            continue
+        if any(q <= off < q + 1 + blob[q] for q in ptrs):
+            continue
+        missing.append(entry)
+    # 14 is the measured residual, not an aspiration. Every one of them must
+    # be listed individually in docs/re/string-pointers.md with a reason.
+    # Lowering this number is good; raising it requires re-measuring and
+    # documenting the new survivors, never silently widening the bound.
+    assert len(missing) <= 14, (
+        f"{len(missing)} real strings lost vs the blind scan, e.g. "
+        f"{[(hex(m['off']), m['plain'][:40]) for m in missing[:5]]}"
+    )
+
+    print(f"OK {len(ptrs)} string pointers recovered, {len(missing)} blind-scan entries unaccounted for")
+
+
+if __name__ == "__main__":
+    test_pointers()
+```
+
+- [ ] **Step 4: Run it to verify it fails**
+
+Run: `python3 tools/test_string_pointers.py`
+Expected: FAIL — `data/string_pointers.json` does not exist yet.
+
+- [ ] **Step 5: Implement, run the Ghidra script, and regenerate**
+
+Run the script through `tools/ghidra/run_ghidra.sh` (extend it to invoke
+`DumpImmediates.java` as a second `-postScript`), then re-run the test.
+Expected: `OK <n> string pointers recovered and validated`
+
+- [ ] **Step 6: Document**
+
+`docs/re/string-pointers.md`: the address mapping used, the opcode/operand
+extraction method, the count recovered, and an explicit list of any candidate
+offsets rejected by the filter and why.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add tools/ghidra/DumpImmediates.java tools/ghidra/run_ghidra.sh data/string_pointers.json tools/test_string_pointers.py docs/re/string-pointers.md
+git commit -m "feat: recover string constant pointers from code immediates"
+```
+
+---
+
+### Task 4c: Recover indexed string array tables
+
+**Why this task exists.** Task 4b recovers strings the code addresses by literal
+pointer. It cannot recover strings the code reaches by *index arithmetic* —
+Pascal `array[..] of string[255]` elements, addressed as `base + i * 256`. No
+literal offset for element `i` exists anywhere in the binary, so pointer
+recovery structurally misses them. This accounts for 55 of the 67 entries Task
+4b leaves unaccounted for.
+
+Two such tables exist. Both are verified; the entry text below is ground truth,
+not a sample to be re-derived:
+
+| Table | Base | Stride | Entries | First | Last |
+|---|---|---|---|---|---|
+| ranks/classes | `0x123DE` | 256 | 11 | `Дохляк` | `Ректор НГУ` |
+| крутизна ladder | `0x12EF2` | 256 | 43 | `Опущеный` | `Пацан, который всех опрокинул` |
+
+Table A is the class/enemy ladder: `Дохляк, Нефор, Нарк, Подтсан, Отморозок,
+Гопник, Вор, Беспредельщик, Мент, Маньячок, Ректор НГУ`. The last is the final
+boss named in the README. Table B is the 43-step крутизна ladder the README
+describes as the "иерархическая лестница уровней крутизны". Tasks 9b and 10
+both depend on these.
+
+**Files:**
+- Create: `tools/extract_tables_indexed.py`
+- Create: `data/string_tables.json`
+- Create: `docs/re/string-tables.md`
+- Test: `tools/test_string_tables.py`
+
+**Interfaces:**
+- Produces: `data/string_tables.json` —
+  `{"tables": [{"name": str, "base": int, "stride": int, "entries": [{"index": int, "off": int, "text": str, "plain": str}]}]}`.
+  Task 2b merges these into `data/strings.json`; Tasks 9b and 10 read them by name.
+  Use names `"ranks"` and `"krutizna"`.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tools/test_string_tables.py`:
+
+```python
+#!/usr/bin/env python3
+import json
+import pathlib
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def test_tables():
+    subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "extract_tables_indexed.py")], check=True
+    )
+    data = json.loads((ROOT / "data" / "string_tables.json").read_text(encoding="utf-8"))
+    tables = {t["name"]: t for t in data["tables"]}
+
+    assert set(tables) == {"ranks", "krutizna"}, f"unexpected tables: {sorted(tables)}"
+
+    ranks = tables["ranks"]
+    assert ranks["base"] == 0x123DE
+    assert ranks["stride"] == 256
+    assert len(ranks["entries"]) == 11
+    assert [e["plain"] for e in ranks["entries"]] == [
+        "Дохляк", "Нефор", "Нарк", "Подтсан", "Отморозок", "Гопник",
+        "Вор", "Беспредельщик", "Мент", "Маньячок", "Ректор НГУ",
+    ]
+
+    kr = tables["krutizna"]
+    assert kr["base"] == 0x12EF2
+    assert kr["stride"] == 256
+    assert len(kr["entries"]) == 43
+    assert kr["entries"][0]["plain"] == "Опущеный"
+    assert kr["entries"][21]["plain"] == "Пацан"
+    assert kr["entries"][42]["plain"] == "Пацан, который всех опрокинул"
+
+    # Offsets must follow the stride exactly.
+    for t in data["tables"]:
+        for i, e in enumerate(t["entries"]):
+            assert e["off"] == t["base"] + i * t["stride"], (
+                f"{t['name']}[{i}] off {e['off']:#x} breaks stride"
+            )
+            assert e["index"] == i
+
+    print(f"OK {sum(len(t['entries']) for t in data['tables'])} table entries extracted")
+
+
+if __name__ == "__main__":
+    test_tables()
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `python3 tools/test_string_tables.py`
+Expected: FAIL — `extract_tables_indexed.py` does not exist.
+
+- [ ] **Step 3: Implement the extractor**
+
+Read each table by walking `base + i * stride`, reading the length byte and
+payload, decoding CP866, and stopping when the entry is no longer a well-formed
+string (length outside `1..200`, or a payload byte outside printable
+ASCII/CP866). Compute `plain` with the same markup-stripping used elsewhere.
+Do NOT hardcode the entry counts — they must fall out of the walk, and the test
+asserts the resulting counts are 11 and 43.
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `python3 tools/test_string_tables.py`
+Expected: `OK 54 table entries extracted`
+
+- [ ] **Step 5: Document**
+
+`docs/re/string-tables.md`: both tables with base, stride, count, and full entry
+lists; how they were located (256-byte stride clustering among the offsets Task
+4b could not account for); and a note that they are reached by index arithmetic,
+which is why pointer recovery cannot find them.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add tools/extract_tables_indexed.py tools/test_string_tables.py data/string_tables.json docs/re/string-tables.md
+git commit -m "feat: recover indexed string array tables (ranks, krutizna ladder)"
+```
+
+---
+
+### Task 2b: Re-extract strings anchored on recovered pointers
+
+**Files:**
+- Modify: `tools/extract_strings.py`
+- Modify: `tools/test_extract_strings.py`
+- Regenerate: `data/strings.json`
+- Create: `docs/re/strings.md`
+
+**Interfaces:**
+- Consumes: `data/string_pointers.json` from Task 4b.
+- Produces: `data/strings.json`, same record shape as Task 2
+  (`{"off", "text", "plain", "suspect"}`), but with `off` values taken from the
+  recovered pointer list rather than from a blind scan.
+
+- [ ] **Step 1: Change the extraction source**
+
+Replace the blind forward scan with: for each offset in
+`data/string_pointers.json`, read the length byte and payload, decode CP866,
+compute `plain`, and compute `suspect` with the existing rule. Keep the
+`suspect` field — it still guards against a pointer that happens to address
+non-text.
+
+Retain the old scanner in the file as `scan_blind()` **only if** Task 4b's
+pointer list turns out to miss strings the scan found; if it is unused, delete
+it rather than keeping dead code.
+
+- [ ] **Step 2: Update the test**
+
+The count and suspect assertions from Task 2 are now wrong — they described the
+blind scan. Replace them with:
+
+```python
+    # Anchored extraction must fix the framing bugs the blind scan produced.
+    by_off = {i["off"]: i for i in items}
+
+    assert 0xBCDD in by_off, "the боксёров line was not extracted"
+    assert by_off[0xBCDD]["plain"].endswith("челюсть)"), (
+        f"still truncated: {by_off[0xBCDD]['plain']!r}"
+    )
+
+    # Framing is checked structurally, by tiling. The string region is packed
+    # with no delimiter, so a truncated string strands its tail in the gap
+    # before the next string's start, and an over-long one runs into it.
+    blob = (ROOT / "orig" / "g.exe").read_bytes()
+
+    def alnum(c):
+        return (0x80 <= c <= 0xAF or 0xE0 <= c <= 0xF1
+                or 48 <= c <= 57 or 65 <= c <= 90 or 97 <= c <= 122)
+
+    offs = sorted(by_off)
+    for a, b in zip(offs, offs[1:]):
+        end = a + 1 + blob[a]
+        assert end <= b, f"0x{a:X} (len {blob[a]}) overlaps next string 0x{b:X}"
+        if b - end < 40:
+            tail = blob[end:b]
+            assert not any(alnum(c) for c in tail), (
+                f"letter bytes stranded after 0x{a:X}: {tail!r}"
+            )
+```
+
+**Do NOT use a next-byte heuristic here.** An earlier revision of this plan
+asserted a string was cut when its last payload byte and the byte after it
+were both alphanumeric. That check is structurally broken, and was measured
+producing 39 false positives on correct data: strings are packed back-to-back,
+so the byte after any string is the *next string's length byte*, and ordinary
+lengths (48–57, 65–90, 97–122) all land inside the alphanumeric ranges. A
+same-alphabet-class variant still produced 3 false positives from the same
+cause. No next-byte rule can distinguish a cut from a length byte. The tiling
+check above replaces it; it measured 0 overlaps and 633 exact abutments across
+749 entries.
+
+Record the actual measured totals in `docs/re/strings.md` rather than
+hardcoding a guessed count into the test.
+
+- [ ] **Step 3: Run, compare, and document**
+
+Run `python3 tools/test_extract_strings.py`. In `docs/re/strings.md` record:
+the new entry count, how many entries the blind scan had that the anchored
+extraction dropped (and spot-check a sample of them), how many are new, and the
+tiling result — overlap count, exact-abutment count, gap count — identifying
+the large gaps as inter-region rather than stranded text.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add tools/extract_strings.py tools/test_extract_strings.py data/strings.json docs/re/strings.md
+git commit -m "fix: anchor string extraction on recovered pointers, fixing truncation"
+```
+
+---
+
+### Task 2c: Recover the short strings the pointer scan missed
+
+**Why this task exists:** Task 2b's tiling check did its job and found a real
+coverage gap. 39 gaps between anchored strings contain letter bytes, and 37 of
+them tile exactly as complete Pascal shortstrings. They are the game's
+single-character command tokens — `s`, `sv`, `e`, `v`, `f`, `k`, `y`, `\`,
+`1`–`4` — plus a `С^ У^ П^ Е^` banner split across four strings. Task 4b's
+pointer scan skipped them because of its `N>=3` Cyrillic-run floor, and Task 4c
+only covered indexed arrays. Task 11 compares user input against these tokens,
+so leaving them out would break the game loop.
+
+**Files:**
+- Modify: `tools/extract_strings.py`
+- Modify: `tools/test_extract_strings.py`
+- Regenerate: `data/strings.json`
+- Modify: `docs/re/strings.md`
+
+**Interfaces:**
+- Consumes: `data/strings.json` from Task 2b (same record shape).
+- Produces: `data/strings.json` with the gap-tiled strings merged in, sorted by
+  `off`. No shape change.
+
+- [ ] **Step 1: Add gap-tiling recovery**
+
+After the pointer-anchored and table entries are collected, walk consecutive
+pairs of recovered offsets. For a gap between `a` and `b`:
+
+- Skip if either `a` or `b` is `suspect`. A suspect entry is not a known-good
+  anchor, so a gap beside one proves nothing. (Measured: the only 2 gaps that
+  fail to tile sit between suspect entries at `0x1105D` and `0x11070`, and are
+  code bytes, not text.)
+- Skip if the gap is >= 40 bytes — those are inter-region spans, not stranded
+  strings.
+- Do **not** filter on byte content. Every gap meeting the conditions above is
+  walked, whatever it holds — see below.
+- Walk the gap as a chain of Pascal shortstrings: read a length byte, skip that
+  many payload bytes, repeat. If the chain lands exactly on `b`, every element
+  is a real string; emit each with the same `{"off","text","plain","suspect"}`
+  shape. If it overruns `b`, emit nothing for that gap.
+
+**Do not add a letter-byte condition.** An earlier revision of this plan
+required the gap to contain a byte in `alnum()`'s ranges, on the grounds that
+tiling alone was weak evidence — "~13% of random windows tile, flat across gap
+lengths 2–40." **That measurement was a sampling artifact and the requirement
+was wrong.** The sample spanned `0x18D0`–`0x158F2`, which includes the
+`0x11000`+ tail; that tail is 69.0% NUL bytes, and a run of `0x00` is a chain
+of zero-length strings that tiles at *any* length. The flatness across gap
+lengths was the artifact announcing itself.
+
+Measured per region, 20000 random windows each:
+
+| region | NUL | 2 B | 3 B | 7 B | 20 B | 40 B |
+|---|---|---|---|---|---|---|
+| `0x18D0`–`0x11000` (holds all 40 recovered) | 2.1% | 1.7% | 0.6% | 1.1% | 0.1% | 0.2% |
+| `0x11000`–`0x158F2` (tail) | 69.0% | 67.2% | 67.5% | 66.4% | 64.4% | 64.7% |
+| union (the misleading sample) | 17.4% | 17.1% | 15.8% | 15.7% | 14.8% | 14.1% |
+
+In the region where the recovered strings actually live, an arbitrary window
+tiles exactly ~0.1–1.7% of the time. For a 2-byte gap that rate is just
+`P(byte == 0x01)` = 1.64%. **Tiling between two verified anchors is strong
+evidence, not a coin flip**, and it is equally strong for a one-character
+string as for a longer one. A Pascal program emitting `write(' ')` produces
+exactly such a length-1 literal, so single punctuation strings are expected
+content, not noise.
+
+The seven entries the letter-byte condition excluded — `'^'` (`0x2BAC`,
+`0x30EF`), `'#'` (`0x2FA7`), `' '` (`0x712A`, `0xB1CA`), `':'` (`0x7179`),
+`'.'` (`0x9E63`) — therefore stay in. Five are flagged `suspect` by the
+existing heuristic, which is the correct place to express low confidence;
+excluding them outright was not. Note also that dropping `0xB1CA` is what left
+`0xB1CB` uncovered among Task 4b's residual offsets.
+
+This rule guesses nothing: it accepts only bytes that tile exactly between two
+independently-verified anchors. Do **not** relax it into a scan — an unanchored
+forward scan is the original defect this whole sequence exists to fix.
+
+- [ ] **Step 2: Skip suspect neighbours in the tiling check**
+
+In `tools/test_extract_strings.py`, the gap half of the tiling check must skip
+pairs where either neighbour is `suspect`. Keep the overlap assertion applying
+to **all** pairs — an overlap is a framing error regardless of suspect status.
+
+```python
+    offs = sorted(by_off)
+    for a, b in zip(offs, offs[1:]):
+        end = a + 1 + blob[a]
+        assert end <= b, f"0x{a:X} (len {blob[a]}) overlaps next string 0x{b:X}"
+        if by_off[a]["suspect"] or by_off[b]["suspect"]:
+            continue
+        if b - end < 40:
+            tail = blob[end:b]
+            assert not any(alnum(c) for c in tail), (
+                f"letter bytes stranded after 0x{a:X}: {tail!r}"
+            )
+```
+
+- [ ] **Step 3: Assert the command tokens are present**
+
+These are the entries this task exists to recover. Add:
+
+```python
+    assert by_off[0x4E71]["plain"] == "sv", "the sv command token is missing"
+    assert by_off[0x4E6F]["plain"] == "s"
+    assert by_off[0x3D87]["plain"] == "1"
+    assert by_off[0x23A4]["plain"] == "С^"
+```
+
+- [ ] **Step 4: Run and document**
+
+Run `python3 tools/test_extract_strings.py`. Expected: 796 entries total, 47
+recovered by gap-tiling, 0 tiling violations. These numbers were measured before
+this task was written — if yours differ, that is a finding to report, not a
+number to adjust the code toward.
+
+In `docs/re/strings.md`, record the recovery rule, the count, and the full list
+of recovered offsets with their text. Note explicitly that these are input
+tokens rather than display text, since Task 11 will need them.
+
+Also record, as a known gap to be cited in Task 11's brief: the
+suspect-neighbour skip correctly excludes five small gaps, three of which tile
+as real tokens — `0x8D79 'y'` (after `'Ты хочешь сохраниться?'`), `0x9BF1 '\'`
+and `'y'` (after `'^0Хочешь сохранить...'`), and `0x9D5E 'w'` (before `'run'`).
+Their anchors are `suspect` only because `is_suspect()` flags pure-ASCII
+keywords like `save_r0.sav` and `run`. The rule is right — a suspect neighbour
+is not a known-good anchor — but the consequence is that the yes/no
+confirmation token for the save and quit prompts is **not** in
+`data/strings.json`. Task 11 must recover it from the disassembly rather than
+assume it is present.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tools/extract_strings.py tools/test_extract_strings.py data/strings.json docs/re/strings.md
+git commit -m "feat: recover short command-token strings by gap tiling"
+```
+
+---
+
 ### Task 5: Save format decoder validated against all five real saves
 
 **Files:**
@@ -868,7 +1580,13 @@ git commit -m "feat: byte-exact .SAV decoder validated on 5 reference saves"
 **Interfaces:**
 - Produces:
   - `pub enum Color { Black, Blue, Green, Cyan, Red, Magenta, Brown, White }` with `pub fn from_code(c: char) -> Option<Color>`
-  - `pub fn render(src: &str) -> String` — converts `^N` codes to ANSI SGR, leaves other text untouched, resets at end.
+  - `pub struct Span { pub color: Option<Color>, pub text: String }`
+  - `pub fn parse(src: &str) -> Vec<Span>` — splits source text into styled
+    spans. This is the primitive; `render` and `strip` are both defined in
+    terms of it, so the markup is understood in exactly one place.
+  - `pub fn render(src: &str) -> String` — spans to ANSI SGR, reset at end.
+  - `pub fn strip(src: &str) -> String` — spans to plain text, markup removed.
+    Use this for anything compared, measured, or stored as a name.
   - `pub fn fill(template: &str, values: &[i64]) -> String` — replaces each `#` in order with the next value; extra `#` beyond `values.len()` are left literal.
 
 - [ ] **Step 1: Write `Cargo.toml`**
@@ -907,11 +1625,25 @@ pub enum Color {
     White,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Span {
+    pub color: Option<Color>,
+    pub text: String,
+}
+
 pub fn from_code(_c: char) -> Option<Color> {
     todo!()
 }
 
+pub fn parse(_src: &str) -> Vec<Span> {
+    todo!()
+}
+
 pub fn render(_src: &str) -> String {
+    todo!()
+}
+
+pub fn strip(_src: &str) -> String {
     todo!()
 }
 
@@ -929,6 +1661,45 @@ mod tests {
         assert_eq!(from_code('4'), Some(Color::Red));
         assert_eq!(from_code('7'), Some(Color::White));
         assert_eq!(from_code('9'), None);
+    }
+
+    #[test]
+    fn parse_splits_into_styled_spans() {
+        let spans = parse("^4Ты сдох.");
+        assert_eq!(
+            spans,
+            vec![Span { color: Some(Color::Red), text: "Ты сдох.".to_string() }]
+        );
+    }
+
+    #[test]
+    fn parse_handles_leading_plain_text_and_multiple_colors() {
+        let spans = parse("Зрители:^6Мочи его!");
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0], Span { color: None, text: "Зрители:".to_string() });
+        assert_eq!(spans[1].color, Some(Color::Brown));
+        assert_eq!(spans[1].text, "Мочи его!");
+    }
+
+    #[test]
+    fn strip_removes_markup_entirely() {
+        assert_eq!(strip("^4Gopnik: ^7version 1.02"), "Gopnik: version 1.02");
+        assert_eq!(strip("^7 Mudila"), " Mudila");
+        assert_eq!(strip("Не в этой жизни."), "Не в этой жизни.");
+    }
+
+    #[test]
+    fn strip_output_contains_no_sigils() {
+        for s in ["^0a^1b^2c^3d^4e^5f^6g^7h", "^1Крестик(Удача +2) "] {
+            assert!(!strip(s).contains('^'), "sigil survived in {s:?}");
+        }
+    }
+
+    #[test]
+    fn caret_not_followed_by_digit_is_literal() {
+        assert_eq!(strip("2^3"), "2");
+        assert_eq!(strip("a^zb"), "a^zb");
+        assert_eq!(strip("trailing^"), "trailing^");
     }
 
     #[test]
@@ -975,7 +1746,7 @@ fn main() {
 - [ ] **Step 3: Run the tests to verify they fail**
 
 Run: `cargo test`
-Expected: FAIL — all six tests panic with `not yet implemented`.
+Expected: FAIL — all eleven tests panic with `not yet implemented`.
 
 - [ ] **Step 4: Implement the text layer**
 
@@ -1011,27 +1782,54 @@ impl Color {
     }
 }
 
-pub fn render(src: &str) -> String {
-    let mut out = String::with_capacity(src.len());
+/// Split source text into styled spans. This is the only place that
+/// understands the `^N` markup; `render` and `strip` are both built on it.
+pub fn parse(src: &str) -> Vec<Span> {
+    let mut spans: Vec<Span> = Vec::new();
+    let mut color: Option<Color> = None;
+    let mut buf = String::new();
     let mut chars = src.chars().peekable();
-    let mut colored = false;
+
     while let Some(c) = chars.next() {
         if c == '^' {
             if let Some(&next) = chars.peek() {
-                if let Some(color) = from_code(next) {
+                if let Some(new_color) = from_code(next) {
                     chars.next();
-                    out.push_str(color.sgr());
-                    colored = true;
+                    if !buf.is_empty() {
+                        spans.push(Span { color, text: std::mem::take(&mut buf) });
+                    }
+                    color = Some(new_color);
                     continue;
                 }
             }
         }
-        out.push(c);
+        buf.push(c);
     }
-    if colored {
+    if !buf.is_empty() {
+        spans.push(Span { color, text: buf });
+    }
+    spans
+}
+
+pub fn render(src: &str) -> String {
+    let spans = parse(src);
+    let mut out = String::with_capacity(src.len());
+    let mut styled = false;
+    for span in &spans {
+        if let Some(c) = span.color {
+            out.push_str(c.sgr());
+            styled = true;
+        }
+        out.push_str(&span.text);
+    }
+    if styled {
         out.push_str("\x1b[0m");
     }
     out
+}
+
+pub fn strip(src: &str) -> String {
+    parse(src).into_iter().map(|s| s.text).collect()
 }
 
 pub fn fill(template: &str, values: &[i64]) -> String {
@@ -1054,7 +1852,7 @@ pub fn fill(template: &str, values: &[i64]) -> String {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `cargo test`
-Expected: `test result: ok. 6 passed; 0 failed`
+Expected: `test result: ok. 11 passed; 0 failed`
 
 - [ ] **Step 6: Commit**
 
@@ -1088,6 +1886,11 @@ git commit -m "feat: rust crate skeleton with ^N colour and # placeholder render
   impl Save {
       pub fn parse(bytes: &[u8]) -> Result<Save, SaveError>;
       pub fn to_bytes(&self) -> Vec<u8>;
+      /// The player's name with `^N` markup removed -- e.g. the raw
+      /// `"^7 Mudila"` displays and compares as `" Mudila"`. Use this
+      /// anywhere a name is shown or matched; `self.name` keeps the raw
+      /// bytes solely so round-trip stays byte-exact.
+      pub fn display_name(&self) -> String;
   }
   pub enum SaveError { BadSize(usize), Encoding(u8) }
   ```
@@ -1152,6 +1955,14 @@ fn known_values_match_reference_saves() {
 #[test]
 fn rejects_wrong_size() {
     assert!(Save::parse(&[0u8; 10]).is_err());
+}
+
+#[test]
+fn display_name_strips_markup_but_raw_name_keeps_it() {
+    let save = Save::parse(&load("SAVE_R5.SAV")).unwrap();
+    assert_eq!(save.name, "^7 Mudila", "raw name must keep markup for round-trip");
+    assert_eq!(save.display_name(), " Mudila");
+    assert!(!save.display_name().contains('^'));
 }
 ```
 
@@ -1281,6 +2092,12 @@ fn put_pstring(buf: &mut [u8], off: usize, s: &str) -> Result<(), SaveError> {
 }
 
 impl Save {
+    /// `name` holds the original bytes, markup included, because round-trip
+    /// must be byte-exact. Everything user-facing goes through here.
+    pub fn display_name(&self) -> String {
+        crate::text::strip(&self.name)
+    }
+
     pub fn parse(bytes: &[u8]) -> Result<Save, SaveError> {
         if bytes.len() != SIZE {
             return Err(SaveError::BadSize(bytes.len()));
@@ -1318,7 +2135,7 @@ impl Save {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `cargo test --test save_roundtrip`
-Expected: `test result: ok. 3 passed; 0 failed`
+Expected: `test result: ok. 4 passed; 0 failed`
 
 - [ ] **Step 5: Commit**
 
@@ -1332,6 +2149,37 @@ git commit -m "feat: byte-exact .SAV parse/serialise in Rust"
 ### Task 8: Recover the RNG and port it
 
 The Borland `0x08088405` multiplier is **not present** in this binary. Do not assume the stock `Random`. Find the actual generator.
+
+**Fallback policy (decided by the project owner):** recovering the original
+generator is the goal, but it is not worth blocking on. Work in this order:
+
+1. **Recover it statically.** Read the routine in the decompilation and
+   transcribe the recurrence. This is the preferred outcome and needs no
+   emulator, no oracle, and no fixed seed.
+2. **If the routine is recovered but capturing a reference sequence is
+   impractical**, generate the vectors by executing the original routine's
+   own bytes — not our Rust port — under an emulator, and say so in
+   `docs/re/rng.md`.
+3. **If the generator cannot be recovered at all**, substitute a
+   self-contained PRNG of our own and move on. Do NOT add the `rand` crate;
+   a documented 5-line xorshift or LCG in `src/rng.rs` keeps the dependency
+   constraint intact and is sufficient.
+
+**If you take option 3, you must do all of the following**, because it
+downgrades the project's fidelity guarantee:
+- Write `docs/re/rng.md` stating plainly that the RNG is NOT bit-faithful,
+  what was tried, and why recovery failed.
+- Delete `tests/rng_vectors.rs`'s `raw_sequence_matches_original` and
+  `below_matches_original` tests rather than leaving them asserting against
+  self-generated numbers. A test that compares our implementation to vectors
+  produced by our implementation proves nothing and is worse than no test.
+- Keep `below_stays_in_range` and add a determinism test (same seed produces
+  the same sequence).
+- Report DONE_WITH_CONCERNS, not DONE.
+
+Never generate `data/rng_vectors.json` from the Rust implementation and
+present it as ground truth. That is circular and silently fakes the
+project's central guarantee.
 
 **Files:**
 - Create: `docs/re/rng.md`
@@ -1543,7 +2391,15 @@ git commit -m "feat: recover and port original RNG with captured vectors"
       pub dmg_max: u16,
       pub broken_jaw: bool,
       pub broken_leg: bool,
+      // Inventory/status fields. Not used by combat, but declared here so
+      // the struct is defined exactly once; Task 11's handlers rely on them.
+      pub joints: u16,
+      pub stoned: bool,
+      pub beer_dl: u16,
+      pub money: i32,
   }
+
+  impl Default for Fighter { /* zeroed, name empty */ }
 
   // src/combat.rs
   pub struct Blow { pub hit: bool, pub damage: u16 }
@@ -1585,7 +2441,40 @@ Every formula gets its address cited. Anything not fully understood is written d
 
 - [ ] **Step 3: Capture combat vectors from the oracle**
 
-Using the fixed-seed technique from Task 8, run scripted fights and record, per blow: attacker/defender stats before, RNG call count, hit/miss, damage, resulting HP. Write `data/combat_vectors.json`:
+**Amended after Task 8 (owner-approved).** The original wording said "using the
+fixed-seed technique from Task 8", which does not exist — Task 8 deliberately
+did not port `Randomize` and did not pin the seed; it only named pinning as an
+option. It also asked for fields the oracle cannot observe.
+
+**First build guest-side seed pinning.** Task 8 established that the game is
+genuinely clock-seeded (`Randomize` at `1f78:11e0` reads `INT 21h/AH=2Ch`) and
+that runs diverge — three runs of a walking script gave three different
+captures. So a scripted fight is not reproducible until the seed is pinned.
+Pin it in the guest (patch out the `Randomize` call, or set `RandSeed` at
+`20ae:367e` directly — Task 8 recovered both the location and the formula).
+
+**Pinning MUST be reversible, and must not leak into the port.** It is a
+capture-time affordance only:
+- Never modify `orig/g.exe`. Patch a scratch copy, exactly as the oracle
+  already copies the binary before mounting it.
+- Never commit a pinned binary as an artifact.
+- The Rust port keeps normal clock seeding for real play. A fixed seed is
+  reachable only through a test/CLI affordance (`Rng::new(seed)` already
+  provides it), never as the default.
+- `docs/re/combat.md` states plainly how to apply the pin AND how to remove it,
+  so a later task can run unpinned when it needs real-game behaviour.
+
+Task 12 needs this same pinning for its differential test, so build it once,
+here, in a form that task can reuse.
+
+**Record only what is actually observable.** The oracle captures the 80x25 text
+screen at each blocking key read. Per blow, record hit/miss, damage, and
+resulting HP — these are printed. **Drop the `RNG call count` field**: it is
+never on screen and cannot be captured. Record attacker/defender stats only to
+the extent the game actually prints them; anything not printed is derived from
+the save file (Task 5/7 decode it) or marked unknown, never guessed.
+
+Write `data/combat_vectors.json`:
 
 ```json
 {
@@ -1605,7 +2494,19 @@ Using the fixed-seed technique from Task 8, run scripted fights and record, per 
 }
 ```
 
-At minimum 20 cases spanning: zero armour and high armour, broken jaw, broken leg, large agility gap in both directions, and a level-1 vs a level-6 fighter.
+Aim for 20 cases spanning: zero armour and high armour, broken jaw, broken leg,
+large agility gap in both directions, and a level-1 vs a level-6 fighter.
+
+**Coverage is limited to states reachable by scripted play.** Some of those
+combinations may not be reachable at all. Do NOT fabricate a vector to fill a
+row in that list. For every combination you cannot reach, record the formula's
+predicted behaviour in `docs/re/combat.md` derived from the disassembly, and
+mark it explicitly **UNVERIFIED — not reachable by scripted play**. An honest
+gap is required; a fabricated vector would silently become ground truth for a
+formula nobody checked.
+
+If fewer than 20 cases are reachable, that is an acceptable outcome — report
+the number and the gaps rather than padding.
 
 - [ ] **Step 4: Write the failing test**
 
@@ -1650,6 +2551,7 @@ impl FighterSpec {
             dmg_max: self.dmg_max,
             broken_jaw: self.broken_jaw,
             broken_leg: self.broken_leg,
+            ..Default::default()
         }
     }
 }
@@ -1757,8 +2659,23 @@ reviewer can accept the damage math while rejecting the level curve.
   /// XP awarded for defeating `enemy` while at `player_level`.
   pub fn xp_award(player_level: u16, enemy: &Fighter) -> u32;
   pub struct LevelUp { pub new_level: u16, pub hpmax_gain: u16 }
-  /// Applies as many level-ups as `xp` allows. Returns each one in order.
-  pub fn apply_levels(f: &mut Fighter, xp: u32) -> Vec<LevelUp>;
+  /// Applies as many level-ups as `award` allows. Returns each one in order.
+  ///
+  /// **AMENDED after Task 9b (owner-approved).** The original signature
+  /// `apply_levels(f: &mut Fighter, xp: u32)` CANNOT express the original's
+  /// behaviour. Three reasons, each verified against the disassembly:
+  ///   1. The draw needs the CLASS — `1000:25aa` indexes `DS:(x*4+2)` via the
+  ///      word at `DS:389c`. Without it `LevelUp::hpmax_gain` is uncomputable.
+  ///   2. The draw needs the SHARED generator (`1000:25fe`). A function owning
+  ///      its own `Rng` desynchronises the stream Task 12 replays.
+  ///   3. The threshold is STORED STATE that provably diverges from
+  ///      `10 + 10*level`: the drain loop at `1000:2546` is uncapped while the
+  ///      grant loop stops at `1000:2580`, so at the cap
+  ///      `threshold != xp_to_next(level)`.
+  ///   `uncapped` is a real caller-controlled argument (`[bp+4]`), not an
+  ///   invention. `xp_to_next` and `xp_award` keep their original signatures.
+  pub fn apply_levels(p: &mut Progress, f: &mut Fighter, rng: &mut Rng,
+                      award: u32, uncapped: bool) -> Vec<LevelUp>;
   ```
 
 - [ ] **Step 1: Recover the curve**
@@ -1787,14 +2704,39 @@ Write `data/xp.json`:
 }
 ```
 
+**AMENDED after Task 9b (owner-approved): `class` lives in `Fighter`, not
+`Progress`.** It is field `+0x00` of the same 16-byte record `Fighter` already
+mirrors (`.SAV 0x200` / `DS:389c`), so `Fighter` maps the record 1:1 and
+`Progress` is just `{ xp, threshold }`.
+
+**The `award_cases` shape below is also superseded.** Task 9b established at
+`1000:51b9` that the award is the sum of the enemy's four stats and neither
+level enters it, so a `{player_level, enemy_level, expected}` triple is
+vacuous — cases carry the enemy's whole record instead.
+
 `thresholds[i]` is the XP needed to go from level `i+1` to `i+2`, covering at
 least levels 1 through 10. `award_cases` holds `{"player_level", "enemy_level",
 "expected"}` triples captured from the oracle.
 
-Cross-check against the reference saves: `SAVE_R0` is level 4, `SAVE_R2`–`R4`
-are level 6, `SAVE_R5` is level 5 (word at save offset `0x200`, pending Task 9's
-confirmation of that field's meaning). Whatever curve you recover must be
-consistent with those levels given each save's XP value.
+Cross-check against the reference saves.
+
+**CORRECTED after Task 9 — the offset in the original wording was wrong.**
+The level is the word at save offset **`0x20a`**, NOT `0x200`. `0x200` is the
+**rank-name index**. This was established by Task 9 and independently
+re-verified by its reviewer against all five reference saves:
+
+- `word[0x234] == 10 + 10 * word[0x20a]` holds for every save —
+  `(15,160) (10,110) (20,210) (30,310) (40,410)`.
+- Reading level from `0x200` instead gives `4, 6, 6, 6, 5`, which satisfies no
+  consistent threshold relation. **The old "R0 is level 4, R2–R4 are level 6,
+  R5 is level 5" claim came from that wrong offset — do not reuse those
+  numbers.** Take the levels from `0x20a`.
+- `hpmax == 10 + 5*vitality + strength` holds exactly for R0, R3 and R5.
+
+Whatever curve you recover must be consistent with the levels read from
+`0x20a` given each save's XP value. See `docs/re/combat.md` and
+`docs/re/save-format.md`, which Task 9's fix wave updates with the confirmed
+field names.
 
 - [ ] **Step 3: Write the failing test**
 
@@ -2196,6 +3138,350 @@ git commit -m "feat: extract item/shop/enemy tables from g.exe"
 
 ---
 
+### Task 10b: Cross-platform colour output
+
+**Files:**
+- Create: `src/term.rs`
+- Modify: `Cargo.toml` (add `colored`), `src/main.rs` (add `mod term;`)
+- Test: `src/term.rs` (inline `#[cfg(test)] mod tests`), `tests/term_output.rs`
+
+**Interfaces:**
+- Produces:
+  ```rust
+  /// Write one line of game text to stdout, with `^N` markup rendered as
+  /// colour when the destination can display it and stripped when it cannot.
+  /// This is the ONLY way the game writes user-visible text; calling
+  /// `println!` on a rendered string is a bug after this task.
+  pub fn println(src: &str);
+  /// Same, without the trailing newline (for prompts). Flushes.
+  pub fn print(src: &str);
+  /// Enable Windows VT processing. Call once at startup, before any output.
+  pub fn init();
+  ```
+- Consumes: `text::render` and `text::strip` (Task 6), **both unchanged**.
+- Task 11's game loop calls `term::println`/`term::print` everywhere it would
+  otherwise have called `println!("{}", text::render(...))`, and calls
+  `term::init()` once at the top of `main`.
+
+**Why this task exists:** `text::render` emits raw ANSI SGR escapes
+unconditionally. That is correct on Unix terminals and wrong everywhere else:
+
+- **Windows.** `conhost.exe` does not interpret ANSI escapes unless the process
+  calls `SetConsoleMode` with `ENABLE_VIRTUAL_TERMINAL_PROCESSING`. Without it
+  the player sees literal `←[31m` garbage interleaved with the text. Windows
+  Terminal enables VT by default; `cmd.exe` on older Windows 10 builds does not,
+  and there is no way to enable it from Rust's `std` — it needs a Win32 FFI
+  call. This is the specific reason a crate is unavoidable here.
+- **Redirected output.** `gopnik > log.txt` currently embeds escape bytes.
+- **`NO_COLOR`.** The convention (https://no-color.org) says an app must not
+  emit colour when `NO_COLOR` is set to any non-empty value.
+- **Dumb terminals.** `TERM=dumb` cannot render SGR.
+
+**Dependency sign-off:** `colored` (3.x) is approved for this task (owner's
+choice). Do NOT add a second terminal crate (`crossterm`, `termion`, `anstream`,
+`console`) — the game needs no cursor control, no raw mode and no keypress
+handling; it is line-based (`stdin().read_line()`).
+
+Checked against RUSTSEC-2021-0139 (`ansi_term` unmaintained) at the owner's
+request: **not applicable.** `cargo tree` shows neither `colored` nor `anstream`
+depends on `ansi_term`. Every alternative that advisory suggests was then
+evaluated against what this task actually needs — a policy bool plus a Windows
+VT call, NOT a styling API (the game's `^N` markup chooses the colours, never
+Rust code). Verified by reading each crate's source; do not re-litigate:
+
+| Crate | Windows VT | Policy (NO_COLOR/CLICOLOR/tty) |
+|---|---|---|
+| `colored` 3.1.1 | manual `set_virtual_terminal` | yes, built in |
+| `yansi` 1.0.1 | automatic, but see below | yes, needs `detect-env` + `detect-tty` |
+| `console` 0.16 | yes | yes |
+| `ansiterm` 0.12 | `enable_ansi_support` | **none** |
+| `nu-ansi-term` 0.50 | yes | **none** |
+| `owo-colors` 4.3 | **none** | `NO_COLOR` only |
+| `anstyle` 1.0 | **none** | **none** (style types only) |
+
+`ansiterm` and `nu-ansi-term` give Windows VT and `paint` but no policy at all,
+so the fiddly precedence logic would come back to us hand-rolled. `console`
+works but carries cursor and terminal-size machinery we never use.
+
+`yansi` was the genuine contender and lost on a footgun worth recording: its
+Windows VT enabling lives in `os_support()` (`condition.rs:170` ->
+`windows::cache_enable()`), which `Condition::DEFAULT` invokes but
+`Condition::TTY_AND_COLOR` (`condition.rs:353` = `stdouterr_are_tty() &&
+clicolor() && no_color()`) does **not**. So the natural
+`yansi::whenever(Condition::TTY_AND_COLOR)` detects a TTY on Windows, emits
+ANSI, and never enables VT — precisely the bug this task exists to prevent.
+Avoiding it needs a hand-composed condition. It also requires stdout **and**
+stderr to be TTYs, so redirecting only stderr silently kills colour on stdout.
+
+**Design — `colored` is used as a policy oracle, not as a styling API.**
+
+The usual way to use `colored` is `"foo".red()`, deciding colour at the call
+site. That does not fit: our colour comes from the game's own `^N` markup,
+already parsed into spans by `text::render`, and we never choose a colour in
+Rust. So use exactly two things from the crate:
+
+1. `colored::control::SHOULD_COLORIZE.should_colorize()` — the decision. It
+   already implements the precedence `CLICOLOR_FORCE` > `NO_COLOR` >
+   `CLICOLOR` + tty check (verified in colored 3.1.1, `control.rs:100-115`),
+   which is what we want; do not reimplement it and do not read those env vars
+   yourself. Pin `colored = "3"`: the API above was verified against 3.1.1,
+   where `SHOULD_COLORIZE` is a `std::sync::LazyLock` and the crate has **zero
+   dependencies** off-Windows (`windows-sys` on Windows only). 2.x used
+   `lazy_static` and is not what these line references describe.
+2. `colored::control::set_virtual_terminal(true)` — the Windows VT call, from
+   `term::init()`. **Verified from the crate source: nothing in `colored` calls
+   this internally, and it is `#[cfg(windows)]`-gated.** So `init()` needs its
+   own `#[cfg(windows)]` block, and on every other platform it is a no-op.
+   Ignore its `Result` deliberately (a failure means the console is not a VT
+   console, which the `should_colorize` check already handles) — but say so in
+   a comment rather than silently discarding it.
+
+Then the whole rendering decision is one line, selecting between two pure
+functions that Task 6 already tests:
+
+```rust
+let out = if colored::control::SHOULD_COLORIZE.should_colorize() {
+    text::render(src)
+} else {
+    text::strip(src)
+};
+```
+
+**Do not** build `ColoredString`s per span, and **do not** change
+`text::render`. Keeping `render` pure and unconditional is what keeps Task 6's
+16 unit tests deterministic; moving the colour decision inside it would make a
+pure function depend on global state and on whether `cargo test` has a tty.
+We never need to strip ANSI from an already-rendered string, because we always
+hold the source markup — `text::strip` covers it.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/term_output.rs`. The tests must drive the real binary as a
+subprocess with a piped (non-tty) stdout, and assert on the raw bytes:
+
+- With no colour-related env vars set and stdout piped: output contains **no**
+  `\x1b[` bytes, and the plain text survives intact (compare against
+  `text::strip` of the same source).
+- With `CLICOLOR_FORCE=1`: output **does** contain the expected SGR sequence.
+  This matters beyond politeness — Task 12's differential harness pipes our
+  stdout, so without a force switch the port's colour output could never be
+  compared against the DOSBox oracle at all.
+- With `NO_COLOR=1` **and** `CLICOLOR_FORCE=1`: `colored` documents
+  `CLICOLOR_FORCE` as winning. Assert that, and note in a comment that it
+  contradicts a strict reading of the `NO_COLOR` spec — we follow the crate's
+  precedence deliberately rather than fighting it.
+- Inline tests in `src/term.rs` use `colored::control::set_override(true)` /
+  `unset_override()` to pin the decision, so they do not depend on whether the
+  test harness has a tty. Do not skip this — without the override these tests
+  pass or fail based on how `cargo test` was invoked.
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `cargo test --test term_output`
+Expected: FAIL — `src/term.rs` does not exist.
+
+- [ ] **Step 3: Implement `src/term.rs`**
+
+Expect well under 50 lines. If it is growing past that, policy that belongs to
+`colored` is leaking into it.
+
+A write failure to stdout (closed pipe, e.g. `gopnik | head`) must not panic —
+`Cargo.toml` sets `panic = "abort"` for release, so a panic kills the process.
+Decide deliberately whether a broken pipe exits quietly or propagates, and
+state the reasoning in a comment.
+
+- [ ] **Step 4: Route Task 11's output through it**
+
+If Task 11 already exists when this runs, replace every
+`println!("{}", text::render(...))` with `term::println(...)` and add the
+`term::init()` call to `main`. If this task runs first (the intended order),
+Task 11 is written against `term::` from the start.
+
+- [ ] **Step 5: Verify on Windows — or state plainly that it was not**
+
+The Windows VT path is the entire reason for this task and **cannot be verified
+on this Linux host.** Either:
+
+- verify it for real (the `superpowers-lab:windows-vm` skill can provision a
+  headless Windows 11 VM with SSH; build and run the binary in `cmd.exe` and in
+  Windows Terminal, and record what was observed), **or**
+- state explicitly in the report and in a comment in `src/term.rs` that Windows
+  behaviour is **delegated to `colored` and untested here**, naming it as a
+  known gap.
+
+Do NOT claim cross-platform correctness on the strength of `colored`'s
+documentation alone. An untested claim of Windows support is worse than an
+acknowledged gap, because it stops anyone else from checking.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add Cargo.toml Cargo.lock src/term.rs src/main.rs tests/term_output.rs
+git commit -m "feat: cross-platform colour output via colored"
+```
+
+---
+
+### Task 10c: Compile-time table codegen and release-size profile
+
+**Owner-requested (post-plan).** Two asks, one task: stop shipping a JSON
+parser to read data that never changes, and stop leaving free size wins on
+the floor.
+
+Measured before this task: `orig/g.exe` is 88,656 bytes; `target/release/gopnik`
+is 453,608, of which 357,216 remains after `strip` and 267,560 is `.text`. All
+three embedded runtime JSON files together are 8,500 bytes — 1.9% of the
+binary. **The data is not what makes the binary large**; `std`'s formatting and
+panic machinery plus `serde_json`'s parser are. Do not expect to approach
+88 KB: `g.exe` is 16-bit real mode calling DOS through INT 21h, with a
+few-KB Borland RTL. Report the number you actually reach; do not chase a target.
+
+**Files:**
+- Create: `build.rs`
+- Modify: `Cargo.toml`, `src/data.rs`, `src/model.rs` (only if `to_fighter` needs it)
+- Test: `tests/data_load.rs` (existing — must keep passing, adjusted for the new signatures)
+
+**Interfaces:**
+- `data::items() -> &'static [Item]`, `data::shops() -> &'static [ShopEntry]`,
+  `data::enemies() -> &'static [Enemy]` — was `Vec<T>` in each case.
+- `Item`, `ShopEntry`, `Enemy`, `EnemyStats` lose their `Deserialize` derives
+  and change owned fields to borrowed ones:
+  - `Item`: `id`, `name`, `kind` become `&'static str`; `effect` becomes
+    `Option<&'static str>`.
+  - `ShopEntry`: `shop`, `key`, `text` become `&'static str`; `gate` becomes
+    `Option<&'static str>`; `extra_gates` becomes `&'static [&'static str]`.
+  - `Enemy`: `id`, `name` become `&'static str`; `growth_weights` becomes
+    `&'static [u16]`.
+  - `EnemyStats` is all `u16` already and is unchanged apart from the derive.
+- `Enemy::to_fighter` keeps its signature; `self.name.clone()` becomes
+  `self.name.to_string()` because `Fighter::name` stays `String` (a fighter's
+  name is built at runtime for the player).
+
+**Constraint amendments this task carries** (owner-approved by the request
+itself — apply them to the plan's Global Constraints when you touch it):
+- `serde` and `serde_json` move from `[dependencies]` to
+  `[build-dependencies]`. They must not appear in the shipped binary's
+  dependency graph. `encoding_rs` and `colored` stay runtime dependencies.
+- The plan's earlier note that loaders "return an owned `Vec` rather than a
+  `&'static [T]`, because `serde_json` cannot produce a `'static` slice
+  without a `OnceLock`" is superseded — the codegen removes the premise.
+
+- [ ] **Step 1: Write the failing test**
+
+Extend `tests/data_load.rs` with a test that only compiles if the data is
+genuinely static, and that would fail if codegen dropped or reordered rows:
+
+```rust
+#[test]
+fn tables_are_static_and_complete() {
+    // Borrowing into a `'static` binding does not compile against a `Vec`
+    // returned by value -- this is the compile-time half of the assertion.
+    let items: &'static [gopnik::data::Item] = gopnik::data::items();
+    let shops: &'static [gopnik::data::ShopEntry] = gopnik::data::shops();
+    let enemies: &'static [gopnik::data::Enemy] = gopnik::data::enemies();
+
+    // Row counts are pinned to what tools/extract_tables.py extracts.
+    assert_eq!(items.len(), 15, "item row count");
+    assert_eq!(shops.len(), 18, "shop row count");
+    assert_eq!(enemies.len(), 13, "enemy row count");
+
+    // Two calls hand back the same memory: no per-call parse, no allocation.
+    assert!(std::ptr::eq(gopnik::data::items(), gopnik::data::items()));
+}
+```
+
+Confirm those three counts against the current `data/*.json` before pinning
+them — the extractor is the authority, not this brief.
+
+Keep every existing assertion in `tests/data_load.rs`. They are the guarantee
+that codegen produced the same values the JSON held; adjust only what the
+signature change forces (e.g. `&item.name` becomes `item.name`).
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `cargo test --test data_load`
+Expected: FAIL — `items()` returns `Vec<Item>`, which does not coerce to
+`&'static [Item]`.
+
+- [ ] **Step 3: Write `build.rs`**
+
+`build.rs` reads the three runtime JSON files, and writes one Rust source
+file into `OUT_DIR` containing three `static` arrays. Requirements:
+
+- Emit `cargo:rerun-if-changed=data/items.json` (and the other two), so a
+  regenerated table rebuilds the crate. Without this the binary silently
+  keeps stale data — that is the one way this design can be *worse* than
+  runtime parsing, so it is not optional.
+- Parse with `serde_json::Value` rather than mirror structs. Mirror structs
+  would be a second copy of the schema that can drift from `src/data.rs`.
+- A missing field, a wrong type, or an unknown `kind` must `panic!` with the
+  file name and the row's `id`. A build error is the whole point: malformed
+  data should never reach a binary.
+- Write string literals with `{:?}` on the `&str`. Rust's `Debug` for `str`
+  escapes what must be escaped and leaves printable non-ASCII alone, so the
+  Russian text survives verbatim — which the constraint requires. Verify this
+  on a row containing a quote or a backslash if one exists.
+- Do not reformat, translate, or normalise any text. `^N` markup and `#`
+  placeholders in `ShopEntry::text` stay exactly as the JSON holds them.
+
+- [ ] **Step 4: Rewrite `src/data.rs`**
+
+Replace the three `include_str!` statics and the three `serde_json::from_str`
+loaders with `include!(concat!(env!("OUT_DIR"), "/tables.rs"));` and three
+functions returning `&'static [T]`. Drop `use serde::Deserialize;` and every
+`#[derive(..., Deserialize)]` on the four structs (keep `Debug, Clone`).
+
+Update the module doc comment: the paragraph explaining that loaders return
+an owned `Vec` because of `serde_json` is now false and must go. Say instead
+that the tables are generated by `build.rs` at compile time and that the
+JSON is a build input, not a runtime asset. Keep the runtime/provenance
+paragraph — it is still true and still load-bearing.
+
+- [ ] **Step 5: Move the dependencies and set the release profile**
+
+```toml
+[dependencies]
+encoding_rs = "0.8"
+
+[build-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+opt-level = "z"
+strip = true
+```
+
+`colored` is added by Task 10b; if Task 10b has already landed, leave its
+`[dependencies]` line in place. If `serde`'s `derive` feature turns out to be
+unused once mirror structs are gone, drop the feature rather than carrying it.
+
+- [ ] **Step 6: Verify**
+
+Run: `cargo test` — the whole suite, since this changes a type every
+consumer sees.
+Run: `cargo tree -e normal | grep -c serde` — expected `0`. serde must not
+be in the runtime graph.
+Run: `cargo build --release && ls -l target/release/gopnik` and record the
+size next to the 453,608-byte baseline in the commit message.
+
+Then confirm the data actually survived the round trip: pick three rows
+across the three tables (including one with Russian text and one with a
+`None`/`null` field) and check the generated `OUT_DIR/tables.rs` against the
+JSON by eye. Report what you compared.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add Cargo.toml Cargo.lock build.rs src/data.rs tests/data_load.rs
+git commit -m "perf: generate tables at compile time, drop serde_json from the runtime"
+```
+
+---
+
 ### Task 11: Locations, command parser and game loop
 
 **Files:**
@@ -2536,8 +3822,13 @@ impl Game {
             Command::Club => self.goto(Location::Club),
             Command::Gym => self.goto(Location::Gym),
             Command::Help => self.show_help(),
+            Command::Inventory => self.show_inventory(),
+            Command::Save => self.save_game(),
+            Command::Name => self.rename(),
+            Command::Joint => self.smoke(),
+            Command::Weapon => self.show_weapon(),
+            Command::Key(k) => self.handle_key(k),
             Command::Unknown(s) => println!("{}", text::render(&format!("^4? {s}"))),
-            other => println!("{}", text::render(&format!("^6TODO: {other:?}"))),
         }
     }
 
@@ -2579,7 +3870,80 @@ impl Game {
         self.show_health();
     }
 
-    fn show_help(&self) {
+    /// Picks an opponent for the current district from data/enemies.json.
+    /// Returns None only if no enemy is defined for this district, which is
+    /// a data error rather than a game state.
+    fn pick_enemy(&mut self) -> Option<Fighter> {
+        let pool = crate::data::enemies();
+        let eligible: Vec<_> = pool
+            .iter()
+            .filter(|e| e.district == self.district)
+            .collect();
+        if eligible.is_empty() {
+            return None;
+        }
+        let i = self.rng.below(eligible.len() as u16) as usize;
+        Some(eligible[i].to_fighter())
+    }
+
+    fn show_inventory(&self) {
+        for line in self.player.inventory_lines() {
+            println!("{}", text::render(&line));
+        }
+    }
+
+    fn save_game(&self) {
+        match self.write_save() {
+            Ok(path) => println!("{}", text::render(&format!("^2Сохранено: {path}"))),
+            Err(e) => println!("{}", text::render(&format!("^4Ошибка записи: {e}"))),
+        }
+    }
+
+    fn show_weapon(&self) {
+        println!(
+            "{}",
+            text::render(&text::fill(
+                "Урон #-#    ",
+                &[self.player.dmg_min as i64, self.player.dmg_max as i64],
+            ))
+        );
+    }
+
+    fn rename(&mut self) {
+        print!("^7 ");
+        let _ = io::stdout().flush();
+        let mut line = String::new();
+        if io::stdin().read_line(&mut line).is_ok() {
+            let n = line.trim();
+            if !n.is_empty() {
+                self.player.name = n.to_string();
+            }
+        }
+    }
+
+    /// Косяк: the joint. Effects are transcribed from the "Обдолбаный"
+    /// status strings; see docs/re/tables.md.
+    fn smoke(&mut self) {
+        if self.player.joints == 0 {
+            println!("{}", text::render("^4Косяков нет"));
+            return;
+        }
+        self.player.joints -= 1;
+        self.player.stoned = true;
+        println!("{}", text::render("^6Обдолбаный  "));
+    }
+
+    /// Single-key commands a/d/e/h/k/t. Each maps to a shop or menu action
+    /// whose meaning is established in Task 10; dispatch is exhaustive so a
+    /// key with no action is an explicit no-op, not a silent fallthrough.
+    fn handle_key(&mut self, k: char) {
+        match k {
+            'h' => self.show_health(),
+            'e' => self.drink_beer(),
+            'a' | 'd' | 'k' | 't' => self.shop_action(k),
+            _ => println!("{}", text::render(&format!("^4? {k}"))),
+        }
+    }
         for line in [
             "Напиши: ^6bmar^7 чтобы идти на рынок",
             "Напиши: ^6rep^7  чтобы идти к ветеринару",
@@ -2594,22 +3958,10 @@ impl Game {
     }
 
     fn fight(&mut self) {
-        // Enemy construction comes from data/enemies.json once Task 10
-        // establishes the table; until then this is a placeholder opponent.
-        let mut enemy = Fighter {
-            name: "гопник".to_string(),
-            level: self.player.level,
-            hp: 50,
-            hpmax: 50,
-            strength: 10,
-            agility: 10,
-            vitality: 10,
-            luck: 5,
-            armor: 0,
-            dmg_min: 2,
-            dmg_max: 5,
-            broken_jaw: false,
-            broken_leg: false,
+        // Opponents come from data/enemies.json, populated in Task 10.
+        let Some(mut enemy) = self.pick_enemy() else {
+            println!("{}", text::render("^6Тут никого нет"));
+            return;
         };
 
         while self.player.hp > 0 && enemy.hp > 0 {
@@ -2661,6 +4013,21 @@ fn main() -> std::io::Result<()> {
 Add `pub mod game;` to `src/lib.rs`. The `saturating_sub` calls matter: HP is
 `u16`, and a plain subtraction would wrap to 65535 on a killing blow.
 
+**Remaining handler contracts.** The dispatch above references these; implement
+each from the strings in `data/strings.json` and the tables from Task 10. Every
+one is small — none should exceed ~15 lines.
+
+| Signature | Behaviour | Source strings |
+|---|---|---|
+| `fn drink_beer(&mut self)` | Refuse if `broken_jaw`; else if `beer_dl == 0` print "Пива нету"; else consume 1 unit, add the healing amount, clamp at `hpmax` | `0x419C`, `0x41CD`, `0x41E4`, `0x4240`, `0x424C`, `0x4283` |
+| `fn shop_action(&mut self, k: char)` | Look up the entry for key `k` in `data/shops.json` for the current location; if affordable, deduct price and grant the item, else print the no-money line | `0x32B7`, `0x32BF` |
+| `fn write_save(&self) -> std::io::Result<String>` | Build a `Save` from current state, write `SAVE_R<district>.SAV` via `Save::to_bytes`, return the filename | — |
+| `fn inventory_lines(&self) -> Vec<String>` on `Fighter` | One line per owned item and status flag, in the original's display order | `0x2FA9`–`0x32CC` |
+
+**Additional `Fighter` fields** beyond Task 9's declaration, needed here — add
+them in Task 9 when you write `model.rs` so the struct is defined once:
+`pub joints: u16`, `pub stoned: bool`, `pub beer_dl: u16`, `pub money: i32`.
+
 - [ ] **Step 8: Manual smoke run**
 
 Run: `cargo run`
@@ -2678,6 +4045,21 @@ git commit -m "feat: command parser, locations and playable game loop"
 ### Task 12: Differential test against the original
 
 The final gate. Same seed plus same input script must produce the same numbers in both the original and the port.
+
+**Scope depends on Task 8's outcome.** Check `docs/re/rng.md` first:
+
+- **RNG was recovered bit-faithfully** — compare the full integer sequence, as
+  described below. Every number the game prints is in scope.
+- **RNG fell back to a substitute generator (Task 8 option 3)** — the two
+  implementations diverge on the first random draw, so a full-sequence
+  comparison is meaningless and must NOT be attempted. Restrict the
+  comparison to values that do not depend on the RNG: shop prices, XP
+  thresholds, level-up stat gains, starting stats per class, item bonuses,
+  and menu numbering. Implement this by having the port emit a
+  `--trace-deterministic` mode that prints only those quantities, and compare
+  that against the same values read from the original's screens. Say
+  explicitly in `docs/re/difftest.md` which quantities are covered and which
+  are out of scope, so the reduced guarantee is visible rather than implied.
 
 **Files:**
 - Create: `tools/difftest.py`

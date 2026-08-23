@@ -1,0 +1,204 @@
+[
+ {
+  "id": "dohlyak",
+  "name": "Дохляк",
+  "class": 0,
+  "level": null,
+  "stats": null,
+  "growth_weights": [
+   1,
+   2,
+   1,
+   2
+  ],
+  "generated": true
+ },
+ {
+  "id": "nefor",
+  "name": "Нефор",
+  "class": 1,
+  "level": null,
+  "stats": null,
+  "growth_weights": [
+   2,
+   2,
+   2,
+   3
+  ],
+  "generated": true
+ },
+ {
+  "id": "nark",
+  "name": "Нарк",
+  "class": 2,
+  "level": null,
+  "stats": null,
+  "growth_weights": [
+   2,
+   2,
+   2,
+   2
+  ],
+  "generated": true
+ },
+ {
+  "id": "podtsan",
+  "name": "Подтсан",
+  "class": 3,
+  "level": null,
+  "stats": null,
+  "growth_weights": [
+   3,
+   3,
+   3,
+   3
+  ],
+  "generated": true
+ },
+ {
+  "id": "otmorozok",
+  "name": "Отморозок",
+  "class": 4,
+  "level": null,
+  "stats": null,
+  "growth_weights": [
+   5,
+   2,
+   4,
+   1
+  ],
+  "generated": true
+ },
+ {
+  "id": "gopnik",
+  "name": "Гопник",
+  "class": 5,
+  "level": null,
+  "stats": null,
+  "growth_weights": [
+   4,
+   3,
+   3,
+   2
+  ],
+  "generated": true
+ },
+ {
+  "id": "vor",
+  "name": "Вор",
+  "class": 6,
+  "level": null,
+  "stats": null,
+  "growth_weights": [
+   3,
+   3,
+   2,
+   4
+  ],
+  "generated": true
+ },
+ {
+  "id": "bespredelschik",
+  "name": "Беспредельщик",
+  "class": 7,
+  "level": null,
+  "stats": null,
+  "growth_weights": [
+   5,
+   3,
+   4,
+   2
+  ],
+  "generated": true
+ },
+ {
+  "id": "ment",
+  "name": "Мент",
+  "class": 8,
+  "level": null,
+  "stats": null,
+  "growth_weights": [
+   5,
+   5,
+   5,
+   5
+  ],
+  "generated": true
+ },
+ {
+  "id": "manyachok",
+  "name": "Маньячок",
+  "class": 9,
+  "level": null,
+  "stats": null,
+  "growth_weights": [
+   5,
+   6,
+   8,
+   3
+  ],
+  "generated": true
+ },
+ {
+  "id": "rektor_ngu",
+  "name": "Ректор НГУ",
+  "class": 10,
+  "level": null,
+  "stats": null,
+  "growth_weights": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "generated": false
+ },
+ {
+  "id": "rektor_ngu_v0",
+  "name": "Ректор НГУ",
+  "class": 10,
+  "level": 125,
+  "stats": {
+   "strength": 41,
+   "agility": 50,
+   "vitality": 123,
+   "luck": 36,
+   "dmg_min": 20,
+   "dmg_max": 41,
+   "hp": 666,
+   "hpmax": 666,
+   "armor": 60
+  },
+  "growth_weights": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "generated": false
+ },
+ {
+  "id": "rektor_ngu_v1",
+  "name": "Ректор НГУ",
+  "class": 10,
+  "level": 160,
+  "stats": {
+   "strength": 50,
+   "agility": 60,
+   "vitality": 188,
+   "luck": 32,
+   "dmg_min": 25,
+   "dmg_max": 50,
+   "hp": 1000,
+   "hpmax": 1000,
+   "armor": 80
+  },
+  "growth_weights": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "generated": false
+ }
+]

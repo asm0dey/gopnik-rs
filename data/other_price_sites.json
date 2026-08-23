@@ -1,0 +1,387 @@
+{
+ "note": "Every place in orig/g.exe that debits [20ae:38c7], the player's money. The player's money is subtracted by exactly two instruction encodings -- `29 06 C7 38` (sub [money],ax) and `83 2E C7 38 ib` (sub [money],imm8) -- and both are scanned over the whole file by tools/extract_tables.py, so this file is complete by construction rather than by inspection: ax_debit_sites lists every `ax` site there is, classified, and its count equals the sum of its categories. Eighteen of the `ax` sites are the mar/bmar rows already in data/shops.json and are listed here only as cross-reference; the sections below carry the detail for the rest. DERIVED from the binary: every address, file offset, immediate, multiplier, call target, formula and category. HAND-ANNOTATED (verified by reading the shortstrings at the cited file offsets out of orig/g.exe, see SUB_IMM8_WHAT and COMPUTED_WHAT in tools/extract_tables.py): the ten named imm8 `what` strings, and the computed row's `what`, `guard_addr` and `string_*` fields. Each imm8 annotation names the verb-dispatch span the site falls in and the token the nearest preceding `call 0f78:0bd8` compares; see docs/re/difftest.md. A null `what` means the purpose is not established -- one imm8 site (0x68fc, inside FUN_1000_3d11) and the one `other` ax site are still unidentified.",
+ "ax_debit_sites": {
+  "idiom": "29 06 C7 38 -- sub word [20ae:38c7],ax",
+  "count": 21,
+  "counts_by_category": {
+   "computed": 1,
+   "other": 1,
+   "shop_row": 18,
+   "variable": 1
+  },
+  "sites": [
+   {
+    "addr": "1000:5014",
+    "file_off": "0x68e4",
+    "amount_form": "call_result",
+    "amount_addr": null,
+    "category": "other",
+    "shop_row": null,
+    "recorded_in": "other_ax_sites"
+   },
+   {
+    "addr": "1000:761d",
+    "file_off": "0x8eed",
+    "amount_form": "byte_times_imm16",
+    "amount_addr": "20ae:3692",
+    "category": "computed",
+    "shop_row": null,
+    "recorded_in": "computed_sites"
+   },
+   {
+    "addr": "1000:bdb3",
+    "file_off": "0xd683",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b2e",
+    "category": "shop_row",
+    "shop_row": "mar:1",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:be49",
+    "file_off": "0xd719",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b2f",
+    "category": "shop_row",
+    "shop_row": "mar:2",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:bf00",
+    "file_off": "0xd7d0",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b30",
+    "category": "shop_row",
+    "shop_row": "mar:3",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:bf8a",
+    "file_off": "0xd85a",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b31",
+    "category": "shop_row",
+    "shop_row": "mar:4",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:c033",
+    "file_off": "0xd903",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b32",
+    "category": "shop_row",
+    "shop_row": "mar:5",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:c0ea",
+    "file_off": "0xd9ba",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b33",
+    "category": "shop_row",
+    "shop_row": "mar:6",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:c18d",
+    "file_off": "0xda5d",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b34",
+    "category": "shop_row",
+    "shop_row": "mar:7",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:c22c",
+    "file_off": "0xdafc",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b35",
+    "category": "shop_row",
+    "shop_row": "mar:8",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:c2d4",
+    "file_off": "0xdba4",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b36",
+    "category": "shop_row",
+    "shop_row": "mar:9",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:c90a",
+    "file_off": "0xe1da",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b38",
+    "category": "shop_row",
+    "shop_row": "bmar:1",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:c973",
+    "file_off": "0xe243",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b39",
+    "category": "shop_row",
+    "shop_row": "bmar:2",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:c9eb",
+    "file_off": "0xe2bb",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b3a",
+    "category": "shop_row",
+    "shop_row": "bmar:3",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:cb0f",
+    "file_off": "0xe3df",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b3b",
+    "category": "shop_row",
+    "shop_row": "bmar:4",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:cba7",
+    "file_off": "0xe477",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b3c",
+    "category": "shop_row",
+    "shop_row": "bmar:5",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:cc60",
+    "file_off": "0xe530",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b3d",
+    "category": "shop_row",
+    "shop_row": "bmar:6",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:cd14",
+    "file_off": "0xe5e4",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b3e",
+    "category": "shop_row",
+    "shop_row": "bmar:7",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:cdad",
+    "file_off": "0xe67d",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b3f",
+    "category": "shop_row",
+    "shop_row": "bmar:8",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:ce3e",
+    "file_off": "0xe70e",
+    "amount_form": "byte",
+    "amount_addr": "20ae:0b40",
+    "category": "shop_row",
+    "shop_row": "bmar:9",
+    "recorded_in": "data/shops.json"
+   },
+   {
+    "addr": "1000:e0a8",
+    "file_off": "0xf978",
+    "amount_form": "byte",
+    "amount_addr": "20ae:3c82",
+    "category": "variable",
+    "shop_row": null,
+    "recorded_in": "var_sites"
+   }
+  ]
+ },
+ "sub_word_imm8_sites": [
+  {
+   "addr": "1000:502c",
+   "file_off": "0x68fc",
+   "imm": 7,
+   "what": null
+  },
+  {
+   "addr": "1000:d553",
+   "file_off": "0xee23",
+   "imm": 7,
+   "what": "rep row `r` (compare 1000:d537): 7^7 рублей починят переломы, string at file 0xb2d9"
+  },
+  {
+   "addr": "1000:d5d9",
+   "file_off": "0xeea9",
+   "imm": 3,
+   "what": "rep row `h` (compare 1000:d5b9): 3^7 рубля тебя залатают, string at file 0xb2b2"
+  },
+  {
+   "addr": "1000:d78e",
+   "file_off": "0xf05e",
+   "imm": 12,
+   "what": "girl: the flat 12 rubles the visit takes at 1000:d78e (compare 1000:d6ed); not a menu row"
+  },
+  {
+   "addr": "1000:e2a7",
+   "file_off": "0xfb77",
+   "imm": 15,
+   "what": "Клуб: 15^7  потусоваться на дискотеке(Ловкость +1), string at file 0xba50"
+  },
+  {
+   "addr": "1000:e31c",
+   "file_off": "0xfbec",
+   "imm": 22,
+   "what": "Клуб: 22^7  разузнать приемы мухлёжников(Удача +1), string at file 0xba85"
+  },
+  {
+   "addr": "1000:e657",
+   "file_off": "0xff27",
+   "imm": 20,
+   "what": "trn row `1` (compare 1000:e62e): 20^7  качаться гателями и шгангой(Сила +1), string at file 0xbc55"
+  },
+  {
+   "addr": "1000:e6e3",
+   "file_off": "0xffb3",
+   "imm": 20,
+   "what": "trn row `2` (compare 1000:e6ba): 20^7  качаться на тренажерах(Выносливость +1), string at file 0xbc80"
+  },
+  {
+   "addr": "1000:e796",
+   "file_off": "0x10066",
+   "imm": 10,
+   "what": "trn row `3` (compare 1000:e73c): 10^7  прокачать # качков опыта, string at file 0xbcb6"
+  },
+  {
+   "addr": "1000:e823",
+   "file_off": "0x100f3",
+   "imm": 30,
+   "what": "trn row `4` (compare 1000:e7f3): 30^7  купить зубную защиту боксёров(-75% что сломают челюсть), string at file 0xbcdd"
+  },
+  {
+   "addr": "1000:e8b8",
+   "file_off": "0x10188",
+   "imm": 20,
+   "what": "trn row `5` (compare 1000:e875): 20^7  прокачать пресс(Броня +1), string at file 0xbd23"
+  }
+ ],
+ "var_sites": [
+  {
+   "addr": "20ae:3c82",
+   "scanned_idioms": {
+    "write_sites": "C6 06 <addr> ib (mov) / 80 06 <addr> ib (add)",
+    "read_sites": "A0 <addr> (mov al)",
+    "compare_sites": "80 3E <addr> ib (cmp byte)",
+    "charge_sites": "A0 <addr> 30 E4 29 06 C7 38 (subset of read_sites)"
+   },
+   "ref_count": 14,
+   "recorded_sites": 14,
+   "charge_sites": [
+    {
+     "addr": "1000:e0a3",
+     "file_off": "0xf973"
+    }
+   ],
+   "write_sites": [
+    {
+     "addr": "1000:e020",
+     "file_off": "0xf8f0",
+     "op": "mov",
+     "imm": 5
+    },
+    {
+     "addr": "1000:e0f7",
+     "file_off": "0xf9c7",
+     "op": "add",
+     "imm": 2
+    },
+    {
+     "addr": "1000:e145",
+     "file_off": "0xfa15",
+     "op": "mov",
+     "imm": 5
+    }
+   ],
+   "read_sites": [
+    {
+     "addr": "1000:e079",
+     "file_off": "0xf949"
+    },
+    {
+     "addr": "1000:e08c",
+     "file_off": "0xf95c"
+    },
+    {
+     "addr": "1000:e0a3",
+     "file_off": "0xf973"
+    },
+    {
+     "addr": "1000:e0d0",
+     "file_off": "0xf9a0"
+    },
+    {
+     "addr": "1000:e0e0",
+     "file_off": "0xf9b0"
+    },
+    {
+     "addr": "1000:e12e",
+     "file_off": "0xf9fe"
+    },
+    {
+     "addr": "1000:e15d",
+     "file_off": "0xfa2d"
+    },
+    {
+     "addr": "1000:e25d",
+     "file_off": "0xfb2d"
+    }
+   ],
+   "compare_sites": [
+    {
+     "addr": "1000:e14a",
+     "file_off": "0xfa1a",
+     "imm": 17
+    },
+    {
+     "addr": "1000:e151",
+     "file_off": "0xfa21",
+     "imm": 5
+    },
+    {
+     "addr": "1000:e174",
+     "file_off": "0xfa44",
+     "imm": 17
+    }
+   ],
+   "what": null
+  }
+ ],
+ "computed_sites": [
+  {
+   "addr": "1000:761d",
+   "file_off": "0x8eed",
+   "amount_addr": "20ae:3692",
+   "multiplier": 50,
+   "formula": "district*50",
+   "what": "Рушель Блаво save-game service",
+   "guard_addr": "1000:760a",
+   "string_file_off": "0x8d2d",
+   "string_text": "За # рублей он может сделать сохранение прямо здесь.",
+   "string_load_addr": "1000:7583",
+   "string_load_file_off": "0x8e53"
+  }
+ ],
+ "other_ax_sites": [
+  {
+   "addr": "1000:5014",
+   "file_off": "0x68e4",
+   "amount_form": "call_result",
+   "call_target": "0f78:1131",
+   "what": null
+  }
+ ]
+}

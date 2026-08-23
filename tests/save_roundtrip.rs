@@ -1,0 +1,235 @@
+use gopnik::save::{self, Save};
+use std::path::Path;
+
+const MAGIC: &str = "^4Gopnik: ^7version 1.02 june,sept 2003";
+
+fn load(name: &str) -> Vec<u8> {
+    let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("orig")
+        .join(name);
+    std::fs::read(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+}
+
+#[test]
+// Note: this test does NOT independently validate the eight stat-word/`tail`
+// offsets. `to_bytes` writes those bytes back to the same self-computed
+// offsets it read them from, so the round-trip passes regardless of
+// whether those offsets are actually correct against the original Pascal
+// layout; only `rust_offsets_match_save_layout_json` (below) guards that.
+fn all_reference_saves_round_trip_byte_exactly() {
+    for name in [
+        "SAVE_R0.SAV",
+        "SAVE_R2.SAV",
+        "SAVE_R3.SAV",
+        "SAVE_R4.SAV",
+        "SAVE_R5.SAV",
+    ] {
+        let bytes = load(name);
+        assert_eq!(bytes.len(), 694, "{name}: unexpected size");
+
+        let save = Save::parse(&bytes).unwrap_or_else(|e| panic!("{name}: parse: {e:?}"));
+        assert_eq!(save.magic, MAGIC, "{name}: magic");
+        assert!(
+            save.hp <= save.hpmax,
+            "{name}: hp {} > hpmax {}",
+            save.hp,
+            save.hpmax
+        );
+
+        let out = save
+            .to_bytes()
+            .unwrap_or_else(|e| panic!("{name}: to_bytes: {e:?}"));
+        assert_eq!(out, bytes, "{name}: round-trip is not byte-exact");
+    }
+}
+
+#[test]
+fn known_values_match_reference_saves() {
+    let cases = [
+        ("SAVE_R0.SAV", "^7 adg", 118u16, 129u16),
+        ("SAVE_R2.SAV", "^7 vor", 84, 99),
+        ("SAVE_R3.SAV", "^7 vor", 178, 178),
+        ("SAVE_R4.SAV", "^7 vor", 251, 270),
+        ("SAVE_R5.SAV", "^7 Mudila", 325, 325),
+    ];
+    for (file, name, hp, hpmax) in cases {
+        let save = Save::parse(&load(file)).unwrap();
+        assert_eq!(save.name, name, "{file}: name");
+        assert_eq!(save.hp, hp, "{file}: hp");
+        assert_eq!(save.hpmax, hpmax, "{file}: hpmax");
+    }
+}
+
+#[test]
+fn rejects_wrong_size() {
+    assert!(Save::parse(&[0u8; 10]).is_err());
+}
+
+#[test]
+fn display_name_strips_markup_but_raw_name_keeps_it() {
+    let save = Save::parse(&load("SAVE_R5.SAV")).unwrap();
+    assert_eq!(
+        save.name, "^7 Mudila",
+        "raw name must keep markup for round-trip"
+    );
+    assert_eq!(save.display_name(), " Mudila");
+    assert!(!save.display_name().contains('^'));
+}
+
+#[test]
+fn to_bytes_reports_error_instead_of_panicking_on_unencodable_name() {
+    // Task 11 feeds player-typed names into this path; a character with no
+    // CP866 representation must surface as an error, not a panic.
+    let mut save = Save::parse(&load("SAVE_R0.SAV")).unwrap();
+    save.name = "^7 漢".to_string();
+    let err = save
+        .to_bytes()
+        .expect_err("unmappable char must error, not panic");
+    assert!(matches!(err, save::SaveError::Unmappable('漢')), "{err:?}");
+}
+
+#[test]
+fn to_bytes_reports_error_instead_of_panicking_on_name_over_shortstring_cap() {
+    // Task 11 feeds player-typed names into this path; a name whose CP866
+    // encoding exceeds the 255-byte shortstring cap must surface as an
+    // error, not panic/abort the process (the release profile sets
+    // `panic = "abort"`). No unmappable character is needed to hit this --
+    // plain ASCII over length is enough.
+    let mut save = Save::parse(&load("SAVE_R0.SAV")).unwrap();
+    save.name = "x".repeat(300);
+    let err = save
+        .to_bytes()
+        .expect_err("over-cap name must error, not panic");
+    assert!(matches!(err, save::SaveError::TooLong(300)), "{err:?}");
+}
+
+#[test]
+fn to_bytes_caps_on_encoded_cp866_bytes_not_utf8_bytes_or_char_count() {
+    // In CP866 every Cyrillic character is 1 byte, but in the Rust
+    // `String`'s UTF-8 representation the same character is 2 bytes. The
+    // cap must be checked against the encoded (CP866) byte length, not
+    // against `str::len()` (UTF-8 bytes) or `chars().count()`.
+    let mut save = Save::parse(&load("SAVE_R0.SAV")).unwrap();
+
+    // 200 Cyrillic characters: 400 UTF-8 bytes (over 255) but only 200
+    // CP866 bytes (under the 255 cap) -- must succeed. A check against
+    // UTF-8 byte length would wrongly reject this.
+    save.name = "п".repeat(200);
+    assert_eq!(
+        save.name.len(),
+        400,
+        "sanity: UTF-8 encoding is 2 bytes/char"
+    );
+    save.to_bytes()
+        .expect("200 Cyrillic chars fit in the 255-byte CP866 cap");
+
+    // 256 Cyrillic characters: also 256 CP866 bytes, one over the cap.
+    save.name = "п".repeat(256);
+    let err = save
+        .to_bytes()
+        .expect_err("256 CP866 bytes exceeds the 255-byte cap");
+    assert!(matches!(err, save::SaveError::TooLong(256)), "{err:?}");
+}
+
+/// The save layout is hand-maintained in two places: `tools/decode_save.py`
+/// (Task 5, the Python reference decoder) and `src/save.rs` (this task).
+/// `data/save_layout.json` is generated by the Python side; assert the Rust
+/// offset constants agree with it byte-for-byte so the two can't silently
+/// drift apart.
+#[test]
+fn rust_offsets_match_save_layout_json() {
+    let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("data")
+        .join("save_layout.json");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+    let json: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
+
+    assert_eq!(json["size"].as_u64().unwrap() as usize, save::SIZE);
+
+    let fields = json["fields"].as_array().expect("fields array");
+    let off = |name: &str| -> usize {
+        fields
+            .iter()
+            .find(|f| f["name"] == name)
+            .unwrap_or_else(|| panic!("no field named {name:?} in save_layout.json"))["off"]
+            .as_u64()
+            .unwrap() as usize
+    };
+
+    assert_eq!(off("magic"), save::OFF_MAGIC);
+    assert_eq!(off("name"), save::OFF_NAME);
+    // Names pinned by Task 9 (docs/re/save-format.md); rank_index's own
+    // semantics are still open (Task 9b), but the offset it occupies is not.
+    const STAT_NAMES: [&str; 8] = [
+        "rank_index",
+        "strength",
+        "agility",
+        "vitality",
+        "luck",
+        "level",
+        "dmg_min",
+        "dmg_max",
+    ];
+    for (i, name) in STAT_NAMES.iter().enumerate() {
+        assert_eq!(off(name), save::OFF_STATE + 2 * i);
+    }
+    assert_eq!(off("hp"), save::OFF_HP);
+    assert_eq!(off("hpmax"), save::OFF_HPMAX);
+    // Fix wave 2 replaced the single opaque `tail` entry with a partition of
+    // 0x214..0x2b6 (named fields plus unk_<hex_offset> spans -- see
+    // `save_layout_json_fields_tile_the_record` below), so there is no
+    // longer a field literally named `tail`; `unk_0214` is the first entry
+    // of that partition and sits at the same offset `tail` used to.
+    assert_eq!(off("unk_0214"), save::OFF_TAIL);
+}
+
+/// Fix wave 2 fixed a defect where four newly-named tail fields
+/// (`buff_countdown`, `xp`, `threshold`, `growth_log`) were added
+/// *alongside* the pre-existing opaque `tail` entry instead of partitioning
+/// it, so the fields overlapped and `sum(len)` exceeded `size`. This test
+/// is the structural guard against that regressing: `data/save_layout.json`'s
+/// `fields`, sorted by offset, must tile `[0, size)` exactly -- contiguous,
+/// no gaps, no overlaps -- regardless of what any individual field is named.
+#[test]
+fn save_layout_json_fields_tile_the_record() {
+    let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("data")
+        .join("save_layout.json");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+    let json: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
+
+    let size = json["size"].as_u64().expect("size") as usize;
+    let mut spans: Vec<(usize, usize, String)> = json["fields"]
+        .as_array()
+        .expect("fields array")
+        .iter()
+        .map(|f| {
+            let off = f["off"].as_u64().expect("off") as usize;
+            let len = f["len"].as_u64().expect("len") as usize;
+            let name = f["name"].as_str().expect("name").to_string();
+            (off, len, name)
+        })
+        .collect();
+    assert!(!spans.is_empty(), "fields array must not be empty");
+    spans.sort_by_key(|&(off, _, _)| off);
+
+    let mut cursor = 0usize;
+    for (off, len, name) in &spans {
+        assert_eq!(
+            *off, cursor,
+            "field {name:?} at 0x{off:x} does not start where the previous field ended \
+             (expected 0x{cursor:x}); fields must tile the record with no gap and no overlap"
+        );
+        cursor += len;
+    }
+    assert_eq!(
+        cursor, size,
+        "fields cover 0..0x{cursor:x} but size is 0x{size:x}; \
+         fields must exactly partition [0, size)"
+    );
+
+    // Same invariant, restated as the sum check the fix-wave-2 report calls
+    // out explicitly: sum(len for fields) == size.
+    let total: usize = spans.iter().map(|&(_, len, _)| len).sum();
+    assert_eq!(total, size, "sum(len for fields) must equal size exactly");
+}

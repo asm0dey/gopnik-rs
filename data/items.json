@@ -1,0 +1,137 @@
+[
+ {
+  "id": "krestik",
+  "name": "Крестик",
+  "kind": "charm",
+  "bonus": 2,
+  "effect": "luck",
+  "price": null,
+  "sold": false
+ },
+ {
+  "id": "kolco_gs",
+  "name": "Кольцо \"Гс\"",
+  "kind": "charm",
+  "bonus": 1,
+  "effect": "luck",
+  "price": null,
+  "sold": false
+ },
+ {
+  "id": "kolco_pg",
+  "name": "Кольцо \"Пг\"",
+  "kind": "charm",
+  "bonus": 1,
+  "effect": "all",
+  "price": null,
+  "sold": false
+ },
+ {
+  "id": "mega_kolco",
+  "name": "Мега Кольцо",
+  "kind": "charm",
+  "bonus": 4,
+  "effect": "all",
+  "price": null,
+  "sold": false
+ },
+ {
+  "id": "kolco_gp",
+  "name": "Кольцо \"Гп\"",
+  "kind": "charm",
+  "bonus": 0,
+  "effect": "regen",
+  "price": null,
+  "sold": false
+ },
+ {
+  "id": "butsy",
+  "name": "Бутсы",
+  "kind": "weapon",
+  "bonus": 1,
+  "effect": null,
+  "price": null,
+  "sold": true
+ },
+ {
+  "id": "pontovye_butsy",
+  "name": "Понтовые бутсы",
+  "kind": "weapon",
+  "bonus": 2,
+  "effect": "damage",
+  "price": null,
+  "sold": true
+ },
+ {
+  "id": "kastet",
+  "name": "Кастет",
+  "kind": "weapon",
+  "bonus": 2,
+  "effect": null,
+  "price": 25,
+  "sold": true
+ },
+ {
+  "id": "dubinka",
+  "name": "Дубинка",
+  "kind": "weapon",
+  "bonus": 4,
+  "effect": null,
+  "price": 50,
+  "sold": true
+ },
+ {
+  "id": "nozh",
+  "name": "Нож",
+  "kind": "weapon",
+  "bonus": 6,
+  "effect": null,
+  "price": null,
+  "sold": false
+ },
+ {
+  "id": "tesak",
+  "name": "Тесак",
+  "kind": "weapon",
+  "bonus": 9,
+  "effect": "damage",
+  "price": null,
+  "sold": false
+ },
+ {
+  "id": "kostyum_adidas",
+  "name": "Костюм Adidas",
+  "kind": "suit",
+  "bonus": 2,
+  "effect": null,
+  "price": null,
+  "sold": true
+ },
+ {
+  "id": "kostyum_abibas",
+  "name": "Костюм Abibas",
+  "kind": "suit",
+  "bonus": 1,
+  "effect": null,
+  "price": null,
+  "sold": true
+ },
+ {
+  "id": "krutaya_kozhanka",
+  "name": "Крутая кожанка",
+  "kind": "armor",
+  "bonus": 4,
+  "effect": null,
+  "price": null,
+  "sold": true
+ },
+ {
+  "id": "kozhanka",
+  "name": "Кожанка",
+  "kind": "armor",
+  "bonus": 2,
+  "effect": null,
+  "price": null,
+  "sold": true
+ }
+]

@@ -1,0 +1,167 @@
+[
+ {
+  "shop": "mar",
+  "key": "1",
+  "text": "#^7 руб.  Хотдог(3-4 з)",
+  "price": 2,
+  "displayed_price": 2,
+  "gate": null,
+  "extra_gates": []
+ },
+ {
+  "shop": "mar",
+  "key": "2",
+  "text": "#^7 руб.  Пиво(#з)",
+  "price": 5,
+  "displayed_price": 5,
+  "gate": null,
+  "extra_gates": []
+ },
+ {
+  "shop": "mar",
+  "key": "3",
+  "text": "#^7 руб. Затемнённые очки(Чтоб менты не узнали)",
+  "price": 10,
+  "displayed_price": 10,
+  "gate": null,
+  "extra_gates": []
+ },
+ {
+  "shop": "mar",
+  "key": "4",
+  "text": "#^7 руб. Реальный спортивный костюм abibas(Смягчает пинок на 1)",
+  "price": 15,
+  "displayed_price": 15,
+  "gate": null,
+  "extra_gates": []
+ },
+ {
+  "shop": "mar",
+  "key": "5",
+  "text": "#^7 руб. Понтовые бутсы(Увеличивают урон)",
+  "price": 15,
+  "displayed_price": 15,
+  "gate": null,
+  "extra_gates": []
+ },
+ {
+  "shop": "mar",
+  "key": "6",
+  "text": "#^7 руб. Реальную кожанку(Дополнительная защита от случайностей на 2)",
+  "price": 25,
+  "displayed_price": 25,
+  "gate": "district>1",
+  "extra_gates": []
+ },
+ {
+  "shop": "mar",
+  "key": "7",
+  "text": "#^7 руб. Реальный спортивный костюм adidas(Смягчает пинок на 2)",
+  "price": 30,
+  "displayed_price": 30,
+  "gate": "district>1",
+  "extra_gates": []
+ },
+ {
+  "shop": "mar",
+  "key": "8",
+  "text": "#^7 руб. Понтовёйшие бутсы(Урон+2)",
+  "price": 30,
+  "displayed_price": 30,
+  "gate": "district>2",
+  "extra_gates": []
+ },
+ {
+  "shop": "mar",
+  "key": "9",
+  "text": "#^7 руб. Ваще крутую кожанку(Броня +4)",
+  "price": 50,
+  "displayed_price": 50,
+  "gate": "district>3",
+  "extra_gates": []
+ },
+ {
+  "shop": "bmar",
+  "key": "1",
+  "text": "#^7 руб. Косяк",
+  "price": 15,
+  "displayed_price": 15,
+  "gate": null,
+  "extra_gates": []
+ },
+ {
+  "shop": "bmar",
+  "key": "2",
+  "text": "#^7 руб. Краденый мобильник(Подмога быстрее приходит)",
+  "price": 30,
+  "displayed_price": 30,
+  "gate": null,
+  "extra_gates": []
+ },
+ {
+  "shop": "bmar",
+  "key": "3",
+  "text": "#^7 руб. Офигенный косяк(Очко прокачки)",
+  "price": 20,
+  "displayed_price": 20,
+  "gate": null,
+  "extra_gates": []
+ },
+ {
+  "shop": "bmar",
+  "key": "4",
+  "text": "#^7 руб. Сделать типа зоновскую наколку(Шансы, что наедут -50%(кроме бандитов, ментов и маньяков))",
+  "price": 10,
+  "displayed_price": 10,
+  "gate": null,
+  "extra_gates": []
+ },
+ {
+  "shop": "bmar",
+  "key": "5",
+  "text": "#^7 руб. Кастет(урон+2)",
+  "price": 25,
+  "displayed_price": 25,
+  "gate": "district>1",
+  "extra_gates": []
+ },
+ {
+  "shop": "bmar",
+  "key": "6",
+  "text": "#^7 руб. Дубинка(урон+4), заменяет кастет",
+  "price": 50,
+  "displayed_price": 50,
+  "gate": "district>2",
+  "extra_gates": []
+ },
+ {
+  "shop": "bmar",
+  "key": "7",
+  "text": "#^7 руб. Самопальный пистолет (Можно стрелять в бандитских районах - ^6f^7 урон(#-#)).",
+  "price": 150,
+  "displayed_price": 150,
+  "gate": "district>3",
+  "extra_gates": []
+ },
+ {
+  "shop": "bmar",
+  "key": "8",
+  "text": "#^7 руб. Патроны - 6.",
+  "price": 70,
+  "displayed_price": 70,
+  "gate": "district>3",
+  "extra_gates": []
+ },
+ {
+  "shop": "bmar",
+  "key": "9",
+  "text": "#^7 руб. Глушитель.",
+  "price": 60,
+  "displayed_price": 70,
+  "gate": "district>3",
+  "extra_gates": [
+   "byte[20ae:394d]!=0",
+   "byte[20ae:3e32]==25"
+  ]
+ }
+]
