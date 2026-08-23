@@ -1,6 +1,9 @@
 # Resume checkpoint — gopnik-rs port
 
-**Branch:** `port/gopnik-rust`. **Last checkpoint commit:** see `git log`; this file was last updated after Task 11f fix round 2.
+**Branch:** `port/gopnik-rust`. **Last checkpoint commit:** see `git log`; this file was last
+updated after **Task 13**. **A PR is open: https://github.com/asm0dey/gopnik-rs/pull/1**
+(`port/gopnik-rust` -> `main`), so the branch also exists on GitHub — this machine is no longer
+the only copy.
 
 `.superpowers/sdd/progress.md` is the full ledger but is **git-ignored** — a
 `git clean -fdx` destroys it. This file is the committed backup. If they
@@ -8,11 +11,29 @@ disagree, trust `git log`.
 
 ---
 
-## READ THIS FIRST: `cargo test` is GREEN as of Task 11f
+## READ THIS FIRST: everything is GREEN, and Task 13 is NOT YET REVIEWED
 
-The whole workspace passes with **zero warnings**. `cargo test --no-fail-fast`
-reports 11 targets, 132 tests, 0 failed; `cargo clippy --all-targets` and
-`cargo fmt --check` are clean.
+`cargo test --no-fail-fast` → **160 passed, 0 failed, zero warnings**. Python tool
+tests → **255 OK**. `python3 tools/difftest.py` → exit 0, 126 records.
+`cargo clippy --all-targets` and `cargo fmt --check` are clean.
+
+**First action on resume: review Task 13** (commit `521db0e`, base `5732643`).
+It is implemented and its own tests pass, but **no review has run on it** — the
+session stopped at the owner's request immediately after it landed. This is
+exactly the state the previous session handed over in (Task 11c), and reviewing
+first worked well: that review found four Important issues in work whose tests
+were already green.
+
+### Three oracles now, all ground truth, none to be regenerated
+
+| file | what | never regenerate |
+|---|---|---|
+| `data/rng_trace.json` | 1387 wander draws, 5 runs, 29-var `final_state` each | `148fe3c7…1025` |
+| `data/state_trace.json` | 91 per-turn samples of 35 guest variables | `6f7ae78a…13c7` |
+| `data/combat_trace.json` | **15 whole fights across 4 runs, 1900 draws** | new in Task 13 |
+
+`combat_trace.json` records the other two files' digests inside itself, and a test
+asserts the fold tool never names either as an output.
 
 Task 11c had deliberately left three tests red —
 `run_{a,b,e}_replays_exactly` in `tests/wander_sequence.rs` — with one
@@ -49,15 +70,58 @@ Tasks 1–11 complete and reviewed (see git log). Since then:
 | 11e | Ghidra branch enumeration | `e32aa71..f72c541` | complete, reviewed |
 | 11c | Wander sequence wired into `src/` | `f72c541..a31f4a8` | complete, reviewed (two fix rounds) |
 | 11f | `FUN_1000_0d14` + fight flow recovered; all five runs replay | `3fac24c` | complete, reviewed and approved; fix rounds 1 and 2 applied |
+| 11g | Address module (`tools/addr.py`), RE query CLI, deterministic exporter | `cfd7618..9051b47` | complete, reviewed (one fix round) |
+| 11h | Turbo Pascal runtime identified against a TP 7.0 `TURBO.TPL` | `fe4ecfd..e369084` | complete, reviewed (two fix rounds) |
+| 11i | Per-turn state capture (`data/state_trace.json`) | `e369084..39153e6` | complete, reviewed, **no fix round needed** |
+| 12 | Differential test of authored constants (126 records, 71 independent) | `39153e6..f40aabc` | complete, reviewed (one fix round) |
+| — | Final whole-branch review + its single fix wave | `e0801c5` | complete |
+| — | `rename` divergence: `.trim()` removed at both name-input sites | `5732643` | complete |
+| **13** | **Whole fights captured; port replays 15 of 15** | **`521db0e`** | **implemented, NOT REVIEWED** |
 
-**Next action: Task 11g** — one address module, and the queries that keep
-getting hand-rolled. Brief `.superpowers/sdd/task-11g-brief.md`.
+**Next action: review Task 13.** Base for the review package is `5732643`.
+Brief `.superpowers/sdd/task-13-brief.md`, report `.superpowers/sdd/task-13-report.md`.
+
+### What Task 13 claims, for the reviewer to check rather than accept
+
+- **15 of 15 fights replay exactly** across 4 runs and 1900 draws — 8 won, 2 lost,
+  5 fled — each checked on four channels: the whole draw stream (site/`n`/`r`/count),
+  the exact input the guest's own `ReadLn`s consumed, the enemy record at every
+  `1000:3d11`, and both fighters' hp and all four break flags at every `1000:441d`.
+- **The break channel found a real bug**: the port never set the *enemy's* break
+  flags at all. `Fighter`'s `enemy_broken_jaw`/`enemy_broken_leg` exist because of it.
+- A player jaw break (run A) and an enemy jaw break (two of run B's six fights) are
+  captured and asserted. **No leg break was reached** — all five limb picks returned
+  0 — registered rather than glossed.
+- Self-disclosed and worth checking: `Fighter::hp` is `u16` where the original's is
+  **signed**. The half that costs draws is fixed (the two blow loops exit on
+  *different* signed tests — `1000:4629 jg` vs `1000:48cd jl`, so a player at exactly
+  0 gets swung at again); the stored value still saturates, so a post-death
+  `final_state` is not comparable. The 35-variable assertion therefore runs on run B,
+  with a separate test refusing a world where no run qualifies.
+- Four class-keyed item arms, the зубная защита's `Random(4)`, and the hospital
+  rescue are implemented but **never observed** — each registered with why it was
+  unreachable.
+- One citation correction (`1000:47fa` → `1000:47fe`) and one wrong address of the
+  implementer's own that its mechanical byte check caught.
 
 ## Owner constraints in force
 
-- **One agent at a time.** Serialise every dispatch — implementers, reviewers
-  and fix waves alike. The reason is token spend rate, not wall-clock. Also
-  saved to durable memory as `one-agent-at-a-time`.
+- **One agent at a time, AMENDED 2026-08-23: genuinely small work may run in
+  parallel.** The reason is unchanged — token spend rate, not wall-clock — so the
+  test is **size, not independence**. A task that is merely independent of what is
+  running does not qualify. In practice the only things that have qualified are
+  batched deferred-minor cleanups, scoped to files the running task cannot touch.
+- **`capstone` is permitted** (owner-installed), amending the plan's stdlib-only
+  Python constraint. `tools/dis16.py` stays the shipped decoder — it is validated
+  against `ndisasm` over 19,000+ instructions and has no dependency. Where capstone
+  and `dis16` decode the same bytes **they must agree**; a disagreement is a finding
+  worth more than whatever it was found while doing.
+- **`/home/finkel/Downloads/TP/`** is a Turbo Pascal 7.0 distribution the owner put
+  on disk. `BIN/TURBO.TPL` is what Task 11h matched the runtime against. It is
+  outside the repo, so tests needing it must degrade gracefully for anyone cloning.
+- **`jbcontext` semantic search** is available over `docs/re/`'s ~6300 lines.
+  **A semantic hit is a lead, not a citation** — same status as `build/decomp/`'s
+  Ghidra C. `METHODOLOGY.md` still requires an address and a tier per claim.
 - **Full branch coverage is the target**, not a faithful core loop.
 - Declined, do not re-propose: a play-recorder built on `scrhook` (manual play
   cannot reach all paths in reasonable time). Ghidra branch enumeration was
