@@ -181,6 +181,13 @@ def main(argv=None):
     labels = args.labels.split(",")
     if len(labels) != len(args.traces):
         ap.error("%d labels for %d traces" % (len(labels), len(args.traces)))
+    if args.out is not None:
+        frozen = {(REPO / p).resolve(): p for p in FROZEN}
+        named = frozen.get(Path(args.out).resolve())
+        if named is not None:
+            ap.error("--out %s names %s, a FROZEN oracle: it is read for its "
+                     "SHA-256 and never written.  Write the fight oracle to "
+                     "data/combat_trace.json instead." % (args.out, named))
     traces = [json.loads(Path(p).read_text()) for p in args.traces]
     for lab, t in zip(labels, traces):
         if not t["fights"]:

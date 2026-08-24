@@ -35,7 +35,9 @@ WHAT IS NOT COVERED HERE (needs the emulator, and is NOT faked):
   output is checked by the guards above; see docs/re/rng-trace.md.  No mock
   emulator stands in for them here -- a faked run would prove nothing.
 """
+import contextlib
 import hashlib
+import io
 import json
 import random
 import re
@@ -1469,9 +1471,13 @@ class FightFoldTest(unittest.TestCase):
                 "draws": [{"ordinal": i + 1, "turn": 1, "call_site_offset": 0x4460,
                            "n": 100, "result": 1} for i in range(ndraws)]}
 
-    def f(self, i, at, prompts=1):
+    def f(self, i, at, prompts=1, whole_enemy=False):
+        enemy = {"e_class_3952": 3}
+        if whole_enemy:
+            # `main()`'s per-fight stderr line reads these two as well.
+            enemy.update({"e_level_395c": 0, "e_hp_3962": 22})
         return {"index": i, "turn": 1, "draws_before": at,
-                "enemy": {"e_class_3952": 3}, "prompts": prompts}
+                "enemy": enemy, "prompts": prompts}
 
     def test_a_fight_spans_up_to_the_next_one(self):
         t = self.trace([self.f(1, 10), self.f(2, 40)], 100)
@@ -1484,13 +1490,84 @@ class FightFoldTest(unittest.TestCase):
         [row] = combattrace.fight_records(t, combattrace.compact_draws(t))
         self.assertEqual(row["draws_until_next_fight"], 13)
 
-    def test_the_frozen_oracles_are_only_ever_read(self):
-        # combattrace records their digests; it must never name them as an
-        # output.  This is the file-level form of the Task 11i rule.
-        src = (REPO / "tools" / "rngtrace" / "combattrace.py").read_text()
-        for name in combattrace.FROZEN:
-            self.assertIn(name, src)
-        self.assertNotIn("write_text(", src.split("def digest")[0])
+    def whole_trace(self, ndraws=3):
+        """One per-run trace of the shape `fightrun.py` writes.
+
+        Only enough of it to drive `combattrace.build`/`main` end to end --
+        the point of the two tests below is what the fold TOUCHES on disk, not
+        what it computes.
+        """
+        t = self.trace([self.f(1, 0, prompts=2, whole_enemy=True)], ndraws)
+        t.update({
+            "seed_hex": "0x12345678",
+            "seed_patch": {"site": "1f78:11e0"},
+            "observation_point": "1000:b353",
+            "turn_marker": "1000:ae63",
+            "fight_marker": "1000:3d11",
+            "round_marker": "1000:441d",
+            "load_base": {"base": 0x30000},
+            "verification": {"ok": True},
+            "final_state": {"class_389c": 6},
+            "combat_prompts": [{"index": 1, "turn": 1, "fight": 1,
+                                "draws_before": 0, "values": {"p_hp_38ac": 23}}],
+            "state_samples": [{"turn": 1, "values": {"hp_38ac": 23}}],
+            "run": {"drive_log": {"turns_completed": 1,
+                                  "guest_left_the_game": False,
+                                  "lines_the_game_read": ["y", "k"]},
+                    "creation": {"loaded_save": False},
+                    "district_key": "1",
+                    "combat_answer": "k",
+                    "walks_requested": 1,
+                    "ended_at_turn_marker": True,
+                    "prompt_stops": 1},
+        })
+        return t
+
+    def frozen_digests(self):
+        return {p: combattrace.digest(combattrace.REPO / p)
+                for p in combattrace.FROZEN}
+
+    def test_a_fold_leaves_both_frozen_oracles_byte_identical(self):
+        """RUN the fold and check the two oracles afterwards.
+
+        The check this replaces was textual -- "no `write_text(` appears
+        before `def digest`" -- and the only `write_text(` in the file is
+        AFTER that split point, so it could not fail on the write path.  This
+        one executes `main()` end to end and hashes both frozen files before
+        and after, so any write to either, deliberate or incidental, fails it.
+        """
+        before = self.frozen_digests()
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            src = td / "fight-A.json"
+            src.write_text(json.dumps(self.whole_trace()))
+            out = td / "combat_trace.json"
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                rc = combattrace.main([str(src), "--labels", "A",
+                                       "--out", str(out)])
+            self.assertEqual(rc, 0, err.getvalue())
+            built = json.loads(out.read_text())
+        self.assertEqual(self.frozen_digests(), before)
+        # ... and the digests the fold PUBLISHED are the ones on disk, which
+        # is the read path the same run exercised.
+        self.assertEqual(built["frozen_oracles"], before)
+
+    def test_the_fold_refuses_to_write_over_a_frozen_oracle(self):
+        """`--out data/rng_trace.json` must not be a thing that can happen."""
+        before = self.frozen_digests()
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "fight-A.json"
+            src.write_text(json.dumps(self.whole_trace()))
+            for name in combattrace.FROZEN:
+                target = combattrace.REPO / name
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err):
+                    with self.assertRaises(SystemExit):
+                        combattrace.main([str(src), "--labels", "A",
+                                          "--out", str(target)])
+                self.assertIn("FROZEN oracle", err.getvalue())
+        self.assertEqual(self.frozen_digests(), before)
 
 
 class FightDriverTest(unittest.TestCase):
