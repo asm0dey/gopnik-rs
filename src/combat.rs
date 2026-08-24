@@ -425,6 +425,210 @@ mod tests {
         assert_eq!(blows_per_round(&f(15), &weak), 2);
     }
 
+    /// `data/rng_vectors.json`'s seed-0 `RandSeed` chain.
+    ///
+    /// It was produced by `tools/gen_rng_vectors.py`, which decodes and
+    /// interprets `@Rand`'s own instruction bytes out of `orig/g.exe` -- it
+    /// is NOT generated from this port, which is why the draw values below
+    /// are an oracle rather than a restatement of `Rng`.
+    fn ground_truth_states() -> Vec<u32> {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/data/rng_vectors.json");
+        let bytes = std::fs::read(path).expect("read data/rng_vectors.json");
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("parse");
+        let block = &v["seeds"][0];
+        assert_eq!(
+            block["seed"].as_u64(),
+            Some(0),
+            "seeds[0] is the seed-0 chain"
+        );
+        block["next_u32"]
+            .as_array()
+            .expect("next_u32")
+            .iter()
+            .map(|x| x.as_u64().expect("u32") as u32)
+            .collect()
+    }
+
+    /// `Random(n)` given the RandSeed the draw stepped TO: the high half of
+    /// the 32x16 widening multiply (`0f78:1152`..`0f78:1163`, listed
+    /// instruction by instruction in `docs/re/METHODOLOGY.md`).
+    fn random_of(state: u32, n: u16) -> u16 {
+        ((state as u64 * n as u64) >> 32) as u16
+    }
+
+    fn draws(rng: &mut Rng) -> Vec<crate::rng::Draw> {
+        rng.take_log()
+    }
+
+    fn want(sites_and_n: &[(&'static str, u16)], states: &[u32]) -> Vec<crate::rng::Draw> {
+        sites_and_n
+            .iter()
+            .zip(states)
+            .map(|(&(site, n), &state)| crate::rng::Draw {
+                site,
+                n,
+                r: random_of(state, n),
+            })
+            .collect()
+    }
+
+    /// A brawler who hits, crits and breaks something on every swing.
+    ///
+    /// `luck * 3` = 900 is above every `Random(100) + 1` (the crit,
+    /// `1000:44cd`) and above every `Random(defender.luck * 3 + 200) + 1`
+    /// (the break, `1000:47b3`), so both comparisons are decided by the
+    /// stats and the DRAW SHAPE is what the seed decides. `agility 20` gives
+    /// `blow_budget` 24 against an agility-0 defender, i.e. `24 * 5 = 120`
+    /// capped at the `1000:447f` accuracy cap of 90.
+    fn brawler() -> Fighter {
+        Fighter {
+            agility: 20,
+            luck: 300,
+            dmg_min: 1,
+            dmg_max: 3,
+            hp: 50,
+            hpmax: 50,
+            ..Default::default()
+        }
+    }
+
+    /// The six draws every landed-crit-and-break swing spends, player half
+    /// then enemy half. Order and `n` are `resolve_blow_nth`'s doc block,
+    /// i.e. `1000:445c`..`1000:4624` and `1000:467f`..`1000:4867`.
+    const PLAYER_SWING: [(&str, u16); 6] = [
+        ("1000:4460", 100),
+        ("1000:4497", 2),
+        ("1000:44b8", 100),
+        ("1000:44e3", 3),
+        ("1000:4571", 200),
+        ("1000:4595", 2),
+    ];
+    /// `dmg_max - dmg_min` for [`brawler`] is 2, which is the `n` at
+    /// `1000:4497` / `1000:46ba`.
+    const ENEMY_SWING: [(&str, u16); 6] = [
+        ("1000:4683", 100),
+        ("1000:46ba", 2),
+        ("1000:46db", 100),
+        ("1000:4706", 3),
+        ("1000:4794", 200),
+        ("1000:47be", 2),
+    ];
+
+    /// The зубная защита's `Random(4)` is spent, and ONLY spent, on the
+    /// first jaw break of a guarded player.
+    ///
+    /// Non-circular by construction: the sites and their `n`s come from the
+    /// disassembly (`docs/re/combat.md`, "Player-only branch", and
+    /// `1000:47fa`'s `mov ax,4` / `push ax`), and every `r` is computed from
+    /// `data/rng_vectors.json`'s seed-0 chain, which an 8086 interpreter
+    /// produced from `orig/g.exe`. Nothing here is read back out of
+    /// `resolve_blow_nth`.
+    #[test]
+    fn the_zubnaya_zashchita_spends_one_draw_at_1000_47fe_and_only_the_first_time() {
+        let st = ground_truth_states();
+        // Starting at chain index 1 the swing hits (roll 4), crits, breaks,
+        // and the limb draw is 0 -- a JAW, which is the only limb the guard
+        // has anything to do with.
+        let seed = st[0];
+        let a = brawler();
+        let d = Fighter {
+            agility: 0,
+            luck: 0,
+            hp: 50,
+            hpmax: 50,
+            ..Default::default()
+        };
+
+        // The player swinging: no guard branch exists in that copy at all.
+        let mut rng = Rng::new(seed);
+        rng.start_log();
+        let o = resolve_blow_nth(&mut rng, &a, &d, 0, Swing::player());
+        assert_eq!(draws(&mut rng), want(&PLAYER_SWING, &st[1..]));
+        assert_eq!(o.broke, Some(Break::Jaw));
+        assert_eq!(o.jaw_guard, None, "the player's copy has no 1000:47fe");
+
+        // The enemy swinging against an UNGUARDED player: same six draws at
+        // the mirror sites.
+        let mut rng = Rng::new(seed);
+        rng.start_log();
+        let o = resolve_blow_nth(&mut rng, &a, &d, 0, Swing::enemy(false));
+        assert_eq!(draws(&mut rng), want(&ENEMY_SWING, &st[1..]));
+        assert_eq!(o.jaw_guard, None);
+
+        // Guarded: one MORE draw, at 1000:47fe, n = 4, and it is the last.
+        let mut rng = Rng::new(seed);
+        rng.start_log();
+        let o = resolve_blow_nth(&mut rng, &a, &d, 0, Swing::enemy(true));
+        let mut sites = ENEMY_SWING.to_vec();
+        sites.push(("1000:47fe", 4));
+        assert_eq!(draws(&mut rng), want(&sites, &st[1..]));
+        // `1000:4803` `or ax,ax` / `jnz 0x4827`: 0 breaks the jaw anyway.
+        assert_eq!(o.jaw_guard, Some(random_of(st[7], 4) == 0));
+        assert_eq!(o.broke, Some(Break::Jaw));
+
+        // ... and NOT when the jaw is already broken: `1000:47c7`
+        // `cmp byte [0x38b0],0` / `jnz 0x4840` jumps past the whole block,
+        // the draw included, so the shape falls back to the six.
+        let broken = Fighter {
+            broken_jaw: true,
+            ..d.clone()
+        };
+        let mut rng = Rng::new(seed);
+        rng.start_log();
+        let o = resolve_blow_nth(&mut rng, &a, &broken, 0, Swing::enemy(true));
+        assert_eq!(draws(&mut rng), want(&ENEMY_SWING, &st[1..]));
+        assert_eq!(o.jaw_guard, None);
+        assert_eq!(o.broke, Some(Break::Jaw), "the Random(2) is still drawn");
+    }
+
+    /// The crit's `Random(3)` picks the line, and the guard's `Random(4)`
+    /// picks between the two jaw arms -- both read off the ground-truth
+    /// chain, on two seeds that land on DIFFERENT arms.
+    #[test]
+    fn the_crit_line_and_the_guard_arm_follow_the_draw() {
+        let st = ground_truth_states();
+        let a = brawler();
+        let d = Fighter {
+            agility: 0,
+            luck: 0,
+            hp: 50,
+            hpmax: 50,
+            ..Default::default()
+        };
+        // (chain index the swing starts at, taunt index, guard draw)
+        for k in [1usize, 2] {
+            let mut rng = Rng::new(st[k - 1]);
+            rng.start_log();
+            let o = resolve_blow_nth(&mut rng, &a, &d, 0, Swing::enemy(true));
+            let mut sites = ENEMY_SWING.to_vec();
+            sites.push(("1000:47fe", 4));
+            assert_eq!(draws(&mut rng), want(&sites, &st[k..]), "chain index {k}");
+            assert!(o.critical, "chain index {k}");
+            assert_eq!(
+                o.taunt,
+                Some(random_of(st[k + 3], 3)),
+                "chain index {k}: the 1000:4706 line"
+            );
+            assert_eq!(
+                o.jaw_guard,
+                Some(random_of(st[k + 6], 4) == 0),
+                "chain index {k}: the 1000:47fe arm"
+            );
+        }
+        // The two seeds really do land on different arms, or the loop above
+        // would be one case written twice.
+        assert_ne!(
+            random_of(st[4], 3),
+            random_of(st[5], 3),
+            "crit line differs"
+        );
+        assert_ne!(
+            random_of(st[7], 4) == 0,
+            random_of(st[8], 4) == 0,
+            "guard arm differs"
+        );
+    }
+
     #[test]
     fn a_fast_defender_cuts_the_budget() {
         // Captured live (district 5, docs/re/combat.md): the player's

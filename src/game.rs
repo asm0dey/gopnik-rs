@@ -4102,6 +4102,97 @@ mod tests {
         );
     }
 
+    /// The seed-0 `RandSeed` chain out of `data/rng_vectors.json` -- the
+    /// 8086-interpreter oracle, not this port. See
+    /// `crate::combat::tests::ground_truth_states`, which reads the same
+    /// array for the same reason.
+    fn ground_truth_states() -> Vec<u32> {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/data/rng_vectors.json");
+        let bytes = std::fs::read(path).expect("read data/rng_vectors.json");
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("parse");
+        let block = &v["seeds"][0];
+        assert_eq!(block["seed"].as_u64(), Some(0));
+        block["next_u32"]
+            .as_array()
+            .expect("next_u32")
+            .iter()
+            .map(|x| x.as_u64().expect("u32") as u32)
+            .collect()
+    }
+
+    fn random_of(state: u32, n: u16) -> u16 {
+        ((state as u64 * n as u64) >> 32) as u16
+    }
+
+    /// The зубная защита's two arms, driven through a whole round.
+    ///
+    /// `combat::tests` pins the DRAW; this pins what the round does with it.
+    /// `1000:4820` (file `0x4BB1`) sets `[0x38b0]` and `1000:4827` (file
+    /// `0x4BE5`) does not, so the two arms differ in guest STATE and not
+    /// only in which line is printed -- which is what makes them assertable
+    /// here at all.
+    ///
+    /// The round is arranged so its draw stream is one player miss followed
+    /// by one enemy swing that hits, crits and breaks a jaw: the player's
+    /// agility 0 caps his accuracy at `4 * 5 = 20` (`1000:446a`) and both
+    /// chain indices below open above that, while the enemy's agility 14
+    /// gives him exactly one blow at the 90 cap and his luck 300 decides
+    /// every crit and break comparison by itself.
+    #[test]
+    fn the_zubnaya_zashchita_arms_differ_in_the_players_jaw_not_only_in_the_line() {
+        let st = ground_truth_states();
+        // chain index 3 -> the guard's Random(4) is 0, chain index 2 -> it
+        // is not; both are computed below rather than written down.
+        for k in [3usize, 2] {
+            let guard_draw = random_of(st[k + 7], 4);
+            let mut g = game();
+            g.rng = Rng::new(st[k - 1]);
+            g.tooth_guard = true;
+            g.player.agility = 0;
+            g.player.hp = 50;
+            g.player.hpmax = 50;
+            let mut enemy = Fighter {
+                agility: 14,
+                luck: 300,
+                dmg_min: 1,
+                dmg_max: 3,
+                hp: 50,
+                hpmax: 50,
+                ..Fighter::default()
+            };
+            g.rng.start_log();
+            g.combat_round(&mut enemy);
+            let log = g.rng.take_log();
+            let sites: Vec<&str> = log.iter().map(|d| d.site).collect();
+            assert_eq!(
+                sites,
+                [
+                    "1000:4460", // the player's miss: one draw, then his half ends
+                    "1000:4683",
+                    "1000:46ba",
+                    "1000:46db",
+                    "1000:4706",
+                    "1000:4794",
+                    "1000:47be",
+                    "1000:47fe",
+                ],
+                "chain index {k}: draw shape"
+            );
+            assert_eq!(
+                g.player.broken_jaw,
+                guard_draw == 0,
+                "chain index {k}: Random(4) = {guard_draw}; 1000:4803 `or ax,ax` / \
+                 `jnz 0x4827` means only 0 reaches the setter at 1000:4820"
+            );
+        }
+        assert_ne!(
+            random_of(st[10], 4) == 0,
+            random_of(st[9], 4) == 0,
+            "the two chain indices must land on DIFFERENT arms, or the loop \
+             above is one case written twice"
+        );
+    }
+
     #[test]
     fn combat_round_actually_lands_hits_over_a_bounded_number_of_rounds() {
         let mut g = game();
