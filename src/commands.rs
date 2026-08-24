@@ -60,7 +60,7 @@
 //! | `kos` | `1000:e973` | `0xBEEF` | smoke a joint |
 //! | `i` | `1000:ea94` | `0xBFDE` | prints the 13-line command list (`docs/re/oracle-captures/...`'s capture); **not inventory** -- the brief's guess is wrong |
 //! | `s` | `1000:ec82` | `0xB855` | stats |
-//! | `f` | `1000:ec96` | `0xC31C` | handler not traced past its `jz`; corroborated as "shoot" by the adjacent refusal string `^6Ты чё псих? мигом менты накроют!` at file `0xC31E`, printed immediately after this token in the code layout |
+//! | `f` | `1000:ec96` | `0xC31C` | shoot, **traced** in Task 18: `1000:ec9d cmp byte [0x394d],0` / `eca2 jz 0xecbd` gates the refusal `^6Ты чё псих? мигом менты накроют!` (file `0xC31E`) on owning a pistol, and without one the verb is accepted and answered with silence |
 //! | `k` | `1000:ecc7` | `0xC341` | handler not traced past its `jz`; corroborated as "fight" the same way, via `^6Чё машешь копытами? Ищи мудака которого будешь пинать!` at `0xC343` (the colour code is `^6`, not `^4`) |
 //! | `name` | `1000:ecf1` | `0xC37C` | rename |
 //! | `version` | `1000:edab` | `0xC3B9` | **not in the help text at all** -- prints the version banner (its own text is at `0xC3C1`, the same `^4Gopnik: ^7version 1.02 june,sept 2003` the game opens with) |
@@ -93,14 +93,17 @@
 //! `1000:4caa` (token file `0x4E96`). Both are **established from flow**; see
 //! [`crate::game::Game::run_combat`] for the whole table. So neither is a
 //! corroboration-only verb any more -- they are *combat* verbs, which is why
-//! they were never going to turn up in `entry`'s list. What is still untraced
-//! is what each arm does, not whether it is reached.
+//! they were never going to turn up in `entry`'s list. Both arms were traced
+//! in Task 17 (`docs/re/combat-dispatch.md`) and are implemented in
+//! [`crate::combat_dispatch`].
 //!
-//! `x` and `wes` remain corroboration-only (token file offsets `0xAF9E` and
-//! `0xAFDA`). They are the dealers' own submenu keys, read at `^0Барыги\\`
-//! rather than at the top-level prompt, so they may well have no `DS:3972`
-//! compare at all -- the same shape as `sv`/`v` turning out to belong to the
-//! combat prompt.
+//! `x` and `wes` are the dealers' own submenu keys, read at `^0Барыги\\`
+//! rather than at the top-level prompt. The speculation this paragraph used
+//! to carry -- "they may well have no `DS:3972` compare at all" -- is
+//! settled, and the shape is indeed `sv`/`v`'s: they ARE compared, at
+//! `1000:ce80` and `1000:ced8` (tokens CS `0x96ce` and CS `0x970a`), against
+//! **`DS:3a72`**, the sub-prompt buffer, which is the same variable the fight
+//! prompt reads into. Each is compared at exactly one site image-wide.
 //!
 //! ## Corrections this makes to the brief
 //!
@@ -136,8 +139,10 @@ pub enum Command {
     /// `k`. Dispatcher entry confirmed at `1000:ecc7`; "fight" is
     /// corroboration (adjacent refusal string), not a traced handler body.
     Fight,
-    /// `f`. Dispatcher entry confirmed at `1000:ec96`; "shoot" is
-    /// corroboration the same way.
+    /// `f`. Dispatcher entry confirmed at `1000:ec96`, and "shoot" is no
+    /// longer corroboration: `1000:ec9d cmp byte [0x394d],0` gates the
+    /// street refusal on the pistol flag, and the fight prompt's own arm at
+    /// `1000:4eb2` fires it ([`crate::combat_dispatch::fire`]).
     Shoot,
     /// `sv`. Not in `entry`'s `DS:3972` chain, because it is a **combat**
     /// verb: `FUN_1000_3d11` compares it at `1000:4c42` against its own
@@ -150,11 +155,13 @@ pub enum Command {
     /// exists.
     Inspect,
     /// `v`. Also a combat verb, compared at `1000:4caa`, token file `0x4E96`
-    /// -- **established from flow**. Its arm at `1000:4cb4` opens with
-    /// `cmp byte [0x3696],1`, the den's discovery flag, which fits the help
-    /// text's `"чтобы позвать подкрепление"` (file `0xC210`); the arm itself
-    /// is not traced and this port does not act on the verb. See
-    /// `docs/re/gaps.md`, "The in-combat verb set".
+    /// -- **established from flow**, and at exactly that one site in the
+    /// whole image, so the street prompt does not dispatch it at all
+    /// (`Game::call_backup` carries that scan). Its arm at `1000:4cb4` opens
+    /// with `cmp byte [0x3696],1`, the den's discovery flag, which fits the
+    /// help text's `"чтобы позвать подкрепление"` (file `0xC210`); the whole
+    /// arm is traced in `docs/re/combat-dispatch.md` and implemented in
+    /// [`crate::combat_dispatch::Backup`].
     Backup,
     /// `i`. Confirmed at `1000:ea94`: prints the 13-line command list.
     CommandList,
