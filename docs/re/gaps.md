@@ -637,8 +637,8 @@ instruction that was actually read at its jump target:
 
 | token | compare | first instruction of the arm | in the port? |
 |---|---|---|---|
-| `s` | `1000:4c2e` | `1000:4c35` `call 0x1a03` | no |
-| `sv` | `1000:4c42` | `1000:4c49` `call 0x1348` | yes, but from the oracle capture, not from this arm |
+| `s` | `1000:4c2e` | `1000:4c35` `call 0x1a03` — **traced, Task 16**: `docs/re/character-sheet.md` | no |
+| `sv` | `1000:4c42` | `1000:4c49` `call 0x1348` — **not** `FUN_1000_1a03`; Task 16's breakpoint confirms `sv` never enters it | yes, but from the oracle capture, not from this arm |
 | `e` | `1000:4c56` | `1000:4c5d` `xor ax,ax` / `call 0f78:0116` | no |
 | `k` (2nd) | `1000:4c75` | `1000:4c7c` `inc [0x3c80]`, then `cmp word [0x3c80],3` | no |
 | `v` | `1000:4caa` | `1000:4cb4` `cmp byte [0x3696],1` (the den flag) | no |
@@ -1130,3 +1130,64 @@ None of these moves a draw; all three are output or state the replay caught.
   order is equivalent for everything the captures reach — the new victory
   draws at `1000:5402`/`1000:5454` read the district and are made before the
   advance — but it is a placement difference, not an identity.
+
+## Opened and closed by Task 16 (`FUN_1000_1a03`, the character sheet)
+
+The map is `docs/re/character-sheet.md`; the machine-readable twin is
+`data/character_sheet.json`, checked by `tools/test_character_sheet.py` and
+defended by four `tools/mutations.json` cases.
+
+### Closed
+
+* **What `FUN_1000_1a03` is.** The player's character sheet. Four call sites,
+  `1000:ec89` and `1000:ee36` in `entry`, `1000:4c35` and `1000:512b` in
+  `FUN_1000_3d11`; the verb is `s` at both prompts.
+* **Its argument convention — there isn't one.** Bare `ret` at `1000:248e`, no
+  positive `bp` displacement anywhere in the body, `ax` overwritten at
+  `1000:1a06`. So the `s`-vs-`sv` difference cannot live in an argument, and
+  does not: `sv` calls a different function (`1000:4c49` → `1000:1348`).
+* **`stats` is not a verb.** The byte sequence does not occur in `orig/g.exe`.
+* **`1000:1a36` is the CLASS-name lookup** into `ranks` (`20ae:002e`), not the
+  rank lookup; the `krutizna` (`20ae:0b42`) lookup is `1000:1a53`.
+* **The rector-VICTORY arm** — `1000:507b`/`1000:5085`, opponent kind 4 with
+  the enemy at 0 hp, ending in the sheet at `1000:512b` and
+  `FUN_1000_0aec`. Distinct from the rector *death* branch (`1000:4f8c`),
+  which stays open above.
+* **Six DGROUP bytes now have names off the sheet's own labels**: `20ae:38b5`
+  Бутсы, `20ae:38b8` Понтовые бутсы, `20ae:394a` Зубная защита, `20ae:394e`
+  глушитель, `20ae:394f` the patron count, and `20ae:38b2` confirmed a third
+  time as Броня.
+
+### Opened
+
+* **The decimal value of the health-colour thresholds.** `1000:211d mov cx,0x7f`
+  and `1000:214d mov cx,0x80` are the two 6-byte-real comparands `hp/hpmax` is
+  tested against (`rtl_real_op_cmp` at `1000:2124` and `1000:2154`), and the
+  colour digit goes `'4'` → `'6'` → `'2'`. The ORDER is established — only the
+  one register differs, and by one. The *values* are not: reading a 6-byte real
+  as a decimal needs the layout confirmed against a known value, which
+  `docs/re/rtl.md` records as **not established** for the `1000:4ff5` /
+  `1000:5002` constants either. **What would settle it:** pin `20ae:38ac` and
+  `20ae:38ae` under gdb to a pair straddling a candidate ratio, single-step
+  `1000:2124`, and read which way the branch at `1000:2129` goes — two pokes
+  bracket each threshold to arbitrary precision, and the same run settles
+  `rtl.md`'s two constants because it establishes the layout.
+* **24 of the 83 branches are still uncited**, listed exactly in
+  `data/character_sheet.json`'s `branch_partition.uncited` (the test recomputes
+  the split, so the list cannot drift). They are the section-header
+  disjunctions — `Феньки: ` (`1000:1bc2`/`1000:1bc9`), `Мощные феньки: `
+  (`1000:1c38`..`1000:1c46`), the weapon-line header
+  (`1000:1e06`..`1000:1e30`) — the ammo-quantity flavour
+  (`1000:1dab`..`1000:1dd7`), and the dimmed `^4` arms of the
+  best-item-wins pairs. **What would settle them:** each is `or` over flags the
+  cited arms already read, so a save synthesised with a chosen subset of
+  `20ae:38b3`..`20ae:38c2` and `20ae:394a`..`20ae:394f` set, plus a breakpoint
+  on the header's `Write`, decides each one without any new instrument. They
+  were left because the brief said to map the structure and stop rather than
+  pad the count.
+* **`FUN_1000_1348` (`sv`, 791 bytes, 11 branches) is not mapped.** Only its
+  entry and its one caller (`1000:4c49`) are established. Its output is still
+  described from `docs/re/tables.md`'s oracle capture, which is output-tier.
+* **`FUN_1000_0aec` and `FUN_1000_2526`** are cited from the rector-victory arm
+  (`1000:5133`, `1000:5097`) and nothing more is claimed about either.
+

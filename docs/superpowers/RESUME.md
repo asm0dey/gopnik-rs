@@ -138,8 +138,8 @@ is the one failure mode a replay cannot see.
 
 ## How much is actually traced
 
-**178 of 838 game branches (21.2%)** have their branch address or guard cited
-anywhere in `docs/re/*.md`, measured at `f27b73c` (Task 15).
+**233 of 838 game branches (27.8%)** have their branch address or guard cited
+anywhere in `docs/re/*.md`, measured after Task 16.
 
 This file previously said `134 / 838` here and `157/838` further down, both
 stale, and both left standing through a whole session because the instruction
@@ -152,6 +152,7 @@ the rate rather than trust a number:
 | `5e9776f` | merge to `main` | 175/838 |
 | `57c29b8` | Task 14 complete (mutation gate) | 175/838 |
 | `f27b73c` | Task 15 complete | **178/838** |
+| Task 16 complete (`FUN_1000_1a03` mapped) | | **233/838** |
 
 The whole of Tasks 13-review and 14 moved it by **zero**; Task 15's +3 are the
 addresses its equivalence proofs had to cite. That is the cost of a session
@@ -216,27 +217,45 @@ Two functions hold 75% of all game branches:
 
 | branches | cited | function |
 |---:|---:|---|
-| 406 | 74 | `1000:ab59` — main loop + command dispatch |
-| 224 | 26 | `1000:3d11` — combat |
-| **83** | **0** | **`1000:1a03` — nothing written about it at all** |
+| 406 | 93 | `1000:ab59` — main loop + command dispatch |
+| 224 | 54 | `1000:3d11` — combat |
+| 83 | 50 | `1000:1a03` — the character sheet, mapped in Task 16 |
 
 The metric undercounts (a function can be understood without every `jz` being
 cited) and a citation is not comprehension. Re-run the query above to track
 it.
 
-### The best lead for next session
+### `FUN_1000_1a03` — settled in Task 16, and how the hypothesis fared
 
-`FUN_1000_1a03` — 2700 bytes, 83 branches, third-largest in the game, zero
-coverage. Called by exactly two things (`entry` and combat `3d11`) and calls
-**nothing but Borland RTL**. `1000:1a36`, the player rank-name lookup, sits 51
-bytes inside it.
+`docs/re/character-sheet.md` is the map; `data/character_sheet.json` the
+machine-readable twin; `tools/test_character_sheet.py` re-derives every claim
+from `orig/g.exe`.
 
-**Hypothesis, tier `unverified`:** it is the character-sheet / stats renderer —
-the body behind `stats` from the main loop and `sv` (size up the enemy) from
-combat. That would explain why `sv` and `v` were never dispatcher-confirmed.
+The hypothesis this file used to carry — "the body behind `stats` from the main
+loop and `sv` from combat" — was **half refuted**, and the half that mattered
+was the wrong half:
 
-Settle it cheaply: break on `1000:1a03` under `tools/rngtrace/`, type `stats`,
-then `sv` mid-fight. That proves which verbs reach it, including a negative.
+- It IS the character sheet. That part held.
+- **`stats` is not a verb**: those five bytes do not occur in `orig/g.exe`. The
+  verb is `s`, compared at `1000:ec82` against the CS literal at `0x9f85`.
+- **`sv` never enters it.** `1000:4c42` matches `sv` and `1000:4c49` calls
+  `FUN_1000_1348` instead. `docs/re/gaps.md`'s in-combat verb table had both
+  rows already; nobody had read them against this hypothesis.
+- **"Called by exactly two things (`entry` and combat)" was right about the two
+  FUNCTIONS and hid four call sites.** The two in `entry` (`1000:ec89`,
+  `1000:ee36`) are near calls whose displacement wraps 16-bit — both decoders
+  render them `call 0x11a03` — so a byte scan that compares the un-wrapped sum
+  finds neither. Match modulo 64 KiB.
+- **There is no argument convention to find.** Bare `ret` at `1000:248e`, no
+  positive `bp` displacement anywhere in 2700 bytes, `ax` clobbered at
+  `1000:1a06`. All four sites render the same sheet from globals.
+
+Instrument added: `tools/rngtrace/verbprobe.py` — three breakpoints
+(`1000:ae63`, `1000:441d`, a target), a scripted verb list, and a per-verb count
+of entries, with the driver's screen classification cross-checked against the
+guest's own prompt markers position by position. It produced five negatives
+alongside the two positives. Point it at any other function to ask the same
+question.
 
 ## Remaining work
 
