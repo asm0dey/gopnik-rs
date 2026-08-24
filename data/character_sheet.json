@@ -1,0 +1,1598 @@
+{
+  "schema_version": 1,
+  "note": "FUN_1000_1a03 -- the player's character sheet.  Every record here is an address in orig/g.exe plus what the disassembly at it says; tools/test_character_sheet.py re-derives all of it from the binary, so this file and docs/re/character-sheet.md are the two places the same claims live.  Nothing here comes from src/ or from a screen.",
+  "program": "orig/g.exe",
+  "address_convention": "Ghidra form A (SEG >= 0x1000); tools/addr.py is the executable authority.  CS literal offsets are IMAGE offsets in the same code segment; DS offsets are 20ae: offsets.",
+  "function": {
+    "name": "FUN_1000_1a03",
+    "entry": "1000:1a03",
+    "size_bytes": 2700,
+    "prologue": [
+      {
+        "addr": "1000:1a03",
+        "text": "push bp"
+      },
+      {
+        "addr": "1000:1a04",
+        "text": "mov bp,sp"
+      },
+      {
+        "addr": "1000:1a06",
+        "text": "mov ax,0x606"
+      },
+      {
+        "addr": "1000:1a09",
+        "text": "call 0xf78:0x2cd"
+      },
+      {
+        "addr": "1000:1a0e",
+        "text": "sub sp,0x606"
+      }
+    ],
+    "epilogue": [
+      {
+        "addr": "1000:248b",
+        "text": "mov sp,bp"
+      },
+      {
+        "addr": "1000:248d",
+        "text": "pop bp"
+      },
+      {
+        "addr": "1000:248e",
+        "text": "ret"
+      }
+    ],
+    "parameter_bytes": 0,
+    "parameter_evidence": "the epilogue's `ret` at 1000:248e carries no immediate, and Turbo Pascal cleans the callee's parameters there; independently, no instruction in the whole 2700 bytes uses a POSITIVE bp displacement, and `ax` is overwritten at 1000:1a06 before anything reads it, so there is no register argument either.",
+    "branch_count": 83,
+    "calls_leave_segment_1000": true
+  },
+  "call_sites": [
+    {
+      "addr": "1000:ec89",
+      "in_function": "entry",
+      "kind": "verb",
+      "reached_by": "the verb `s` typed at the top-level `\\` prompt",
+      "compare": {
+        "addr": "1000:ec82",
+        "text": "call 0xf78:0xbd8"
+      },
+      "branch": {
+        "addr": "1000:ec87",
+        "text": "jnz 0xec8c"
+      },
+      "buffer": "20ae:3972",
+      "literal": {
+        "cs_offset": "0x9f85",
+        "text": "s"
+      },
+      "text": "call 0x11a03",
+      "target_is_1a03_mod_64k": true
+    },
+    {
+      "addr": "1000:ee36",
+      "in_function": "entry",
+      "kind": "ending",
+      "reached_by": "the quit tail: two literals, the sheet, ReadKey, then Halt(0)",
+      "prints": [
+        {
+          "cs_offset": "0xab23",
+          "text": "^6Блин не быть тебе нормальным пацаном"
+        },
+        {
+          "cs_offset": "0xab4a",
+          "text": "^1А результат:"
+        }
+      ],
+      "then": [
+        {
+          "addr": "1000:ee39",
+          "text": "call 0xf16:0x31a"
+        },
+        {
+          "addr": "1000:ee43",
+          "text": "call 0xf78:0x116"
+        }
+      ],
+      "text": "call 0x11a03",
+      "target_is_1a03_mod_64k": true
+    },
+    {
+      "addr": "1000:4c35",
+      "in_function": "FUN_1000_3d11",
+      "kind": "verb",
+      "reached_by": "the verb `s` typed at the `Битва\\` prompt",
+      "compare": {
+        "addr": "1000:4c2e",
+        "text": "call 0xf78:0xbd8"
+      },
+      "branch": {
+        "addr": "1000:4c33",
+        "text": "jnz 0x4c38"
+      },
+      "buffer": "20ae:3a72",
+      "literal": {
+        "cs_offset": "0x359f",
+        "text": "s"
+      },
+      "text": "call 0x1a03",
+      "target_is_1a03_mod_64k": true
+    },
+    {
+      "addr": "1000:512b",
+      "in_function": "FUN_1000_3d11",
+      "kind": "ending",
+      "reached_by": "the rector-victory ending (`cmp byte [bp+0x4],0x4` at 1000:5085 with the enemy at 0 hp)",
+      "prints": [
+        {
+          "cs_offset": "0x3915",
+          "text": "^1А результат:"
+        }
+      ],
+      "then": [
+        {
+          "addr": "1000:512e",
+          "text": "call 0xf16:0x31a"
+        },
+        {
+          "addr": "1000:5133",
+          "text": "call 0xaec"
+        },
+        {
+          "addr": "1000:5136",
+          "text": "jmp 0x5838"
+        }
+      ],
+      "text": "call 0x1a03",
+      "target_is_1a03_mod_64k": true
+    }
+  ],
+  "near_miss": {
+    "addr": "1000:4c49",
+    "text": "call 0x1348",
+    "target": "1000:1348",
+    "why_it_matters": "the verb `sv` at the `Битва\\` prompt -- compared at 1000:4c42 against the CS literal at 0x35a1 -- calls FUN_1000_1348, NOT FUN_1000_1a03.  This is the half of the Task 16 hypothesis that is refuted.",
+    "compare": {
+      "addr": "1000:4c42",
+      "text": "call 0xf78:0xbd8"
+    },
+    "branch": {
+      "addr": "1000:4c47",
+      "text": "jnz 0x4c4c"
+    },
+    "literal": {
+      "cs_offset": "0x35a1",
+      "text": "sv"
+    }
+  },
+  "table_lookups": [
+    {
+      "lookup_at": "1000:1a36",
+      "index_ds": "20ae:389c",
+      "index_meaning": "the player's class",
+      "load": {
+        "addr": "1000:1a36",
+        "text": "mov di,[0x389c]"
+      },
+      "shift": {
+        "addr": "1000:1a3c",
+        "text": "shl di,cl"
+      },
+      "base": {
+        "addr": "1000:1a3e",
+        "text": "add di,0x2e"
+      },
+      "append": {
+        "addr": "1000:1a44",
+        "text": "call 0xf78:0xb66"
+      },
+      "table": "ranks",
+      "table_base_ds": "20ae:002e",
+      "stride": 256,
+      "samples": [
+        {
+          "index": 3,
+          "text": "Подтсан"
+        },
+        {
+          "index": 6,
+          "text": "Вор"
+        }
+      ]
+    },
+    {
+      "lookup_at": "1000:1a53",
+      "index_ds": "20ae:38a6",
+      "index_meaning": "the player's level",
+      "load": {
+        "addr": "1000:1a53",
+        "text": "mov di,[0x38a6]"
+      },
+      "shift": {
+        "addr": "1000:1a59",
+        "text": "shl di,cl"
+      },
+      "base": {
+        "addr": "1000:1a5b",
+        "text": "add di,0xb42"
+      },
+      "append": {
+        "addr": "1000:1a61",
+        "text": "call 0xf78:0xb66"
+      },
+      "table": "krutizna",
+      "table_base_ds": "20ae:0b42",
+      "stride": 256,
+      "samples": [
+        {
+          "index": 0,
+          "text": "Опущеный"
+        },
+        {
+          "index": 11,
+          "text": "Нормальный Чувак"
+        }
+      ]
+    }
+  ],
+  "numeric_lines": [
+    {
+      "name": "header (class + level + krutizna rank)",
+      "format_literal_push": {
+        "addr": "1000:1a49",
+        "text": "mov di,0x166a"
+      },
+      "format_literal": {
+        "cs_offset": "0x166a",
+        "text": " # уровня - "
+      },
+      "values": [
+        {
+          "addr": "1000:1a66",
+          "text": "push [0x38a6]",
+          "ds": "20ae:38a6"
+        }
+      ],
+      "write": {
+        "addr": "1000:1a76",
+        "text": "call 0xeed:0x1c2"
+      }
+    },
+    {
+      "name": "experience",
+      "format_literal_push": {
+        "addr": "1000:1ab0",
+        "text": "mov di,0x1688"
+      },
+      "format_literal": {
+        "cs_offset": "0x1688",
+        "text": "^6Сейчас у тебя # опыта, А для прокачки надо #"
+      },
+      "values": [
+        {
+          "addr": "1000:1ab5",
+          "text": "push [0x38ce]",
+          "ds": "20ae:38ce"
+        },
+        {
+          "addr": "1000:1ab9",
+          "text": "push [0x38d0]",
+          "ds": "20ae:38d0"
+        }
+      ],
+      "write": {
+        "addr": "1000:1ac6",
+        "text": "call 0xeed:0x1c2"
+      },
+      "guard": {
+        "addr": "1000:1aa9",
+        "text": "cmp word [0x38a6],0x27"
+      },
+      "branch": {
+        "addr": "1000:1aae",
+        "text": "jnle 0x1acb"
+      }
+    },
+    {
+      "name": "the four stats",
+      "format_literal_push": {
+        "addr": "1000:1ba0",
+        "text": "mov di,0x16d7"
+      },
+      "format_literal": {
+        "cs_offset": "0x16d7",
+        "text": "#"
+      },
+      "values": [
+        {
+          "addr": "1000:1baa",
+          "text": "push [0x389e]",
+          "ds": "20ae:389e"
+        },
+        {
+          "addr": "1000:1bae",
+          "text": "push [0x38a0]",
+          "ds": "20ae:38a0"
+        },
+        {
+          "addr": "1000:1bb2",
+          "text": "push [0x38a2]",
+          "ds": "20ae:38a2"
+        },
+        {
+          "addr": "1000:1bb6",
+          "text": "push [0x38a4]",
+          "ds": "20ae:38a4"
+        }
+      ],
+      "write": {
+        "addr": "1000:1bbd",
+        "text": "call 0xeed:0x1c2"
+      }
+    },
+    {
+      "name": "damage range",
+      "format_literal_push": {
+        "addr": "1000:1e61",
+        "text": "mov di,0x1821"
+      },
+      "format_literal": {
+        "cs_offset": "0x1821",
+        "text": "Урон #-#    "
+      },
+      "values": [
+        {
+          "addr": "1000:1e6b",
+          "text": "push [0x38a8]",
+          "ds": "20ae:38a8"
+        },
+        {
+          "addr": "1000:1e6f",
+          "text": "push [0x38aa]",
+          "ds": "20ae:38aa"
+        }
+      ],
+      "write": {
+        "addr": "1000:1e7c",
+        "text": "call 0xeed:0x0"
+      }
+    },
+    {
+      "name": "health",
+      "format_literal_push": {
+        "addr": "1000:2185",
+        "text": "mov di,0x18fa"
+      },
+      "format_literal": {
+        "cs_offset": "0x18fa",
+        "text": "Здоровье #/#  "
+      },
+      "values": [
+        {
+          "addr": "1000:219a",
+          "text": "push [0x38ac]",
+          "ds": "20ae:38ac"
+        },
+        {
+          "addr": "1000:219e",
+          "text": "push [0x38ae]",
+          "ds": "20ae:38ae"
+        }
+      ],
+      "write": {
+        "addr": "1000:21ab",
+        "text": "call 0xeed:0x1c2"
+      }
+    }
+  ],
+  "stat_colour_string": {
+    "what": "a four-character colour string, assigned from the CS literal '7777' at 1000:1a12 into the local at [bp-0x100] and then patched to '1' per boosted stat; the header literal interleaves it as `Сл:^` + char, `#^7 Лв:^` + char, and so on.",
+    "assign": {
+      "addr": "1000:1a12",
+      "text": "mov di,0x165f"
+    },
+    "assign_literal": {
+      "cs_offset": "0x165f",
+      "text": "7777"
+    },
+    "slots": [
+      {
+        "slot": 0,
+        "stat_ds": "20ae:389e",
+        "label_literal": {
+          "cs_offset": "0x16b7",
+          "text": "Сл:^"
+        },
+        "set": {
+          "addr": "1000:1ae0",
+          "text": "mov byte [bp-0xff],0x31"
+        },
+        "any_of": [
+          "20ae:38cd",
+          "20ae:38bf",
+          "20ae:38c0"
+        ],
+        "guards": [
+          {
+            "addr": "1000:1acb",
+            "text": "cmp byte [0x38cd],0x0"
+          },
+          {
+            "addr": "1000:1ad2",
+            "text": "cmp byte [0x38bf],0x0"
+          },
+          {
+            "addr": "1000:1ad9",
+            "text": "cmp byte [0x38c0],0x0"
+          }
+        ]
+      },
+      {
+        "slot": 1,
+        "stat_ds": "20ae:38a0",
+        "label_literal": {
+          "cs_offset": "0x16bc",
+          "text": "#^7 Лв:^"
+        },
+        "set": {
+          "addr": "1000:1af3",
+          "text": "mov byte [bp-0xfe],0x31"
+        },
+        "any_of": [
+          "20ae:38bf",
+          "20ae:38c0"
+        ],
+        "guards": [
+          {
+            "addr": "1000:1ae5",
+            "text": "cmp byte [0x38bf],0x0"
+          },
+          {
+            "addr": "1000:1aec",
+            "text": "cmp byte [0x38c0],0x0"
+          }
+        ]
+      },
+      {
+        "slot": 2,
+        "stat_ds": "20ae:38a2",
+        "label_literal": {
+          "cs_offset": "0x16c5",
+          "text": "#^7 Жв:^"
+        },
+        "set": {
+          "addr": "1000:1af8",
+          "text": "mov byte [bp-0xfd],0x31"
+        },
+        "any_of": [
+          "20ae:38bf",
+          "20ae:38c0"
+        ],
+        "guards": [
+          {
+            "addr": "1000:1ae5",
+            "text": "cmp byte [0x38bf],0x0"
+          },
+          {
+            "addr": "1000:1aec",
+            "text": "cmp byte [0x38c0],0x0"
+          }
+        ]
+      },
+      {
+        "slot": 3,
+        "stat_ds": "20ae:38a4",
+        "label_literal": {
+          "cs_offset": "0x16ce",
+          "text": "#^7 Уд:^"
+        },
+        "set": {
+          "addr": "1000:1b19",
+          "text": "mov byte [bp-0xfc],0x31"
+        },
+        "any_of": [
+          "20ae:38bd",
+          "20ae:38be",
+          "20ae:38bf",
+          "20ae:38c0"
+        ],
+        "guards": [
+          {
+            "addr": "1000:1afd",
+            "text": "cmp byte [0x38bd],0x0"
+          },
+          {
+            "addr": "1000:1b04",
+            "text": "cmp byte [0x38be],0x0"
+          },
+          {
+            "addr": "1000:1b0b",
+            "text": "cmp byte [0x38bf],0x0"
+          },
+          {
+            "addr": "1000:1b12",
+            "text": "cmp byte [0x38c0],0x0"
+          }
+        ]
+      }
+    ]
+  },
+  "health_colour": {
+    "what": "the colour digit the health line is printed in, held in the local at [bp-0x101].  '4' by default; '6' when hp/hpmax exceeds the first constant; '2' when it exceeds the second.",
+    "default": {
+      "addr": "1000:20fb",
+      "text": "mov byte [bp-0x101],0x34"
+    },
+    "steps": [
+      {
+        "threshold": "first",
+        "dividend_ds": "20ae:38ac",
+        "divisor_ds": "20ae:38ae",
+        "to_real": [
+          {
+            "addr": "1000:2104",
+            "text": "call 0xf78:0x1125"
+          },
+          {
+            "addr": "1000:2110",
+            "text": "call 0xf78:0x1125"
+          }
+        ],
+        "divide": {
+          "addr": "1000:2118",
+          "text": "call 0xf78:0x1117"
+        },
+        "comparand_cx": {
+          "addr": "1000:211d",
+          "text": "mov cx,0x7f"
+        },
+        "compare": {
+          "addr": "1000:2124",
+          "text": "call 0xf78:0x1121"
+        },
+        "branch": {
+          "addr": "1000:2129",
+          "text": "jbe 0x2130"
+        },
+        "set": {
+          "addr": "1000:212b",
+          "text": "mov byte [bp-0x101],0x36"
+        }
+      },
+      {
+        "threshold": "second",
+        "dividend_ds": "20ae:38ac",
+        "divisor_ds": "20ae:38ae",
+        "to_real": [
+          {
+            "addr": "1000:2134",
+            "text": "call 0xf78:0x1125"
+          },
+          {
+            "addr": "1000:2140",
+            "text": "call 0xf78:0x1125"
+          }
+        ],
+        "divide": {
+          "addr": "1000:2148",
+          "text": "call 0xf78:0x1117"
+        },
+        "comparand_cx": {
+          "addr": "1000:214d",
+          "text": "mov cx,0x80"
+        },
+        "compare": {
+          "addr": "1000:2154",
+          "text": "call 0xf78:0x1121"
+        },
+        "branch": {
+          "addr": "1000:2159",
+          "text": "jbe 0x2160"
+        },
+        "set": {
+          "addr": "1000:215b",
+          "text": "mov byte [bp-0x101],0x32"
+        }
+      }
+    ],
+    "decimal_value_of_the_two_comparands": null,
+    "why_null": "decoding a 6-byte real into a decimal needs the layout confirmed against a known value, which docs/re/rtl.md records as NOT established.  See docs/re/gaps.md."
+  },
+  "accuracy": {
+    "what": "the accuracy lines, computed from agility alone -- no Random is drawn.",
+    "load": {
+      "addr": "1000:21b0",
+      "text": "mov ax,[0x38a0]"
+    },
+    "source_ds": "20ae:38a0",
+    "low_guard": {
+      "addr": "1000:21b7",
+      "text": "cmp word [bp-0x104],0xe"
+    },
+    "low_branch": {
+      "addr": "1000:21bc",
+      "text": "jnle 0x21e7"
+    },
+    "low_literal": {
+      "cs_offset": "0x1909",
+      "text": "Точность #%"
+    },
+    "low_expression": [
+      {
+        "addr": "1000:21c9",
+        "text": "shl ax,1"
+      },
+      {
+        "addr": "1000:21cb",
+        "text": "shl ax,1"
+      },
+      {
+        "addr": "1000:21cd",
+        "text": "add ax,si"
+      },
+      {
+        "addr": "1000:21cf",
+        "text": "add ax,0x14"
+      }
+    ],
+    "high_literal": {
+      "cs_offset": "0x1915",
+      "text": "Точность 90% "
+    },
+    "high_subtract": {
+      "addr": "1000:2204",
+      "text": "sub ax,0xe"
+    },
+    "hits_init": {
+      "addr": "1000:220b",
+      "text": "mov word [bp-0x106],0x1"
+    },
+    "loop_guard": {
+      "addr": "1000:2211",
+      "text": "cmp word [bp-0x104],0x12"
+    },
+    "loop_branch": {
+      "addr": "1000:2216",
+      "text": "jle 0x2223"
+    },
+    "loop_subtract": {
+      "addr": "1000:2218",
+      "text": "sub word [bp-0x104],0x12"
+    },
+    "loop_inc": {
+      "addr": "1000:221d",
+      "text": "inc [bp-0x106]"
+    },
+    "second_hit_guard": {
+      "addr": "1000:2223",
+      "text": "cmp word [bp-0x106],0x1"
+    },
+    "second_hit_branch": {
+      "addr": "1000:2228",
+      "text": "jnz 0x224d"
+    },
+    "second_hit_literal": {
+      "cs_offset": "0x1923",
+      "text": "   Второй удар #%"
+    },
+    "many_hits_guard": {
+      "addr": "1000:224d",
+      "text": "cmp word [bp-0x106],0x1"
+    },
+    "many_hits_branch": {
+      "addr": "1000:2252",
+      "text": "jle 0x227b"
+    },
+    "many_hits_literal": {
+      "cs_offset": "0x1935",
+      "text": "- # ударов,  Точность # удара #%"
+    }
+  },
+  "beer_formatting": {
+    "what": "Пиво is stored in HALF-litres: the sheet prints `n.5` from `beer div 2` and `((beer mod 2) * 5) mod 10`.",
+    "literal": {
+      "cs_offset": "0x19d1",
+      "text": "Пиво #.#л."
+    },
+    "div": [
+      {
+        "addr": "1000:23e5",
+        "text": "mov cx,0x2"
+      },
+      {
+        "addr": "1000:23e8",
+        "text": "idiv cx"
+      }
+    ],
+    "frac": [
+      {
+        "addr": "1000:23f4",
+        "text": "xchg ax,dx"
+      },
+      {
+        "addr": "1000:23f7",
+        "text": "shl ax,1"
+      },
+      {
+        "addr": "1000:23f9",
+        "text": "shl ax,1"
+      },
+      {
+        "addr": "1000:23fb",
+        "text": "add ax,si"
+      },
+      {
+        "addr": "1000:23fe",
+        "text": "mov cx,0xa"
+      },
+      {
+        "addr": "1000:2401",
+        "text": "idiv cx"
+      },
+      {
+        "addr": "1000:2403",
+        "text": "xchg ax,dx"
+      }
+    ]
+  },
+  "flag_lines": [
+    {
+      "ds": "20ae:38bd",
+      "label": "Крестик",
+      "guard": {
+        "addr": "1000:1be9",
+        "text": "cmp byte [0x38bd],0x0"
+      },
+      "branch": {
+        "addr": "1000:1bee",
+        "text": "jz 0x1c09",
+        "arm": "fallthrough",
+        "arm_start": "1000:1bf0",
+        "arm_end": "1000:1c09"
+      },
+      "literal_push": {
+        "addr": "1000:1bf0",
+        "text": "mov di,0x16e2"
+      },
+      "literal": {
+        "cs_offset": "0x16e2",
+        "text": "^1Крестик(Удача +2) "
+      }
+    },
+    {
+      "ds": "20ae:38be",
+      "label": "Кольцо \"Гс\"",
+      "guard": {
+        "addr": "1000:1c09",
+        "text": "cmp byte [0x38be],0x0"
+      },
+      "branch": {
+        "addr": "1000:1c0e",
+        "text": "jz 0x1c29",
+        "arm": "fallthrough",
+        "arm_start": "1000:1c10",
+        "arm_end": "1000:1c29"
+      },
+      "literal_push": {
+        "addr": "1000:1c10",
+        "text": "mov di,0x16f7"
+      },
+      "literal": {
+        "cs_offset": "0x16f7",
+        "text": "^1Кольцо \"Гс\"(Удача +1) "
+      }
+    },
+    {
+      "ds": "20ae:38bf",
+      "label": "Кольцо \"Пг\"",
+      "guard": {
+        "addr": "1000:1c69",
+        "text": "cmp byte [0x38bf],0x0"
+      },
+      "branch": {
+        "addr": "1000:1c6e",
+        "text": "jz 0x1c89",
+        "arm": "fallthrough",
+        "arm_start": "1000:1c70",
+        "arm_end": "1000:1c89"
+      },
+      "literal_push": {
+        "addr": "1000:1c70",
+        "text": "mov di,0x1720"
+      },
+      "literal": {
+        "cs_offset": "0x1720",
+        "text": "^1Кольцо \"Пг\"(Всё +1) "
+      }
+    },
+    {
+      "ds": "20ae:38c0",
+      "label": "Мега Кольцо",
+      "guard": {
+        "addr": "1000:1c89",
+        "text": "cmp byte [0x38c0],0x0"
+      },
+      "branch": {
+        "addr": "1000:1c8e",
+        "text": "jz 0x1ca9",
+        "arm": "fallthrough",
+        "arm_start": "1000:1c90",
+        "arm_end": "1000:1ca9"
+      },
+      "literal_push": {
+        "addr": "1000:1c90",
+        "text": "mov di,0x1737"
+      },
+      "literal": {
+        "cs_offset": "0x1737",
+        "text": "^1Мега Кольцо(Всё +4) "
+      }
+    },
+    {
+      "ds": "20ae:38c1",
+      "label": "Кольцо \"Гп\"",
+      "guard": {
+        "addr": "1000:1ca9",
+        "text": "cmp byte [0x38c1],0x0"
+      },
+      "branch": {
+        "addr": "1000:1cae",
+        "text": "jz 0x1cc9",
+        "arm": "fallthrough",
+        "arm_start": "1000:1cb0",
+        "arm_end": "1000:1cc9"
+      },
+      "literal_push": {
+        "addr": "1000:1cb0",
+        "text": "mov di,0x174e"
+      },
+      "literal": {
+        "cs_offset": "0x174e",
+        "text": "^1Кольцо \"Гп\"(Самолечение) "
+      }
+    },
+    {
+      "ds": "20ae:38bb",
+      "label": "мобильник",
+      "guard": {
+        "addr": "1000:1cd8",
+        "text": "cmp byte [0x38bb],0x0"
+      },
+      "branch": {
+        "addr": "1000:1cdd",
+        "text": "jz 0x1cf8",
+        "arm": "fallthrough",
+        "arm_start": "1000:1cdf",
+        "arm_end": "1000:1cf8"
+      },
+      "literal_push": {
+        "addr": "1000:1cdf",
+        "text": "mov di,0x176a"
+      },
+      "literal": {
+        "cs_offset": "0x176a",
+        "text": "^1У тебя есть мобильник"
+      }
+    },
+    {
+      "ds": "20ae:38b3",
+      "label": "тёмные очки",
+      "guard": {
+        "addr": "1000:1cf8",
+        "text": "cmp byte [0x38b3],0x0"
+      },
+      "branch": {
+        "addr": "1000:1cfd",
+        "text": "jz 0x1d18",
+        "arm": "fallthrough",
+        "arm_start": "1000:1cff",
+        "arm_end": "1000:1d18"
+      },
+      "literal_push": {
+        "addr": "1000:1cff",
+        "text": "mov di,0x1782"
+      },
+      "literal": {
+        "cs_offset": "0x1782",
+        "text": "^1У тебя есть тёмные очки"
+      }
+    },
+    {
+      "ds": "20ae:38bc",
+      "label": "зоновская наколка",
+      "guard": {
+        "addr": "1000:1d18",
+        "text": "cmp byte [0x38bc],0x0"
+      },
+      "branch": {
+        "addr": "1000:1d1d",
+        "text": "jz 0x1d38",
+        "arm": "fallthrough",
+        "arm_start": "1000:1d1f",
+        "arm_end": "1000:1d38"
+      },
+      "literal_push": {
+        "addr": "1000:1d1f",
+        "text": "mov di,0x179c"
+      },
+      "literal": {
+        "cs_offset": "0x179c",
+        "text": "^1На тебе зоновская наколка"
+      }
+    },
+    {
+      "ds": "20ae:394d",
+      "label": "пистолет",
+      "guard": {
+        "addr": "1000:1d38",
+        "text": "cmp byte [0x394d],0x0"
+      },
+      "branch": {
+        "addr": "1000:1d3d",
+        "text": "jnz 0x1d42",
+        "arm": "taken",
+        "arm_start": "1000:1d42",
+        "arm_end": "1000:1e01"
+      },
+      "literal_push": {
+        "addr": "1000:1d51",
+        "text": "mov di,0x17b8"
+      },
+      "literal": {
+        "cs_offset": "0x17b8",
+        "text": "^1У тебя есть пистолет"
+      }
+    },
+    {
+      "ds": "20ae:394e",
+      "label": "глушитель",
+      "guard": {
+        "addr": "1000:1d6a",
+        "text": "cmp byte [0x394e],0x0"
+      },
+      "branch": {
+        "addr": "1000:1d6f",
+        "text": "jz 0x1d8a",
+        "arm": "fallthrough",
+        "arm_start": "1000:1d71",
+        "arm_end": "1000:1d8a"
+      },
+      "literal_push": {
+        "addr": "1000:1d71",
+        "text": "mov di,0x17cf"
+      },
+      "literal": {
+        "cs_offset": "0x17cf",
+        "text": "^1 с гушителем"
+      }
+    },
+    {
+      "ds": "20ae:394f",
+      "label": "патроны",
+      "guard": {
+        "addr": "1000:1d8a",
+        "text": "cmp word [0x394f],0x0"
+      },
+      "branch": {
+        "addr": "1000:1d8f",
+        "text": "jle 0x1dab",
+        "arm": "fallthrough",
+        "arm_start": "1000:1d91",
+        "arm_end": "1000:1dab"
+      },
+      "literal_push": {
+        "addr": "1000:1d91",
+        "text": "mov di,0x17de"
+      },
+      "literal": {
+        "cs_offset": "0x17de",
+        "text": "^1! патронов - #"
+      }
+    },
+    {
+      "ds": "20ae:38b5",
+      "label": "Бутсы",
+      "guard": {
+        "addr": "1000:1e81",
+        "text": "cmp byte [0x38b5],0x0"
+      },
+      "branch": {
+        "addr": "1000:1e86",
+        "text": "jz 0x1ea8",
+        "arm": "fallthrough",
+        "arm_start": "1000:1e88",
+        "arm_end": "1000:1ea8"
+      },
+      "literal_push": {
+        "addr": "1000:1e8f",
+        "text": "mov di,0x182e"
+      },
+      "literal": {
+        "cs_offset": "0x182e",
+        "text": "^1Бутсы(+1) "
+      }
+    },
+    {
+      "ds": "20ae:38b8",
+      "label": "Понтовые бутсы",
+      "guard": {
+        "addr": "1000:1ecf",
+        "text": "cmp byte [0x38b8],0x0"
+      },
+      "branch": {
+        "addr": "1000:1ed4",
+        "text": "jz 0x1eef",
+        "arm": "fallthrough",
+        "arm_start": "1000:1ed6",
+        "arm_end": "1000:1eef"
+      },
+      "literal_push": {
+        "addr": "1000:1ed6",
+        "text": "mov di,0x1844"
+      },
+      "literal": {
+        "cs_offset": "0x1844",
+        "text": "^1Понтовые бутсы(Урон+2) "
+      }
+    },
+    {
+      "ds": "20ae:38ba",
+      "label": "Кастет",
+      "guard": {
+        "addr": "1000:1eef",
+        "text": "cmp byte [0x38ba],0x0"
+      },
+      "branch": {
+        "addr": "1000:1ef4",
+        "text": "jz 0x1f24",
+        "arm": "fallthrough",
+        "arm_start": "1000:1ef6",
+        "arm_end": "1000:1f24"
+      },
+      "literal_push": {
+        "addr": "1000:1f0b",
+        "text": "mov di,0x185e"
+      },
+      "literal": {
+        "cs_offset": "0x185e",
+        "text": "^1Кастет(+2) "
+      }
+    },
+    {
+      "ds": "20ae:394b",
+      "label": "Дубинка",
+      "guard": {
+        "addr": "1000:1f59",
+        "text": "cmp byte [0x394b],0x0"
+      },
+      "branch": {
+        "addr": "1000:1f5e",
+        "text": "jz 0x1f87",
+        "arm": "fallthrough",
+        "arm_start": "1000:1f60",
+        "arm_end": "1000:1f87"
+      },
+      "literal_push": {
+        "addr": "1000:1f6e",
+        "text": "mov di,0x1876"
+      },
+      "literal": {
+        "cs_offset": "0x1876",
+        "text": "^1Дубинка(+4)  "
+      }
+    },
+    {
+      "ds": "20ae:38c2",
+      "label": "Нож",
+      "guard": {
+        "addr": "1000:1fb5",
+        "text": "cmp byte [0x38c2],0x0"
+      },
+      "branch": {
+        "addr": "1000:1fba",
+        "text": "jz 0x1fdc",
+        "arm": "fallthrough",
+        "arm_start": "1000:1fbc",
+        "arm_end": "1000:1fdc"
+      },
+      "literal_push": {
+        "addr": "1000:1fc3",
+        "text": "mov di,0x1891"
+      },
+      "literal": {
+        "cs_offset": "0x1891",
+        "text": "^1Нож(+6) "
+      }
+    },
+    {
+      "ds": "20ae:394c",
+      "label": "Тесак",
+      "guard": {
+        "addr": "1000:2003",
+        "text": "cmp byte [0x394c],0x0"
+      },
+      "branch": {
+        "addr": "1000:2008",
+        "text": "jz 0x2023",
+        "arm": "fallthrough",
+        "arm_start": "1000:200a",
+        "arm_end": "1000:2023"
+      },
+      "literal_push": {
+        "addr": "1000:200a",
+        "text": "mov di,0x18a3"
+      },
+      "literal": {
+        "cs_offset": "0x18a3",
+        "text": "^1Тесак(Урон+9) "
+      }
+    },
+    {
+      "ds": "20ae:38b0",
+      "label": "Сломана челюсть",
+      "guard": {
+        "addr": "1000:2037",
+        "text": "cmp byte [0x38b0],0x1"
+      },
+      "branch": {
+        "addr": "1000:203c",
+        "text": "jnz 0x2068",
+        "arm": "fallthrough",
+        "arm_start": "1000:203e",
+        "arm_end": "1000:2068"
+      },
+      "literal_push": {
+        "addr": "1000:204f",
+        "text": "mov di,0x18b4"
+      },
+      "literal": {
+        "cs_offset": "0x18b4",
+        "text": "^4Сломана челюсть  "
+      }
+    },
+    {
+      "ds": "20ae:394a",
+      "label": "Зубная защита",
+      "guard": {
+        "addr": "1000:2068",
+        "text": "cmp byte [0x394a],0x1"
+      },
+      "branch": {
+        "addr": "1000:206d",
+        "text": "jnz 0x2099",
+        "arm": "fallthrough",
+        "arm_start": "1000:206f",
+        "arm_end": "1000:2099"
+      },
+      "literal_push": {
+        "addr": "1000:2080",
+        "text": "mov di,0x18c8"
+      },
+      "literal": {
+        "cs_offset": "0x18c8",
+        "text": "^1Зубная защита  "
+      }
+    },
+    {
+      "ds": "20ae:38b1",
+      "label": "Сломана нога",
+      "guard": {
+        "addr": "1000:2099",
+        "text": "cmp byte [0x38b1],0x1"
+      },
+      "branch": {
+        "addr": "1000:209e",
+        "text": "jnz 0x20ca",
+        "arm": "fallthrough",
+        "arm_start": "1000:20a0",
+        "arm_end": "1000:20ca"
+      },
+      "literal_push": {
+        "addr": "1000:20b1",
+        "text": "mov di,0x18da"
+      },
+      "literal": {
+        "cs_offset": "0x18da",
+        "text": "^4Сломана нога  "
+      }
+    },
+    {
+      "ds": "20ae:38cd",
+      "label": "Обдолбаный",
+      "guard": {
+        "addr": "1000:20ca",
+        "text": "cmp byte [0x38cd],0x0"
+      },
+      "branch": {
+        "addr": "1000:20cf",
+        "text": "jbe 0x20fb",
+        "arm": "fallthrough",
+        "arm_start": "1000:20d1",
+        "arm_end": "1000:20fb"
+      },
+      "literal_push": {
+        "addr": "1000:20e2",
+        "text": "mov di,0x18eb"
+      },
+      "literal": {
+        "cs_offset": "0x18eb",
+        "text": "^6Обдолбаный  "
+      }
+    },
+    {
+      "ds": "20ae:38b2",
+      "label": "Броня",
+      "guard": {
+        "addr": "1000:227b",
+        "text": "cmp byte [0x38b2],0x0"
+      },
+      "branch": {
+        "addr": "1000:2280",
+        "text": "ja 0x2285",
+        "arm": "taken",
+        "arm_start": "1000:2285",
+        "arm_end": "1000:23b4"
+      },
+      "literal_push": {
+        "addr": "1000:2285",
+        "text": "mov di,0x1956"
+      },
+      "literal": {
+        "cs_offset": "0x1956",
+        "text": "^2Броня #    "
+      }
+    },
+    {
+      "ds": "20ae:38b4",
+      "label": "Костюм Abibas",
+      "guard": {
+        "addr": "1000:22a1",
+        "text": "cmp byte [0x38b4],0x0"
+      },
+      "branch": {
+        "addr": "1000:22a6",
+        "text": "jz 0x22fc",
+        "arm": "fallthrough",
+        "arm_start": "1000:22a8",
+        "arm_end": "1000:22fc"
+      },
+      "literal_push": {
+        "addr": "1000:22e3",
+        "text": "mov di,0x1983"
+      },
+      "literal": {
+        "cs_offset": "0x1983",
+        "text": "^1Костюм Abibas(+1) "
+      },
+      "note": "the arm this guard selects prints the DIMMED `^4` label of the lesser item first when the better one is also owned; the bright label cited here is the one that names this flag."
+    },
+    {
+      "ds": "20ae:38b7",
+      "label": "Костюм Adidas",
+      "guard": {
+        "addr": "1000:22fc",
+        "text": "cmp byte [0x38b7],0x0"
+      },
+      "branch": {
+        "addr": "1000:2301",
+        "text": "jz 0x2323",
+        "arm": "fallthrough",
+        "arm_start": "1000:2303",
+        "arm_end": "1000:2323"
+      },
+      "literal_push": {
+        "addr": "1000:230a",
+        "text": "mov di,0x196e"
+      },
+      "literal": {
+        "cs_offset": "0x196e",
+        "text": "^1Костюм Adidas(+2) "
+      }
+    },
+    {
+      "ds": "20ae:38b6",
+      "label": "Кожанка",
+      "guard": {
+        "addr": "1000:2323",
+        "text": "cmp byte [0x38b6],0x0"
+      },
+      "branch": {
+        "addr": "1000:2328",
+        "text": "jz 0x237e",
+        "arm": "fallthrough",
+        "arm_start": "1000:232a",
+        "arm_end": "1000:237e"
+      },
+      "literal_push": {
+        "addr": "1000:2365",
+        "text": "mov di,0x19b9"
+      },
+      "literal": {
+        "cs_offset": "0x19b9",
+        "text": "^1Кожанка(+2) "
+      },
+      "note": "the arm this guard selects prints the DIMMED `^4` label of the lesser item first when the better one is also owned; the bright label cited here is the one that names this flag."
+    },
+    {
+      "ds": "20ae:38b9",
+      "label": "Крутая кожанка",
+      "guard": {
+        "addr": "1000:237e",
+        "text": "cmp byte [0x38b9],0x0"
+      },
+      "branch": {
+        "addr": "1000:2383",
+        "text": "jz 0x23a5",
+        "arm": "fallthrough",
+        "arm_start": "1000:2385",
+        "arm_end": "1000:23a5"
+      },
+      "literal_push": {
+        "addr": "1000:238c",
+        "text": "mov di,0x19a3"
+      },
+      "literal": {
+        "cs_offset": "0x19a3",
+        "text": "^1Крутая кожанка(+4) "
+      }
+    },
+    {
+      "ds": "20ae:38c5",
+      "label": "Косяки",
+      "guard": {
+        "addr": "1000:23b4",
+        "text": "cmp word [0x38c5],0x0"
+      },
+      "branch": {
+        "addr": "1000:23b9",
+        "text": "jle 0x23d5",
+        "arm": "fallthrough",
+        "arm_start": "1000:23bb",
+        "arm_end": "1000:23d5"
+      },
+      "literal_push": {
+        "addr": "1000:23bb",
+        "text": "mov di,0x19c8"
+      },
+      "literal": {
+        "cs_offset": "0x19c8",
+        "text": "Косяки #"
+      }
+    },
+    {
+      "ds": "20ae:38c3",
+      "label": "Пиво",
+      "guard": {
+        "addr": "1000:23d5",
+        "text": "cmp word [0x38c3],0x0"
+      },
+      "branch": {
+        "addr": "1000:23da",
+        "text": "jle 0x2415",
+        "arm": "fallthrough",
+        "arm_start": "1000:23dc",
+        "arm_end": "1000:2415"
+      },
+      "literal_push": {
+        "addr": "1000:23dc",
+        "text": "mov di,0x19d1"
+      },
+      "literal": {
+        "cs_offset": "0x19d1",
+        "text": "Пиво #.#л."
+      }
+    },
+    {
+      "ds": "20ae:38c7",
+      "label": "Бабки",
+      "guard": {
+        "addr": "1000:242e",
+        "text": "cmp word [0x38c7],0x0"
+      },
+      "branch": {
+        "addr": "1000:2433",
+        "text": "jle 0x2451",
+        "arm": "fallthrough",
+        "arm_start": "1000:2435",
+        "arm_end": "1000:2451"
+      },
+      "literal_push": {
+        "addr": "1000:2435",
+        "text": "mov di,0x19e7"
+      },
+      "literal": {
+        "cs_offset": "0x19e7",
+        "text": "Бабки #"
+      }
+    },
+    {
+      "ds": "20ae:38c9",
+      "label": "Хлам",
+      "guard": {
+        "addr": "1000:246a",
+        "text": "cmp word [0x38c9],0x0"
+      },
+      "branch": {
+        "addr": "1000:246f",
+        "text": "jle 0x248b",
+        "arm": "fallthrough",
+        "arm_start": "1000:2471",
+        "arm_end": "1000:248b"
+      },
+      "literal_push": {
+        "addr": "1000:2471",
+        "text": "mov di,0x19fc"
+      },
+      "literal": {
+        "cs_offset": "0x19fc",
+        "text": "Хлам #"
+      }
+    }
+  ],
+  "live_probe": {
+    "what": "Task 16 Step 1, run live under qemu+gdb against orig/g.exe: three breakpoints (1000:ae63 the street prompt's ReadLn, 1000:441d the `Битва\\` prompt's ReadLn, 1000:1a03 this function's entry), a scripted list of verbs, and a count of entries per verb.  A verb whose window holds no stop at 1000:1a03 is a breakpoint that did NOT fire -- flow-tier evidence for a negative, which docs/re/METHODOLOGY.md accepts and a screen never can.",
+    "tool": "python3 tools/rngtrace/verbprobe.py --boot-img build/rngtrace/boot.img",
+    "seed_hex": "0x12345678",
+    "class_value": 3,
+    "class_name": "Пацан",
+    "marker_stream": "PTPPPPTPCCCTCP",
+    "marker_legend": {
+      "P": "1000:ae63",
+      "C": "1000:441d",
+      "T": "1000:1a03"
+    },
+    "sheet_entries_before_first_prompt": 0,
+    "totals": {
+      "prompt_stops_street": 7,
+      "prompt_stops_combat": 4,
+      "sheet_entries": 3,
+      "lines_typed": 10
+    },
+    "per_verb": [
+      {
+        "prompt": "combat",
+        "line": "run",
+        "prompts": 1,
+        "entries": 0,
+        "reaches": false
+      },
+      {
+        "prompt": "combat",
+        "line": "s",
+        "prompts": 1,
+        "entries": 1,
+        "reaches": true
+      },
+      {
+        "prompt": "combat",
+        "line": "sv",
+        "prompts": 2,
+        "entries": 0,
+        "reaches": false
+      },
+      {
+        "prompt": "street",
+        "line": "i",
+        "prompts": 1,
+        "entries": 0,
+        "reaches": false
+      },
+      {
+        "prompt": "street",
+        "line": "s",
+        "prompts": 2,
+        "entries": 2,
+        "reaches": true
+      },
+      {
+        "prompt": "street",
+        "line": "stats",
+        "prompts": 1,
+        "entries": 0,
+        "reaches": false
+      },
+      {
+        "prompt": "street",
+        "line": "w",
+        "prompts": 2,
+        "entries": 0,
+        "reaches": false
+      }
+    ],
+    "reproduced": "the marker stream is byte-identical across the two runs this was driven on the same pinned seed"
+  },
+  "branch_partition": {
+    "total": 83,
+    "source": "data/branches.json, records whose `func` is FUN_1000_1a03",
+    "rule": "a branch counts as CITED when its own address, or its guard's address, appears anywhere in this file OUTSIDE this `branch_partition` node -- the same rule the project's docs/re coverage metric uses, minus the self-reference that would otherwise let the `uncited` list cite itself into the cited set.  CITED means the address is on the map; it does NOT mean the branch is explained -- a few are cited only because the address is an arm boundary of a neighbouring line.",
+    "cited": [
+      "1000:1aae",
+      "1000:1ad0",
+      "1000:1ad7",
+      "1000:1ade",
+      "1000:1aea",
+      "1000:1af1",
+      "1000:1b02",
+      "1000:1b09",
+      "1000:1b10",
+      "1000:1b17",
+      "1000:1bee",
+      "1000:1c0e",
+      "1000:1c6e",
+      "1000:1c8e",
+      "1000:1cae",
+      "1000:1cdd",
+      "1000:1cfd",
+      "1000:1d1d",
+      "1000:1d3d",
+      "1000:1d6f",
+      "1000:1d8f",
+      "1000:1db0",
+      "1000:1e86",
+      "1000:1e8d",
+      "1000:1ead",
+      "1000:1ed4",
+      "1000:1ef4",
+      "1000:1efb",
+      "1000:1f29",
+      "1000:1f5e",
+      "1000:1f65",
+      "1000:1f8c",
+      "1000:1fba",
+      "1000:1fc1",
+      "1000:1fe1",
+      "1000:2008",
+      "1000:203c",
+      "1000:206d",
+      "1000:209e",
+      "1000:20cf",
+      "1000:2129",
+      "1000:2159",
+      "1000:21bc",
+      "1000:2216",
+      "1000:2228",
+      "1000:2252",
+      "1000:2280",
+      "1000:22a6",
+      "1000:22ad",
+      "1000:2301",
+      "1000:2308",
+      "1000:2328",
+      "1000:232f",
+      "1000:2383",
+      "1000:238a",
+      "1000:23b9",
+      "1000:23da",
+      "1000:2433",
+      "1000:246f"
+    ],
+    "uncited": [
+      "1000:1bc7",
+      "1000:1bce",
+      "1000:1c3d",
+      "1000:1c44",
+      "1000:1c4b",
+      "1000:1db7",
+      "1000:1dd7",
+      "1000:1e0b",
+      "1000:1e12",
+      "1000:1e19",
+      "1000:1e20",
+      "1000:1e27",
+      "1000:1e2e",
+      "1000:1e35",
+      "1000:1eb4",
+      "1000:1f02",
+      "1000:1f09",
+      "1000:1f30",
+      "1000:1f37",
+      "1000:1f3e",
+      "1000:1f6c",
+      "1000:1f93",
+      "1000:1f9a",
+      "1000:1fe8"
+    ],
+    "uncited_note": "what is left, and it is left deliberately: these are the section-header disjunctions (`Феньки:` / `Мощные феньки:` / the weapon line) and the dimmed `^4` arms of the best-item-wins pairs.  docs/re/gaps.md says what would settle each."
+  }
+}

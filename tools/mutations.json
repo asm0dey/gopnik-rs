@@ -116,6 +116,38 @@
       "expect": "combattrace.main() accepted --out naming a FROZEN oracle"
     },
     {
+      "label": "character-sheet-guard-address",
+      "defends": "tools/test_character_sheet.py requires every address in data/character_sheet.json to be an instruction boundary an ALIGNED walk from the enclosing function's entry reaches -- the two-to-five-byte drift that is this project's standing RE defect.",
+      "artifact": "data/character_sheet.json",
+      "mutate": {"op": "json-set", "path": ["flag_lines", 0, "guard", "addr"], "from": "1000:1be9", "to": "1000:1bea"},
+      "test": ["python3", "tools/test_character_sheet.py", "SheetTest.test_the_flag_lines_print_inside_the_arm_their_guard_selects"],
+      "expect": "is not an instruction boundary reached by decoding"
+    },
+    {
+      "label": "character-sheet-literal-text",
+      "defends": "tools/test_character_sheet.py decodes every cited CS shortstring out of orig/g.exe and compares it with the text this artifact and docs/re/character-sheet.md quote, so a misquoted Russian label cannot survive in either place.",
+      "artifact": "data/character_sheet.json",
+      "mutate": {"op": "json-set", "path": ["flag_lines", 0, "literal", "text"], "from": "^1\u041a\u0440\u0435\u0441\u0442\u0438\u043a(\u0423\u0434\u0430\u0447\u0430 +2) ", "to": "^1\u041a\u0440\u0435\u0441\u0442\u0438\u043a(\u0423\u0434\u0430\u0447\u0430 +3) "},
+      "test": ["python3", "tools/test_character_sheet.py", "SheetTest.test_every_cs_literal_decodes_to_the_recorded_text"],
+      "expect": "the Pascal shortstring at CS"
+    },
+    {
+      "label": "character-sheet-call-sites",
+      "defends": "tools/test_character_sheet.py checks each recorded call site really is an `e8` near call whose 16-bit-wrapped target is 1000:1a03, AND that a byte scan of the whole image finds no fifth near call and no far call -- so `exactly these four callers` is a finding rather than a search that stopped early.",
+      "artifact": "data/character_sheet.json",
+      "mutate": {"op": "json-set", "path": ["call_sites", 0, "addr"], "from": "1000:ec89", "to": "1000:ec8c"},
+      "test": ["python3", "tools/test_character_sheet.py", "SheetTest.test_the_call_sites_really_call_this_function"],
+      "expect": "is not a near call"
+    },
+    {
+      "label": "character-sheet-branch-partition",
+      "defends": "tools/test_character_sheet.py recomputes the cited/uncited split of FUN_1000_1a03's 83 branches from data/branches.json and from the artifact's own citations (excluding the partition node itself), so the `what is still open` list cannot drift from what the artifact actually covers.",
+      "artifact": "data/character_sheet.json",
+      "mutate": {"op": "json-set", "path": ["branch_partition", "uncited", 0], "from": "1000:1bc7", "to": "1000:1bc8"},
+      "test": ["python3", "tools/test_character_sheet.py", "SheetTest.test_the_branch_partition_is_the_whole_branch_set"],
+      "expect": "the recorded uncited set is not what is actually left uncited"
+    },
+    {
       "label": "combat-prompt-randseed",
       "expect_red": false,
       "defends": "FINDING: the capture reads RandSeed at every 1000:441d stop and PromptRow deserialises it under #[allow(dead_code)], but nothing compares it to the port's g.rng.state(). tests/wander_sequence.rs DOES assert randseed_367e per turn sample; the combat prompt channel does not.",
