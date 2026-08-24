@@ -1,0 +1,183 @@
+{
+  "note": "Mutation cases for tools/mutate.py -- read that file's docstring first. One case per independently falsifiable CHANNEL of the three frozen oracles plus data/combat_vectors.json: each perturbs the smallest thing that isolates one claim, and the named test must go red with `expect` in its output. Several mutations that all red the same assertion would be noise, so there is at most one per channel. A channel NOT listed here has not been shown to be falsifiable. Nothing here is ever applied to the real files: the runner works on a copy.",
+  "manifest_lives_here_because": "This is configuration for a tool, not captured data. data/ is the read-only ground-truth tree the gate exists to protect, and a manifest living there would be copied -- and mutable -- inside the gate's own shadow of it.",
+  "findings": "Cases carrying \"expect_red\": false are not coverage. Each is a column the captures hold that no assertion in the suite reads -- found by this gate on its first run, by mutating the column and watching the whole test binary stay green. They are kept here, and kept executable, so the record cannot rot: when an assertion finally reaches one, the gate fails on it and the case is promoted to a red one.",
+  "cases": [
+    {
+      "label": "wander-draw-stream",
+      "defends": "tests/wander_sequence.rs compares the port's whole Random stream, draw for draw, against data/rng_trace.json -- site, n, r and the count.",
+      "artifact": "data/rng_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 0, "draws", 100, "r"], "from": 61, "to": 62},
+      "test": ["cargo", "test", "--test", "wander_sequence", "run_a_replays_exactly"],
+      "expect": "draw sequence diverges from data/rng_trace.json at index 100"
+    },
+    {
+      "label": "wander-final-state",
+      "defends": "run_c_final_state_matches asserts the whole 29-variable end state, which the draw stream cannot see -- here 20ae:38a4, the luck the church's Random(5)==0 arm did NOT grant.",
+      "artifact": "data/rng_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 2, "final_state", "luck_38a4"], "from": 3, "to": 4},
+      "test": ["cargo", "test", "--test", "wander_sequence", "run_c_final_state_matches"],
+      "expect": "C: 20ae:38a4"
+    },
+    {
+      "label": "wander-uncatalogued-sites",
+      "defends": "the_uncatalogued_sites_fire_as_often_as_the_capture_saw_them checks data/rng_trace.json's own aggregate against the per-run draw arrays -- 1000:0d91 is the thinnest entry, five stops in 1387 draws.",
+      "artifact": "data/rng_trace.json",
+      "mutate": {"op": "json-set", "path": ["sites_not_in_catalogue", "1000:0d91", "count"], "from": 5, "to": 4},
+      "test": ["cargo", "test", "--test", "wander_sequence", "the_uncatalogued_sites_fire_as_often_as_the_capture_saw_them"],
+      "expect": "1000:0d91: number of draws"
+    },
+    {
+      "label": "wander-per-turn-state",
+      "defends": "run_a_per_turn_state_matches walks data/state_trace.json turn by turn. A MID-run sample is mutated on purpose: the last one is also read by the_state_capture_ends_where_the_draw_capture_ended, and this case must isolate the per-turn channel.",
+      "artifact": "data/state_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 0, "samples", 5, "hp_38ac"], "from": 28, "to": 27},
+      "test": ["cargo", "test", "--test", "wander_sequence", "run_a_per_turn_state_matches"],
+      "expect": "A turn 6: 20ae:38ac"
+    },
+    {
+      "label": "combat-draw-stream",
+      "defends": "tests/combat_sequence.rs channel 1 -- the whole draw stream of a FIGHT, which data/rng_trace.json cannot cover because none of its runs enters [0x3d11, 0x584c).",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 0, "draws", 150, "r"], "from": 79, "to": 80},
+      "test": ["cargo", "test", "--test", "combat_sequence", "run_a_replays_exactly"],
+      "expect": "draw sequence diverges from data/combat_trace.json at index 150"
+    },
+    {
+      "label": "combat-input-lines",
+      "defends": "tests/combat_sequence.rs channel 2 -- the port consumed exactly as many recorded lines as the capture holds, so a port that stopped early cannot look like one that finished. APPENDING a line is the isolating perturbation: changing one would change what the port does and red the draw stream first.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-append", "path": ["runs", 3, "lines_the_game_read"], "value": "run"},
+      "test": ["cargo", "test", "--test", "combat_sequence", "run_d_replays_exactly"],
+      "expect": "the port consumed 13 of the 14 lines the capture recorded"
+    },
+    {
+      "label": "combat-enemy-record",
+      "defends": "tests/combat_sequence.rs channel 3 -- the enemy record at each 1000:3d11 stop. The port must ROLL the same fighter, not merely spend the same draws.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 1, "fights", 0, "enemy", "e_luck_395a"], "from": 8, "to": 9},
+      "test": ["cargo", "test", "--test", "combat_sequence", "run_b_replays_exactly"],
+      "expect": "run B fight 1: 20ae:395a"
+    },
+    {
+      "label": "combat-break-flags",
+      "defends": "tests/combat_sequence.rs channel 4 -- both fighters' hp and all four break flags at each 1000:441d stop. Run A's prompt 13 is where the PLAYER's jaw breaks (20ae:38b0); before this oracle the break formulas were recovered, implemented and asserted by nothing.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 0, "combat_prompts", 12, "p_broken_jaw_38b0"], "from": 1, "to": 0},
+      "test": ["cargo", "test", "--test", "combat_sequence", "run_a_replays_exactly"],
+      "expect": "run A combat prompt 13: 20ae:38b0 broken jaw"
+    },
+    {
+      "label": "combat-summary-counts",
+      "defends": "the_capture_covers_the_blow_loop_the_crowd_and_the_victory_block cross-checks data/combat_trace.json's header totals against the runs' own arrays. A summary asserted against literals rather than against what it summarises was one of Task 13's four findings.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["fights_total"], "from": 15, "to": 14},
+      "test": ["cargo", "test", "--test", "combat_sequence", "the_capture_covers_the_blow_loop_the_crowd_and_the_victory_block"],
+      "expect": "fights_total says 14 but the runs hold 15"
+    },
+    {
+      "label": "combat-final-state",
+      "defends": "run_b_final_state_matches asserts the whole 35-variable end state after six won fights -- the loot award, the post-kill gifts and the level-up grants are all invisible to the draw stream.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 1, "final_state", "xp_38ce"], "from": 28, "to": 29},
+      "test": ["cargo", "test", "--test", "combat_sequence", "run_b_final_state_matches"],
+      "expect": "B: 20ae:38ce"
+    },
+    {
+      "label": "combat-vectors",
+      "defends": "tests/combat_vectors.rs replays 295 seed-pinned blows captured off the original's own screen, asserting hit and damage per blow.",
+      "artifact": "data/combat_vectors.json",
+      "mutate": {"op": "json-set", "path": ["cases", 0, "expected_blows", 0, "damage"], "from": 19, "to": 18},
+      "test": ["cargo", "test", "--test", "combat_vectors", "combat_matches_original"],
+      "expect": "case 0 blow 0: damage"
+    },
+    {
+      "label": "frozen-oracle-refusal",
+      "defends": "tools/rngtrace/combattrace.py refuses `--out` naming a frozen oracle before it writes anything, and tools/test_rngtrace.py's test_the_fold_refuses_to_write_over_a_frozen_oracle proves it. This is the Python arm: the artifact perturbed is the GUARD, not an oracle.",
+      "artifact": "tools/rngtrace/combattrace.py",
+      "mutate": {"op": "text-replace", "from": "        if named is not None:\n            ap.error(\"--out %s names %s, a FROZEN oracle: it is read for its \"\n                     \"SHA-256 and never written.  Write the fight oracle to \"\n                     \"data/combat_trace.json instead.\" % (args.out, named))", "to": "        if named is not None:\n            pass"},
+      "test": ["python3", "tools/test_rngtrace.py", "FightFoldTest.test_the_fold_refuses_to_write_over_a_frozen_oracle"],
+      "expect": "SystemExit not raised"
+    },
+    {
+      "label": "combat-prompt-randseed",
+      "expect_red": false,
+      "defends": "FINDING: the capture reads RandSeed at every 1000:441d stop and PromptRow deserialises it under #[allow(dead_code)], but nothing compares it to the port's g.rng.state(). tests/wander_sequence.rs DOES assert randseed_367e per turn sample; the combat prompt channel does not.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 0, "combat_prompts", 0, "r_randseed_367e"], "from": 510377501, "to": 510377502},
+      "test": ["cargo", "test", "--test", "combat_sequence"]
+    },
+    {
+      "label": "combat-enemy-randseed",
+      "expect_red": false,
+      "defends": "FINDING: same for the RandSeed read at each 1000:3d11 stop -- the seed the enemy record was rolled at is captured and read into EnemyRecord, and asserted by nothing.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 0, "fights", 0, "enemy", "e_randseed_367e"], "from": 510377501, "to": 510377502},
+      "test": ["cargo", "test", "--test", "combat_sequence"]
+    },
+    {
+      "label": "combat-frozen-oracle-digests",
+      "expect_red": false,
+      "defends": "FINDING: data/combat_trace.json publishes the SHA-256 of the two older oracles so a reader can check they were not touched. tools/test_rngtrace.py checks what a FRESH fold publishes; nothing checks the block in the shipped file against the files themselves, so the provenance claim is asserted by nothing.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["frozen_oracles", "data/rng_trace.json"], "from": "148fe3c74ba7727754b9e14f7b24f25eac4cf1cc97ab6930bebc549625eb1025", "to": "0000000000000000000000000000000000000000000000000000000000000000"},
+      "test": ["cargo", "test", "--test", "combat_sequence"]
+    },
+    {
+      "label": "combat-draw-turn",
+      "expect_red": false,
+      "defends": "FINDING: every draw carries the turn it fell in; the port's gopnik::rng::Draw has no turn field, so the column is never compared. Deliberate as far as the port goes -- the turn boundary is implied by the draw count -- but recorded, because 'deliberate' and 'checked' are not the same word.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 0, "draws", 10, "turn"], "from": 2, "to": 7},
+      "test": ["cargo", "test", "--test", "combat_sequence"]
+    },
+    {
+      "label": "wander-draw-turn",
+      "expect_red": false,
+      "defends": "FINDING: the same column in the wander oracle, with the same reason and the same silence.",
+      "artifact": "data/rng_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 0, "draws", 10, "turn"], "from": 2, "to": 7},
+      "test": ["cargo", "test", "--test", "wander_sequence"]
+    },
+    {
+      "label": "combat-prompt-stops",
+      "expect_red": false,
+      "defends": "FINDING: the capture's own count of driver prompt stops, read by no test.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 0, "prompt_stops"], "from": 2, "to": 3},
+      "test": ["cargo", "test", "--test", "combat_sequence"]
+    },
+    {
+      "label": "wander-draws-observed-total",
+      "expect_red": false,
+      "defends": "FINDING: the header summary of data/rng_trace.json, never compared to the runs' own draw arrays. This is exactly the shape Task 13 fixed for combat_trace's fights_total/draws_total (see the combat-summary-counts case above) -- the fix did not reach the other two oracles.",
+      "artifact": "data/rng_trace.json",
+      "mutate": {"op": "json-set", "path": ["draws_observed_total"], "from": 1387, "to": 1388},
+      "test": ["cargo", "test", "--test", "wander_sequence"]
+    },
+    {
+      "label": "combat-prompts-total",
+      "expect_red": false,
+      "defends": "FINDING: the third header total in combat_trace.json. fights_total and draws_total ARE cross-checked against the arrays; combat_prompts_total, in the same header, is not.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["combat_prompts_total"], "from": 74, "to": 75},
+      "test": ["cargo", "test", "--test", "combat_sequence"]
+    },
+    {
+      "label": "state-samples-total",
+      "expect_red": false,
+      "defends": "FINDING: the header summary of data/state_trace.json, never compared to the runs' own sample arrays.",
+      "artifact": "data/state_trace.json",
+      "mutate": {"op": "json-set", "path": ["samples_total"], "from": 91, "to": 92},
+      "test": ["cargo", "test", "--test", "wander_sequence"]
+    },
+    {
+      "label": "combat-draws-until-next-fight",
+      "expect_red": false,
+      "defends": "FINDING: the per-fight draw span the fold computes. Its sibling first_draw_index IS asserted (see combat-enemy-record); this derived span is not.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 0, "fights", 0, "draws_until_next_fight"], "from": 163, "to": 164},
+      "test": ["cargo", "test", "--test", "combat_sequence"]
+    }
+  ]
+}
