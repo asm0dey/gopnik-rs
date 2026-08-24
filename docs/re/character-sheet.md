@@ -145,7 +145,7 @@ loop:
 - `1000:507b cmp word [0x3962],0x0` / `1000:5080 jle 0x5085` — the enemy is
   down.
 - `1000:5085 cmp byte [bp+0x4],0x4` / `1000:5089 jz 0x508e` — the opponent kind
-  is 4. (`FUN_1000_3d11` ends in `ret 0x2` at `1000:584a`, so `[bp+0x4]` is its
+  is 4. (`FUN_1000_3d11` ends in `ret 0x2` at `1000:5849`, so `[bp+0x4]` is its
   one word parameter; each of its seven call sites pushes a `mov al,K` /
   `push ax` pair with K in 0..6, and `1000:ae36` is the one that pushes 4.)
 - `1000:508e`..`1000:5097`: `[0x38ce] := [0x38d0]` (xp set to the threshold),
