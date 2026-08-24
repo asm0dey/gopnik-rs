@@ -175,12 +175,20 @@ fn rust_offsets_match_save_layout_json() {
     }
     assert_eq!(off("hp"), save::OFF_HP);
     assert_eq!(off("hpmax"), save::OFF_HPMAX);
-    // Fix wave 2 replaced the single opaque `tail` entry with a partition of
-    // 0x214..0x2b6 (named fields plus unk_<hex_offset> spans -- see
-    // `save_layout_json_fields_tile_the_record` below), so there is no
-    // longer a field literally named `tail`; `unk_0214` is the first entry
-    // of that partition and sits at the same offset `tail` used to.
-    assert_eq!(off("unk_0214"), save::OFF_TAIL);
+    // Task 9b's fix wave 2 replaced the single opaque `tail` entry with a
+    // partition of 0x214..0x2b6, and Task 19 closed the two `unk_` spans it
+    // left, so every byte of the record is now a named field. `broken_jaw`
+    // is the first entry of that partition and sits at the same offset
+    // `tail` used to.
+    assert_eq!(off("broken_jaw"), save::OFF_TAIL);
+    // Nothing in the record is `unk_` any more. Asserted rather than
+    // described: re-opening a span would otherwise pass silently.
+    let unknown: Vec<&str> = fields
+        .iter()
+        .filter_map(|f| f["name"].as_str())
+        .filter(|n| n.starts_with("unk_"))
+        .collect();
+    assert!(unknown.is_empty(), "unestablished spans left: {unknown:?}");
 }
 
 /// Fix wave 2 fixed a defect where four newly-named tail fields

@@ -30,6 +30,44 @@ p in ('data/probes/verbprobe-1000-1348.json',
 'data/probes/verbprobe-1000-1348-run2.json'));print(a==b, a)"` prints
 `True PPPCTCCTCCCP`.
 
+## `saveprobe-record-base.json` — the record-base experiment (Task 19)
+
+`tools/rngtrace/saveprobe.py` answers a different question from `verbprobe`:
+**which guest byte does each `.SAV` offset become?** It builds a record with
+`tools/savegen.py` carrying a distinct sentinel at every offset of the two
+spans Task 19 established, stages it as `SAVE_R3.SAV` in a temp game
+directory, boots the real `orig/g.exe`, presses `3` at the slot prompt, and
+dumps guest physical memory.
+
+It is a **controlled experiment**, which is what the five shipped saves can
+never be: they differ from each other in dozens of bytes at once, so no pair
+of them isolates a single offset, while a synthesised record differs from its
+base in exactly the bytes the probe chose.
+
+What the committed run says, all three checks green (exit 0):
+
+| field | value |
+|---|---|
+| `whole_record_matches_the_file` | `true` — all 694 bytes appear verbatim at `20ae:369c` |
+| `sentinel_run_lands_at_the_record_base` | `true` — physical `0x36840`, i.e. load base `0x224B0` + DGROUP + `0x369c` + `0x214` |
+| every one of the 37 `bytes` rows | `match: true` |
+| `screen_tail` | `Загружено из save_r3`, the district-3 intro, and the street prompt |
+
+`sentinel_run_physical_addresses` lists **three** hits, not one. The two
+below the load base (`0x2516`, `0x2E20`) are DOS's own sector buffers, still
+holding the record at dump time; the probe reports them as such rather than
+asserting uniqueness it cannot have.
+`sentinel_run_other_copies_inside_the_program` is the assertion that would
+actually be a finding, and it is empty.
+
+**Tier.** This is state-tier and the artifact says so in its own `tier`
+field: it establishes *where a save byte lands*, never what the code does
+with it. Every per-byte meaning in `docs/re/save-format.md` is carried by the
+instruction that reads that byte, not by this run. And a synthesised record
+can construct states no real playthrough reaches, so behaviour observed after
+a probe load is behaviour in a **forced** state — a different claim from
+whether a player can get there.
+
 ## What is still not reproducible from this tree
 
 Re-**running** the probe needs `build/rngtrace/boot.img`, a 1.4 MB FreeDOS

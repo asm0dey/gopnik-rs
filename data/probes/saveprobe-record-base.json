@@ -1,0 +1,326 @@
+{
+ "what": "a synthesised .SAV loaded in orig/g.exe under qemu; guest physical memory read back at the record base",
+ "tier": "state -- it maps a save offset to a guest address; the MEANING of each byte is carried by the instruction that reads it (docs/re/save-format.md), not by this run",
+ "slot": "3",
+ "base_save": "SAVE_R3.SAV",
+ "image_base_hex": "0x224B0",
+ "record_base": "20ae:369c",
+ "drive": {
+  "district_prompt_seen": true,
+  "loaded_save": true,
+  "district_key": "3"
+ },
+ "whole_record_matches_the_file": true,
+ "sentinel_run_physical_addresses": [
+  "0x2516",
+  "0x2E20",
+  "0x36840"
+ ],
+ "sentinel_run_lands_at_the_record_base": true,
+ "sentinel_run_record_base_physical": "0x36840",
+ "sentinel_run_copies_below_the_load_base": [
+  "0x2516",
+  "0x2E20"
+ ],
+ "sentinel_run_other_copies_inside_the_program": [],
+ "copies_below_the_load_base_are_dos_sector_buffers": "expected: DOS reads the record through its own buffers and they still hold it at dump time. Only a hit at or above 0x224B0 that is not the record base would be a finding.",
+ "bytes": [
+  {
+   "sav_off": "0x214",
+   "guest": "20ae:38b0",
+   "field": "broken_jaw",
+   "wrote": 64,
+   "guest_holds": 64,
+   "match": true
+  },
+  {
+   "sav_off": "0x215",
+   "guest": "20ae:38b1",
+   "field": "broken_leg",
+   "wrote": 65,
+   "guest_holds": 65,
+   "match": true
+  },
+  {
+   "sav_off": "0x216",
+   "guest": "20ae:38b2",
+   "field": "armour",
+   "wrote": 66,
+   "guest_holds": 66,
+   "match": true
+  },
+  {
+   "sav_off": "0x217",
+   "guest": "20ae:38b3",
+   "field": "dark_glasses",
+   "wrote": 67,
+   "guest_holds": 67,
+   "match": true
+  },
+  {
+   "sav_off": "0x218",
+   "guest": "20ae:38b4",
+   "field": "suit_abibas",
+   "wrote": 68,
+   "guest_holds": 68,
+   "match": true
+  },
+  {
+   "sav_off": "0x219",
+   "guest": "20ae:38b5",
+   "field": "boots",
+   "wrote": 69,
+   "guest_holds": 69,
+   "match": true
+  },
+  {
+   "sav_off": "0x21a",
+   "guest": "20ae:38b6",
+   "field": "jacket",
+   "wrote": 70,
+   "guest_holds": 70,
+   "match": true
+  },
+  {
+   "sav_off": "0x21b",
+   "guest": "20ae:38b7",
+   "field": "suit_adidas",
+   "wrote": 71,
+   "guest_holds": 71,
+   "match": true
+  },
+  {
+   "sav_off": "0x21c",
+   "guest": "20ae:38b8",
+   "field": "boots_pontovye",
+   "wrote": 72,
+   "guest_holds": 72,
+   "match": true
+  },
+  {
+   "sav_off": "0x21d",
+   "guest": "20ae:38b9",
+   "field": "jacket_krutaya",
+   "wrote": 73,
+   "guest_holds": 73,
+   "match": true
+  },
+  {
+   "sav_off": "0x21e",
+   "guest": "20ae:38ba",
+   "field": "kastet",
+   "wrote": 74,
+   "guest_holds": 74,
+   "match": true
+  },
+  {
+   "sav_off": "0x21f",
+   "guest": "20ae:38bb",
+   "field": "mobile",
+   "wrote": 75,
+   "guest_holds": 75,
+   "match": true
+  },
+  {
+   "sav_off": "0x220",
+   "guest": "20ae:38bc",
+   "field": "prison_tattoo",
+   "wrote": 76,
+   "guest_holds": 76,
+   "match": true
+  },
+  {
+   "sav_off": "0x221",
+   "guest": "20ae:38bd",
+   "field": "krestik",
+   "wrote": 77,
+   "guest_holds": 77,
+   "match": true
+  },
+  {
+   "sav_off": "0x222",
+   "guest": "20ae:38be",
+   "field": "ring_gs",
+   "wrote": 78,
+   "guest_holds": 78,
+   "match": true
+  },
+  {
+   "sav_off": "0x223",
+   "guest": "20ae:38bf",
+   "field": "ring_pg",
+   "wrote": 79,
+   "guest_holds": 79,
+   "match": true
+  },
+  {
+   "sav_off": "0x224",
+   "guest": "20ae:38c0",
+   "field": "mega_ring",
+   "wrote": 80,
+   "guest_holds": 80,
+   "match": true
+  },
+  {
+   "sav_off": "0x225",
+   "guest": "20ae:38c1",
+   "field": "ring_gp",
+   "wrote": 81,
+   "guest_holds": 81,
+   "match": true
+  },
+  {
+   "sav_off": "0x226",
+   "guest": "20ae:38c2",
+   "field": "nozh",
+   "wrote": 82,
+   "guest_holds": 82,
+   "match": true
+  },
+  {
+   "sav_off": "0x227",
+   "guest": "20ae:38c3",
+   "field": "beer_half_litres",
+   "wrote": 83,
+   "guest_holds": 83,
+   "match": true
+  },
+  {
+   "sav_off": "0x228",
+   "guest": "20ae:38c4",
+   "field": "beer_half_litres",
+   "wrote": 84,
+   "guest_holds": 84,
+   "match": true
+  },
+  {
+   "sav_off": "0x229",
+   "guest": "20ae:38c5",
+   "field": "joints",
+   "wrote": 85,
+   "guest_holds": 85,
+   "match": true
+  },
+  {
+   "sav_off": "0x22a",
+   "guest": "20ae:38c6",
+   "field": "joints",
+   "wrote": 86,
+   "guest_holds": 86,
+   "match": true
+  },
+  {
+   "sav_off": "0x22b",
+   "guest": "20ae:38c7",
+   "field": "money",
+   "wrote": 87,
+   "guest_holds": 87,
+   "match": true
+  },
+  {
+   "sav_off": "0x22c",
+   "guest": "20ae:38c8",
+   "field": "money",
+   "wrote": 88,
+   "guest_holds": 88,
+   "match": true
+  },
+  {
+   "sav_off": "0x22d",
+   "guest": "20ae:38c9",
+   "field": "junk",
+   "wrote": 89,
+   "guest_holds": 89,
+   "match": true
+  },
+  {
+   "sav_off": "0x22e",
+   "guest": "20ae:38ca",
+   "field": "junk",
+   "wrote": 90,
+   "guest_holds": 90,
+   "match": true
+  },
+  {
+   "sav_off": "0x22f",
+   "guest": "20ae:38cb",
+   "field": "street_cred",
+   "wrote": 91,
+   "guest_holds": 91,
+   "match": true
+  },
+  {
+   "sav_off": "0x230",
+   "guest": "20ae:38cc",
+   "field": "street_cred",
+   "wrote": 92,
+   "guest_holds": 92,
+   "match": true
+  },
+  {
+   "sav_off": "0x2ae",
+   "guest": "20ae:394a",
+   "field": "tooth_guard",
+   "wrote": 93,
+   "guest_holds": 93,
+   "match": true
+  },
+  {
+   "sav_off": "0x2af",
+   "guest": "20ae:394b",
+   "field": "dubinka",
+   "wrote": 94,
+   "guest_holds": 94,
+   "match": true
+  },
+  {
+   "sav_off": "0x2b0",
+   "guest": "20ae:394c",
+   "field": "tesak",
+   "wrote": 95,
+   "guest_holds": 95,
+   "match": true
+  },
+  {
+   "sav_off": "0x2b1",
+   "guest": "20ae:394d",
+   "field": "pistol",
+   "wrote": 96,
+   "guest_holds": 96,
+   "match": true
+  },
+  {
+   "sav_off": "0x2b2",
+   "guest": "20ae:394e",
+   "field": "silencer",
+   "wrote": 97,
+   "guest_holds": 97,
+   "match": true
+  },
+  {
+   "sav_off": "0x2b3",
+   "guest": "20ae:394f",
+   "field": "cartridges",
+   "wrote": 98,
+   "guest_holds": 98,
+   "match": true
+  },
+  {
+   "sav_off": "0x2b4",
+   "guest": "20ae:3950",
+   "field": "cartridges",
+   "wrote": 99,
+   "guest_holds": 99,
+   "match": true
+  },
+  {
+   "sav_off": "0x2b5",
+   "guest": "20ae:3951",
+   "field": "church_stage",
+   "wrote": 100,
+   "guest_holds": 100,
+   "match": true
+  }
+ ],
+ "screen_tail": "Можно начать с 3 района\nНажми цифру с какого района начать. 1-начать сначала\nЗагружено из save_r3\nНа маршрутке ты доехал до ОбьГЭСа...\nЗдесь бродит уже более крутая гопота.\n\\"
+}
