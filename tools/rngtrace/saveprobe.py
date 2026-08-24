@@ -96,6 +96,14 @@ def main(argv=None):
                     default=str(REPO / "build" / "rngtrace" / "saveprobe"))
     ap.add_argument("--sock-dir", default="/tmp")
     ap.add_argument("--gdb-port", type=int, default=1240)
+    ap.add_argument("--fresh", action="store_true",
+                    help="stage NO save and create a character instead, then "
+                         "dump the record a brand-new character starts with. "
+                         "That is what a save written by a port has to match "
+                         "for the bytes nothing has touched yet -- otherwise "
+                         "'a fresh save fills them with zeroes' is a guess.")
+    ap.add_argument("--class-answer", type=int, default=0, choices=[0, 1, 2, 3],
+                    help="--fresh only: the class menu answer")
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
 
@@ -107,9 +115,12 @@ def main(argv=None):
 
     exe_bytes = Path(args.exe).read_bytes()
     (gamedir / "G.EXE").write_bytes(exe_bytes)
-    record, sentinels = probe_record(Path(args.base_save).read_bytes(),
-                                     DEFAULT_SPANS)
-    (gamedir / ("SAVE_R%s.SAV" % args.slot)).write_bytes(record)
+    if args.fresh:
+        record, sentinels = None, {}
+    else:
+        record, sentinels = probe_record(Path(args.base_save).read_bytes(),
+                                         DEFAULT_SPANS)
+        (gamedir / ("SAVE_R%s.SAV" % args.slot)).write_bytes(record)
 
     machine = vm.Vm(args.boot_img, gamedir, work, sock_dir=args.sock_dir,
                     gdb_port=args.gdb_port)
@@ -117,12 +128,13 @@ def main(argv=None):
         machine.start()
         driver.boot_to_dos(machine)
         driver.launch_game(machine)
-        drive = driver.create_character(machine, 0, district=args.slot)
-        if not drive["loaded_save"]:
+        drive = driver.create_character(machine, args.class_answer,
+                                        district=args.slot)
+        if drive["loaded_save"] == args.fresh:
             raise driver.DriveError(
-                "the probe save was not loaded: the driver fell through to "
-                "character creation, so nothing below is about the record.\n"
-                + machine.screen())
+                "wanted %s and got the other: %s\n%s"
+                % ("a fresh character" if args.fresh else "a loaded save",
+                   drive, machine.screen()))
         screen = machine.screen()
         mem = machine.dump_memory()
     finally:
@@ -134,6 +146,32 @@ def main(argv=None):
     # The whole-record check first: it is the one that settles the delta, and
     # it settles it for all 694 bytes at once rather than byte by byte.
     guest_record = mem[record_at:record_at + SIZE]
+
+    if args.fresh:
+        # No sentinels and no file to compare against: the whole point is
+        # what the record HOLDS, so it is reported rather than checked.
+        fresh = {
+            "what": "the 694-byte record a brand-new character starts with, "
+                    "read out of guest memory at 20ae:369c",
+            "class_answer": args.class_answer,
+            "name_typed": "(empty -- the game substitutes its own default)",
+            "record_hex": guest_record.hex(),
+            "magic": guest_record[1:1 + guest_record[0]].decode("cp866"),
+            "magic_padding_all_zero": set(
+                guest_record[1 + guest_record[0]:0x100]) <= {0},
+            "name": guest_record[0x101:0x101 + guest_record[0x100]]
+                    .decode("cp866"),
+            "name_padding_all_zero": set(
+                guest_record[0x101 + guest_record[0x100]:0x200]) <= {0},
+            "tail_all_zero": set(guest_record[0x214:]) <= {0},
+            "screen_tail": "\n".join(
+                [l.rstrip() for l in screen.splitlines() if l.strip()][-6:]),
+        }
+        text = json.dumps(fresh, indent=1, ensure_ascii=False) + "\n"
+        if args.out:
+            Path(args.out).write_text(text, encoding="utf-8")
+        print(text)
+        return 0
 
     # ...and the independent half: find the sentinel run in RAM without
     # assuming where it should be. If the delta is wrong, this still reports

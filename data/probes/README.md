@@ -68,6 +68,38 @@ can construct states no real playthrough reaches, so behaviour observed after
 a probe load is behaviour in a **forced** state — a different claim from
 whether a player can get there.
 
+## `saveprobe-fresh-record.json` — what a brand-new character's record holds
+
+`tools/rngtrace/saveprobe.py --fresh` stages **no** save at all, drives
+character creation (class answer 0, empty name), and dumps the same 694 bytes
+at `20ae:369c`. It answers the question Task 19's brief left as a port
+decision — *"if some bytes remain unestablished, decide and document how a
+fresh save fills them"* — by observing the original instead of deciding.
+
+`record_hex` is the whole record. What it says:
+
+* `magic` is `^4Gopnik: ^7version 1.02 june,sept 2003`, **padding all zero**.
+  It is not a constant that happens to sit there: `1000:6dcd`..`1000:6ddb`
+  assigns the CS literal at image `0x6489` (file `0x7D59`) into `DS:369c` in
+  the new-character block, three instructions after `district := 1`.
+* `name` is `^7 Раз^6дол^4бай`, padding all zero — the `^7 ` prefix
+  (`1000:723a`..`1000:725d`, CS `0x67f2`, file `0x80C2`) plus the default
+  name the empty-line substitution supplies (`1000:7227`, CS `0x67e4`).
+* the eight stat words are `3 3 3 3 3 0 1 3`, `hp` and `hpmax` both 28;
+* `0x214`..`0x231` is **all zero**, `0x234` (`threshold`) is 10 — exactly
+  `1000:6de0 mov word [0x38d0],0xa` — the growth log is all zero, and
+  `0x2ae`..`0x2b5` is all zero.
+
+So a fresh save fills every byte of both former `unk_` spans with **zero**,
+and that is an observation about the original rather than a choice this port
+made. `tests/save_roundtrip.rs::a_fresh_record_matches_what_the_original_
+starts_a_new_character_with` asserts the port's own fresh record against
+these bytes.
+
+**Tier.** State-tier, and forced only in the weak sense that the driver chose
+the class and left the name empty; nothing here is a state a player could not
+reach — it is the state every new game starts in.
+
 ## What is still not reproducible from this tree
 
 Re-**running** the probe needs `build/rngtrace/boot.img`, a 1.4 MB FreeDOS
