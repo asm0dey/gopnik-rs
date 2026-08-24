@@ -4,25 +4,73 @@
 # The Rust port is checked AGAINST the oracles; the oracles are produced by the
 # code below, which is checked only against its own tests.  That makes this the
 # top of the evidence chain with the thinnest guard on it -- a fold bug in
-# tracelog.py or a vacuous comparison in difftest.py corrupts ground truth, and
-# every green Rust test then validates against the corruption.
+# tracelog.py corrupts ground truth, and every green Rust test then validates
+# against the corruption.
 #
 # Run:  .venv/bin/mutmut run          then  .venv/bin/mutmut browse
 #
+# STATUS: NOT YET RUNNABLE.  The copying below is correct and the pytest
+# baseline is green (141 passed in 0.11s), but `mutmut run` stops with:
+#
+#   Recorded keys: ['rngtrace.combattrace.x_build', ...]
+#   Expected keys: ['tools.rngtrace.combattrace.x_build', ...]
+#
+# mutmut keys a mutant by the source file's path from the repo root, while this
+# project puts tools/ on sys.path (21 files do `sys.path.insert(0, REPO /
+# "tools")`) and imports `rngtrace.*` and flat modules like `addr`.  tools/ has
+# no __init__.py; tools/rngtrace/ does.  mutmut hardcodes its sys.path roots as
+# ('.', 'src', 'source') -- __main__.py:266 -- so no setting here can reconcile
+# the two.
+#
+# The fix is the one mutmut names: fully-qualified package imports, i.e. add
+# tools/__init__.py and import `tools.rngtrace...`.  That touches how every
+# Python test in the repo resolves modules, so it is a reviewed change of its
+# own, not a config tweak.
+#
+# ---------------------------------------------------------------------------
+# mutmut runs the tests from a COPY of the tree in mutants/, so anything the
+# tests open by absolute path has to be copied too.  tools/test_rngtrace.py
+# derives REPO from `Path(__file__).resolve().parents[1]`, which under mutmut
+# is mutants/ -- so without `also_copy` it dies on
+# `mutants/orig/g.exe` not found.  The full set was enumerated with
+#   grep -rhoE 'REPO */ *"[a-z_.]+"' tools/test_rngtrace.py tools/rngtrace/*.py
+# rather than discovered one FileNotFoundError at a time: orig/ (g.exe),
+# data/ (rng_vectors, wander, rng_trace, ...), docs/ (test_rngtrace parses
+# docs/re/combat.md for the enemy-record layout -- Task 13's F9 fix), and
+# build/ (the Ghidra export tree).
+#
+# orig/ is READ-ONLY reference corpus.  Nothing here writes to it, and the copy
+# under mutants/ is what the mutated tests touch in any case.
+also_copy = ["orig", "data", "docs", "build"]
+
+# ---------------------------------------------------------------------------
 # SCOPING IS A SAFETY PROPERTY HERE, NOT A SPEED ONE.
 #
 # tools/extract_strings.py and tools/extract_tables.py WRITE INTO data/ when
 # run, and tools/test_extract_strings.py, tools/test_extract_tables.py and
 # tools/test_string_tables.py drive them via subprocess.  A mutation run
-# executes the selected tests once PER MUTANT, so including any of those would
-# write mutant output into tracked data files hundreds of times.  The test
-# selection below excludes them by construction: it names only the three suites
-# that cover the mutated modules, and none of those three writes outside a
-# tempdir.
+# executes the selection once PER MUTANT, so including any of them would write
+# mutant output into data files hundreds of times.  The selection below
+# excludes that whole class by construction.
 #
-# tools/dis16.py is deliberately NOT mutated.  It is differentially validated
-# against ndisasm over 19,000+ instructions; an independent implementation is a
-# stronger check than mutation testing, so mutants there re-confirm at real cost.
+# tools/dis16.py is deliberately NOT mutated: it is differentially validated
+# against ndisasm over 19,000+ instructions, and an independent implementation
+# is a stronger check than mutation testing.
+#
+# NOT YET MUTATED, and each for a concrete reason rather than lack of interest:
+#
+#   tools/difftest.py  -- tools/test_difftest.py runs difftest.port_binary(),
+#       the COMPILED Rust binary.  target/ is not copied into mutants/, so the
+#       suite cannot run there.  Needs the binary staged (or that one test
+#       deselected) before difftest.py can be mutated.
+#
+#   tools/mutate.py    -- tools/test_mutate.py drives the real gate, whose
+#       manifest cases shell out to `cargo test --test ...`.  That is minutes
+#       per mutant across hundreds of mutants.  Needs a cargo-free subset of
+#       the suite before mutate.py is worth mutating.
+#
+# Both are worth doing.  Neither is worth doing by making the first run take a
+# day.
 
 source_paths = ["tools"]
 
@@ -30,14 +78,15 @@ only_mutate = [
     "tools/rngtrace/tracelog.py",
     "tools/rngtrace/fightrun.py",
     "tools/rngtrace/combattrace.py",
-    "tools/difftest.py",
-    "tools/mutate.py",
 ]
 
-# Only the suites covering the modules above.  Anything driving a generator
-# script is excluded -- see the note on data/ writes.
+# The one suite covering the modules above.  It writes only into tempdirs.
 pytest_add_cli_args_test_selection = [
     "tools/test_rngtrace.py",
-    "tools/test_difftest.py",
-    "tools/test_mutate.py",
+]
+
+[dependency-groups]
+dev = [
+    "mutmut>=3.7.0",
+    "pytest>=9.1.1",
 ]
