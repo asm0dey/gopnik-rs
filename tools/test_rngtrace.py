@@ -66,7 +66,7 @@ sys.path.insert(0, str(REPO))
 import addr  # noqa: E402  -- the address convention, defined once
 from tools.rngtrace import (combattrace, compare, driver,  # noqa: E402
                             fightrun, gdbsession, loadbase, rng, seedpatch,
-                            tracelog, vm)
+                            tracelog, verbprobe, vm)
 from tools.rngtrace import run as runmod  # noqa: E402
 
 
@@ -1261,6 +1261,152 @@ class FightScriptTest(unittest.TestCase):
             gdbsession.build_fight_script(self.BASE, 1234,
                                           self.fields(["a"]),
                                           self.fields(["e"]), [])
+
+
+class VerbProbeScriptTest(unittest.TestCase):
+    """`gdbsession.build_verbprobe_script` -- three markers, no samples."""
+
+    BASE = 0x224B0
+
+    def script(self):
+        return gdbsession.build_verbprobe_script(self.BASE, 1234)
+
+    def test_it_installs_exactly_the_three_markers(self):
+        s = self.script()
+        self.assertEqual(s.count("\nbreak *"), 3)
+        for off in (gdbsession.IMAGE_OFF_MAIN_READLN,
+                    gdbsession.IMAGE_OFF_COMBAT_READLN,
+                    gdbsession.IMAGE_OFF_SHEET_ENTRY):
+            self.assertIn("break *%s" % hex(self.BASE + off), s)
+        for off in (gdbsession.OFF_MAIN_READLN, gdbsession.OFF_COMBAT_READLN,
+                    gdbsession.OFF_SHEET_ENTRY):
+            self.assertIn("if $pc == %s" % hex(off), s)
+        self.assertIn('printf "? %04x\\n", $pc', s)
+        self.assertIn("disable\n  stepi\n  enable", s)
+
+    def test_it_does_not_break_on_random(self):
+        # The probe asks WHICH VERB, not how many draws; a Random breakpoint
+        # would multiply the stop count by three orders of magnitude for
+        # nothing.
+        self.assertNotIn(hex(gdbsession.IMAGE_OFF_RANDOM_RETF), self.script())
+
+    def test_the_frozen_builder_is_untouched_by_it(self):
+        s = gdbsession.build_script(self.BASE, 1234,
+                                    [("a", loadbase.DATA_SEG_IMAGE_OFF, 2)])
+        self.assertEqual(s.count("\nbreak *"), 2)
+        self.assertNotIn(hex(gdbsession.OFF_SHEET_ENTRY), s)
+        self.assertNotIn('printf "T', s)
+
+
+class VerbProbeAlignTest(unittest.TestCase):
+    """The attribution, and every way it refuses to attribute."""
+
+    def typed(self, *pairs):
+        return [{"kind": k, "line": l} for k, l in pairs]
+
+    def test_a_stop_is_credited_to_the_prompt_that_precedes_it(self):
+        out = verbprobe.align(
+            self.typed(("street", "s"), ("street", "w"), ("combat", "s")),
+            "PTPCTP")
+        got = [(w["kind"], w.get("line"), w["sheet_entries"])
+               for w in out["windows"]]
+        self.assertEqual(
+            got, [("street", "s", 1), ("street", "w", 0),
+                  ("combat", "s", 1), ("street", None, 0)])
+        self.assertEqual(out["sheet_entries_before_first_prompt"], 0)
+
+    def test_stops_before_any_prompt_are_reported_not_attributed(self):
+        out = verbprobe.align(self.typed(("street", "s")), "TTP")
+        self.assertEqual(out["sheet_entries_before_first_prompt"], 2)
+        self.assertEqual(out["windows"][0]["sheet_entries"], 0)
+
+    def test_a_misclassified_screen_stops_the_run(self):
+        # The one way the attribution could be quietly wrong: the driver typed
+        # into a screen it named `combat` and the guest was at the street
+        # prompt, so every later window is off by one.
+        with self.assertRaises(verbprobe.ProbeError) as cm:
+            verbprobe.align(self.typed(("street", "s"), ("combat", "k")), "PPT")
+        self.assertIn("the guest's own breakpoint says", str(cm.exception))
+
+    def test_more_lines_than_prompt_stops_stops_the_run(self):
+        with self.assertRaises(verbprobe.ProbeError) as cm:
+            verbprobe.align(self.typed(("street", "s"), ("street", "w")), "PT")
+        self.assertIn("cannot be aligned", str(cm.exception))
+
+    def test_two_extra_prompt_stops_stops_the_run(self):
+        # One trailing prompt is the guest coming back; two means a prompt was
+        # answered by something this driver did not record.
+        with self.assertRaises(verbprobe.ProbeError) as cm:
+            verbprobe.align(self.typed(("street", "s")), "PPP")
+        self.assertIn("more than the one trailing prompt", str(cm.exception))
+
+    def test_the_tally_calls_a_zero_window_a_negative(self):
+        out = verbprobe.align(
+            self.typed(("street", "s"), ("street", "stats")), "PTP")
+        t = verbprobe.tally(out["windows"])
+        self.assertTrue(t["street:s"]["reaches_1000_1a03"])
+        self.assertFalse(t["street:stats"]["reaches_1000_1a03"])
+        self.assertEqual(t["street:stats"]["prompts"], 1)
+
+
+class VerbProbeLogGuardTest(unittest.TestCase):
+    """A truncated or noisy log must never let a missing `T` mean anything."""
+
+    HEAD = ("Breakpoint 1 at 0x2d313\nBreakpoint 2 at 0x268cd\n"
+            "Breakpoint 3 at 0x23eb3\n"
+            "READY base=224b0 retf=23eb3 readln=2d313\n")
+
+    def parsed(self, body):
+        return verbprobe.parse_probe_log(self.HEAD + body)
+
+    def test_a_clean_log_passes_and_keeps_marker_order(self):
+        p = self.parsed("P\nT\nC\n")
+        self.assertEqual(p["markers"], "PTC")
+        verbprobe.check_log(p)
+
+    def test_the_deliberate_shutdown_abort_is_allowed_last(self):
+        p = self.parsed("P\nT\n/x/probe.gdb:30: Error in sourced command file:\n"
+                        "Remote connection closed\n")
+        verbprobe.check_log(p)
+
+    def test_any_other_abort_fails(self):
+        p = self.parsed("P\n/x/probe.gdb:30: Error in sourced command file:\n"
+                        "Cannot access memory at address 0x0\n")
+        with self.assertRaises(verbprobe.ProbeError) as cm:
+            verbprobe.check_log(p)
+        self.assertIn("not the deliberate shutdown", str(cm.exception))
+
+    def test_a_marker_after_the_abort_fails(self):
+        p = self.parsed("P\n/x/probe.gdb:30: Error in sourced command file:\n"
+                        "Remote connection closed\n\nT\n")
+        with self.assertRaises(verbprobe.ProbeError) as cm:
+            verbprobe.check_log(p)
+        self.assertIn("after the gdb script aborted", str(cm.exception))
+
+    def test_an_unexpected_stop_fails(self):
+        p = self.parsed("P\n? 1234\n")
+        with self.assertRaises(verbprobe.ProbeError) as cm:
+            verbprobe.check_log(p)
+        self.assertIn("no breakpoint was set", str(cm.exception))
+
+    def test_an_unparsed_line_fails(self):
+        p = self.parsed("P\nZ\n")
+        with self.assertRaises(verbprobe.ProbeError) as cm:
+            verbprobe.check_log(p)
+        self.assertIn("unparsed gdb output", str(cm.exception))
+
+    def test_missing_breakpoints_fail(self):
+        p = verbprobe.parse_probe_log(
+            "Breakpoint 1 at 0x2d313\nREADY base=224b0 retf=23eb3 readln=2d313\nP\n")
+        with self.assertRaises(verbprobe.ProbeError) as cm:
+            verbprobe.check_log(p)
+        self.assertIn("3 breakpoints", str(cm.exception))
+
+    def test_no_ready_line_fails(self):
+        p = verbprobe.parse_probe_log("P\nT\n")
+        with self.assertRaises(verbprobe.ProbeError) as cm:
+            verbprobe.check_log(p)
+        self.assertIn("never reported READY", str(cm.exception))
 
 
 class FightParseTest(unittest.TestCase):

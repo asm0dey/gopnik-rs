@@ -52,12 +52,19 @@ OFF_MAIN_READLN = 0xAE63       # 1000:ae63, the top-level prompt's ReadLn call
 #     runtime entry 1000:ae63 calls but with combat's own buffer DS:3a72
 #     (`bf 72 3a` / `1e` / `57` at 1000:4414).  One stop per combat prompt.
 OFF_COMBAT_ENTRY = 0x3D11      # 1000:3d11, FUN_1000_3d11's prologue
+# Task 16's marker: FUN_1000_1a03's own entry (`55` `89 e5`, re-derived with
+# `python3 tools/re_query.py resolve 1000:1a03`).  It is NEAR-called and ends
+# in a bare `ret` at 1000:248e -- zero parameter bytes -- so a stop here has no
+# argument to read.  The only question it answers is WHETHER a typed verb
+# reaches it, so the probe samples nothing here and just counts stops.
+OFF_SHEET_ENTRY = 0x1A03      # 1000:1a03, FUN_1000_1a03's prologue
 OFF_COMBAT_READLN = 0x441D     # 1000:441d, the `Битва\` prompt's ReadLn call
 
 IMAGE_OFF_RANDOM_RETF = 0xF78 * 16 + OFF_RANDOM_RETF     # 0x108e5
 IMAGE_OFF_MAIN_READLN = OFF_MAIN_READLN                  # segment 1000 == image base
 IMAGE_OFF_COMBAT_ENTRY = OFF_COMBAT_ENTRY                # segment 1000 == image base
 IMAGE_OFF_COMBAT_READLN = OFF_COMBAT_READLN              # segment 1000 == image base
+IMAGE_OFF_SHEET_ENTRY = OFF_SHEET_ENTRY                  # segment 1000 == image base
 
 
 GDB_C_TYPE = {1: "unsigned char", 2: "unsigned short", 4: "unsigned int"}
@@ -283,3 +290,63 @@ class GdbSession:
     def __exit__(self, *exc):
         self.stop()
         return False
+
+
+def build_verbprobe_script(image_base: int, port: int) -> str:
+    """Task 16's probe loop: three markers, no samples.
+
+    The question is which typed verb reaches `FUN_1000_1a03`, so the loop
+    breaks on the two prompts that read a verb and on the function's own
+    entry, and prints one tag per stop:
+
+      * `1000:ae63` -> `P` -- the top-level prompt's ReadLn, i.e. the guest is
+        about to read a STREET verb.
+      * `1000:441d` -> `C` -- the `Битва\\` prompt's ReadLn, i.e. the guest is
+        about to read a COMBAT verb.
+      * `1000:1a03` -> `T` -- FUN_1000_1a03 was entered.
+
+    A `T` between prompt stop `i` and prompt stop `i+1` was caused by the line
+    typed at prompt `i`, and a verb whose window holds no `T` did not reach it.
+    That negative is the whole point: it is a breakpoint that did NOT fire,
+    which is the only evidence `docs/re/METHODOLOGY.md` accepts for one.
+
+    No state sample is read: the function takes no parameters (bare `ret` at
+    `1000:248e`), so there is nothing at the stop that would distinguish one
+    caller from another, and a sample would only invite reading state as if it
+    were flow.  The `else` still reports an unexpected `$pc`, so a fourth stop
+    cannot be absorbed silently.
+    """
+    readln = image_base + IMAGE_OFF_MAIN_READLN
+    croom = image_base + IMAGE_OFF_COMBAT_READLN
+    sheet = image_base + IMAGE_OFF_SHEET_ENTRY
+    return f"""set confirm off
+set pagination off
+set height 0
+set width 0
+set architecture i8086
+target remote :{port}
+break *{hex(readln)}
+break *{hex(croom)}
+break *{hex(sheet)}
+info breakpoints
+printf "READY base=%x retf=%x readln=%x\\n", {hex(image_base)}, {hex(sheet)}, {hex(readln)}
+while 1
+  continue
+  if $pc == {hex(OFF_MAIN_READLN)}
+    printf "P\\n"
+  else
+    if $pc == {hex(OFF_COMBAT_READLN)}
+      printf "C\\n"
+    else
+      if $pc == {hex(OFF_SHEET_ENTRY)}
+        printf "T\\n"
+      else
+        printf "? %04x\\n", $pc
+      end
+    end
+  end
+  disable
+  stepi
+  enable
+end
+"""
