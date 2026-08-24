@@ -2558,6 +2558,12 @@ impl Game {
         if !self.gate_open(row.gate) {
             return;
         }
+        // The dealers' three pistol rows have arms of their own -- their own
+        // gates, their own refusal lines and, uniquely among the shop rows in
+        // this port, their own EFFECT. See [`Game::buy_pistol_row`].
+        if tag == "bmar" && self.buy_pistol_row(row.key, row.price) {
+            return;
+        }
         if self.player.money < row.price {
             // file 0xAC55 at the dealers (1000:c4d2's block), file 0xA6CA at
             // the market. Both are the same situation, different wording.
@@ -2569,6 +2575,90 @@ impl Game {
         }
         self.player.money -= row.price;
         term::println(&text::fill(row.text, &[row.displayed_price as i64]));
+    }
+
+    /// `bmar` rows 7, 8 and 9 -- the pistol, its cartridges and its silencer.
+    /// Returns `true` when the key was one of the three and the arm has run,
+    /// so the caller's generic "debit and echo the menu line" path is skipped.
+    ///
+    /// **Established from flow**, re-derived from an aligned walk out of
+    /// `entry`. These three rows are singled out because they are what makes
+    /// [`Game::pistol`] reachable, and therefore what makes `f` at either
+    /// prompt do anything at all. Every other shop row still only debits its
+    /// price -- `docs/re/gaps.md`'s "shop purchase effects" entry, untouched
+    /// here.
+    ///
+    /// ```text
+    /// ccd8  '7' | already own it -> cd4c CS 0x961e; too poor -> ccea CS 0x95b2
+    ///           | else cd05 mov byte [0x394d],1 / cd0a add word [0x394f],3
+    ///             and CS 0x95c3 + CS 0x95db
+    /// cd76  '8' | no pistol -> cdcc CS 0x9666; too poor -> cd88 CS 0x9637
+    ///           | else cda3 add word [0x394f],5 and CS 0x9649
+    /// cdf9  '9' | no pistol -> nothing at all
+    ///           | ce00 cmp byte [0x3e32],0x19 -> not 25 walks yet, nothing at all
+    ///           | already own it -> ce5d CS 0x96b8; too poor -> ce19 CS 0x968a
+    ///           | else ce34 mov byte [0x394e],1 and CS 0x969b
+    /// ```
+    ///
+    /// Two things the arms settle that the menu text does not. Row 8's line
+    /// says `Патроны - 6.` and `1000:cda3` adds **five**. And row 9 is the
+    /// only reader of `20ae:3e32` besides the walk counter that feeds it, so
+    /// the dealers' 25-walk delivery is the silencer's and nothing else's.
+    ///
+    /// All three money tests are `cmp ax,[0x38c7]` / `jle`, i.e. the purchase
+    /// goes through when `price <= money` -- the same sense as the generic
+    /// path's, so only the wording differs there.
+    fn buy_pistol_row(&mut self, key: &str, price: i32) -> bool {
+        match key {
+            // 1000:ccd8
+            "7" => {
+                if self.pistol.owned {
+                    term::println("^6Ну.. ты.. ВАЩЕ ОФИГЕЛ!");
+                } else if self.player.money < price {
+                    term::println("^4Дорогая штука!");
+                } else {
+                    self.pistol.owned = true;
+                    self.pistol.cartridges += 3;
+                    self.player.money -= price;
+                    term::println("^2Спасайся кто может!!!");
+                    term::println(
+                        "^0Только помни стреляй в бандитских районах - там менты не накроют",
+                    );
+                }
+                true
+            }
+            // 1000:cd76
+            "8" => {
+                if !self.pistol.owned {
+                    term::println("^6Нету пушки. Сначала купи пистолет");
+                } else if self.player.money < price {
+                    term::println("^4Нехватка денег.");
+                } else {
+                    self.pistol.cartridges += 5;
+                    self.player.money -= price;
+                    term::println("^2Получи пять пуль.. на руки");
+                }
+                true
+            }
+            // 1000:cdf9. The first two gates write nothing at all --
+            // 1000:cdfe and 1000:ce05 both jump to 1000:ce76, the next row's
+            // compare.
+            "9" => {
+                if self.pistol.owned && self.dealer_delivery_counter == 25 {
+                    if self.pistol.silencer {
+                        term::println("^6Да купил уже, купил");
+                    } else if self.player.money < price {
+                        term::println("^4Подкопи бабла.");
+                    } else {
+                        self.pistol.silencer = true;
+                        self.player.money -= price;
+                        term::println("^2Теперь стреляй где хочешь!");
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
     }
 
     /// `^0Битва\` (file `0x4A49`). Confirmed modal by the live capture
@@ -4827,6 +4917,100 @@ mod tests {
         g.district = 2;
         g.shop_turn(Location::Market, "6");
         assert_eq!(g.player.money, 1000 - 25);
+    }
+
+    /// The dealers' three pistol rows, each on both sides of every gate its
+    /// arm has. This is the only place [`Game::pistol`] can be filled in, so
+    /// it is what makes `f` reachable in play.
+    #[test]
+    fn the_dealers_sell_the_pistol_its_cartridges_and_its_silencer() {
+        let shop = || {
+            let mut g = game();
+            g.location = Location::BigMarket;
+            g.mode = Mode::Shop(Location::BigMarket);
+            g.district = 4; // all three rows are `district>3`
+            g.player.money = 1_000;
+            g
+        };
+
+        // Row 7: the pistol, 150 roubles, and three cartridges with it
+        // (1000:cd0a `add word [0x394f],3`).
+        let mut g = shop();
+        g.shop_turn(Location::BigMarket, "7");
+        assert!(g.pistol.owned, "1000:cd05");
+        assert_eq!(g.pistol.cartridges, 3);
+        assert_eq!(g.player.money, 850);
+        // 1000:ccdd -- buying it twice is refused and costs nothing.
+        g.shop_turn(Location::BigMarket, "7");
+        assert_eq!(g.player.money, 850, "1000:cd4c is a refusal, not a sale");
+        assert_eq!(g.pistol.cartridges, 3);
+
+        // ... and 1000:cce8's `jle` means 150 exactly is enough while 149 is
+        // not.
+        for (money, want) in [(149i32, false), (150, true)] {
+            let mut g = shop();
+            g.player.money = money;
+            g.shop_turn(Location::BigMarket, "7");
+            assert_eq!(g.pistol.owned, want, "money {money}");
+        }
+
+        // Row 8: five cartridges (1000:cda3), though the menu line says six,
+        // and refused outright without a pistol (1000:cd7b).
+        let mut g = shop();
+        g.shop_turn(Location::BigMarket, "8");
+        assert_eq!(g.pistol.cartridges, 0, "1000:cdcc -- no gun, no rounds");
+        assert_eq!(g.player.money, 1_000);
+        g.pistol.owned = true;
+        g.shop_turn(Location::BigMarket, "8");
+        assert_eq!(
+            g.pistol.cartridges, 5,
+            "the arm adds five, not the six the line promises"
+        );
+        assert_eq!(g.player.money, 930);
+
+        // Row 9: the silencer, gated on the pistol AND on `20ae:3e32`
+        // reaching exactly 25 (1000:ce00).
+        for (owned, walks, want) in [(false, 25u8, false), (true, 24, false), (true, 25, true)] {
+            let mut g = shop();
+            g.pistol.owned = owned;
+            g.dealer_delivery_counter = walks;
+            g.shop_turn(Location::BigMarket, "9");
+            assert_eq!(
+                g.pistol.silencer, want,
+                "owned {owned}, delivery counter {walks}"
+            );
+            assert_eq!(
+                g.player.money,
+                if want { 1_000 - 60 } else { 1_000 },
+                "owned {owned}, delivery counter {walks}"
+            );
+        }
+    }
+
+    /// The whole chain, end to end: buy the pistol at the dealers, then fire
+    /// it in a fight. Before Task 18 neither half existed, and `f` at either
+    /// prompt printed an invented refusal.
+    #[test]
+    fn a_pistol_bought_at_the_dealers_can_be_fired_in_a_fight() {
+        let mut g = game();
+        g.location = Location::BigMarket;
+        g.mode = Mode::Shop(Location::BigMarket);
+        g.district = 4;
+        g.player.money = 1_000;
+        g.player.agility = 50; // beats every Random(0x32)
+        g.flag_3693 = true; // 1000:4ebc, the shooting is permitted here
+        g.shop_turn(Location::BigMarket, "7");
+        assert_eq!(g.pistol.cartridges, 3);
+
+        g.mode = Mode::Street;
+        g.rng.start_log();
+        g.run_combat(punchbag(), &mut input(&["f", "run"])).unwrap();
+        assert_eq!(g.pistol.cartridges, 2, "1000:4eed spent one");
+        let left = g.last_enemy.as_ref().unwrap().hp;
+        assert!(
+            (500 - 29..=500 - 20).contains(&left),
+            "the shot did 20..=29: enemy hp {left}"
+        );
     }
 
     #[test]
