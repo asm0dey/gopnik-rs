@@ -67,8 +67,9 @@
 //!
 //! So the whole-state assertion runs on the runs where its premise holds, the
 //! capture itself records which those are (`ended_at_turn_marker`), and
-//! [`at_least_one_run_reaches_the_final_state_channel`] refuses a state of
-//! affairs where none of them does.
+//! [`every_run_that_reaches_the_final_state_channel_is_asserted`] refuses a
+//! state of affairs where none of them does -- and refuses one where a run
+//! that qualifies is left unasserted.
 
 use gopnik::game::{FightLog, Game};
 use gopnik::locations::Location;
@@ -430,8 +431,8 @@ fn replay(label: &str) -> Game {
     assert_eq!(
         taken,
         run.lines_the_game_read.len(),
-        "run {label}: the port consumed {taken} of the {} lines the guest's \
-         own ReadLns consumed",
+        "run {label}: the port consumed {taken} of the {} lines the capture \
+         recorded at the encounter prompts",
         run.lines_the_game_read.len()
     );
 
@@ -627,8 +628,9 @@ fn run_a_replays_exactly() {
 /// Run B -- `SAVE_R2.SAV` at district 2, 25 walks, **six fights, all won**.
 /// The only run that reaches the victory block's own draws in quantity:
 /// `1000:52d5` and `1000:5402` and `1000:5454` six times each, plus the
-/// Нарк's `1000:5427` joint roll. It is the run whose whole 35-variable end
-/// state is asserted, and the enemy's jaw is broken in two of its fights
+/// Нарк's `1000:5427` joint roll. It is one of the two runs whose whole
+/// 35-variable end state is asserted (D is the other), and the only one that
+/// reaches the victory block; the enemy's jaw is broken in two of its fights
 /// (`20ae:3966`).
 #[test]
 fn run_b_replays_exactly() {

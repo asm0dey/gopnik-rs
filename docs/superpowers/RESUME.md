@@ -85,8 +85,10 @@ Brief `.superpowers/sdd/task-13-brief.md`, report `.superpowers/sdd/task-13-repo
 
 - **15 of 15 fights replay exactly** across 4 runs and 1900 draws — 8 won, 2 lost,
   5 fled — each checked on four channels: the whole draw stream (site/`n`/`r`/count),
-  the exact input the guest's own `ReadLn`s consumed, the enemy record at every
-  `1000:3d11`, and both fighters' hp and all four break flags at every `1000:441d`.
+  the exact input typed at the encounter prompts (`lines_the_game_read`, which
+  despite the name excludes the street `w` and the any-key Enter), the enemy
+  record at every `1000:3d11`, and both fighters' hp and all four break flags at
+  every `1000:441d`.
 - **The break channel found a real bug**: the port never set the *enemy's* break
   flags at all. `Fighter`'s `enemy_broken_jaw`/`enemy_broken_leg` exist because of it.
 - A player jaw break (run A) and an enemy jaw break (two of run B's six fights) are
@@ -96,8 +98,10 @@ Brief `.superpowers/sdd/task-13-brief.md`, report `.superpowers/sdd/task-13-repo
   **signed**. The half that costs draws is fixed (the two blow loops exit on
   *different* signed tests — `1000:4629 jg` vs `1000:48cd jl`, so a player at exactly
   0 gets swung at again); the stored value still saturates, so a post-death
-  `final_state` is not comparable. The 35-variable assertion therefore runs on run B,
-  with a separate test refusing a world where no run qualifies.
+  `final_state` is not comparable. The 35-variable assertion therefore runs on the
+  runs that ended at the turn marker — B and D — with a separate test refusing a
+  world where no run qualifies, and requiring that every run that does qualify is
+  asserted.
 - Four class-keyed item arms, the зубная защита's `Random(4)`, and the hospital
   rescue are implemented but **never observed** — each registered with why it was
   unreachable.

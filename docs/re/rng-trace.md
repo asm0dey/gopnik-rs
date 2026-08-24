@@ -628,8 +628,14 @@ recovered, documented, implemented — and asserted by nothing.
 `tests/wander_sequence.rs` feeds one constant string (`run`) because that
 answers every prompt in a declining run exactly as the driver's `n`/`run` did.
 A fight needs **two** different answers, so instead each run records
-`lines_the_game_read`: the ordered list of lines the game's own `ReadLn`s
-consumed, which is what `tests/combat_sequence.rs` is fed.
+`lines_the_game_read`: the ordered list of lines typed at the ENCOUNTER
+prompts, which is what `tests/combat_sequence.rs` is fed. Despite the name —
+a key in the frozen oracle, so it cannot be corrected — it is **not** every
+line the guest's own `ReadLn`s consumed: the street `w` that `1000:ae63` reads
+is excluded, because the port's `Game::walk` **is** the turn and reads no
+verb, and so is the Enter typed at an any-key page, which no `ReadLn` consumes
+at all. `tools/rngtrace/driver.py` documents both exclusions where the list is
+built.
 
 That list is only the game's input if the driver's screen classification agreed
 with what the guest did, so it is cross-checked rather than trusted. The guest's
@@ -681,9 +687,12 @@ Four runs, **1900 draws, 15 fights**, all four replayed exactly by
 
 Run A's single fight is the longest captured — 30 prompts — which is what
 pins the crowd's `Random(10)` at `1000:4135` firing **once per prompt from the
-fifth onward** (26 of them) rather than once per fight. Run B is the only run
-whose whole 35-variable end state can be asserted, and the only one that reaches
-the victory block's own draws in quantity. Run C loads the one save corpus entry
+fifth onward** (26 of them) rather than once per fight. Runs B and D are the two
+whose whole 35-variable end state can be asserted — they are the two that ended
+at the turn marker (`tests/combat_sequence.rs`'s `run_b_final_state_matches` and
+`run_d_final_state_matches`, gated by
+`every_run_that_reaches_the_final_state_channel_is_asserted`) — and B is the
+only one that reaches the victory block's own draws in quantity. Run C loads the one save corpus entry
 with the зубная защита. Run D is the live form of "no arm of the flee path
 draws": five fights, five prompts, zero draws anywhere in `[0x3d11, 0x584c)`.
 
