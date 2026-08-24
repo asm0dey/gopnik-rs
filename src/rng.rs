@@ -74,16 +74,19 @@ impl Rng {
         self.log.as_ref().map_or(0, Vec::len)
     }
 
-    /// The current `RandSeed` value, e.g. to snapshot a generator for later
-    /// restoration (`state` / `set_state` round-trip).
+    /// The current `RandSeed` value, which the replays compare against the
+    /// guest's own `20ae:367e` at the end of a captured run
+    /// (`tests/wander_sequence.rs`, `tests/combat_sequence.rs`).
+    ///
+    /// There is deliberately no setter. Every generator in this port is
+    /// started from a seed with [`Rng::new`] and then only stepped; no
+    /// caller rewinds one. The recovered save layout carries no seed field
+    /// either (`docs/re/save-format.md`), so nothing in the port has a
+    /// reason to restore one. A `set_state` existed until Task 15 with no
+    /// caller anywhere, which is why `cargo mutants` could replace its body
+    /// with `()` and all 164 tests still passed.
     pub fn state(&self) -> u32 {
         self.state
-    }
-
-    /// Restore a previously read `state()`, e.g. to reset a generator to a
-    /// known point without allocating a new one.
-    pub fn set_state(&mut self, state: u32) {
-        self.state = state;
     }
 
     /// One step of `@Rand` (`1f78:11a8`):
