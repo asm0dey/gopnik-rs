@@ -852,6 +852,29 @@
         "DispatchTest.test_the_hospital_bill_ratio_needs_no_exponent_bias"
       ],
       "expect": "not the `xor si,si` that makes the low mantissa half zero"
+    },
+    {
+      "label": "save-layout-growth-log-offset",
+      "defends": "tests/progression.rs::the_shipped_saves_hold_one_growth_log_entry_per_level_reached reads the growth log out of all five shipped saves at the offset data/save_layout.json names, and requires exactly `level` two-code entries and nothing past them.  Task 18 made that offset load-bearing for the flee penalty: `20ae:38cf + level*3` is Borland's BIASED base for an array[1..40] of string[2] whose real base is `20ae:38d2`, so an off-by-three here reads the neighbouring entry and the de-level takes back the wrong two stats.  A +3 shift makes every entry read its successor's, so SAVE_R0's last real entry (15, its level) comes back empty.",
+      "artifact": "data/save_layout.json",
+      "mutate": {
+        "op": "json-set",
+        "path": [
+          "fields",
+          16,
+          "off"
+        ],
+        "from": 566,
+        "to": 569
+      },
+      "test": [
+        "cargo",
+        "test",
+        "--test",
+        "progression",
+        "the_shipped_saves_hold_one_growth_log_entry_per_level_reached"
+      ],
+      "expect": "SAVE_R0: entry 15 length"
     }
   ]
 }
