@@ -10,12 +10,21 @@ fn load(name: &str) -> Vec<u8> {
     std::fs::read(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
 }
 
+/// The five shipped saves, `.SAV` -> `Save` -> `.SAV`, byte for byte.
+///
+/// **This test does not validate a single offset, and never could.**
+/// `to_bytes` writes every byte back exactly where `parse` read it, so a
+/// mislocation applied to both sides round-trips just as exactly as the
+/// right offsets do -- swapping `joints` and `money` in both directions
+/// leaves this green. What it does catch is a byte NO field writes, which
+/// the zeroed buffer in `to_bytes` turns into a hole.
+///
+/// The offsets are guarded by `tests/save_load.rs`'s
+/// `save_r5_loads_the_character_the_shipped_bytes_describe` and
+/// `every_named_field_is_actually_written_by_to_bytes`, and by
+/// `tools/test_decode_save.py` against `orig/g.exe`. See `src/save.rs`'s
+/// module doc, which carries the experiment.
 #[test]
-// Note: this test does NOT independently validate the eight stat-word/`tail`
-// offsets. `to_bytes` writes those bytes back to the same self-computed
-// offsets it read them from, so the round-trip passes regardless of
-// whether those offsets are actually correct against the original Pascal
-// layout; only `rust_offsets_match_save_layout_json` (below) guards that.
 fn all_reference_saves_round_trip_byte_exactly() {
     for name in [
         "SAVE_R0.SAV",

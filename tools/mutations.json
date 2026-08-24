@@ -922,7 +922,7 @@
   },
   {
    "label": "save-layout-cartridges-is-a-word",
-   "defends": "`.SAV 0x2b3` (20ae:394f), the cartridge count, is a WORD and not a byte: the character sheet's guard at 1000:1d8a is `cmp word [0x394f],0` and 20ae:3950 has no reference of its own image-wide.  Task 19's brief carried it as a byte (`0x2b3` reading `0,0,0,0,8` across the saves).  Demoting it to a u8 leaves the field tiling intact only if the high half becomes a field too, so the check that catches it is the one that asserts the SIGNED WORD set, not the partition.",
+   "defends": "`.SAV 0x2b3` (20ae:394f), the cartridge count, is a WORD and not a byte: the character sheet's guard at 1000:1d8a is `cmp word [0x394f],0` and 20ae:3950 has no reference of its own image-wide.  Task 19's brief carried it as a byte (`0x2b3` reading `0,0,0,0,8` across the saves).  Demoting it to a u8 leaves the field tiling intact only if the high half becomes a field too, so the check that catches it is the one that asserts the SIGNED WORD set, not the partition.  Its `expect` was `\"Ran\"` in the first revision, which appears in every unittest run green or red -- the gate's own rule 4 exists to stop exactly that, so the case was weakened to its red-exit check alone.  It now quotes the census assertion's message, which only this assertion emits.",
    "artifact": "data/save_layout.json",
    "mutate": {
     "op": "json-set",
@@ -940,7 +940,7 @@
     "unittest",
     "tools.test_decode_save.TestEveryNamedFieldMatchesTheBinary.test_the_word_fields_are_signed_integers"
    ],
-   "expect": "Ran"
+   "expect": "the signed-word census has moved"
   }
  ]
 }

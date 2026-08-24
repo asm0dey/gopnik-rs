@@ -528,6 +528,43 @@ supporting claim ("a wrapper could only print composed text — which is why
 there is none") therefore justified an absence with a false premise. The
 mage's arm is implemented and prints its line; see below for the other.
 
+## The four armour flags are carried but the gym's `abs` ignores them
+
+*Cited from `src/game.rs`'s `imm_row_visible` and `src/persist.rs`.*
+
+**Established from flow.** The gym recomputes a scratch byte `20ae:3e34` on
+every entry (`1000:e3a4`..`1000:e3e2`): it starts as the armour byte
+`20ae:38b2` and then has the armour that came from *equipment* subtracted
+back out, so what is left is the armour the player TRAINED.
+
+| at | subtracts | when |
+|---|---|---|
+| `1000:e3aa`..`1000:e3b8` | 1 | `[0x38b4]` set and `[0x38b7]` not |
+| `1000:e3bc`..`1000:e3c3` | 2 | `[0x38b7]` set |
+| `1000:e3c8`..`1000:e3d6` | 2 | `[0x38b6]` set and `[0x38b9]` not |
+| `1000:e3db`..`1000:e3e2` | 4 | `[0x38b9]` set |
+
+Those are `mar` rows 4, 7, 6 and 9 — the abibas suit, the adidas suit, the
+leather jacket and the crutaya kozhanka — and the four subtrahends are the
+rows' own advertised bonuses. Exactly one thing reads the result:
+`trn` row 5, gated on `abs < district * 2` at `1000:e576`..`1000:e58d`.
+
+**The port carries the four flags (`Game::wear_suit_abibas_38b4`,
+`wear_jacket_38b6`, `wear_suit_adidas_38b7`, `wear_jacket_krutaya_38b9`,
+`.SAV 0x218`/`0x21a`/`0x21b`/`0x21d`) and `imm_row_visible` ignores all four,
+so its `abs` is exactly `armor`.** The consequence is one-directional: the
+port's `abs` is never smaller than the original's, so it can only **hide** a
+gym row the original would show.
+
+**Task 19 made this live, and deliberately did not fix it.** Before it, no
+path in the port could set those bytes — `mar` purchases deduct and print but
+apply no effect — so the divergence could not be reached. A loaded `.SAV`
+sets them (`SAVE_R3` and `SAVE_R4` carry all four; see
+`docs/re/save-format.md`'s observed-values table), so it is now reachable in
+play. Fixing it properly needs `mar`'s purchase effects, which are the
+larger unimplemented gap below; applying the subtraction on its own would
+gate a gym row on a flag the player has no way to earn.
+
 ## The district-advance autosave is mapped but not wired
 
 *Cited from `src/persist.rs`'s module doc and `src/game.rs`'s `run_combat`.*

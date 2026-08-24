@@ -18,12 +18,13 @@ disagree, trust `git log`.
 ## READ THIS FIRST
 
 Everything is green: **228 Rust** (204 after Task 18), and for Python
-**390 by `unittest`** (366 after Task 18; Task 19 added 15 in
-`tools/test_decode_save.py` and 9 in the new `tools/test_savegen.py`) —
+**399 by `unittest`** (366 after Task 18; Task 19 added 15 in
+`tools/test_decode_save.py`, 9 in the new `tools/test_savegen.py` and 9 in
+the new `tools/test_branch_reach.py`) —
 
 ```
-python3 -m unittest discover -s tools -p 'test_*.py'    -> Ran 390 tests, OK
-.venv/bin/pytest tools/ -q                              -> 404 passed, 3 skipped, 668 subtests
+python3 -m unittest discover -s tools -p 'test_*.py'    -> Ran 399 tests, OK
+.venv/bin/pytest tools/ -q                              -> 413 passed, 3 skipped, 668 subtests
                                                           (380 + 3 after Task 18)
 ```
 
@@ -34,7 +35,7 @@ module-level `def test_*` functions across 6 files** that `unittest` cannot see
 file's `__main__` block). 9 are in `tools/oracle/test_oracle_smoke.py`, 4 in
 `tools/test_extract_tables.py`, and one each in `test_decode_save.py`,
 `test_extract_strings.py`, `test_string_pointers.py`, `test_string_tables.py`.
-`404 + 3 = 407` collected, `407 − 390 = 17`, exactly — the same 17, because
+`413 + 3 = 416` collected, `416 − 399 = 17`, exactly — the same 17, because
 Task 19's new tests are all `TestCase` methods that `unittest` does collect. Subtests are NOT part of
 the difference: pytest reports the 668 separately, on its own line, and does not
 fold them into the 380. Re-measure with
@@ -54,10 +55,11 @@ project keeps finding, committed into the file whose job is to prevent it.
 
 Also green:
 `python3 tools/difftest.py` exit 0 / 126 records, `python3 tools/mutate.py`
-exit 0 with **32 red** + 10 findings over **131 guarded files** (29 red / 126
+exit 0 with **32 red** + 10 findings over **133 guarded files** (29 red / 126
 files after Task 18; the file count is derived from the tree, and Task 19 added
-`tools/savegen.py`, `tools/test_savegen.py`, `tools/rngtrace/saveprobe.py` and
-two files under `data/probes/`), `cargo clippy --all-targets` clean,
+`tools/savegen.py`, `tools/test_savegen.py`, `tools/branch_reach.py`,
+`tools/test_branch_reach.py`, `tools/rngtrace/saveprobe.py` and two files under
+`data/probes/`), `cargo clippy --all-targets` clean,
 `cargo doc --no-deps` 12 warnings (all pre-existing private-item links).
 `cargo fmt --check` shows exactly three PRE-EXISTING diffs in
 `tests/wander_sequence.rs` — **lines 242, 993 and 1120** after Task 18's
@@ -82,10 +84,9 @@ load.
 | `data/combat_vectors.json` | RNG vectors | `705415b2…f044` |
 
 `combat_trace.json` records the first two files' digests inside itself.
-`tools/mutate.py` now guards **131** files across `data/`, `orig/`, `tools/`
-and `docs/` (122 before Task 18 committed `data/probes/`, 126 after it, 131
-after Task 19 added `tools/savegen.py`, `tools/test_savegen.py`,
-`tools/rngtrace/saveprobe.py` and two files under `data/probes/`) — the count
+`tools/mutate.py` now guards **133** files across `data/`, `orig/`, `tools/`
+and `docs/` (122 before Task 18 committed `data/probes/`, 126 after it, 133
+after Task 19 added five tools and two files under `data/probes/`) — the count
 is derived from the tree, so it moves when files are added —
 and
 `combattrace.main()` refuses an `--out` naming a frozen oracle.
@@ -261,10 +262,24 @@ Three corrections, not just additions:
   `data/strings.json`" was FALSE.** There are two, at decimal 36242 and
   39937, and that false premise is why the port printed nothing on a save.
 
-**The instrument, and why it outlives the task.** **355 of the game's 838
-branches (42%) have a guard that reads a byte inside the save record** —
-`entry` 168 of 406, `FUN_1000_1a03` 77 of 83, `FUN_1000_3d11` 72 of 224. So
-a save file is a direct write into guest memory for 42% of the game's
+**The instrument, and why it outlives the task.** **331 of the game's 838
+branches (39.5%) have a guard that reads a byte inside the save record** —
+`entry` 160 of 406, `FUN_1000_1a03` 77 of 83, `FUN_1000_3d11` 65 of 224. The
+derivation is **`python3 tools/branch_reach.py`**, committed for the reason
+this file keeps rediscovering: it published `134/838` and `157/838` as bare
+numbers and had to correct both. Whatever the script prints is the number.
+
+This entry first said **355 / 42%**. That came from a window based at
+`0x389c` — which is the record base **plus `0x200`**, the offset of the stat
+words *inside* the record, not the record base. The shift counts 26 branches
+whose guards read the ENEMY record at `DS:3952` and the wander bucket at
+`20ae:3971`, neither of which a `.SAV` can set, and misses the two
+empty-name tests that read `.SAV 0x100`. `branch_reach.py --window
+stat-block-base` reproduces the wrong number so the discrepancy stays
+checkable. Read either figure as an upper bound on reach-by-save, never as
+coverage.
+
+So a save file is a direct write into guest memory for 39.5% of the game's
 branch guards:
 
 - **`tools/savegen.py`** — synthesise a valid record by name
@@ -578,6 +593,40 @@ The same sink fixes both: give `term` an installable destination (a thread-
 local `Vec<u8>` is enough), have the tests install one, and the assertions and
 the quiet become available together. Nothing else in the deferred list has
 that leverage.
+
+### Deferred from the Task 19 review, recorded so they are not lost
+
+None is a defect the review asked to be fixed; each is a judgement call a
+future reader may want to revisit.
+
+* **`present_slots` returns `SLOT_KEYS` order** (`2,3,4,5,0`), where the
+  original's `FindFirst`/`FindNext` returns FAT directory order. It changes
+  which line the menu prints first and nothing else.
+* **`data/probes/README.md` names the fresh-record assertion at the wrong
+  path** — it is `tests/save_load.rs:183`
+  (`a_fresh_record_is_byte_identical_to_the_probe_dump`).
+* **`saveprobe-fresh-record.json` carries no `tier` field**, unlike
+  `saveprobe-record-base.json`. The caution is in the README instead, which
+  is adequate; the two artifacts are just inconsistent.
+* **`data/save_layout.json` carries `guest` and `evidence` but no `tier`
+  key.** Every field in it is flow-tier today, so nothing is mislabelled —
+  but the tier is implicit where the rest of the project makes it explicit.
+* **`tools/test_decode_save.py`'s store filter would miss a
+  `mov [0x38b0],al`.** No such store exists (the review re-derived the
+  boolean claim over all 23 flag bytes including that form and confirmed it),
+  so the conclusion holds; the *filter* is narrower than the claim it backs.
+* **`tests/save_load.rs`'s `every_in_record_address_named_in_game_rs_is_persisted`
+  matches on comment text**, so it is defeated by a citation written in a
+  different form. It is a completeness prompt, not a proof.
+* **`src/persist.rs`'s slot-0 district uses unsigned division** where
+  `1000:6d93` is a signed `idiv`. Unreachable: `level` is 0..40.
+* **Three `.max(0)` clamps and the name-prefix gain** in `Game::from_save`.
+  A record holding a negative `joints`/`beer`/`junk` clamps to 0 on the way
+  in, and a name at exactly 255 bytes cannot round-trip through `Game`
+  because the `^7 ` prefix is re-added on the way out. Neither is reachable
+  from a save the original wrote.
+* **A condition in `tests/save_load.rs`'s short-`places.sav` test is true
+  for all four cases**, so it does nothing.
 
 ### Also deferred from the Task 18 review, recorded so they are not lost
 

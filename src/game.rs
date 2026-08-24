@@ -1012,13 +1012,25 @@ impl Game {
     /// 2") and `1000:c2ca` sets `[0x38b9]` (row 9, "Броня +4") -- the four
     /// subtrahends are those four rows' own advertised bonuses.
     ///
-    /// **The port owns none of those four flags** (buying a `mar` row
-    /// deducts the price and prints the text but applies no effect -- see
-    /// `docs/re/gaps.md`), so all four adjustments are inert here and `abs`
-    /// is exactly `armor`. That is faithful to the state this port models
-    /// and diverges from the original the moment equipment exists; the
-    /// divergence is recorded in `docs/re/gaps.md` and `docs/re/difftest.md`
-    /// rather than papered over.
+    /// **The port carries all four flags and this method still ignores
+    /// them**, so `abs` is exactly `armor` here, where the original computes
+    /// `armor` minus 1 for `[38b4]` without `[38b7]`, minus 2 for `[38b7]`,
+    /// minus 2 for `[38b6]` without `[38b9]`, and minus 4 for `[38b9]`.
+    /// Only one row reads `abs`: `("trn","5")`, gated on `abs < district * 2`
+    /// at `1000:e576`..`1000:e58d`. So the whole consequence is that this
+    /// port can HIDE a gym row the original shows.
+    ///
+    /// **This became live in Task 19 and is not fixed here.** Before it,
+    /// nothing in the port could set the four bytes (buying a `mar` row
+    /// deducts the price and prints the text but applies no effect), so the
+    /// divergence was theoretical. A loaded `.SAV` sets them --
+    /// `SAVE_R3` and `SAVE_R4` carry all four -- so it is now reachable in
+    /// play. Correcting it means deciding what a `mar` purchase does, which
+    /// is the unimplemented shop-effects gap and a different task's subject;
+    /// applying the subtraction here while purchases still grant nothing
+    /// would make the gym row depend on a flag the player cannot earn.
+    /// Registered in `docs/re/gaps.md`, "The four armour flags are carried
+    /// but the gym's `abs` ignores them".
     fn imm_row_visible(&self, row: &ImmRow) -> bool {
         let district = i32::from(self.district);
         let level = i32::from(self.player.level);

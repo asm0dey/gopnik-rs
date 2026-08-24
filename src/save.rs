@@ -11,7 +11,7 @@
 //! `docs/re/save-format.md` could name all 694 bytes from the disassembly
 //! that reads them.
 //!
-//! ## Round trip must be byte-exact, and this file is what proves the offsets
+//! ## Round trip must be byte-exact, and what that does NOT prove
 //!
 //! [`Save::to_bytes`] starts from a **zeroed** buffer and copies exactly two
 //! windows through from the source blob: the shortstring padding past each
@@ -20,14 +20,34 @@
 //!
 //! That is deliberate, and it is a change from the previous revision, which
 //! started from a copy of the whole input and overwrote only the slices it
-//! knew about. Under that shape a field written to the WRONG offset still
-//! round-tripped byte-identically, because the mislocated bytes were copied
-//! through untouched either way -- `tools/test_decode_save.py` says so in as
-//! many words, and it is the "check that cannot fail" this project keeps
-//! finding. With the buffer zeroed, a field this module forgets to write, or
-//! writes to the wrong place, shows up as a zero and
+//! knew about. Under that shape a field this module *forgot to write* was
+//! copied through untouched and the round trip still passed. With the buffer
+//! zeroed it comes back as a hole, and
 //! `tests/save_roundtrip.rs::all_reference_saves_round_trip_byte_exactly`
 //! fails against the five real saves.
+//!
+//! **A hole is all it catches.** The round trip cannot see a *symmetric*
+//! mislocation -- one applied to both [`Save::parse`] and [`Save::to_bytes`]
+//! -- because `to_bytes` then writes each byte back exactly where `parse`
+//! read it. Measured, not argued: swapping the `joints` and `money` offsets
+//! in **both** directions leaves every one of the eleven tests in
+//! `tests/save_roundtrip.rs` green, `rust_offsets_match_save_layout_json`
+//! and `save_layout_json_fields_tile_the_record` included.
+//!
+//! What does catch it is `tests/save_load.rs`, and specifically these two,
+//! which is where to add a case for a newly named field:
+//!
+//! * `save_r5_loads_the_character_the_shipped_bytes_describe` (line 82) --
+//!   asserts field VALUES against `SAVE_R5`'s documented contents, so a
+//!   field reading someone else's byte is wrong even when it round-trips;
+//! * `every_named_field_is_actually_written_by_to_bytes` (line 455) --
+//!   sets each `data/save_layout.json` field in turn and requires only that
+//!   field's own byte span to move.
+//!
+//! Both go red under the swap above. On the Python side the same job is
+//! `tools/test_decode_save.py`'s `test_every_evidence_address_really_
+//! references_that_byte`, which resolves each field's cited instruction out
+//! of `orig/g.exe`.
 //!
 //! The offsets below are hand-mirrored from `tools/decode_save.py` (the
 //! Task 5 Python reference decoder) and from the layout it emits at

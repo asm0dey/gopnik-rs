@@ -10,10 +10,23 @@ record straight off disk into `DS:369c` (`docs/re/save-format.md`, "The
 record IS guest memory"), so a `.SAV` file is a direct write into guest
 memory for every variable the record covers -- the class, the level, the
 stats, every item flag, the money, the street cred, the buff countdown and
-the growth log.  **355 of the game's 838 conditional branches have a guard
-that reads one of those bytes** (`entry` 168 of 406, `FUN_1000_1a03` 77 of
-83, `FUN_1000_3d11` 72 of 224), so this is the lever that makes 42% of the
-game's branches reachable on demand rather than by luck.
+the growth log.
+
+**331 of the game's 838 conditional branches (39.5%) have a guard that reads
+one of those bytes** -- `entry` 160 of 406, `FUN_1000_1a03` 77 of 83,
+`FUN_1000_3d11` 65 of 224.  That is what `python3 tools/branch_reach.py`
+prints; the method is one sentence in its docstring and the number is
+whatever the script says, never a figure written down beside it.  An earlier
+revision of this docstring claimed **355 / 42%**, from a window based at
+`0x389c` -- the record base plus the `0x200` the stat words sit at *inside*
+the record.  That shifted window counts 26 branches reading the ENEMY record
+at `DS:3952` and the wander bucket at `20ae:3971`, neither of which is in a
+`.SAV` file.  `--window stat-block-base` reproduces the wrong figure on
+demand, and `tools/test_branch_reach.py` pins both.
+
+Read the number as an upper bound on reach-by-save, not as coverage: it says
+the guard reads a byte a save writes, not that the branch is satisfiable or
+that a player could reach the state.
 
 `tools/rngtrace/saveprobe.py` is the harness that loads what this writes into
 the real executable under qemu and reports what the guest actually holds.

@@ -11,7 +11,7 @@ Every `.SAV` file is exactly 694 bytes.
 
 | offset | kind          | len | name         | status                          |
 |--------|---------------|-----|--------------|----------------------------------|
-| 0x000  | `pstring`     | 256 | `magic`      | confirmed — constant version banner |
+| 0x000  | `pstring`     | 256 | `magic`      | confirmed — the title string, **assigned at character creation** (`1000:6dcd`..`1000:6ddb`), not a format constant; see below |
 | 0x100  | `pstring`     | 256 | `name`       | confirmed — player name, colour-prefixed |
 | 0x200  | `u16`         | 2   | `rank_index` | confirmed (Task 9) — indexes the `DS:002e` name table **and** the `DS:0002` growth-weight table; the class-choice → value mapping was closed by Task 9b, see below |
 | 0x202  | `u16`         | 2   | `strength`   | confirmed (Task 9) |
@@ -265,8 +265,37 @@ purposes.
 | `SAVE_R5.SAV` | (same) | `^7 Mudila` | 5 | 90 | 120 | 45 | 49 | 40 | 57 | 102 | 325 | 325 |
 
 `magic` is byte-identical across all five saves:
-`^4Gopnik: ^7version 1.02 june,sept 2003` — a constant version banner, not
-per-save state.
+`^4Gopnik: ^7version 1.02 june,sept 2003`.
+
+**It is per-save state that every save happens to agree on, not a constant
+the format reserves** — and the earlier revision of this document said the
+opposite ("a constant version banner, not per-save state"), which Task 19
+refuted. **Established from flow:** the new-character block *writes* it,
+three instructions after `district := 1`:
+
+```text
+6dbe  c6 06 92 36 01  mov byte [0x3692],1     ; district := 1
+6dc3  c6 06 98 36 01  mov byte [0x3698],1     ; Vet    discovered
+6dc8  c6 06 94 36 01  mov byte [0x3694],1     ; Market discovered
+6dcd  bf 89 64        mov di,0x6489           ; CS 0x6489 = file 0x7D59,
+6dd0  0e / 57         push cs / push di       ;   '^4Gopnik: ^7version 1.02 june,sept 2003'
+6dd2  bf 9c 36        mov di,0x369c           ; DS:369c -- the `magic` slot
+6dd5  1e / 57         push ds / push di
+6dd7  b8 ff 00 / 50   mov ax,0xff / push ax
+6ddb  9a 01 0b 78 0f  call 0f78:0b01          ; rtl_str_assign_max(magic, lit, 255)
+6de0  c7 06 d0 38 0a 00   mov word [0x38d0],0xa   ; threshold := 10
+```
+
+Nothing else writes `20ae:369c` (`python3 tools/re_query.py xrefs-to
+20ae:369c` returns four references: this store and the three block
+operations). So the five saves agree because every one of them was written
+by a character created by this same block, which is a fact about the corpus
+rather than about the format. A save this port writes has to assign it too,
+and `src/save.rs`'s `MAGIC` is that literal.
+
+Corroborated by state: `data/probes/saveprobe-fresh-record.json` is a dump
+of `20ae:369c` taken after driving character creation in `orig/g.exe` under
+qemu, and it holds exactly this string with its padding zeroed.
 
 ## The eight stat words at 0x200–0x20f (Task 9)
 

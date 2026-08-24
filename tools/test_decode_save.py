@@ -301,8 +301,12 @@ class TestEveryNamedFieldMatchesTheBinary(unittest.TestCase):
 
     def test_the_flag_bytes_are_pascal_booleans(self):
         """Every direct store to a flag byte, image-wide, writes 0 or 1."""
-        self.assertEqual(sorted(f["name"] for f in FLAG_FIELDS),
-                         sorted(EXPECT_FLAG_NAMES))
+        self.assertEqual(
+            sorted(f["name"] for f in FLAG_FIELDS),
+            sorted(EXPECT_FLAG_NAMES),
+            "the boolean census has moved: retyping a field out of it would "
+            "shrink what this test walks instead of failing it",
+        )
         prog = re_query.Program(ROOT / "orig" / "g.exe")
         for f in FLAG_FIELDS:
             scan = re_query.xrefs_to(prog, f["guest"])["scan"]
@@ -320,8 +324,12 @@ class TestEveryNamedFieldMatchesTheBinary(unittest.TestCase):
                 )
 
     def test_the_word_fields_are_signed_integers(self):
-        self.assertEqual(sorted(f["name"] for f in SIGNED_WORD_FIELDS),
-                         sorted(EXPECT_SIGNED_WORD_NAMES))
+        self.assertEqual(
+            sorted(f["name"] for f in SIGNED_WORD_FIELDS),
+            sorted(EXPECT_SIGNED_WORD_NAMES),
+            "the signed-word census has moved: retyping a field out of it "
+            "would shrink what this test walks instead of failing it",
+        )
         for f in SIGNED_WORD_FIELDS:
             off, insn = _insn_at(self.image, f["evidence"])
             self.assertTrue(
@@ -342,8 +350,12 @@ class TestEveryNamedFieldMatchesTheBinary(unittest.TestCase):
         If `20ae:38c4` were a flag in its own right the game would have to
         read it somewhere; nothing does.
         """
-        self.assertEqual(sorted(f["name"] for f in SIGNED_WORD_FIELDS),
-                         sorted(EXPECT_SIGNED_WORD_NAMES))
+        self.assertEqual(
+            sorted(f["name"] for f in SIGNED_WORD_FIELDS),
+            sorted(EXPECT_SIGNED_WORD_NAMES),
+            "the signed-word census has moved: retyping a field out of it "
+            "would shrink what this test walks instead of failing it",
+        )
         prog = re_query.Program(ROOT / "orig" / "g.exe")
         for f in SIGNED_WORD_FIELDS:
             high = addrmod.citation(f["guest"]).off + 1
