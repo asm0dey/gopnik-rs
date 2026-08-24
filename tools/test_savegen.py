@@ -76,13 +76,31 @@ class SaveGenTest(unittest.TestCase):
         self.assertEqual(len(set(s.values())), len(s))
         self.assertTrue(all(v > 1 for v in s.values()))
 
-    def test_the_cli_refuses_to_write_into_the_frozen_corpus(self):
+    def test_the_cli_refuses_every_frozen_oracle_not_just_orig(self):
+        """The guard is oracle-scoped, not directory-scoped.
+
+        Its first revision only checked `--out`'s parent against `orig/`,
+        so `--out data/rng_trace.json` was accepted while the error message
+        talked about frozen ground truth. Every name in `savegen.FROZEN` is
+        checked here, plus a relative path that walks through `..` to reach
+        one, plus `orig/` as a directory.
+        """
         before = _digests()
-        with self.assertRaises(savegen.SaveGenError):
-            savegen.main(["--base", str(BASE),
-                          "--out", str(ORIG / "SAVE_R9.SAV")])
+        targets = [str(ROOT / rel) for rel in savegen.FROZEN]
+        targets.append(str(ORIG / "SAVE_R9.SAV"))          # orig/ as a dir
+        targets.append(str(ROOT / "data" / ".." / "data" / "rng_trace.json"))
+        self.assertGreaterEqual(len(targets), 14)
+        for t in targets:
+            with self.assertRaises(savegen.SaveGenError, msg=t):
+                savegen.main(["--base", str(BASE), "--out", t])
         self.assertEqual(_digests(), before)
         self.assertFalse((ORIG / "SAVE_R9.SAV").exists())
+        # ...and an ordinary destination is still accepted, or the guard
+        # would be passing by refusing everything.
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(
+                savegen.main(["--base", str(BASE),
+                              "--out", str(pathlib.Path(d) / "x.SAV")]), 0)
 
     def test_the_cli_writes_a_loadable_record(self):
         before = _digests()

@@ -248,6 +248,19 @@ class TestEveryNamedFieldMatchesTheBinary(unittest.TestCase):
     def setUp(self):
         self.image = _image()
 
+    def test_every_field_declares_its_tier(self):
+        """`docs/re/METHODOLOGY.md` requires a tier per claim, and this table
+        is 47 of them. Asserted per field, not once in prose, so a field
+        added at a weaker tier cannot inherit `flow` by silence."""
+        missing = [f["name"] for f in LAYOUT["fields"] if "tier" not in f]
+        self.assertEqual(missing, [], "fields with no tier: %s" % missing)
+        tiers = {f["tier"] for f in LAYOUT["fields"]}
+        self.assertEqual(
+            tiers, {"flow"},
+            "a non-flow tier appeared; say which field and why in "
+            "docs/re/save-format.md before relaxing this",
+        )
+
     def test_the_generator_and_the_artifact_agree(self):
         """`python3 tools/decode_save.py` must have been re-run after an edit
         to TAIL_FIELDS, or the shipped artifact is stale."""

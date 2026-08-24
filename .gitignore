@@ -6,3 +6,11 @@ __pycache__/
 /.venv
 /mutants.out*
 /mutants
+
+# The mage's paid save (1000:764e/1000:765d) writes these into the process's
+# current directory, so an interactive `cargo run` from the repo root leaves
+# them behind -- and a stray save_r?.sav changes the NEXT run's startup path,
+# because the slot menu scans the working directory. The five shipped saves
+# live in orig/ under their DOS uppercase names and are not matched here.
+/save_r?.sav
+/places.sav

@@ -92,9 +92,18 @@ fresh save fills them"* — by observing the original instead of deciding.
 
 So a fresh save fills every byte of both former `unk_` spans with **zero**,
 and that is an observation about the original rather than a choice this port
-made. `tests/save_roundtrip.rs::a_fresh_record_matches_what_the_original_
-starts_a_new_character_with` asserts the port's own fresh record against
-these bytes.
+made. Two tests in `tests/save_load.rs` assert the port's own fresh record
+against these bytes: `a_fresh_record_matches_what_the_original_starts_a_new_
+character_with` (line 183) checks the fields, and
+`a_fresh_record_is_byte_identical_to_the_probe_dump` (line 219) compares all
+694 bytes against `record_hex` directly.
+
+**`tail_all_zero` in the artifact reads `false`, and that is not a
+contradiction with the list above.** That flag is computed over
+`record[0x214:]`, which includes `threshold` at `0x234` — and `threshold` is
+10, not 0 (`1000:6de0`). The spans the list calls all-zero are
+`0x214`..`0x231`, the growth log and `0x2ae`..`0x2b5`, and each of those is
+zero; the flag simply spans more than they do.
 
 **Tier.** State-tier, and forced only in the weak sense that the driver chose
 the class and left the name empty; nothing here is a state a player could not

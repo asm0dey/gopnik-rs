@@ -599,18 +599,25 @@ that leverage.
 None is a defect the review asked to be fixed; each is a judgement call a
 future reader may want to revisit.
 
-* **`present_slots` returns `SLOT_KEYS` order** (`2,3,4,5,0`), where the
-  original's `FindFirst`/`FindNext` returns FAT directory order. It changes
-  which line the menu prints first and nothing else.
-* **`data/probes/README.md` names the fresh-record assertion at the wrong
-  path** — it is `tests/save_load.rs:183`
-  (`a_fresh_record_is_byte_identical_to_the_probe_dump`).
+* ~~**`present_slots` returns `SLOT_KEYS` order.**~~ **Fixed, and it was a
+  bigger defect than the ordering.** The mask is `save_r?.sav` with a DOS
+  wildcard, so the SCAN and the KEY TEST are two mechanisms; filtering the
+  scan on `SLOT_KEYS` made `save_r1.sav` and `save_rx.sav` invisible to the
+  port and visible to the original. Order is now by name, recorded as a port
+  decision (FAT directory order is not portable and nothing depends on it).
+* ~~**`data/probes/README.md` names the fresh-record assertion at the wrong
+  path.**~~ **Fixed.** It said `tests/save_roundtrip.rs`; the tests are in
+  `tests/save_load.rs`, and there are two —
+  `a_fresh_record_matches_what_the_original_starts_a_new_character_with`
+  (line 183) and `a_fresh_record_is_byte_identical_to_the_probe_dump`
+  (line 219). An earlier revision of THIS list paired line 183 with the
+  second name, which was also wrong.
 * **`saveprobe-fresh-record.json` carries no `tier` field**, unlike
   `saveprobe-record-base.json`. The caution is in the README instead, which
   is adequate; the two artifacts are just inconsistent.
-* **`data/save_layout.json` carries `guest` and `evidence` but no `tier`
-  key.** Every field in it is flow-tier today, so nothing is mislabelled —
-  but the tier is implicit where the rest of the project makes it explicit.
+* ~~**`data/save_layout.json` carries no `tier` key.**~~ **Fixed:** every
+  field now carries `"tier": "flow"`, so the next field added at a weaker
+  tier has to say so.
 * **`tools/test_decode_save.py`'s store filter would miss a
   `mov [0x38b0],al`.** No such store exists (the review re-derived the
   boolean claim over all 23 flag bytes including that form and confirmed it),
@@ -618,15 +625,16 @@ future reader may want to revisit.
 * **`tests/save_load.rs`'s `every_in_record_address_named_in_game_rs_is_persisted`
   matches on comment text**, so it is defeated by a citation written in a
   different form. It is a completeness prompt, not a proof.
-* **`src/persist.rs`'s slot-0 district uses unsigned division** where
-  `1000:6d93` is a signed `idiv`. Unreachable: `level` is 0..40.
-* **Three `.max(0)` clamps and the name-prefix gain** in `Game::from_save`.
-  A record holding a negative `joints`/`beer`/`junk` clamps to 0 on the way
-  in, and a name at exactly 255 bytes cannot round-trip through `Game`
-  because the `^7 ` prefix is re-added on the way out. Neither is reachable
-  from a save the original wrote.
-* **A condition in `tests/save_load.rs`'s short-`places.sav` test is true
-  for all four cases**, so it does nothing.
+* ~~**`src/persist.rs`'s slot-0 district uses unsigned division.**~~
+  **Fixed.** "Unreachable because level is 0..40" was true of *play* and not
+  of `tools/savegen.py --set level=0x8000`, which is the workflow this branch
+  hands the next tasks.
+* **Three `.max(0)` clamps and the name-prefix gain** in `Game::from_save`
+  are **kept**, and now documented rather than silent: `docs/re/gaps.md`,
+  "What the port REFUSES that the original accepts", carries all three with
+  the reason each stays.
+* ~~**A condition in `tests/save_load.rs`'s short-`places.sav` test is true
+  for all four cases.**~~ **Fixed** — deleted.
 
 ### Also deferred from the Task 18 review, recorded so they are not lost
 

@@ -528,6 +528,64 @@ supporting claim ("a wrapper could only print composed text — which is why
 there is none") therefore justified an absence with a false premise. The
 mage's arm is implemented and prints its line; see below for the other.
 
+## What the port REFUSES that the original accepts
+
+*Cited from `src/save.rs`'s `SaveError`, `src/persist.rs`'s `load_slot` and
+`Game::from_save`.*
+
+**The original validates nothing on load.** `1000:6c01`/`1000:6c06` is an
+untyped `BlockRead` of 694 bytes into `DS:369c` — the record *is* guest
+memory, there is no unmarshalling step, and the only failure it can report is
+`Reset`'s `IOResult` at `1000:6bd4` (the file is missing or unreadable). Any
+694-byte file loads. Not an inference: `data/probes/saveprobe-record-base.json`
+is a run of `orig/g.exe` loading a record carrying sentinels `0x40`..`0x64`
+across `0x214`..`0x231` and `0x2ae`..`0x2b5` — values no game path writes —
+and the guest reaches the street prompt with them in memory.
+
+This port refuses three classes of record the original would load. Each is a
+**port decision**, none is a finding about the original, and all three are
+reachable with `tools/savegen.py` — which matters because that is the
+instrument the next several tasks use to force states.
+
+| what | where | what the port does | what the original does |
+|---|---|---|---|
+| a flag byte outside `{0, 1}` | `Save::parse`, `SaveError::NotBoolean` | refuses the file | loads it; every consumer tests `<> 0`, so a 2 reads as true |
+| `joints`, `beer_half_litres` or `junk` negative | `Game::from_save`'s three `.max(0)` clamps | loads it, silently clamping to 0 | keeps the negative `Integer` |
+| a name of exactly 255 CP866 bytes | `Game::to_save` re-adds the `^7 ` prefix (`1000:723a`) | `mage_save` fails with `TooLong(258)` | writes it; the record round-trips |
+
+The first is the one with a visible symptom, and it is worse than the refusal
+itself: `load_slot` maps `Save::parse`'s error onto the original's
+`Reset`-`IOResult` arm, so it prints
+`^6Чё-то глюкануло - нaверно нет такого сейва, Default:1` (CS `0x6451`, file
+`0x7D21`, written at `1000:6da5`) and starts a new character. **The original
+never prints that line for a record it could open** — that arm is reached only
+when `Reset` itself failed. The port therefore reports a refusal of its own
+using a string the original reserves for a different cause.
+
+Why each is kept rather than fixed:
+
+* **The Boolean check is what keeps the round trip total.** The 23 flag bytes
+  are `bool` in `Save`, so a 2 could not survive re-serialisation; silently
+  rewriting it as 1 would make the round trip byte-exact for every file the
+  game writes and quietly lossy for one it does not. Every direct store to
+  those bytes image-wide is `mov byte [X],0` or `mov byte [X],1`, so the
+  original cannot produce such a file — only a synthesiser can.
+* **The clamps** are the cost of `Fighter` holding `u16` where the record
+  holds `Integer`. Widening those three fields is a `crate::model` change,
+  and `model.rs` is shared with the combat replays.
+* **The 255-byte name** is a boundary case of the prefix divergence recorded
+  below: the original keeps `^7 ` in the live variable `DS:379c` and this port
+  adds it at the format boundary, so the port's ceiling for a typed name is
+  252 bytes rather than 255.
+
+**`Game` -> `Save` -> `Game` is not the identity above the original's widths.**
+`Game::to_save` narrows five fields the port had widened — `money` and
+`street_cred` from `i32`, `armour` from `u16`, and `xp`/`threshold` from `u32`
+— by truncation, which is what the original's own 16-bit and 8-bit arithmetic
+does, but it means a `Game` holding an out-of-range value does not survive a
+save. `Save` -> bytes -> `Save` **is** exact, and that is the round trip
+`tests/save_roundtrip.rs` asserts.
+
 ## The four armour flags are carried but the gym's `abs` ignores them
 
 *Cited from `src/game.rs`'s `imm_row_visible` and `src/persist.rs`.*
@@ -546,8 +604,12 @@ back out, so what is left is the armour the player TRAINED.
 
 Those are `mar` rows 4, 7, 6 and 9 — the abibas suit, the adidas suit, the
 leather jacket and the crutaya kozhanka — and the four subtrahends are the
-rows' own advertised bonuses. Exactly one thing reads the result:
-`trn` row 5, gated on `abs < district * 2` at `1000:e576`..`1000:e58d`.
+rows' own advertised bonuses. Exactly one thing reads the result: `trn`
+row 5. It has **two** gates and only the second reads `abs` —
+`1000:e576` (`cmp byte [0x3692],0x2` / `jbe 0xe5e4`) is `district > 2`, and
+`1000:e57d`..`1000:e58d` (`shl ax,1` on the district, `mov al,[0x3e34]`,
+`cmp ax,dx` / `jnl 0xe5e4`) is `abs < district * 2`. `imm_row_visible`
+implements both; an earlier revision of this entry folded them into one.
 
 **The port carries the four flags (`Game::wear_suit_abibas_38b4`,
 `wear_jacket_38b6`, `wear_suit_adidas_38b7`, `wear_jacket_krutaya_38b9`,
@@ -559,11 +621,32 @@ gym row the original would show.
 **Task 19 made this live, and deliberately did not fix it.** Before it, no
 path in the port could set those bytes — `mar` purchases deduct and print but
 apply no effect — so the divergence could not be reached. A loaded `.SAV`
-sets them (`SAVE_R3` and `SAVE_R4` carry all four; see
-`docs/re/save-format.md`'s observed-values table), so it is now reachable in
-play. Fixing it properly needs `mar`'s purchase effects, which are the
-larger unimplemented gap below; applying the subtraction on its own would
-gate a gym row on a flag the player has no way to earn.
+sets them, and the shipped corpus contains a witness.
+
+| save | `38b4` | `38b6` | `38b7` | `38b9` | `armour` | original `abs` | port `abs` |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `SAVE_R0` | 0 | 1 | 1 | 0 | 4 | 0 | 4 |
+| `SAVE_R2` | 1 | 0 | 0 | 0 | 1 | 0 | 1 |
+| `SAVE_R3` | 1 | 1 | 1 | 0 | 4 | 0 | 4 |
+| `SAVE_R4` | 1 | 1 | 1 | 0 | 10 | **6** | **10** |
+| `SAVE_R5` | 0 | 0 | 1 | 1 | 26 | 20 | 26 |
+
+**No shipped save carries all four flags**; `SAVE_R3` and `SAVE_R4` carry
+three. (An earlier revision of this entry said those two carried all four.
+The frozen corpus refutes it — `38b9` is clear in both, and set only in
+`SAVE_R5`.)
+
+**The witness is `SAVE_R4` loaded at slot 4.** The original computes
+`abs = 10 − 2 (38b7) − 2 (38b6 without 38b9) = 6` against a threshold of
+`district * 2 = 8`, and 6 < 8, so it **shows** `trn` row 5; the port computes
+`abs = 10`, which is not < 8, so it **hides** it. Money is 952, well over the
+row's own 20-rouble test at `1000:e58f`, so nothing else suppresses it.
+`SAVE_R3` at slot 3 and `SAVE_R5` at slot 5 agree either way, and `SAVE_R2`
+is district 2, where the first gate hides the row for both.
+
+Fixing it properly needs `mar`'s purchase effects, which are the larger
+unimplemented gap below; applying the subtraction on its own would gate a gym
+row on a flag the player has no way to earn.
 
 ## The district-advance autosave is mapped but not wired
 

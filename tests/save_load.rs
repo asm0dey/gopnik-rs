@@ -296,10 +296,11 @@ fn the_slot_menu_reports_what_the_directory_holds() {
     );
 
     // The shipped corpus is UPPERCASE; the game writes lowercase. Both are
-    // the same file on DOS, and `present_slots` has to see either.
+    // the same file on DOS, and `present_slots` has to see either. Order is
+    // by name -- a port decision, since FindFirst walks FAT directory order.
     std::fs::write(dir.join("SAVE_R3.SAV"), orig("SAVE_R3.SAV")).unwrap();
     std::fs::write(dir.join("save_r0.sav"), orig("SAVE_R0.SAV")).unwrap();
-    assert_eq!(persist::present_slots(&dir), vec!['3', '0']);
+    assert_eq!(persist::present_slots(&dir), vec!['0', '3']);
 
     // 1000:6b5e..1000:6b7f accepts 0 and 2..5 and nothing else -- `1` is the
     // key the prompt tells the player to press for a new character, and it
@@ -318,6 +319,56 @@ fn the_slot_menu_reports_what_the_directory_holds() {
             "typed {typed:?}"
         );
     }
+}
+
+/// The mask `save_r?.sav` matches ANY single character, and the key test is
+/// a separate mechanism.
+///
+/// `1000:6a81`/`1000:6a8a` pass a DOS `?` wildcard to `FindFirst` and
+/// `1000:6ada` prints whatever byte came back, so `save_r1.sav` and
+/// `save_rx.sav` are both listed and both prompted for -- and neither is a
+/// key `1000:6b5e`..`1000:6b7f` accepts, so typing what they show starts a
+/// new character. Filtering the SCAN on the key set was the Task 19 review's
+/// Important 3: one constant serving two mechanisms.
+#[test]
+fn the_scan_matches_any_character_while_the_key_test_stays_closed() {
+    let dir = scratch("wildcard-scan");
+    for name in ["save_r0.sav", "save_r1.sav", "save_r4.sav", "save_rx.sav"] {
+        std::fs::write(dir.join(name), orig("SAVE_R4.SAV")).unwrap();
+    }
+    // Files that do NOT match the mask must be invisible: the `?` is exactly
+    // one character wide.
+    for name in ["save_r.sav", "save_r10.sav", "save_r4.txt", "notes.txt"] {
+        std::fs::write(dir.join(name), b"x").unwrap();
+    }
+    assert_eq!(
+        persist::present_slots(&dir),
+        vec!['0', '1', '4', 'x'],
+        "the mask matches any single character, and only one"
+    );
+
+    // ...and all four are offered a menu line.
+    let lines = persist::slot_menu_lines(&persist::present_slots(&dir));
+    assert!(lines.contains(&"^1Можно начать с 1 района".to_string()));
+    assert!(lines.contains(&"^1Можно начать с x района".to_string()));
+
+    // But the key test is unchanged: only `0` and `2`..`5` load. `1` and `x`
+    // are listed by the original too and accepted by neither.
+    for (typed, want) in [
+        ("4", persist::SlotMenu::Load('4')),
+        ("0", persist::SlotMenu::Load('0')),
+        ("1", persist::SlotMenu::NewCharacter),
+        ("x", persist::SlotMenu::NewCharacter),
+    ] {
+        let mut lines = std::iter::once(Ok(typed.to_string()));
+        assert_eq!(
+            persist::choose_slot(&dir, &mut lines).unwrap(),
+            want,
+            "typed {typed:?}"
+        );
+    }
+    assert!(persist::load_slot(&dir, '1', 1).unwrap().is_none());
+    assert!(persist::load_slot(&dir, 'x', 1).unwrap().is_none());
 }
 
 /// A slot the menu offered but whose file cannot be read is the original's
@@ -793,9 +844,7 @@ fn a_short_places_sav_takes_the_failure_arm_instead_of_panicking() {
     ] {
         let dir = scratch(&format!("places-{tag}"));
         std::fs::write(dir.join("save_r0.sav"), orig("SAVE_R0.SAV")).unwrap();
-        if !bytes.is_empty() || tag == "empty" {
-            std::fs::write(dir.join("places.sav"), &bytes).unwrap();
-        }
+        std::fs::write(dir.join("places.sav"), &bytes).unwrap();
         let g = persist::load_slot(&dir, '0', 1).unwrap().expect("loads");
         assert_eq!(
             g.places.is_found(Location::Gym),
@@ -858,4 +907,112 @@ fn a_district_slot_takes_the_digit_and_a_rejected_key_loads_nothing() {
             "slot {bad:?} must be refused even with a readable file present"
         );
     }
+}
+
+/// Slot 0's district division is SIGNED, matching `1000:6d93`'s `cwd` /
+/// `idiv`, and truncates to the low byte, matching `mov [0x3692],al`.
+///
+/// Unreachable from play, where the level is 0..40 — but reachable from
+/// `tools/savegen.py`, which is the instrument this branch hands the next
+/// several tasks, and a citation that holds only for part of its input's
+/// range is a citation that does not hold.
+#[test]
+fn slot_zero_district_matches_the_originals_signed_idiv() {
+    let dir = scratch("district-signed");
+    // Expected values are written down, not recomputed from the same
+    // expression the implementation uses -- that would restate the code
+    // rather than check it. `idiv` truncates toward zero.
+    for (level, want) in [
+        // -1: -1/10 == 0, +1 == 1. An UNSIGNED divide reads 0xFFFF as 65535
+        // and gives 6554, whose low byte is 0x9A == 154.
+        (0xFFFFu16, 1u8),
+        // -10: -10/10 == -1, +1 == 0.
+        (0xFFF6, 0),
+        // -32768: /10 == -3276, +1 == -3275 == 0xF335; `mov [0x3692],al`
+        // keeps 0x35 == 53.
+        (0x8000, 53),
+    ] {
+        let mut save = Save::parse(&orig("SAVE_R0.SAV")).unwrap();
+        save.stats[5] = level;
+        std::fs::write(dir.join("save_r0.sav"), save.to_bytes().unwrap()).unwrap();
+        let g = persist::load_slot(&dir, '0', 1).unwrap().expect("loads");
+        assert_eq!(
+            g.district, want,
+            "level 0x{level:04x} ({} signed)",
+            level as i16
+        );
+    }
+    // The two readings must actually disagree, or the cases above would be
+    // passing for the wrong reason.
+    assert_eq!(
+        ((0xFFFFu16 / 10) + 1) as u8,
+        154,
+        "unsigned would give this"
+    );
+    assert_ne!(154, 1, "sanity: signed and unsigned disagree on 0xFFFF");
+}
+
+/// The three classes of record the port refuses or alters and the original
+/// loads verbatim — the `docs/re/gaps.md` entry "What the port REFUSES that
+/// the original accepts", made executable.
+///
+/// All three are reachable with `tools/savegen.py`, which is what makes them
+/// worth pinning: the next several tasks force states with it, and a
+/// refusal that is only written down gets rediscovered as a bug.
+#[test]
+fn the_three_records_the_port_refuses_or_alters_are_the_documented_ones() {
+    // 1. A flag byte outside {0,1}. The original loads it -- every consumer
+    //    tests `<> 0` -- and `data/probes/saveprobe-record-base.json` shows
+    //    it doing so with sentinels 0x40.. across both spans.
+    let mut bytes = orig("SAVE_R3.SAV");
+    bytes[0x2ae] = 2;
+    assert!(
+        matches!(
+            Save::parse(&bytes),
+            Err(gopnik::save::SaveError::NotBoolean {
+                off: 0x2ae,
+                value: 2
+            })
+        ),
+        "the port refuses it"
+    );
+    // ...and the refusal surfaces as the original's Reset-IOResult arm,
+    // which is the part that is a divergence in OUTPUT and not just policy.
+    let dir = scratch("refuses-nonboolean");
+    std::fs::write(dir.join("save_r3.sav"), &bytes).unwrap();
+    assert!(
+        persist::load_slot(&dir, '3', 1).unwrap().is_none(),
+        "a record the original would load starts a new character here"
+    );
+
+    // 2. A negative Integer in one of the three fields `Fighter` holds as
+    //    u16. The port clamps to 0 rather than refusing.
+    let mut save = Save::parse(&orig("SAVE_R3.SAV")).unwrap();
+    save.items.joints = -5;
+    save.items.beer_half_litres = -1;
+    save.items.junk = -300;
+    let g = Game::from_save(&save, Places::from_bytes(&[0u8; 7]), 3, 1);
+    assert_eq!(
+        (g.player.joints, g.player.beer_dl, g.player.junk),
+        (0, 0, 0)
+    );
+    // The clamp is lossy in one direction only: the record still held them.
+    assert_eq!(save.items.junk, -300);
+
+    // 3. A name of exactly 255 CP866 bytes -- the longest the format can
+    //    hold -- cannot survive `Game::to_save`, because the `^7 ` prefix
+    //    (1000:723a) is re-added on the way out. 255 + 3 = 258.
+    let mut g = fresh_game();
+    g.player.name = "x".repeat(255);
+    let err = g
+        .to_save()
+        .to_bytes()
+        .expect_err("255 + the 3-byte prefix is over the cap");
+    assert!(
+        matches!(err, gopnik::save::SaveError::TooLong(258)),
+        "{err:?}"
+    );
+    // 252 is the port's real ceiling for a typed name, and it works.
+    g.player.name = "x".repeat(252);
+    assert_eq!(g.to_save().to_bytes().unwrap().len(), SIZE);
 }

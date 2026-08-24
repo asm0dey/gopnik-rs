@@ -33,6 +33,14 @@
 //!   post-fight block, which has no input iterator. Recorded in
 //!   `docs/re/gaps.md`.
 //!
+//!   That leaves the port **coherent, not half-implemented**: the increment
+//!   and the discovery-flag reset are faithful (`Game::resolve_fight` gets
+//!   both gates right), and the two effects that are missing are inert today
+//!   -- the prompt has nothing to prompt for, and the ban countdowns it
+//!   clears are never set. The practical consequence is that **this port can
+//!   only ever produce slot 0**, the mage's. Slots 2..5 exist for the shipped
+//!   corpus and for records `tools/savegen.py` writes.
+//!
 //! `docs/re/gaps.md` used to say "there is no 'saved OK' / 'save failed'
 //! string anywhere in `data/strings.json`, so a wrapper could only print
 //! composed text". That is **false**, and it is why this port printed
@@ -92,14 +100,26 @@ use std::path::{Path, PathBuf};
 /// not in what reaches the disk. `docs/re/gaps.md` records it.
 const NAME_PREFIX: &str = "^7 ";
 
-/// The slot digits `1000:6b5e`..`1000:6b7f` accepts, in the order it
-/// compares them. Anything else -- `'1'` included -- starts a new character.
+/// The slot keys `1000:6b5e`..`1000:6b7f` accepts, in the order it compares
+/// them. Anything else -- `'1'` included, which is the key the prompt itself
+/// suggests -- starts a new character.
+///
+/// **This is the KEY test and nothing else.** The menu's own scan is a
+/// different mechanism with a different alphabet -- see [`present_slots`] --
+/// and using this constant for both was the defect the Task 19 review
+/// caught. It is the same shape as the `exit`/`e` fold the previous branch
+/// shipped as a Critical: one constant standing in for two mechanisms of the
+/// original that happen to agree on the common case.
 pub const SLOT_KEYS: [char; 5] = ['2', '3', '4', '5', '0'];
 
-/// The mage's fixed filename, CS `0x74ab` / file `0x8D7B`.
+/// The `FindFirst` mask, CS `0x633f` / file `0x7C0F`: `save_r?.sav`.
+const SLOT_MASK_PREFIX: &str = "save_r";
+const SLOT_MASK_SUFFIX: &str = ".sav";
+
+/// The mage's fixed filename `save_r0.sav`, CS `0x74ab` / file `0x8D7B`.
 pub const MAGE_SAVE: &str = "save_r0.sav";
-/// CS `0x63f2` / file `0x7C33` on the load side, CS `0x74b7` / file
-/// `0x8D87` on the mage's.
+/// `places.sav`: CS `0x63f2` / file `0x7CC2` on the load side,
+/// CS `0x74b7` / file `0x8D87` on the mage's.
 pub const PLACES_SAVE: &str = "places.sav";
 
 /// Seven one-byte reads at `1000:6ca2`..`1000:6d0e`, seven one-byte writes
@@ -113,24 +133,62 @@ pub fn slot_filename(slot: char) -> String {
     format!("save_r{slot}.sav")
 }
 
-/// Every `save_r?.sav` the working directory holds, in the order
-/// [`SLOT_KEYS`] compares them.
+/// Every file in `dir` whose name matches the mask `save_r?.sav`, as the
+/// character the `?` matched.
 ///
-/// The original uses `FindFirst`/`FindNext` on the DOS mask
-/// `<dir>\save_r?.sav` (`1000:6a8a`, `1000:6b2b`), which is
-/// case-insensitive on a FAT filesystem; this port is not running on one, so
-/// it checks both the lowercase name the game writes and the uppercase name
-/// the shipped corpus carries. That is a **port decision** forced by the
-/// host filesystem, not a property of the original.
+/// **`?` is a DOS wildcard and matches ANY single character**, not just a
+/// slot key. `1000:6a81`/`1000:6a8a` pass the mask at CS `0x633f` (file
+/// `0x7C0F`) to `FindFirst`, and `1000:6ada` reads `[0x3d2b]` -- the
+/// seventh byte of the name `FindFirst` returned -- to print the menu line.
+/// So `save_r1.sav` and `save_rx.sav` are both listed and both prompted for
+/// by the original, and neither is a key `1000:6b5e`..`1000:6b7f` accepts:
+/// typing what they show starts a new character. The scan and the key test
+/// are two mechanisms, and this function is only the first of them.
+///
+/// An earlier revision filtered on [`SLOT_KEYS`] here, which made those two
+/// files invisible to the port and turned the listing order into compare
+/// order. The game itself only ever writes `save_r0` and `save_r2`..`save_r5`
+/// (`crate::persist`'s module doc), so nothing in ordinary play produced
+/// one -- but `tools/savegen.py` writes whatever it is told to.
+///
+/// Two **port decisions** here, neither a property of the original:
+///
+/// * **Order is by name, not directory order.** `FindFirst`/`FindNext`
+///   (`1000:6a8a`, `1000:6b2b`) walk the FAT directory in on-disk order,
+///   which no portable API exposes and which nothing in the game depends on
+///   -- it decides only which menu line prints first. Sorted is
+///   deterministic, which a test can assert.
+/// * **Both filename cases match.** The DOS mask is case-insensitive on
+///   FAT; this host is not, and the shipped corpus is uppercase while the
+///   game writes lowercase.
 pub fn present_slots(dir: &Path) -> Vec<char> {
-    SLOT_KEYS
-        .iter()
-        .copied()
-        .filter(|&c| {
-            let lower = slot_filename(c);
-            dir.join(&lower).is_file() || dir.join(lower.to_uppercase()).is_file()
-        })
-        .collect()
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(String, char)> = Vec::new();
+    for entry in entries.flatten() {
+        if !entry.file_type().is_ok_and(|t| t.is_file()) {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let lower = name.to_lowercase();
+        if !(lower.len() == SLOT_MASK_PREFIX.len() + 1 + SLOT_MASK_SUFFIX.len()
+            && lower.starts_with(SLOT_MASK_PREFIX)
+            && lower.ends_with(SLOT_MASK_SUFFIX))
+        {
+            continue;
+        }
+        // The character the `?` matched, taken from the name AS STORED so
+        // the menu prints what is on disk -- `1000:6ada` reads the byte
+        // `FindFirst` returned, not a case-folded one.
+        let Some(c) = name.chars().nth(SLOT_MASK_PREFIX.len()) else {
+            continue;
+        };
+        out.push((lower, c));
+    }
+    out.sort();
+    out.dedup_by(|a, b| a.1 == b.1);
+    out.into_iter().map(|(_, c)| c).collect()
 }
 
 /// Read `save_r<slot>.sav`, trying the name the game writes and then the
@@ -515,7 +573,8 @@ pub fn load_slot(dir: &Path, slot: char, seed: u32) -> io::Result<Option<Game>> 
     let bytes = match read_slot(dir, slot) {
         Ok(b) => b,
         Err(_) => {
-            // 1000:6da5, CS 0x6451, file 0x7CA1.
+            // 1000:6da5, CS 0x6451, file 0x7D21:
+            // `^6Чё-то глюкануло - нaверно нет такого сейва, Default:1`.
             term::println("^6Чё-то глюкануло - нaверно нет такого сейва, Default:1");
             return Ok(None);
         }
@@ -527,7 +586,7 @@ pub fn load_slot(dir: &Path, slot: char, seed: u32) -> io::Result<Option<Game>> 
             return Ok(None);
         }
     };
-    // 1000:6c1e, CS 0x63dc, file 0x7C0F+: `^0Загружено из save_r` + digit.
+    // 1000:6c1e, CS 0x63dc, file 0x7CAC: `^0Загружено из save_r` + digit.
     term::println(&format!("^0Загружено из save_r{slot}"));
 
     // 1000:6c50 `cmp byte [0x3692],0` -- ONLY slot 0 reads places.sav, and
@@ -543,7 +602,8 @@ pub fn load_slot(dir: &Path, slot: char, seed: u32) -> io::Result<Option<Game>> 
             // It is also the only thing standing between a truncated
             // `PLACES.SAV` and `&b[..7]` panicking.
             Ok(b) if b.len() >= PLACES_BYTES => {
-                // 1000:6d20, CS 0x63fd, file 0x7C3B+.
+                // 1000:6d20, CS 0x63fd, file 0x7CCD:
+                // `^0Загружено из places`.
                 term::println("^0Загружено из places");
                 Places::from_bytes(&b[..PLACES_BYTES])
             }
@@ -558,7 +618,19 @@ pub fn load_slot(dir: &Path, slot: char, seed: u32) -> io::Result<Option<Game>> 
                 Places::from_bytes(&[0u8; 7])
             }
         };
-        let level = save.stats[5];
+        // `1000:6d93`..`1000:6d9d`: `mov ax,[0x38a6]` / `cwd` / `idiv cx`
+        // / `inc ax` / `mov [0x3692],al`. **Signed** division -- `cwd`
+        // sign-extends and `idiv` is the signed form -- and `20ae:38a6` is a
+        // Pascal `Integer`, corroborated by `1000:ab7f`'s `cmp ax,[0x38a6]`
+        // / `jle`, a signed conditional. The `as u8` models `mov [...],al`,
+        // the truncation to the low byte.
+        //
+        // The cast to `i16` is not decoration: a record is not required to
+        // hold a level in 0..40, and `tools/savegen.py --set level=0x8000`
+        // writes one that is negative -- which is the workflow this branch
+        // hands the next several tasks, so "unreachable in play" is not a
+        // reason to model it unsigned.
+        let level = save.stats[5] as i16;
         (places, (level / 10 + 1) as u8)
     } else {
         // Slots 2..5 never open places.sav; their flags start clear, and the

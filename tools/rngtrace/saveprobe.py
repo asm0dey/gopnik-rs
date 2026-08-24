@@ -25,9 +25,13 @@ instruction that reads it, and that is flow.  It also forces states no real
 playthrough can reach, so anything observed downstream of a probe load must
 say it was forced.
 
-Two things this never touches: `orig/*.SAV` (the frozen corpus -- the probe
-save is written into the run's own temp game directory, and `savegen` refuses
-an `--out` inside `orig/`) and anything under `data/`.
+What this never touches is the **frozen set**: `orig/*.SAV`, `orig/g.exe`,
+`data/rng_trace.json`, `data/state_trace.json`, `data/combat_trace.json` and
+`data/combat_vectors.json`.  The probe save is written into the run's own temp
+game directory, and `savegen` refuses an `--out` naming anything frozen.
+`--out` does write under `data/` -- that is how both committed
+`data/probes/*.json` artifacts were produced -- so this is scoped to the
+frozen set and not to a directory.
 """
 import argparse
 import json

@@ -1016,17 +1016,28 @@ impl Game {
     /// them**, so `abs` is exactly `armor` here, where the original computes
     /// `armor` minus 1 for `[38b4]` without `[38b7]`, minus 2 for `[38b7]`,
     /// minus 2 for `[38b6]` without `[38b9]`, and minus 4 for `[38b9]`.
-    /// Only one row reads `abs`: `("trn","5")`, gated on `abs < district * 2`
-    /// at `1000:e576`..`1000:e58d`. So the whole consequence is that this
-    /// port can HIDE a gym row the original shows.
+    /// Only one row reads `abs`: `("trn","5")`. It has **two** gates, and
+    /// only the second reads `abs` -- `1000:e576` `cmp byte [0x3692],0x2` /
+    /// `jbe` is `district > 2`, and `1000:e57d`..`1000:e58d` is
+    /// `abs < district * 2`. This method implements both; the prose used to
+    /// fold them into one. So the whole consequence is that this port can
+    /// HIDE a gym row the original shows.
     ///
     /// **This became live in Task 19 and is not fixed here.** Before it,
     /// nothing in the port could set the four bytes (buying a `mar` row
     /// deducts the price and prints the text but applies no effect), so the
-    /// divergence was theoretical. A loaded `.SAV` sets them --
-    /// `SAVE_R3` and `SAVE_R4` carry all four -- so it is now reachable in
-    /// play. Correcting it means deciding what a `mar` purchase does, which
-    /// is the unimplemented shop-effects gap and a different task's subject;
+    /// divergence was theoretical. A loaded `.SAV` sets them, and it has a
+    /// concrete witness in the shipped corpus: **`SAVE_R4` at slot 4** holds
+    /// `38b4`/`38b6`/`38b7` set and `38b9` clear with `armour` 10, so the
+    /// original computes `abs = 10 - 2 - 2 = 6` against a threshold of 8 and
+    /// shows the row, while this port computes `abs = 10` and hides it.
+    /// (`SAVE_R3` and `SAVE_R5` agree either way; no shipped save carries
+    /// all four flags -- an earlier revision of this comment said `SAVE_R3`
+    /// and `SAVE_R4` did, and the frozen corpus refutes it: both carry
+    /// three.)
+    ///
+    /// Correcting it means deciding what a `mar` purchase does, which is the
+    /// unimplemented shop-effects gap and a different task's subject;
     /// applying the subtraction here while purchases still grant nothing
     /// would make the gym row depend on a flag the player cannot earn.
     /// Registered in `docs/re/gaps.md`, "The four armour flags are carried

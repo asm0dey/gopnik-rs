@@ -162,6 +162,43 @@ def sentinel_bytes(spans) -> dict:
     return out
 
 
+#: Ground truth that is never regenerated or edited, by NAME rather than by
+#: directory. `orig/` holds the corpus and the executable; the four captured
+#: oracles sit in `data/`, next to files this tool's own probe harness writes
+#: legitimately -- so a directory-scoped guard would both over-refuse
+#: (`data/probes/`) and under-refuse (`--out data/rng_trace.json` was
+#: accepted by the first revision of this check, while its error message
+#: talked about frozen ground truth).
+FROZEN = (
+    tuple("orig/" + n for n in
+          ("g.exe", "PLACES.SAV", "SAVE_R0.SAV", "SAVE_R2.SAV",
+           "SAVE_R3.SAV", "SAVE_R4.SAV", "SAVE_R5.SAV"))
+    + ("data/rng_trace.json", "data/state_trace.json",
+       "data/combat_trace.json", "data/combat_vectors.json",
+       "data/rng_vectors.json")
+)
+
+
+def _refuse_frozen(dest: pathlib.Path) -> None:
+    """Refuse an `--out` naming a frozen oracle, wherever it is written.
+
+    Matched on the RESOLVED path, so a relative path, a `..` walk and a
+    symlink all land on the same answer. `orig/` as a whole is refused too:
+    nothing this tool produces belongs beside the corpus.
+    """
+    root = pathlib.Path(__file__).resolve().parents[1]
+    resolved = dest.resolve()
+    frozen = {(root / rel).resolve() for rel in FROZEN}
+    if resolved in frozen:
+        raise SaveGenError(
+            "refusing to write %s: it is frozen ground truth, never "
+            "regenerated or edited (tools/mutate.py guards it)" % dest)
+    if resolved.parent == (root / "orig").resolve():
+        raise SaveGenError(
+            "refusing to write into orig/: it holds the frozen corpus, and a "
+            "synthesised record must not sit beside the five real ones")
+
+
 def _parse_set(text):
     if "=" not in text:
         raise SaveGenError("--set wants NAME=VALUE, got %r" % text)
@@ -217,11 +254,7 @@ def main(argv=None):
         raise SaveGenError("the synthesised record does not round-trip")
 
     dest = pathlib.Path(args.out)
-    if dest.resolve().parent == (pathlib.Path(__file__).resolve().parents[1]
-                                 / "orig"):
-        raise SaveGenError(
-            "refusing to write into orig/: the five shipped saves and "
-            "PLACES.SAV are frozen ground truth (tools/mutate.py guards them)")
+    _refuse_frozen(dest)
     dest.write_bytes(out)
     print("%s: %d bytes, %d named field(s), %d raw byte(s)"
           % (dest, len(out), len(fields), len(raw)))

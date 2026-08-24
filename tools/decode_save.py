@@ -327,8 +327,21 @@ def decode_fields(blob: bytes) -> dict:
     return out
 
 
+#: Every field below is established from FLOW -- the instruction that reads or
+#: writes the byte, cited in `evidence` (or, for the four Task 9b regions
+#: without a single guard, in docs/re/progression.md). Recorded per field
+#: rather than asserted once in prose so the next field ADDED at a weaker tier
+#: has to say so: `docs/re/METHODOLOGY.md` requires every claim to state its
+#: tier, and this table is a claim about 47 bytes' worth of them.
+DEFAULT_TIER = "flow"
+
 LAYOUT = {
     "size": SIZE,
+    "tier_note": (
+        "Every field carries its own `tier`. `flow` means the meaning is "
+        "established from the instruction that reads or writes the byte; "
+        "see `evidence` and docs/re/save-format.md."
+    ),
     "fields": [
         {"name": "magic", "off": OFF_MAGIC, "kind": "pstring", "len": 256},
         {"name": "name", "off": OFF_NAME, "kind": "pstring", "len": 256},
@@ -341,6 +354,10 @@ LAYOUT = {
         *TAIL_FIELDS,
     ],
 }
+
+
+for _f in LAYOUT["fields"]:
+    _f.setdefault("tier", DEFAULT_TIER)
 
 
 def main() -> None:

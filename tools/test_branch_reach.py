@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import branch_reach                                                  # noqa: E402
-from decode_save import RECORD_BASE, SIZE                            # noqa: E402
+from decode_save import LAYOUT, RECORD_BASE, SIZE                    # noqa: E402
 
 
 class WindowTest(unittest.TestCase):
@@ -92,12 +92,22 @@ class CountTest(unittest.TestCase):
         lo, hi = branch_reach.WINDOWS["record"]
         hits = branch_reach.reachable(self.branches)
         self.assertEqual(len(hits), 331)
+        # `0 <= v - lo < SIZE` was here and could not fail: `v` is already
+        # filtered by `lo <= v < hi` with `hi == lo + SIZE`. What CAN fail,
+        # and is the actual claim, is that the offset names a real field.
+        fields = {f["off"] for f in LAYOUT["fields"]}
+        spans = [(f["off"], f["off"] + f["len"]) for f in LAYOUT["fields"]]
+        self.assertTrue(fields)
         for b in hits:
             hit = [v for v in branch_reach.guard_displacements(b)
                    if lo <= v < hi]
             self.assertTrue(hit, b["addr"])
             for v in hit:
-                self.assertTrue(0 <= v - lo < SIZE)
+                off = v - lo
+                self.assertTrue(
+                    any(a <= off < z for a, z in spans),
+                    "%s reads .SAV 0x%03x, which no field covers" %
+                    (b["addr"], off))
 
     def test_the_by_function_rows_sum_to_the_total(self):
         r = branch_reach.report()
