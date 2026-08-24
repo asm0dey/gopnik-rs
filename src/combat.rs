@@ -266,14 +266,27 @@ pub fn resolve_blow(rng: &mut Rng, attacker: &Fighter, defender: &Fighter) -> Bl
 ///    `1000:47be`). Drawn even when that limb is already broken; only the
 ///    message is suppressed (`1000:459e` / `1000:47c7`).
 ///
+/// 7. on a JAW break, and only when the *player* is the defender, owns the
+///    зубная защита (`DS:394a`) and does not already have a broken jaw:
+///    `Random(4)` at `1000:47fe` decides whether the guard saves the teeth.
+///    Enemy-swinging only -- the player-swinging copy has no such branch --
+///    and gated by `1000:47c7` `cmp byte [0x38b0],0` / `jnz 0x4840`, so it
+///    costs a draw on the FIRST jaw break of a guarded player and never
+///    again. The item is not on `Fighter`; it is carried on [`Swing`],
+///    because it lives outside the fighter record in the original too.
+///    (`1000:47fa` is the `mov ax,4` / `push ax` argument idiom, not the
+///    call -- `docs/re/combat.md`, "Player-only branch", records that
+///    near-miss.)
+///
 /// Armour is subtracted and the result floored at zero in between, at
 /// `1000:4546` / `1000:4769`; no draw there.
 ///
-/// Not modelled: when the *player* is the defender and owns the зубная
-/// защита (`DS:394a`), a jaw break draws one more `Random(4)` (`1000:47fa`)
-/// to decide whether the guard saves the teeth. `Fighter` has no field for
-/// that item, so a fight where the player is the defender and owns it will
-/// desynchronise here. See the open questions in `docs/re/combat.md`.
+/// **UNVERIFIED as behaviour**: step 7 is a transcription. No draw at
+/// `1000:47fe` appears in `data/combat_trace.json` -- run C loads the save
+/// that ships the guard, but no jaw break landed on the player there -- and
+/// `tools/capture_combat_vectors.py` skips the rounds that could have
+/// exercised it. What would settle it: a capture in which a guarded player's
+/// jaw is broken.
 pub fn resolve_blow_nth(
     rng: &mut Rng,
     attacker: &Fighter,

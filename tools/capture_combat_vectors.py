@@ -62,9 +62,13 @@ FIELDS_U16 = {
 FIELDS_U8 = {"broken_jaw": 0x14, "broken_leg": 0x15, "armor": 0x16}
 
 # The player's зубная защита. When it is set and the enemy breaks the
-# player's jaw, the game draws one extra Random(4) (1000:47fa) that
-# src/combat.rs does not model, so enemy-side cases are not taken from a run
-# where the player owns it.
+# player's jaw, the game draws one extra Random(4) at 1000:47fe (1000:47fa is
+# the `mov ax,4` / `push ax` argument idiom four bytes earlier, not the call).
+# src/combat.rs DOES model that draw as of Task 13 -- `combat::Swing::enemy`
+# carries the item -- but this tool still cannot use those rounds: it steps a
+# captured seed forward by a draw count read off the transcript, and the
+# transcript does not say whether that extra draw happened.  So enemy-side
+# cases are not taken from a run where the player owns the guard.
 TOOTH_GUARD = 0x394A
 
 # System.@Rand's recurrence, from docs/re/rng.md (1f78:11a8). Used only to
@@ -313,9 +317,13 @@ def harvest(name, frames, states, notes):
         if len(blows) != 1 or blows[0]["hit"]:
             continue
         if window_byte(win, TOOTH_GUARD):
+            # The ten notes shipped in data/combat_vectors.json carry this
+            # sentence's PREVIOUS wording (and the 1000:47fa near-miss): that
+            # file is a captured artifact and is not regenerated.
             notes.append(
                 f"{name}: frame {i} enemy half skipped, player owns the "
-                "зубная защита (extra Random(4) at 1000:47fa is not modelled)"
+                "зубная защита (the extra Random(4) at 1000:47fe is not "
+                "visible in the transcript)"
             )
             continue
         e_budget = blow_budget(defender["agility"], attacker["agility"])

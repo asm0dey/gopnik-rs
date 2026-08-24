@@ -724,10 +724,18 @@ constrain it.
    the data — a `>=` mutant fails — but the break boundary is not: no
    captured blow has `Random(luck*3+200) + 1` landing exactly on
    `attacker.luck * 3`.
-3. **The зубная защита `Random(4)` branch** (`1000:47fa`). Not modelled at
-   all, because `Fighter` as the brief specifies it has no field for the
-   item. Any replay where the player is the *defender* and owns it will
-   desynchronise after the first jaw break.
+3. **The зубная защита `Random(4)` branch** (`1000:47fe` — the call; the
+   `mov ax,4` / `push ax` four bytes earlier at `1000:47fa` is the argument
+   idiom, see "Player-only branch" above). **Modelled** since Task 13, as
+   `Game::tooth_guard` carried into `combat::Swing::enemy`, but still not
+   *observed*: no draw at `1000:47fe` appears in `data/combat_trace.json`.
+   Run C loads `SAVE_R3.SAV`, which ships the guard, and fights three
+   fights — but no jaw break landed on the player in any of them, and
+   `tools/capture_combat_vectors.py` skips the enemy-side rounds that could
+   have exercised it. What would settle it: a capture in which a guarded
+   player's jaw is broken.
+   `docs/re/gaps.md` records the same thing under "Opened and closed by
+   Task 13".
 4. **The collapse constants in isolation.** The budget-collapse path is
    exercised (31 cases sit at the collapsed 50% accuracy), and the data pins
    the collapsed budget to 10 or 11 — a captured roll of 50 hits and a roll
