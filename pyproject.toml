@@ -90,3 +90,23 @@ dev = [
     "mutmut>=3.7.0",
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+# Never collect out of mutmut's or cargo-mutants' scratch trees.  mutants/ holds
+# a REWRITTEN copy of the source -- mutmut renames each function and installs a
+# trampoline -- so collecting it produces failures that say nothing about this
+# repo, e.g.
+#
+#   AttributeError: module 'tools.rngtrace.fightrun' has no attribute
+#   'enemy_fields'
+#
+# That tree is mutmut's to run, not yours.  A bare `pytest` collected 311 items
+# out of it before this setting existed.
+#
+# The list restates pytest's own defaults because setting norecursedirs
+# REPLACES them rather than extending them.
+norecursedirs = [
+    "mutants", "mutants.out*",
+    "*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv",
+    "{arch}",
+]

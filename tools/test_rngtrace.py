@@ -50,12 +50,24 @@ from pathlib import Path
 from unittest import mock
 
 REPO = Path(__file__).resolve().parents[1]
+# Two roots, and both are load-bearing.  `tools/` is what makes the flat
+# modules importable (`addr`, and the `import addr` inside rngtrace's own
+# modules).  The repo root is what makes `tools.rngtrace` a real package path.
+#
+# The package path is not cosmetic: mutmut keys every mutant by the source
+# file's path from the repo root, so a test that imports `rngtrace.tracelog`
+# records `rngtrace.tracelog.x_fold` while mutmut looks for
+# `tools.rngtrace.tracelog.x_fold`, and the whole run stops with "tests
+# recorded trampoline hits but none match any mutant key".  Importing through
+# `tools.` is what lets the mutation gate for the Python half run at all.
 sys.path.insert(0, str(REPO / "tools"))
+sys.path.insert(0, str(REPO))
 
 import addr  # noqa: E402  -- the address convention, defined once
-from rngtrace import (combattrace, compare, driver, fightrun,  # noqa: E402
-                      gdbsession, loadbase, rng, seedpatch, tracelog, vm)
-from rngtrace import run as runmod  # noqa: E402
+from tools.rngtrace import (combattrace, compare, driver,  # noqa: E402
+                            fightrun, gdbsession, loadbase, rng, seedpatch,
+                            tracelog, vm)
+from tools.rngtrace import run as runmod  # noqa: E402
 
 
 class TestRngPredictor(unittest.TestCase):
