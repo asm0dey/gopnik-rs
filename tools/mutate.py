@@ -64,15 +64,16 @@ ground truth is the very defect it exists to prevent.
 
 Frozen oracles, whose digests are recomputed and printed on every run:
 
-    data/rng_trace.json     148fe3c7...1025
-    data/state_trace.json   6f7ae78a...13c7
-    data/combat_trace.json  8c4b80e6...180acb
+    data/rng_trace.json       148fe3c7...1025
+    data/state_trace.json     6f7ae78a...13c7
+    data/combat_trace.json    8c4b80e6...180acb
+    data/combat_vectors.json  705415b2...f044
+    data/rng_vectors.json     da8ec929...f8d6
 
 ## What the gate covers, and what it does NOT
 
-Covered: the assertions that consume the three frozen oracles plus
-`data/combat_vectors.json` and `data/rng_vectors.json`, one case per
-independently falsifiable channel -- see `tools/mutations.json`, where each
+Covered: the assertions that consume the five frozen oracles above, one case
+per independently falsifiable channel -- see `tools/mutations.json`, where each
 case names the claim it defends.  Thirteen channels today, plus ten
 `expect_red: false` findings: columns those captures hold that the gate found
 NO assertion reads.
@@ -120,7 +121,7 @@ MANIFEST = REPO / "tools" / "mutations.json"
 SHADOW_TREE = ("Cargo.toml", "Cargo.lock", "build.rs",
                "src", "tests", "data", "orig", "tools")
 
-# Digested before and after every run.  Not just the three frozen oracles:
+# Digested before and after every run.  Not just the five frozen oracles:
 # `orig/` is the binary and the save corpus, the rest of `data/` is extracted
 # tables the port compiles against, and `tools/` holds the one file a case
 # actually PATCHES (`rngtrace/combattrace.py`, the frozen-oracle refusal) --
@@ -128,7 +129,8 @@ SHADOW_TREE = ("Cargo.toml", "Cargo.lock", "build.rs",
 GUARDED = ("data", "orig", "tools")
 
 FROZEN = ("data/rng_trace.json", "data/state_trace.json",
-          "data/combat_trace.json")
+          "data/combat_trace.json", "data/combat_vectors.json",
+          "data/rng_vectors.json")
 
 
 class GateError(Exception):

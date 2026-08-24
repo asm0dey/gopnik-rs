@@ -653,8 +653,8 @@ mod tests {
     /// apart: `0x1c - 0x12 == 0x0a`. So `mine == 10` returns 10 whether or
     /// not the guard lets it in, and `mine == 28` returns 10 whether it
     /// collapses at once or subtracts 18 first. No test can distinguish
-    /// `> 10` from `>= 10` at `147:13`, or `< 28` from `<= 28` at
-    /// `149:21` -- see `docs/re/combat.md`. This test does not kill those
+    /// `> 10` from `>= 10` at `157:13`, or `< 28` from `<= 28` at
+    /// `159:21` -- see `docs/re/combat.md`. This test does not kill those
     /// two mutants; it fails if the identity they rest on is ever broken.
     #[test]
     fn the_blow_budget_boundaries_are_unobservable() {
@@ -720,8 +720,9 @@ mod tests {
     /// the break only when strictly above.
     ///
     /// The numbers come from `data/rng_vectors.json`'s seed-0 chain, not
-    /// from this port: at chain index 55 the `1000:4571` draw is 59 of 200,
-    /// so the `inc` makes it 60, which is exactly `luck 20 * 3`.
+    /// from this port: the swing starts at chain index 55 (`K`), and the
+    /// `1000:4571` draw reads `st[K + 4]`, chain index 59, which is 59 of
+    /// 200, so the `inc` makes it 60, which is exactly `luck 20 * 3`.
     #[test]
     fn the_break_test_is_strict_at_1000_458f() {
         let st = ground_truth_states();
