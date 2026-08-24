@@ -23,6 +23,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -54,17 +55,33 @@ DRAW_MUTATION = {"op": "json-set", "path": ["runs", 0, "draws", 100, "r"],
                  "from": 61, "to": 62}
 
 
-def is_filtered(cmd):
-    """Does this command run ONE test rather than a whole suite?
+# The `cargo test` flags used here that CONSUME the argument after them.  Any
+# other value-taking flag would need adding, and the direction of that mistake
+# is the safe one: an unlisted flag's value reads as a filter, which REJECTS a
+# finding loudly rather than admitting a bogus one.
+CARGO_VALUE_FLAGS = ("--test",)
 
-    Both runners in use take the filter as a trailing bare argument:
+
+def is_filtered(cmd):
+    """Does this command run a SUBSET of the tests rather than a whole suite?
+
+    Both runners take a filter as a bare argument:
     `cargo test --test wander_sequence run_a_replays_exactly`, and
-    `python3 tools/test_rngtrace.py FightFoldTest.test_x`.  So: a trailing
-    argument that is neither a flag nor the thing being invoked.
+    `python3 tools/test_rngtrace.py FightFoldTest.test_x`.  So: any bare
+    argument that is neither the thing being invoked nor a flag's value.
+
+    Counting bare arguments and requiring more than one -- which is what this
+    did first -- misses `cargo test <filter>`, which has exactly one.  That
+    shape runs every BINARY but only the tests whose name matches, so a finding
+    registered with it would claim a suite-wide silence it never established.
     """
     if cmd[:2] == ["cargo", "test"]:
-        rest = [a for a in cmd[2:] if not a.startswith("-")]
-        return len(rest) > 1        # the --test VALUE, plus a filter
+        rest = list(cmd[2:])
+        for flag in CARGO_VALUE_FLAGS:
+            while flag in rest:
+                i = rest.index(flag)
+                del rest[i:i + 2]       # the flag and the binary it names
+        return any(not a.startswith("-") for a in rest)
     return len(cmd) > 2 and not cmd[-1].startswith("-")
 
 
@@ -458,6 +475,71 @@ class ShippedManifestTest(unittest.TestCase):
                       "nothing" % len(self.findings()), out.getvalue())
 
 
+class FindingCommandShapeTest(unittest.TestCase):
+    """`is_filtered` decides whether a finding's silence claim is admissible.
+
+    A finding says "nothing asserts this column", and that is only established
+    if the command it ran gave EVERYTHING the chance to notice.  So the
+    predicate that separates a whole-suite run from a single-test run is load
+    bearing, and until this class existed its only evidence was a probe in a
+    report -- which, by the rule this task added to `METHODOLOGY.md`, is not
+    evidence at all.
+
+    The error direction matters and is asserted by the table: a whole-suite
+    command misread as filtered REJECTS a finding loudly; a filtered command
+    misread as whole-suite ADMITS a bogus one silently.  Only the second is
+    dangerous, so every ambiguous shape must come out `True`.
+    """
+
+    CASES = [
+        # (command, filtered?, why)
+        (["cargo", "test", "--test", "combat_sequence"], False,
+         "the whole binary -- the shape every shipped finding uses"),
+        (["cargo", "test", "--test", "combat_sequence", "run_a_replays_exactly"],
+         True, "--test names the binary, the trailing bare arg is a filter"),
+        (["cargo", "test"], False, "every binary, every test"),
+        (["cargo", "test", "run_a_replays_exactly"], True,
+         "every binary but only MATCHING tests -- a filter with no --test"),
+        (["cargo", "test", "--release"], False,
+         "a flag that takes no value is not a filter"),
+        (["cargo", "test", "--release", "run_a_replays_exactly"], True,
+         "a filter after a valueless flag is still a filter"),
+        (["python3", "tools/test_rngtrace.py"], False, "the whole module"),
+        (["python3", "tools/test_rngtrace.py", "FightFoldTest.test_x"], True,
+         "unittest takes its filter the same way"),
+    ]
+
+    def test_the_two_runners_are_classified_correctly(self):
+        for cmd, want, why in self.CASES:
+            with self.subTest(cmd=" ".join(cmd)):
+                self.assertEqual(is_filtered(cmd), want,
+                                 "%s: %s" % (" ".join(cmd), why))
+
+    def test_a_filtered_command_is_rejected_by_the_manifest_check(self):
+        """The predicate is WIRED to the gate, not merely correct in isolation.
+
+        A finding registered as `cargo test <filter>` must be refused, so the
+        manifest check is run here against a manifest holding exactly that.
+        """
+        bogus = {"label": "bogus-finding", "expect_red": False,
+                 "defends": "FINDING: nothing reads this",
+                 "artifact": "data/rng_trace.json", "mutate": DRAW_MUTATION,
+                 "test": ["cargo", "test", "run_a_replays_exactly"]}
+        case = ShippedManifestTest(
+            "test_the_findings_are_registered_rather_than_dropped")
+        result = unittest.TestResult()
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(mutate, "MANIFEST",
+                                   manifest_file(td, [bogus])):
+                case.run(result)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.failures), 1,
+                         "a finding registered as `cargo test <filter>` was "
+                         "accepted: its suite-wide silence claim was never "
+                         "established")
+        self.assertIn("must run the whole suite", result.failures[0][1])
+
+
 class RecordedFindingTest(unittest.TestCase):
     """`expect_red: false` records a column nothing asserts -- loudly."""
 
@@ -557,6 +639,39 @@ class SafetyPropertyTest(unittest.TestCase):
             self.assertIn(mutate.digest(REPO / name), report)
         self.assertIn("real file(s) under", report)
         self.assertIn("unchanged", report)
+
+    def test_a_vanished_oracle_prints_the_verdict_not_a_KeyError(self):
+        """The verdict must survive the very scenario it exists to report.
+
+        `_report_safety` printed the three frozen digests BEFORE computing what
+        changed, so a `FROZEN` oracle missing from the after-snapshot raised a
+        `KeyError` -- and since the call moved into the `finally`, that
+        `KeyError` replaced the in-flight `GateError`, turning a caught exit 2
+        into an uncaught traceback.  A file under `data/` disappearing mid-run
+        is precisely what the backstop is for.
+        """
+        real = mutate.guarded_digests
+        seen = []
+
+        def vanishing(root=mutate.REPO):
+            d = real(root)
+            seen.append(1)
+            if len(seen) > 1:                    # the AFTER snapshot
+                d.pop(mutate.FROZEN[0])
+            return d
+
+        with mock.patch.object(mutate, "guarded_digests", vanishing):
+            rc, report = gate([{
+                "label": "explodes", "defends": "",
+                "artifact": "data/rng_trace.json",
+                "mutate": {"op": "json-set", "path": ["runs", 0, "nope"],
+                           "from": 1, "to": 2},
+                "test": HONEST_TEST, "expect": "x"}])
+        self.assertEqual(rc, 2, report)
+        self.assertIn("SAFETY FAILURE", report)
+        self.assertIn(mutate.FROZEN[0], report)
+        # ...and the abort that was in flight is still the one reported.
+        self.assertIn("GateError: explodes", report)
 
     def test_a_full_run_works_with_every_perturbed_artifact_read_only(self):
         """Not "nothing changed" -- "nothing could have".
