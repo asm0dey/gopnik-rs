@@ -1,6 +1,6 @@
 # Resume checkpoint — gopnik-rs port
 
-**Branch: `main`.** Last updated after **Task 15**. The old feature branches
+**Branch: `main`.** Last updated after **Task 16**. The old feature branches
 (`port/gopnik-rust` @ `f2d4fce`, `fix/task-13-review`, `feat/mutation-gate`) are
 history now; `main` carries everything and PR #1 is merged.
 
@@ -73,7 +73,7 @@ the port.
 
 ## State
 
-Tasks 1–15 complete and reviewed. Since the last checkpoint:
+Tasks 1–16 complete and reviewed. Since the last checkpoint:
 
 | Task | What | Commits | Status |
 |---|---|---|---|
@@ -83,8 +83,36 @@ Tasks 1–15 complete and reviewed. Since the last checkpoint:
 | — | Mutation tooling: `cargo-mutants`, mutmut + pytest, `.venv/` | `5af1673..1a9338a` | complete |
 | 15 | The eight missed `cargo-mutants` findings in `src/` | `c47abb9..f27b73c` | complete, **reviewed and approved, no fix round** |
 | — | Task 15's four deferred Minors, batched | `1a9338a..0a29594` | complete |
+| 16 | `FUN_1000_1a03` mapped — **it is the character sheet** | `a293f51..e3e3963` | complete, reviewed (one fix round) |
 
-**14 commits are unpushed on `main`.**
+### Task 16, and why it is the shape to copy
+
+**178/838 → 233/838 in one task.** The previous best was Task 11f at +13.
+
+The hypothesis was **half refuted, on the half that mattered** — it *is* the
+character sheet, but `stats` is not a verb at all (those bytes are absent from
+`orig/g.exe`, whole-file case-insensitive scan) and `sv` calls a different
+function (`1000:4c49` → `1000:1348`). The verb is **`s`**, at the street `\`
+prompt and at `Битва\`.
+
+There are **four call sites, not the two this project claimed since Task 11c** —
+the two in `entry` are near calls whose rel16 displacement wraps 16-bit
+(`0xec8c + 0x2d77 = 0x11a03`). The two in `3d11` use negative rel16 and do not
+wrap, which is exactly why the wrong count survived so long.
+
+There is **no argument convention**: bare `ret` at `1000:248e`, no positive `bp`
+displacement in 2700 bytes, `ax` clobbered at `1000:1a06`. Every call site
+renders the same sheet from globals.
+
+`tools/rngtrace/verbprobe.py` is the new instrument: it answers *which typed
+verbs reach a chosen function, and which provably do not*. **The negative is the
+point** — a probe that only confirms positives cannot distinguish "these verbs
+reach it" from "everything reaches it". Reuse it on the next function.
+
+**Both `character-sheet.md` halves are now checked.** `ProseTest` resolves every
+`1000:xxxx` in the prose from an aligned decode. It found three live defects on
+its first run against the committed document, two of which two reviewers had
+walked past.
 
 ### What Task 14 built, and what it is for
 
