@@ -41,11 +41,13 @@ import io
 import json
 import random
 import re
+import shutil
 import struct
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "tools"))
@@ -1596,19 +1598,49 @@ class FightFoldTest(unittest.TestCase):
         self.assertEqual(built["frozen_oracles"], before)
 
     def test_the_fold_refuses_to_write_over_a_frozen_oracle(self):
-        """`--out data/rng_trace.json` must not be a thing that can happen."""
+        """`--out data/rng_trace.json` must not be a thing that can happen.
+
+        Exercised on a RELOCATED repo root, not the real one.  The refusal
+        matches `--out` against `REPO / name` by resolved path, so pointing it
+        at a temp tree holding copies under the same two relative names tests
+        exactly the same comparison -- and, unlike naming the real files, a
+        run where the guard has REGRESSED overwrites a copy instead of an
+        oracle.  The earlier form fired live: it handed `main()` the real
+        `data/rng_trace.json` and was safe only for as long as the thing it
+        was testing worked.
+
+        The relocation could hide a `FROZEN` that no longer names anything
+        real, so the real paths are checked to exist first, and the real
+        digests are checked before and after.
+        """
         before = self.frozen_digests()
+        real_repo = combattrace.REPO
+        for name in combattrace.FROZEN:
+            self.assertTrue((real_repo / name).is_file(),
+                            "FROZEN names %s, which is not a file" % name)
         with tempfile.TemporaryDirectory() as td:
-            src = Path(td) / "fight-A.json"
+            td = Path(td)
+            src = td / "fight-A.json"
             src.write_text(json.dumps(self.whole_trace()))
+            fake_repo = td / "repo"
+            (fake_repo / "data").mkdir(parents=True)
             for name in combattrace.FROZEN:
-                target = combattrace.REPO / name
-                err = io.StringIO()
-                with contextlib.redirect_stderr(err):
-                    with self.assertRaises(SystemExit):
-                        combattrace.main([str(src), "--labels", "A",
-                                          "--out", str(target)])
-                self.assertIn("FROZEN oracle", err.getvalue())
+                shutil.copyfile(real_repo / name, fake_repo / name)
+            copies_before = {n: combattrace.digest(fake_repo / n)
+                             for n in combattrace.FROZEN}
+            with mock.patch.object(combattrace, "REPO", fake_repo):
+                for name in combattrace.FROZEN:
+                    target = fake_repo / name
+                    err = io.StringIO()
+                    with contextlib.redirect_stderr(err):
+                        with self.assertRaises(SystemExit):
+                            combattrace.main([str(src), "--labels", "A",
+                                              "--out", str(target)])
+                    self.assertIn("FROZEN oracle", err.getvalue())
+            # The copies the refusal protected are byte-identical too, which
+            # is the property the real files stand in for.
+            self.assertEqual({n: combattrace.digest(fake_repo / n)
+                              for n in combattrace.FROZEN}, copies_before)
         self.assertEqual(self.frozen_digests(), before)
 
 
