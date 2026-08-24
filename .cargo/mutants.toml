@@ -1,0 +1,38 @@
+# cargo-mutants configuration.
+#
+# Every entry below is an EQUIVALENT mutant: the mutated program computes the
+# same answer as the original for every input, so no test can kill it and a
+# test that appeared to would be testing something else.  Each carries the
+# address in `orig/g.exe` the boundary models -- resolved with
+# `python3 tools/re_query.py resolve <citation>`, never hand-derived -- and the
+# argument is written out in `docs/re/combat.md`, "Boundaries that cannot be
+# observed".  An unexplained skip is worse than a missed mutant, so nothing
+# goes in this list without both.
+#
+# The regexps are anchored on `file:line:col`, so they FAIL OPEN: if the code
+# moves, the exclusion stops matching and cargo-mutants reports the mutant as
+# missed again rather than silently covering a different one.  That is the
+# intended failure mode -- re-derive the argument, then move the line number.
+#
+# `src/combat.rs`'s the_blow_budget_boundaries_are_unobservable is the
+# regression test for the first two: it does not kill them (nothing can), it
+# goes red if the constant identity they rest on is ever broken.
+exclude_re = [
+    # `1000:3fbb` `cmp mine,0x0a` / `1000:3fc0` `jle 0x3fec` guards the loop,
+    # and `1000:3fe2` `mov mine,0x0a` is what the loop collapses to -- the
+    # same 10.  At `mine == 10` the guard's two senses agree: skipping the
+    # loop returns 10, and entering it either leaves at once or collapses to
+    # 10.
+    "^src/combat\\.rs:157:13: replace > with >= in blow_budget$",
+
+    # `1000:3fc9` `cmp mine,0x1c` / `1000:3fce` `jl 0x3fe2` collapses below
+    # 28, and `1000:3fd4` `sub ax,0x12` is the step: `0x1c - 0x12 == 0x0a`,
+    # the collapse value.  At `mine == 28` one more turn round the loop lands
+    # exactly ON the collapse, so collapsing early changes nothing.
+    "^src/combat\\.rs:159:21: replace < with <= in blow_budget$",
+
+    # `1000:454f` `cmp word [bp-0x10c],0x0` / `1000:4554` `jnl 0x455c` floors
+    # the post-armour damage with `1000:4556` `xor ax,ax`.  The value stored
+    # IS the bound tested, so extending the test to `<= 0` writes 0 over a 0.
+    "^src/combat\\.rs:353:15: replace < with <= in resolve_blow_nth$",
+]

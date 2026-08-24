@@ -743,6 +743,117 @@ constrain it.
    comes from the literals `mov word [bp-0x10e],0x0a` (`1000:3fe2`) and
    `cmp word [bp-0x10e],0x1c` (`1000:3fc9`), not from a vector.
 
+## Boundaries that cannot be observed — Task 15
+
+`cargo mutants -f src/combat.rs -f src/rng.rs` reported eight mutations of
+`src/` that no test noticed. Seven were comparison and arithmetic boundaries in
+the blow logic. Three of those are **equivalent mutants** — the mutated program
+computes the same answer for every input, so no test can kill one and a test
+that appeared to would be measuring something else. They are skipped in
+`.cargo/mutants.toml`, each with the address it rests on; the arguments are
+here.
+
+All three are **established from flow**: each rests on the literals in the
+instructions cited, resolved with `python3 tools/re_query.py resolve`.
+
+### `mine > 10` and `mine >= 10` are the same program (`1000:3fbb`)
+
+```
+1000:3fbb  83 be f2 fe 0a   cmp word [bp-0x10e],0xa      ; the guard bound
+1000:3fc0  7e 2a            jle 0x3fec                   ; <= 10 leaves
+...
+1000:3fe2  c7 86 f2 fe 0a 00  mov word [bp-0x10e],0xa    ; the collapse value
+```
+
+The guard's bound and the collapse's value are the **same 10**. At `mine == 10`
+the two senses agree: `jle` skips the loop and returns 10; letting it in either
+falls straight out (`theirs <= 18`) or reaches `1000:3fe2` and is set to 10.
+
+### `mine < 28` and `mine <= 28` are the same program (`1000:3fc9`)
+
+```
+1000:3fc9  83 be f2 fe 1c   cmp word [bp-0x10e],0x1c     ; the collapse bound
+1000:3fce  7c 12            jl 0x3fe2                    ; below 28, collapse
+1000:3fd4  2d 12 00         sub ax,0x12                  ; otherwise step by 18
+```
+
+`0x1c - 0x12 == 0x0a`: one step from the bound lands exactly on the collapse
+value. At `mine == 28` the unmutated path subtracts 18, reaches 10, and on the
+next turn round the loop either exits with 10 or collapses to 10. The mutated
+path collapses to 10 at once. Same answer, always.
+
+Corroborated as well as argued, one tier down: a transcription of the loop into
+Python was run over the only input classes on which the two programs execute
+different instructions (`mine == 10` and `mine == 28`), for all 65536 values of
+`theirs`, and the mutated and unmutated forms agreed everywhere. That is a
+check on a transcription, not on `blow_budget` itself — the argument above is
+what the skip rests on.
+`the_blow_budget_boundaries_are_unobservable` in `src/combat.rs` is the
+regression test. It does not kill the two mutants (nothing can); it goes red if
+the identity `0x0a + 0x12 == 0x1c` is ever broken, which is what would make the
+skips wrong.
+
+This is the **opposite** of the asymmetry Task 13 found in the two blow loops,
+`1000:4629` `cmp word [0x3962],0x0` / `jnle` against `1000:48cd`
+`cmp word [0x38ac],0x0` / `jl`, where the two senses genuinely differ and a
+player at exactly 0 gets swung at again. A boundary is not automatically a
+finding; whether it is one depends on the constants around it.
+
+### `damage < 0` and `damage <= 0` are the same program (`1000:454f`)
+
+```
+1000:454b  29 86 f4 fe      sub [bp-0x10c],ax            ; less the armour byte
+1000:454f  83 be f4 fe 00   cmp word [bp-0x10c],0x0      ; the bound
+1000:4554  7d 06            jnl 0x455c                   ; >= 0 keeps it
+1000:4556  31 c0            xor ax,ax                    ; the floor
+```
+
+The value stored by the floor **is** the bound tested, so widening the test to
+`<= 0` writes a 0 over a 0.
+
+`damage == 0` at the same site is NOT equivalent, and it was a genuine gap: it
+lets a blow lighter than the armour stay negative, which `damage as u16` turns
+into 65482 and which `1000:4560` `sub [0x3962],ax` would apply as **healing**.
+Armour 60 is `Ректор НГУ`'s, so this is reachable play, not a contrived input.
+Killed by `armour_heavier_than_the_blow_floors_the_damage_at_zero`.
+
+### The break test is strict — `1000:4576` and `1000:458f`
+
+Three of the eight mutants sat on one comparison: `+ 1` → `- 1`, `+ 1` → `* 1`,
+and `>` → `>=`.
+
+```
+1000:4571  9a 4b 11 78 0f   call 0f78:114b               ; Random(luck*3 + 200)
+1000:4576  40               inc ax                       ; the + 1
+1000:4577  31 d2            xor dx,dx
+...
+1000:4587  3b d3            cmp dx,bx
+1000:4589  7f 06            jnle 0x4591                  ; high word, signed
+1000:458b  7c 5d            jl 0x45ea
+1000:458d  3b c1            cmp ax,cx
+1000:458f  76 59            jbe 0x45ea                   ; low word, unsigned
+```
+
+`jbe` at `1000:458f` takes the branch AWAY from the break when the two are
+EQUAL, so the test is strictly greater. The enemy's copy says the same with the
+sense flipped: `1000:47b5` `ja 0x47ba` reaches the break only from strictly
+above. All three mutations move the comparison off that exact point, so one
+case at the point kills all three — `the_break_test_is_strict_at_1000_458f`,
+which puts `luck 20 * 3 = 60` against a `1000:4571` draw of 59 (`+ 1` = 60) out
+of `data/rng_vectors.json`'s seed-0 chain, and asserts both that nothing breaks
+and that the `1000:4595` limb draw is never spent. That oracle read is
+registered in `tools/mutations.json` as `rng-vectors-break-boundary`.
+
+### The eighth: `Rng::set_state`
+
+Not a boundary. `src/rng.rs`'s `set_state` had **no caller anywhere in the
+crate**, so replacing its body with `()` changed nothing and all 164 tests
+passed. Nothing in the port rewinds a generator — every one is started from a
+seed with `Rng::new` and then only stepped — and the recovered save layout
+(`docs/re/save-format.md`) carries no seed field, so nothing has a reason to.
+It was deleted rather than tested: a test written to exercise it would have
+been the only caller.
+
 ## Open questions
 
 * **Level does not enter combat at all.** Nothing in `1000:445c`..`1000:4867`
