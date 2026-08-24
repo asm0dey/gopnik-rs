@@ -351,18 +351,33 @@ add that carry into the *magnitude*, before the sign is applied at
 
 #### What is still not modelled inside the fight flow
 
-* `1000:493b`..`1000:4adc`, the **level > 0** arm of `run`: it reads the
-  growth log entry at `[0x38a6] * 3 + 0x38cf`, undoes the two stat grants it
-  records, clears it, may set the den flag (`1000:4aa5`), then
-  `dec word [0x38a6]` / `sub word [0x38d0],0xa` and clamps the XP. This port
+* ~~`1000:493b`..`1000:4adc`, the **level > 0** arm of `run`: this port
   carries no growth log, so it prints the arm's line (file `0x4CEF`) and
-  leaves the fight without applying the penalty. Costs no draw, and no
-  captured run reaches it: run A's cop fight is fled at level 0.
-  **Task 17 has the per-code table** (`docs/re/combat-dispatch.md`), including
-  the two details this entry does not carry: the walk is *forward* over
-  positions 1 and 2 without consulting the copied length byte
-  (`1000:4982` / `1000:4989` / `1000:4a6f`), and code `'1'` also decrements
-  `dmg_min` at `1000:49c6`, but only when strength is odd.
+  leaves the fight without applying the penalty.~~ **CLOSED by Task 18 — the
+  penalty is applied.** `crate::progress::Progress::growth_log` is the
+  `array[1..40] of string[2]` at `.SAV 0x236`, reached through Borland's
+  biased base `20ae:38cf` (real base `20ae:38d2`);
+  `crate::progress::apply_levels` appends to it,
+  `crate::progress::undo_growth` walks it *forward* over positions 1 and 2
+  without consulting the copied length byte (`1000:4982` / `1000:4989` /
+  `1000:4a6f`), `crate::progress::demote` is `1000:4ac3`..`1000:4ad9`, and
+  `Game::flee_penalty` holds the middle block — the class-5 skip
+  (`1000:4a87`), the equality test `level - (district-1)*10 == 3`
+  (`1000:4aa0` `cmp ax,3` / `jnz`, where the post-kill twin at `1000:52ae`
+  uses `jl`), and `1000:4aa5`'s backwards den-flag store, reproduced as
+  written. `docs/re/combat-dispatch.md` has the per-code table this entry
+  used to point at, including that code `'1'` also decrements `dmg_min` at
+  `1000:49c6`, but only when the NEW strength is odd — the exact inverse of
+  `1000:2683`'s grant, which fires when it is even.
+
+  Still true, and still worth knowing: the arm **costs no draw**, and **no
+  captured run reaches it** — run A's cop fight and all five of run D's are
+  fled at level 0, and run E of `data/rng_trace.json` loads `SAVE_R3` at
+  level 20 but never flees. So the two replays confirm the penalty causes no
+  regression; they do not exercise it. What does is
+  `tests/progression.rs`'s round trip against `data/xp.json`'s captured
+  `gains_announced`: replay each level-up through `grant`, log it, flee it
+  back, and land on the record the original held before the kill.
 * `1000:48eb`'s `[0x3c83] == 1` arm (file `0x4C8F`, the rector refusing to
   let you run). Nothing in this port sets `[0x3c83]`, so the arm is
   unreachable rather than wrong.
@@ -835,11 +850,24 @@ points at this entry.
   not extracted; what Task 13 settled is that it cannot matter to the
   generator: scanning `[0x3d11, 0x3f00)` for `9a 4b 11 78 0f` returns **zero**
   hits, so the whole `cmp [0x3952],N` chain is print-only.
-* **The rector death branch** (`1000:4f8c`) — nothing in this port sets
-  `[0x3c83]`, so it is unreachable rather than wrong. **Mapped by Task 17**
-  (`docs/re/combat-dispatch.md`): `[0x3c83]` is the rector-showdown flag,
-  armed at `1000:7364` and `1000:ae13`, and the branch prints file `0x513C`
-  before `FUN_1000_074b`. Still not modelled here. ~~**and the hospital
+* ~~**The rector death branch** (`1000:4f8c`) — nothing in this port sets
+  `[0x3c83]` ... Still not modelled here.~~ **CLOSED by Task 18 — modelled.**
+  `[0x3c83]` is the rector-showdown flag, armed at `1000:7364` and
+  `1000:ae13` and never cleared (Task 17, `docs/re/combat-dispatch.md`); the
+  port carries it as `Game::rector_showdown` and implements **all three** of
+  its effects: no spectators (`1000:411d`, which sits *after* the counter
+  block so `^7Начинают собираться зрители` still prints and only the two
+  draws are suppressed), no fleeing (`1000:48eb`), and the death message that
+  names the killer with **no rescue behind it** (`1000:4f8c`, ahead of the
+  hospital's own gates).
+
+  **Nothing sets the flag**, because neither writer is modelled —
+  `1000:ae2d` / `1000:ae39` are the endgame's own two calls to
+  `FUN_1000_3d11` with opponent kinds 3 and 4, and this port has no endgame.
+  So the three arms are reachable only from a test, the same shape as
+  `Game::market_ban_countdown` below. That is a **reachability** gap, not an
+  implementation one: the difference matters, because the previous wording
+  sent a reader to write code that already exists. ~~**and the hospital
   rescue** (`1000:4fce`) — need fields `crate::model::Fighter` does not
   have.~~ **The hospital rescue is implemented** (Task 13,
   `Game::hospital_rescue`): it needs the den flag, `20ae:38cb` and
@@ -857,9 +885,39 @@ points at this entry.
   materialises either literal. What their arms do is still open.
 * **The quit message** (files `0xC3F3`, `0xC41A`, written at `1000:ee04`) and
   the university backstory (`0x7D81`..`0x7F1F`) — real strings, not wired up.
-* **Shop purchase effects** — `data/shops.json` rows deduct `price` and print
-  their text, but never change `strength` / `armor` / etc.: most rows have no
-  representable target on `Fighter`.
+* **Shop purchase effects — open for every row except three.**
+  `data/shops.json` rows deduct `price` and print their menu text, but never
+  change `strength` / `armor` / etc.: most rows have no representable target
+  on `Fighter`. Two further divergences on that generic path, both
+  pre-existing and both still open: it echoes the **menu line** where the
+  original prints each arm's own confirmation, and it refuses a
+  district-gated row, where the original's *buy* compares carry no district
+  test at all (`1000:cc04`..`1000:ccd8`: row 6's arm is gated only on item
+  flags, so a row the menu did not print is still buyable).
+
+  **`bmar` rows 7, 8 and 9 are done** (Task 18, `Game::buy_pistol_row`),
+  because they are what makes `20ae:394d` reachable and therefore what makes
+  `f` at either prompt do anything: `1000:ccd8` the pistol
+  (`mov byte [0x394d],1` and `add word [0x394f],3`), `1000:cd76` the
+  cartridges (`add word [0x394f],5`), `1000:cdf9` the silencer
+  (`mov byte [0x394e],1`, gated on the pistol AND on
+  `1000:ce00 cmp byte [0x3e32],0x19`). Each arm's own gates and refusal lines
+  are reproduced.
+
+  **Two original-behaviour findings from those three arms**, both reproduced
+  rather than fixed. Row 8's menu line reads `#^7 руб. Патроны - 6.` and
+  `1000:cda3` adds **five** — the confirmation line
+  `^2Получи пять пуль.. на руки` says five as well, so only the menu
+  disagrees. And `docs/re/tables.md`'s `bmar` gate column carries row 9's
+  `byte[20ae:394d]!=0` / `byte[20ae:3e32]==25` but not row 7's own
+  `[0x394d] == 0` (`1000:ccd8`, else `^6Ну.. ты.. ВАЩЕ ОФИГЕЛ!`) or row 8's
+  `[0x394d] != 0` (`1000:cd7b`, else `^6Нету пушки. Сначала купи пистолет`).
+
+  `20ae:394d`'s name is now right in `src/` too: it was
+  `Game::dealer_order_placed`, "a 150-rouble order placed with the dealers",
+  which the closed entry above had already called a stale name. It is
+  `Game::pistol`. `data/wander.json`'s `globals` still carries the old name —
+  a reviewed artifact, unchanged.
 * ~~**The joint (`kos`) heal formula** reuses beer's `FUN_1000_29c4` by
   analogy; the joint's own handler was not traced.~~ **Closed.** Both copies of
   the handler are traced: `1000:e97d` (top level) and `1000:4b17` (combat),
