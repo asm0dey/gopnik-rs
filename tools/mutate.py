@@ -119,14 +119,17 @@ MANIFEST = REPO / "tools" / "mutations.json"
 # perturb; the rest is what has to be there for `cargo test` and the Python
 # suites to run at all.
 SHADOW_TREE = ("Cargo.toml", "Cargo.lock", "build.rs",
-               "src", "tests", "data", "orig", "tools")
+               "src", "tests", "data", "orig", "tools", "docs")
 
 # Digested before and after every run.  Not just the five frozen oracles:
 # `orig/` is the binary and the save corpus, the rest of `data/` is extracted
 # tables the port compiles against, and `tools/` holds the one file a case
 # actually PATCHES (`rngtrace/combattrace.py`, the frozen-oracle refusal) --
 # the backstop has to cover that too.
-GUARDED = ("data", "orig", "tools")
+# `docs` joined the list in Task 16 fix round 1: `character-sheet-prose-address`
+# perturbs `docs/re/character-sheet.md`, and the backstop has to cover every
+# file a case actually patches.
+GUARDED = ("data", "orig", "tools", "docs")
 
 FROZEN = ("data/rng_trace.json", "data/state_trace.json",
           "data/combat_trace.json", "data/combat_vectors.json",

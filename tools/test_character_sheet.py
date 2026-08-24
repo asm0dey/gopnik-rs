@@ -34,10 +34,95 @@ BRANCHES = REPO / "data" / "branches.json"
 # The functions whose bodies hold a cited address, and their extents, taken
 # from data/branches.json rather than written down here.
 CITE = re.compile(r"\b1000:[0-9a-f]{4}\b")
+DOC = REPO / "docs" / "re" / "character-sheet.md"
+
+# `1000:248f` is the EXCLUSIVE end of the range `[1000:1a03, 1000:248f)`, so it
+# is one past the last instruction and cannot be a boundary.  It is the only
+# address in the prose that is not meant to be one, and naming it here is what
+# keeps "every other citation resolves" a real assertion rather than a
+# tolerance.
+NOT_A_BOUNDARY = {"1000:248f": "the exclusive end of the function's byte range"}
 
 
 def load_image():
     return addrmod.load_image(addrmod.read_exe())
+
+
+def near_calls_to(img, target_off):
+    """Every `e8 rel16` in `img` whose 16-bit-wrapped target is `target_off`.
+
+    The wrap is the point: two of the four call sites live at `1000:ec89` and
+    `1000:ee36`, where `off + 3 + disp` is `0x11a03`.  A scan that compares the
+    un-wrapped sum finds neither, which is how `docs/superpowers/RESUME.md`
+    named the wrong pair of callers for a whole session.
+    """
+    want = target_off & 0xFFFF
+    out = []
+    for off in range(len(img) - 3):
+        if img[off] != 0xE8:
+            continue
+        disp = int.from_bytes(img[off + 1:off + 3], "little", signed=True)
+        if (off + 3 + disp) & 0xFFFF == want:
+            out.append("1000:%04x" % off)
+    return out
+
+
+def far_calls_to(img, target_off):
+    """Every `9a <off16> <seg16>` in `img` whose offset word is `target_off`.
+
+    ANY segment word counts.  An earlier revision compared the segment against
+    `target_off // 16`, which is not a segment value under either convention in
+    `docs/re/METHODOLOGY.md` -- it only ever matched through the `0`
+    alternative beside it, so the scan was narrower than the claim it backed.
+    Ignoring the segment entirely is both simpler and strictly stronger: the
+    claim is "nothing far-calls this offset", and a hit under any segment word
+    is worth surfacing rather than filtering out.
+    """
+    want = (target_off & 0xFFFF).to_bytes(2, "little")
+    return ["1000:%04x" % off for off in range(len(img) - 4)
+            if img[off] == 0x9A and img[off + 1:off + 3] == want]
+
+
+def aligned_boundaries(img, branches):
+    """`{"1000:xxxx": Insn}` for every instruction an ALIGNED walk reaches.
+
+    Every segment-`1000` function in `data/branches.json` is decoded from its
+    own entry, not just the handful this file happens to cite, because the
+    prose cites addresses in `entry`, `FUN_1000_3d11`, `FUN_1000_1a03` and
+    `FUN_1000_074b` alike and a citation that lands outside the decoded set
+    would otherwise be reported as unaligned for the wrong reason.
+    """
+    out = {}
+    for f in branches["functions"]:
+        if f["seg"] != "1000":
+            continue
+        start = addrmod.image_off_of_citation(f["entry"])
+        for ins in dis16.decode_run(img, start, start + f["size"]):
+            out["1000:%04x" % ins.off] = ins
+    return out
+
+
+def strip_fences(md):
+    """The prose with ``` blocks removed.
+
+    Fenced blocks hold pasted disassembly with its own backticks; leaving them
+    in desynchronises the inline-code scan (a run of three backticks pairs
+    wrongly) and every span after the first fence is then read at an offset.
+    Found the hard way: the first version of the prose scan matched ZERO
+    `addr text` spans in a file that has twenty-six of them.
+    """
+    md = re.sub(r"^```.*?^```", "", md, flags=re.S | re.M)
+    # ``...`` -- markdown's way of writing a span that itself contains a
+    # backtick.  It desynchronises the single-backtick pairing exactly as a
+    # fence does, so it goes too.  Both removals are why the scan below is
+    # asserted to find a MINIMUM number of spans: a desync silently drops
+    # every span after it, and a check that quietly measures nothing is the
+    # defect this whole file exists to prevent.
+    return re.sub(r"``.*?``", "", md, flags=re.S)
+
+
+def inline_spans(md):
+    return [" ".join(x.split()) for x in re.findall(r"`([^`]+)`", md, re.S)]
 
 
 class SheetTest(unittest.TestCase):
@@ -50,14 +135,8 @@ class SheetTest(unittest.TestCase):
         # Decode every function that holds a cited address, once, from its
         # entry.  The keys of `cls.aligned` are exactly the instruction
         # boundaries an aligned walk reaches.
-        cls.aligned = {}
-        cls.insn = {}
-        for entry in ("1000:1a03", "1000:1348", "1000:3d11", "1000:ab59"):
-            f = cls.funcs[entry]
-            start = addrmod.image_off_of_citation(entry)
-            for ins in dis16.decode_run(cls.img, start, start + f["size"]):
-                cls.aligned["1000:%04x" % ins.off] = ins
-                cls.insn["1000:%04x" % ins.off] = ins
+        cls.aligned = aligned_boundaries(cls.img, cls.branches)
+        cls.insn = cls.aligned
 
     # ---------------------------------------------------------------- helpers
     def at(self, cit):
@@ -173,20 +252,11 @@ class SheetTest(unittest.TestCase):
         # And the whole image holds no OTHER call to it -- neither a fifth near
         # call nor a far one.  This is what makes "exactly these four" a
         # finding rather than a search that stopped early.
-        near = []
-        for off in range(len(self.img) - 3):
-            if self.img[off] == 0xE8:
-                d = int.from_bytes(self.img[off + 1:off + 3], "little", signed=True)
-                if (off + 3 + d) & 0xFFFF == target & 0xFFFF:
-                    near.append("1000:%04x" % off)
+        near = near_calls_to(self.img, target)
         self.assertEqual(sorted(near), sorted(cs["addr"] for cs in sites),
                          "the byte scan finds near calls the artifact does not "
                          "list (or the reverse): %r" % near)
-        seg = (target // 16)
-        far = [off for off in range(len(self.img) - 5)
-               if self.img[off] == 0x9A
-               and int.from_bytes(self.img[off + 1:off + 3], "little") == target & 0xFFFF
-               and int.from_bytes(self.img[off + 3:off + 5], "little") in (0, seg)]
+        far = far_calls_to(self.img, target)
         self.assertEqual(far, [], "a far call to the sheet exists at %r" % far)
 
     def test_sv_calls_a_different_function(self):
@@ -340,6 +410,164 @@ class SheetTest(unittest.TestCase):
                          "`stats` now appears in the image; the claim that the "
                          "hypothesis named a verb that does not exist would "
                          "have to be re-derived")
+
+
+class ScanTest(unittest.TestCase):
+    """The two byte scans, shown able to find something.
+
+    `test_the_call_sites_really_call_this_function` asserts each scan returns
+    exactly the expected set over the SHIPPED image, and over that image the
+    far-call answer is the empty list -- an assertion that passes whether the
+    scan works or not.  These run the same functions over a doctored copy that
+    really does contain the pattern, so "no far call exists" is a measurement
+    rather than a scan that never matched anything.
+    """
+
+    def setUp(self):
+        self.img = load_image()
+
+    def test_the_near_scan_wraps_at_64k(self):
+        found = near_calls_to(self.img, 0x1A03)
+        self.assertIn("1000:ec89", found)     # 0xec8c + 0x2d77 == 0x11a03
+        self.assertIn("1000:ee36", found)     # 0xee39 + 0x2bca == 0x11a03
+        self.assertIn("1000:4c35", found)     # negative rel16, no wrap
+        self.assertIn("1000:512b", found)
+        self.assertEqual(len(found), 4)
+
+    def test_the_near_scan_finds_a_planted_call(self):
+        doctored = bytearray(self.img)
+        at = 0x0100
+        disp = (0x1A03 - (at + 3)) & 0xFFFF
+        doctored[at:at + 3] = bytes([0xE8]) + disp.to_bytes(2, "little")
+        self.assertIn("1000:0100", near_calls_to(bytes(doctored), 0x1A03))
+
+    def test_the_far_scan_is_empty_on_the_shipped_image(self):
+        self.assertEqual(far_calls_to(self.img, 0x1A03), [])
+
+    def test_the_far_scan_finds_a_planted_call_under_any_segment(self):
+        # Both segment words: 0x0000 is the game code's relative segment, and
+        # 0x1a0 is what the old `target // 16` expression compared against.
+        # Neither is filtered now, so a plant under either is found.
+        for seg in (0x0000, 0x01A0, 0x0F78):
+            doctored = bytearray(self.img)
+            doctored[0x0100:0x0105] = (b"\x9a" + (0x1A03).to_bytes(2, "little")
+                                       + seg.to_bytes(2, "little"))
+            self.assertEqual(far_calls_to(bytes(doctored), 0x1A03),
+                             ["1000:0100"], "segment 0x%04x" % seg)
+
+
+class ProseTest(unittest.TestCase):
+    """`docs/re/character-sheet.md` re-derived from `orig/g.exe`.
+
+    The artifact half of the two-places rule was checked from the start; the
+    PROSE half was not, and `tools/test_character_sheet.py` did not open the
+    `.md` at all.  That is exactly where the self-disclosed
+    `1000:584a` -> `1000:5849` drift lived: 27 of the doc's citations -- the
+    whole rector-victory arm, `1000:ae36`, the `v`/`x`/`wes` compare sites --
+    appear only in prose and had no net under them.  These three tests are that
+    net, so the sentence at the top of the document is now true.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.img = load_image()
+        cls.branches = json.loads(BRANCHES.read_text(encoding="utf-8"))
+        cls.aligned = aligned_boundaries(cls.img, cls.branches)
+        cls.art = json.loads(ART.read_text(encoding="utf-8"))
+        cls.md = strip_fences(DOC.read_text(encoding="utf-8"))
+        cls.spans = inline_spans(cls.md)
+
+    def cs_literal(self, off):
+        n = self.img[off]
+        return self.img[off + 1:off + 1 + n].decode("cp866")
+
+    def known_literals(self):
+        """Every literal the doc or the artifact anchors to an address."""
+        offs = {int(m.group(1), 16)
+                for m in re.finditer(r"CS `0x([0-9a-f]{4})`", self.md)}
+
+        def walk(node, key):
+            if isinstance(node, dict):
+                if isinstance(node.get(key), str):
+                    yield node[key]
+                for v in node.values():
+                    yield from walk(v, key)
+            elif isinstance(node, list):
+                for v in node:
+                    yield from walk(v, key)
+        offs |= {int(o, 16) for o in walk(self.art, "cs_offset")}
+        return {self.cs_literal(o) for o in offs} | set(walk(self.art, "text"))
+
+    def test_every_prose_address_is_an_instruction_boundary(self):
+        cites = sorted({m.group(0) for m in CITE.finditer(self.md)})
+        self.assertGreater(len(cites), 100,
+                           "the prose scan found only %d citations; a scan "
+                           "that finds nothing must not pass" % len(cites))
+        bad = [c for c in cites
+               if c not in self.aligned and c not in NOT_A_BOUNDARY]
+        self.assertEqual(
+            bad, [],
+            "docs/re/character-sheet.md cites %r, which an aligned decode from "
+            "every segment-1000 function entry never reaches -- so it is a "
+            "byte offset, not an address" % bad)
+        for c, why in NOT_A_BOUNDARY.items():
+            if c in cites:
+                self.assertNotIn(c, self.aligned,
+                                 "%s is exempted as %s but IS a boundary; the "
+                                 "exemption has gone stale" % (c, why))
+
+    def test_every_prose_instruction_says_what_the_binary_says(self):
+        checked = 0
+        for span in self.spans:
+            m = re.match(r"^(1000:[0-9a-f]{4})\s+([a-z].*)$", span)
+            if not m:
+                continue
+            cit, text = m.groups()
+            self.assertIn(cit, self.aligned, "%r: not a boundary" % span)
+            checked += 1
+            self.assertEqual(
+                self.aligned[cit].text, text,
+                "docs/re/character-sheet.md writes `%s %s`, but tools/dis16.py "
+                "decodes %r there" % (cit, text, self.aligned[cit].text))
+        self.assertGreaterEqual(
+            checked, 20,
+            "only %d `1000:xxxx <instruction>` spans found in the prose; the "
+            "pattern has drifted and this test is checking almost nothing"
+            % checked)
+
+    def test_every_prose_literal_comes_out_of_the_binary(self):
+        # 1. every CS offset the prose names decodes to a real shortstring
+        offs = [int(m.group(1), 16)
+                for m in re.finditer(r"CS `0x([0-9a-f]{4})`", self.md)]
+        self.assertGreaterEqual(len(offs), 25, "only %d CS offsets" % len(offs))
+        for o in offs:
+            self.assertTrue(self.img[o], "CS 0x%04x has a zero length byte" % o)
+            self.cs_literal(o)          # raises on undecodable bytes
+        # 2. every `TEXT` (CS `0x....`) pair matches byte for byte.  The
+        #    negative lookahead keeps the ADDRESS span before such a pair from
+        #    being read as its text.
+        pairs = re.findall(r"`((?!1000:)[^`]+)`\s*\(CS `0x([0-9a-f]{4})`\)",
+                           self.md, re.S)
+        self.assertGreaterEqual(len(pairs), 20, "only %d pairs" % len(pairs))
+        for text, off in pairs:
+            self.assertEqual(
+                self.cs_literal(int(off, 16)), text,
+                "the prose quotes %r beside CS 0x%s, which holds %r"
+                % (text, off, self.cs_literal(int(off, 16))))
+        # 3. every run of Cyrillic inside inline code is part of some literal
+        #    the doc or the artifact anchors.  Runs, not whole spans, because
+        #    the prose legitimately quotes a label without its `^N` colour
+        #    prefix and writes things like `class 3 -> Подтсан`.
+        known = self.known_literals()
+        unmatched = sorted({run for span in self.spans
+                            for run in re.findall(r"[\u0400-\u04ff]+", span)
+                            if not any(run in k for k in known)})
+        self.assertEqual(
+            unmatched, [],
+            "Russian in docs/re/character-sheet.md that matches no literal in "
+            "orig/g.exe at any address the doc or the artifact names: %r"
+            % unmatched)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

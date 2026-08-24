@@ -151,8 +151,15 @@ class VacuousCaseTest(unittest.TestCase):
                       "vacuous-wrong-test-for-the-artifact", report)
         # And the real oracle is untouched by a run that FAILED, which is the
         # path a safety bug would hide in.
-        self.assertIn("real file(s) under data/, orig/, tools/ unchanged",
-                      report)
+        # Derived from `mutate.GUARDED`, not spelled out: pinning the literal
+        # made this test fail the day a root was ADDED (Task 16 added `docs`,
+        # for a case that patches a `.md`), which is a false alarm about the
+        # very property it is here to confirm -- that a FAILED run still left
+        # every real file alone.
+        self.assertIn("real file(s) under %s unchanged"
+                      % ("/, ".join(mutate.GUARDED) + "/"), report)
+        for root in mutate.GUARDED:
+            self.assertIn(root + "/", report)
 
     def test_an_assertion_that_cannot_fail_at_all_is_caught(self):
         """The smallest form: a throwaway assertion with no way to be false."""

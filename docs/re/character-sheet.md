@@ -4,12 +4,26 @@
 function in the binary, and until Task 16 nothing under `docs/re/` said a word
 about it. This is what it is.
 
-Machine-readable twin: **`data/character_sheet.json`**. Every address and every
-Russian literal below is also a record there, and
-`python3 tools/test_character_sheet.py` re-derives all of it from `orig/g.exe` —
-alignment (the address is a boundary an aligned walk from the enclosing
-function's entry reaches) *and* identity (the instruction there says what the
-record says). Four cases in `tools/mutations.json` show those checks going red.
+Machine-readable twin: **`data/character_sheet.json`**. Most of what follows is
+also a record there, and `python3 tools/test_character_sheet.py` re-derives
+**both halves** from `orig/g.exe`:
+
+- **the artifact** — every record's address checked for alignment (it is a
+  boundary an aligned walk from the enclosing function's entry reaches) *and*
+  identity (the instruction there says what the record says), plus every
+  literal, both table lookups, and the cited/uncited branch split;
+- **this file** — every `1000:xxxx` in the prose resolved to an instruction
+  boundary; every inline-code span that pairs an address with an instruction
+  compared against `tools/dis16.py`; and every Russian run inside inline code
+  traced back to a literal at an address the prose or the artifact names.
+
+The prose half did not exist when this document was first committed, and 27 of
+its citations — the whole rector-victory arm, `1000:ae36`, the `v`/`x`/`wes`
+compare sites — had no check under them at all. That is exactly where the
+one-byte drift on `1000:5849` lived, and it had to be found by hand. Added in
+fix round 1; on its first run it also caught two `jg`-for-`jnle` mnemonics and
+four Russian words quoting no address. Five cases in `tools/mutations.json`
+show these checks going red, one of them on this file.
 
 Addresses are Ghidra form A; `tools/addr.py` is the executable authority.
 `CS <hex>` offsets are image offsets inside the game's code segment, `20ae:`
@@ -51,7 +65,8 @@ the player's own sheet mid-fight (`1000:4c2e` / `1000:4c35`).
 
 **Established from flow.** `tools/rngtrace/verbprobe.py` breaks on three
 addresses under qemu+gdb — `1000:ae63` (the street prompt's `ReadLn`, tag `P`),
-`1000:441d` (the `Битва\` prompt's `ReadLn`, tag `C`), and `1000:1a03` itself
+`1000:441d` (the `Битва\` prompt's `ReadLn` — the prompt string is `^0Битва\`,
+CS `0x3179`, tag `C`), and `1000:1a03` itself
 (tag `T`) — types a scripted verb list, and credits every `T` to the line typed
 at the prompt stop that precedes it. gdb stops at the `ReadLn` *call*, before
 the line is read, so the window is unambiguous; the driver's screen
@@ -217,7 +232,7 @@ lines below.
 appended at `1000:1a90`, `WriteLn` at `1000:1aa4`.
 
 **Experience** — guarded by `1000:1aa9 cmp word [0x38a6],0x27` /
-`1000:1aae jg 0x1acb`: at level > 39 the line is skipped, which is what a
+`1000:1aae jnle 0x1acb`: at level > 39 the line is skipped, which is what a
 43-entry ladder with no next threshold needs.
 `^6Сейчас у тебя # опыта, А для прокачки надо #` (CS `0x1688`) with `[0x38ce]`
 and `[0x38d0]`.
@@ -318,7 +333,7 @@ what `docs/re/gaps.md` records about `20ae:38c3`.
 **Accuracy, from Ловкость alone.** `1000:21b0` copies `[0x38a0]` into
 `[bp-0x104]`.
 
-- `1000:21b7 cmp word [bp-0x104],0xe` / `1000:21bc jg 0x21e7`. At agility ≤ 14:
+- `1000:21b7 cmp word [bp-0x104],0xe` / `1000:21bc jnle 0x21e7`. At agility ≤ 14:
   `Точность #%` (CS `0x1909`) with `agility * 5 + 20` — `1000:21c9`/`21cb` are
   the two `shl ax,1`, `1000:21cd add ax,si` makes ×5, `1000:21cf add ax,0x14`.
 - Above 14: `Точность 90% ` (CS `0x1915`) with no newline, then
@@ -342,12 +357,30 @@ register: `1000:211d mov cx,0x7f` versus `1000:214d mov cx,0x80`, with
 
 **What is NOT established: the decimal value of those two constants.**
 `docs/re/rtl.md` already records that reading a 6-byte real as a decimal needs
-the layout confirmed against a known value, and that has not been done. The
-ordering *is* established — the second threshold is strictly above the first,
-since only the exponent-carrying register differs and it differs by one — but
+the layout confirmed against a known value, and that has not been done.
+
+The **ordering** is established, and it does not need the decimal values.
+`docs/re/rtl.md` establishes from flow that `0f78:1117`'s `or cl,cl` / `je`
+rejects a **zero divisor** — a Turbo Pascal `Real` is zero exactly when its
+exponent byte is zero, so `CL` holds the exponent byte, and `CX`'s high half
+plus `SI` and `DI` hold mantissa. Both comparands here have `si = di = 0` and
+differ only in `cx`, `0x007f` versus `0x0080`: same zero mantissa, exponent
+one step higher. So the second threshold is strictly above the first. The
+values themselves — whether that step is 0.25 → 0.5 or something else —
+would need the bias, which is the part `rtl.md` calls unestablished, and
 "25% and 50%" would be a guess. Registered in `docs/re/gaps.md`.
 
 ## The branch skeleton: 59 of 83 cited, 24 left
+
+**Two counts, two rules, and they do not agree — deliberately.** The artifact's
+own rule counts **59** cited (a branch whose address *or whose guard's address*
+appears in `data/character_sheet.json` outside the partition node). The
+project-wide `docs/re/*.md` metric counts **50** for this function, because it
+reads only the prose and nine of the artifact's addresses live in the JSON
+alone. The metric also counts a branch as cited when the prose names it merely
+to say it is *not* explained — `1000:1dd7` below is exactly that, named as the
+end of a range in the "left uncited" list. Neither number is wrong; read
+"cited" as "the address is on the map", never as "the branch is understood".
 
 `data/character_sheet.json`'s `branch_partition` holds the split, recomputed by
 the test from `data/branches.json` and from the artifact's own citations (the
@@ -368,7 +401,8 @@ memory-operand `jmp` or `call`. Grouped:
   `data/branches.json`, because the flags come from `rtl_real_op_cmp`), and the
   four accuracy branches.
 - **Formatting decisions, left uncited (24):** the section-header disjunctions
-  (`Феньки: ` at `1000:1bc2`/`1000:1bc9`, `Мощные феньки: ` at
+  (`Феньки: ` (CS `0x16d9`) at `1000:1bc2`/`1000:1bc9`, `Мощные феньки: `
+  (CS `0x1710`) at
   `1000:1c38`..`1000:1c46`, the weapon line at `1000:1e06`..`1000:1e30`), the
   ammo-quantity flavour (`1000:1dab`..`1000:1dd7`), and the dim `^4` arms of
   the best-item-wins pairs. They decide whether a *header* prints and in which

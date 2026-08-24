@@ -125,7 +125,7 @@
     },
     {
       "label": "character-sheet-literal-text",
-      "defends": "tools/test_character_sheet.py decodes every cited CS shortstring out of orig/g.exe and compares it with the text this artifact and docs/re/character-sheet.md quote, so a misquoted Russian label cannot survive in either place.",
+      "defends": "tools/test_character_sheet.py decodes every cited CS shortstring out of orig/g.exe and compares it with the text data/character_sheet.json records. The PROSE side is a separate check with its own case below (character-sheet-prose-address); this one speaks only for the artifact.",
       "artifact": "data/character_sheet.json",
       "mutate": {"op": "json-set", "path": ["flag_lines", 0, "literal", "text"], "from": "^1\u041a\u0440\u0435\u0441\u0442\u0438\u043a(\u0423\u0434\u0430\u0447\u0430 +2) ", "to": "^1\u041a\u0440\u0435\u0441\u0442\u0438\u043a(\u0423\u0434\u0430\u0447\u0430 +3) "},
       "test": ["python3", "tools/test_character_sheet.py", "SheetTest.test_every_cs_literal_decodes_to_the_recorded_text"],
@@ -138,6 +138,14 @@
       "mutate": {"op": "json-set", "path": ["call_sites", 0, "addr"], "from": "1000:ec89", "to": "1000:ec8c"},
       "test": ["python3", "tools/test_character_sheet.py", "SheetTest.test_the_call_sites_really_call_this_function"],
       "expect": "is not a near call"
+    },
+    {
+      "label": "character-sheet-prose-address",
+      "defends": "tools/test_character_sheet.py's ProseTest resolves every 1000:xxxx in docs/re/character-sheet.md against an aligned decode from every segment-1000 function entry. Without it the doc's 27 prose-only citations have no net -- which is where the self-disclosed 1000:584a -> 1000:5849 drift lived, found by hand because nothing checked. The address perturbed here, 1000:5097, is one of those 27 -- it appears nowhere in data/character_sheet.json, so no artifact-side check can see it.",
+      "artifact": "docs/re/character-sheet.md",
+      "mutate": {"op": "text-replace", "from": "`1000:5097`", "to": "`1000:5098`", "count": 1},
+      "test": ["python3", "tools/test_character_sheet.py", "ProseTest.test_every_prose_address_is_an_instruction_boundary"],
+      "expect": "which an aligned decode from every segment-1000 function entry never reaches"
     },
     {
       "label": "character-sheet-branch-partition",
