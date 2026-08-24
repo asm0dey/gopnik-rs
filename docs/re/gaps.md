@@ -307,7 +307,14 @@ add that carry into the *magnitude*, before the sign is applied at
   described bucket 1's toggle as having no reader. `FUN_1000_0d14` reads it
   twice — `1000:0d86` and `1000:0e54` — so it changes both the draw *count*
   and the draw *values* of every later encounter. The port carries it as
-  `Game::flag_3693`.
+  `Game::flag_3693`. **There is a third reader, found in Task 17:**
+  `1000:4ebc`, the in-combat pistol arm, where the flag (or the silencer
+  `20ae:394e`) is what allows a shot at all. `python3 tools/re_query.py
+  xrefs-to 20ae:3693` accepts **seven** references in total — `1000:b3c4` /
+  `1000:b3ce` (the toggle), `1000:b3d1` and `1000:b45b` in `entry`,
+  `1000:0d86` and `1000:0e54`, and `1000:4ebc`. Saying "the readers are
+  `1000:0d86` and `1000:0e54`" was a completeness claim that stopped the next
+  search, in the very entry written to correct one.
 
 #### The fight flow around it
 
@@ -385,9 +392,10 @@ cannot move the RNG sequence.
   this section said `20ae:3693` was not modelled because "a field carrying
   the toggle would have no reader". That was wrong, and it is the "scan whose
   completeness claim stopped the next search" failure `METHODOLOGY.md` names:
-  the readers are `1000:0d86` and `1000:0e54`, both inside `FUN_1000_0d14`,
-  and between them they change the draw count and the draw values of every
-  later encounter. It is `Game::flag_3693`.
+  `1000:0d86` and `1000:0e54`, both inside `FUN_1000_0d14`, change the draw
+  count and the draw values of every later encounter, and Task 17 found a
+  third reader at `1000:4ebc` in `FUN_1000_3d11` — see the `20ae:3693` entry
+  above for the full seven-reference list. It is `Game::flag_3693`.
 * Bucket 4 (`1000:b836`) branches on the joint-buff countdown `[0x38cd]` and
   writes name-keyed flavour built with `0f78:0ae7` / `0f78:0b66` string calls.
   Nothing outside bucket 4 reads what it writes, and it spends no draw.

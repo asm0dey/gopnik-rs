@@ -29,9 +29,10 @@ offsets are DGROUP. Russian is verbatim, typos included.
 ## The shape: nine independent `if`s, not an `if`/`else` chain
 
 **Established from flow.** One `Битва\` prompt runs the whole chain top to
-bottom. Each compare's arm ends by jumping to the *next* compare's setup, never
-past it, so a verb's handler is followed by every later compare — and the
-buffer is not reset in between.
+bottom. No arm returns to the top of the loop — `1000:583e jmp 0x40f2` is the
+function's only back edge — so every arm rejoins the straight line and a
+verb's handler is followed by every compare after it, with the buffer never
+reset in between.
 
 That is why there are **two** `k` compares. `1000:4440` matches `k` and jumps
 into the blow loop at `1000:444a`; the blow loop's three exits
@@ -73,7 +74,8 @@ The prompt itself:
 imported, and it is right in every row. Two things it did not say: the `k`
 row's `jz` target is the blow loop (so the second `k` compare is reachable),
 and the second `k` compare's own guard is `1000:4c64 cmp word [0x3c80],0x1` /
-`1000:4c69 jl 0x4ca0` — the backup counter must already be non-zero.
+`1000:4c69 jl 0x4ca0` — the backup counter must already be at least 1, i.e.
+the backup must have been called.
 
 ### `h` and `mh` are dispatched too, from a subroutine
 
@@ -186,14 +188,14 @@ table predicts.
 
 ## The flee arm — `[1000:48eb, 1000:4afb)`
 
-**Established from flow.** Three refusals, then the penalty. No arm of it draws
-a random number: there is no `9a 4b 11 78 0f` anywhere in
-`[1000:48eb, 1000:4afb)`.
+**Established from flow.** Two refusals, a free exit at level 0, then the
+penalty. No arm of it draws a random number: there is no `9a 4b 11 78 0f`
+anywhere in `[1000:48eb, 1000:4afb)`.
 
 1. **`1000:48eb cmp byte [0x3c83],0x1` / `1000:48f0 jnz 0x490e`** — the rector
    showdown. Prints `^4Ректор: Кудa? Стоять! Бейся до конца трусливый урод!`
-   (CS `0x33bf`) and `1000:490b` jumps to `1000:4afb`, the next compare. The
-   fight continues.
+   (CS `0x33bf`) and `1000:490b` jumps to `1000:4afb`, the next step in the
+   chain. The fight continues.
 2. **`1000:490e cmp byte [0x38b1],0x1` / `1000:4913 jnz 0x4931`** — a broken
    leg. `^4Ты не можешь убежать на сломаной ноге.` (CS `0x33f6`), then
    `1000:492e` jumps to `1000:4afb`. The fight continues.
@@ -207,7 +209,7 @@ bottom of the loop tests it, and `1000:583e jmp 0x40f2` is the back edge. The
 other two writers are `1000:5077` (death or hospital) and `1000:51a2`
 (victory).
 
-### The penalty: `growth_log[level]`, applied in reverse
+### The penalty: `growth_log[level]`, applied inverted
 
 **Established from flow.** `docs/re/combat.md` recorded this as "replayed in
 reverse when the player flees (`1000:499a`)". The address is the `^4Сила -1 `
@@ -359,23 +361,36 @@ equal. A scan of every branch target in `FUN_1000_3d11` finds **no** jump into
 and there is no second entry that could satisfy the test. The literal at
 CS `0x36ab` is therefore in the image and never printed.
 
-The same scan shows a second consequence, and this one is reachable: because
-`1000:4c7c` also increments, the counter can be raised from 6 to 7 by a `k` and
-then to 8 by `1000:4e1f` in the same prompt, and `1000:4e43` tests for
-**exactly** 7. Past 8 the "backup beaten" reset is unreachable and only the
-cred exhaustion at `1000:4e79` can end the backup.
+A second consequence of there being **two** increment sites, and this one is
+reachable: `1000:4c7c` can raise the counter from 6 to 7 on a `k`, and
+`1000:4e1f` can then raise it to 8 in the same prompt, while `1000:4e43` tests
+for **exactly** 7. Above 7 the "backup beaten" reset is unreachable and only
+the cred exhaustion at `1000:4e79` can end the backup.
 
 ## The pistol — `f`, `[1000:4eb2, 1000:4f82)`
 
 **Established from flow.**
 
 - `1000:4eb2 cmp byte [0x394d],0x0` / `1000:4eb7 jnz 0x4ebc` — **no pistol,
-  no message**: `1000:4eb9` jumps straight to the death test. This is the one
-  verb the dispatcher accepts and answers with nothing.
+  no message**: `1000:4eb9` jumps straight to the death test. An accepted verb
+  that prints nothing at all, which is `docs/re/METHODOLOGY.md`'s "absence of
+  visible response is not absence of dispatch" with the dispatch now read off
+  the compare rather than inferred.
 - `1000:4ebc cmp byte [0x3693],0x0` / `1000:4ec1 jnz 0x4ee6` and
   `1000:4ec3 cmp byte [0x394e],0x0` / `1000:4ec8 jnz 0x4ee6` — shooting needs
-  either `20ae:3693` set or the silencer `20ae:394e`; otherwise
+  either `20ae:3693` set **or** the silencer `20ae:394e`; otherwise
   `^6Тельзя тут стрелять! Менты накроют!` (CS `0x3716`).
+
+  **`1000:4ebc` is a third reader of `20ae:3693`, and `docs/re/gaps.md` says
+  there are two.** Its entry reads "the readers are `1000:0d86` and
+  `1000:0e54`, both inside `FUN_1000_0d14`" — a completeness claim that
+  stopped the next search, which is the failure `docs/re/METHODOLOGY.md`
+  names by that phrase and which that same entry was written to correct.
+  `python3 tools/re_query.py xrefs-to 20ae:3693` accepts seven references:
+  the toggle's read/write pair at `1000:b3c4`/`1000:b3ce`, two more reads in
+  `entry` at `1000:b3d1` and `1000:b45b`, the two in `FUN_1000_0d14`, and this
+  one. What the flag *means* is still not established; `docs/re/gaps.md` has
+  it as a wander toggle flipped in bucket 1. The entry there is corrected.
 - `1000:4ee6 cmp word [0x394f],0x0` / `1000:4eeb jle 0x4f69` — out of
   cartridges gives `^6Чё за батва? Блин патроны кончились!` (CS `0x37a5`).
 - `1000:4eed dec [0x394f]` spends one.

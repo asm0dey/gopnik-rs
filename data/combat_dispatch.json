@@ -1833,6 +1833,48 @@
         "text": "cmp byte [bp+0x4],0x4"
       },
       "never_cleared": true
+    },
+    "20ae:3693": {
+      "name": "the wander toggle bucket 1 flips",
+      "reference_count": 7,
+      "finding": "docs/re/gaps.md said the readers are 1000:0d86 and 1000:0e54, both inside FUN_1000_0d14.  1000:4ebc is a third, in the in-combat pistol arm.  What the flag MEANS is still not established.",
+      "references": [
+        {
+          "addr": "1000:0d86",
+          "text": "cmp byte [0x3693],0x0",
+          "in_function": "FUN_1000_0d14"
+        },
+        {
+          "addr": "1000:0e54",
+          "text": "cmp byte [0x3693],0x0",
+          "in_function": "FUN_1000_0d14"
+        },
+        {
+          "addr": "1000:4ebc",
+          "text": "cmp byte [0x3693],0x0",
+          "in_function": "FUN_1000_3d11"
+        },
+        {
+          "addr": "1000:b3c4",
+          "text": "cmp byte [0x3693],0x0",
+          "in_function": "entry"
+        },
+        {
+          "addr": "1000:b3ce",
+          "text": "mov [0x3693],al",
+          "in_function": "entry"
+        },
+        {
+          "addr": "1000:b3d1",
+          "text": "cmp byte [0x3693],0x0",
+          "in_function": "entry"
+        },
+        {
+          "addr": "1000:b45b",
+          "text": "cmp byte [0x3693],0x0",
+          "in_function": "entry"
+        }
+      ]
     }
   },
   "live_probe": {

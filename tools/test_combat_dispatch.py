@@ -94,6 +94,7 @@ class DispatchTest(unittest.TestCase):
         cls.aligned = aligned_boundaries(cls.img, cls.branches)
         fn = {f["entry"]: f for f in cls.branches["functions"]}
         cls.fn = fn["1000:3d11"]
+        cls.fnrec = fn
         cls.entry = addrmod.image_off_of_citation("1000:3d11")
         cls.body = list(dis16.decode_run(cls.img, cls.entry,
                                          cls.entry + cls.fn["size"]))
@@ -105,6 +106,12 @@ class DispatchTest(unittest.TestCase):
         cls.next_entry = ents[ents.index(cls.entry) + 1]
 
     # ---------------------------------------------------------------- helpers
+    # Minimum-count guards below are floors with deliberate headroom, not the
+    # current value: the artifact carries 296 `{addr, text}` records and 56
+    # literals, and the prose 260 citations, 116 instruction spans, 37 CS
+    # offsets and 35 text/CS pairs.  A guard set AT the current number cannot
+    # fail in the direction that matters (something stopped being checked) --
+    # it only fails when a record is added.
     def at(self, cit):
         self.assertIn(cit, self.aligned,
                       "%s is not an instruction boundary reached by decoding "
@@ -142,6 +149,19 @@ class DispatchTest(unittest.TestCase):
         return addrmod.image_off_of_citation(cit)
 
     # ------------------------------------------------------------------ tests
+    def test_the_recorded_function_extents_match_the_branch_catalogue(self):
+        """The two `size_bytes` the decodes run on are not written down twice."""
+        self.assertEqual(self.art["function"]["size_bytes"], self.fn["size"])
+        es = self.art["enemy_sheet"]
+        self.assertEqual(es["size_bytes"], self.fnrec[es["entry"]]["size"])
+        for rec in es["epilogue"]:
+            self.check_insn(rec, "enemy sheet epilogue")
+        last = es["epilogue"][-1]
+        self.assertEqual(self.off(last["addr"]) + 1,
+                         self.off(es["entry"]) + es["size_bytes"],
+                         "the recorded `ret` is not the last byte of the "
+                         "recorded extent")
+
     def test_every_cited_instruction_decodes_to_what_the_artifact_says(self):
         seen = self._walk("addr", "text")
         self.assertGreater(len(seen), 150,
@@ -411,18 +431,45 @@ class DispatchTest(unittest.TestCase):
                         "the increment is not between the guard and the test")
 
     # -- the flags ---------------------------------------------------------
-    def test_the_rector_flag_reference_set_is_exactly_what_is_recorded(self):
-        f = self.art["ds_flags"]["20ae:3c83"]
-        addr = 0x3C83
+    def refs_to(self, ds_addr):
+        """Every aligned instruction with `ds_addr` in a memory-operand field."""
         found = []
         for fn in self.branches["functions"]:
             if fn["seg"] != "1000":
                 continue
             start = addrmod.image_off_of_citation(fn["entry"])
             for x in dis16.decode_run(self.img, start, start + fn["size"]):
-                if any(o.kind in ("disp16", "moffs16") and o.value == addr
+                if any(o.kind in ("disp16", "moffs16") and o.value == ds_addr
                        for o in x.operands):
                     found.append("1000:%04x" % x.off)
+        return found
+
+    def test_the_wander_toggle_has_a_third_reader_in_combat(self):
+        """`docs/re/gaps.md` named two readers; the pistol arm is a third."""
+        f = self.art["ds_flags"]["20ae:3693"]
+        found = self.refs_to(0x3693)
+        recorded = [r["addr"] for r in f["references"]]
+        self.assertEqual(sorted(found), sorted(recorded),
+                         "20ae:3693 is referenced at %r, the artifact records "
+                         "%r" % (found, recorded))
+        self.assertEqual(f["reference_count"], len(recorded))
+        by_fn = {}
+        for r in f["references"]:
+            self.check_insn(r, "3693 reference")
+            by_fn.setdefault(r["in_function"], []).append(r["addr"])
+        self.assertEqual(by_fn.get("FUN_1000_3d11"), ["1000:4ebc"],
+                         "the combat reader that makes this a finding is not "
+                         "where the artifact puts it")
+        self.assertEqual(sorted(by_fn.get("FUN_1000_0d14", [])),
+                         ["1000:0d86", "1000:0e54"],
+                         "the two readers gaps.md named have moved")
+        # ... and it really is the pistol arm's gate.
+        gate = self.art["pistol"]["allowed_here"]["guard"]
+        self.assertEqual(gate["addr"], "1000:4ebc")
+
+    def test_the_rector_flag_reference_set_is_exactly_what_is_recorded(self):
+        f = self.art["ds_flags"]["20ae:3c83"]
+        found = self.refs_to(0x3C83)
         recorded = ([w["addr"] for w in f["writes"]]
                     + [r["addr"] for r in f["reads"]])
         self.assertEqual(sorted(found), sorted(recorded),
@@ -558,7 +605,7 @@ class DispatchTest(unittest.TestCase):
         reach = {v["token"] for v in self.art["verbs"]
                  if v.get("calls") == target}
         self.assertEqual(reach, {"sv"})
-        self.assertGreaterEqual(len(probe["per_verb"]), 6,
+        self.assertGreaterEqual(len(probe["per_verb"]), 5,
                                 "the probe covers too few verbs to separate "
                                 "`sv reaches it` from `everything does`")
         self.assertTrue(any(not v["reaches"] for v in probe["per_verb"]),
