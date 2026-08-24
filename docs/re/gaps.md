@@ -889,11 +889,19 @@ are the questions that pass left open, and the ones it created.
   `Fighter::armor` there. `data/wander.json` is a reviewed artifact this task
   did not modify, so its `globals` entry still reads `unk_38b2`; that is a
   stale name, not a disagreement.
-* **The item at `DS:394d`.** Bought from the dealers for 150 roubles at
-  `1000:cd05` (price byte `DS:0b3e`), and it arms the 25-walk delivery counter
-  `DS:3e32` that `1000:af1d` drives. `docs/re/tables.md` calls that counter
-  "the silencer"; the purchase's own name string was not traced, so
-  `data/wander.json` keeps the neutral `dealer_order_placed`.
+* ~~**The item at `DS:394d`.**~~ **CLOSED by Task 16** — it is the **pistol**.
+  Bought from the dealers for 150 roubles at `1000:cd05` (price byte
+  `DS:0b3e`), and it arms the 25-walk delivery counter `DS:3e32` that
+  `1000:af1d` drives. The character sheet names it, from flow and from a
+  second site: `1000:1d38 cmp byte [0x394d],0x0` / `1000:1d3d jnz 0x1d42`,
+  and the taken arm runs `1000:1d42`..`1000:1d51 mov di,0x17b8` —
+  `^1У тебя есть пистолет` — with **no branch between `1000:1d42` and
+  `1000:1d51`**, so the label is unconditional on that flag. `20ae:394e` is
+  the silencer (`1000:1d6a`, `^1 с гушителем`) and `20ae:394f` the patron
+  count (`1000:1d8a`), which is what `docs/re/tables.md:290` already read from
+  the other direction. `data/wander.json`'s `dealer_order_placed` is a **stale
+  name** for `20ae:394d`, the same way its `unk_38b2` is above — the artifact
+  was not modified.
 * **`1000:4aa5` sets the Den flag while printing a refusal.** The byte is
   `c6 06 96 36 01` (verified) and the line is
   `^4Такого конявого непустят в местный притон!` (file `0x4D42`); the den gate
@@ -1135,7 +1143,7 @@ None of these moves a draw; all three are output or state the replay caught.
 
 The map is `docs/re/character-sheet.md`; the machine-readable twin is
 `data/character_sheet.json`, checked by `tools/test_character_sheet.py` and
-defended by four `tools/mutations.json` cases.
+defended by five `tools/mutations.json` cases (four over the artifact, one over the prose).
 
 ### Closed
 
@@ -1153,10 +1161,13 @@ defended by four `tools/mutations.json` cases.
   the enemy at 0 hp, ending in the sheet at `1000:512b` and
   `FUN_1000_0aec`. Distinct from the rector *death* branch (`1000:4f8c`),
   which stays open above.
-* **Six DGROUP bytes now have names off the sheet's own labels**: `20ae:38b5`
-  Бутсы, `20ae:38b8` Понтовые бутсы, `20ae:394a` Зубная защита, `20ae:394e`
-  глушитель, `20ae:394f` the patron count, and `20ae:38b2` confirmed a third
-  time as Броня.
+* **Seven DGROUP bytes now have names off the sheet's own labels**:
+  `20ae:38b5` Бутсы, `20ae:38b8` Понтовые бутсы, `20ae:394a` Зубная защита,
+  `20ae:394d` **пистолет**, `20ae:394e` глушитель, `20ae:394f` the patron
+  count, and `20ae:38b2` confirmed a third time as Броня.
+  `20ae:394d` is the one two other files explicitly asked for — see the
+  closed entry above and `docs/re/wander.md:475`; the first version of this
+  list omitted it, which a review caught.
 
 ### Opened
 

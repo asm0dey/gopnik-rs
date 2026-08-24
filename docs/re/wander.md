@@ -472,11 +472,13 @@ unknown before:
   at `1000:dba0` (which also does money `+= 2`, `[0x38cb] -= 2`).
 * **`20ae:3c83` — endgame armed.** Written only at `1000:7364` and
   `1000:ae13`; read at `1000:411d`, `1000:48eb`, `1000:4f8c`, `1000:ae18`.
-* **`20ae:394d`** — set at `1000:cd05` by a 150-rouble dealer purchase
-  (price byte `DS:0b3e`); arms the 25-walk `DS:3e32` counter.
-  `docs/re/tables.md` calls that counter "the silencer"; the item's name is
-  **not** established here, so the JSON keeps the neutral
-  `dealer_order_placed`.
+* **`20ae:394d` — the pistol.** Set at `1000:cd05` by a 150-rouble dealer
+  purchase (price byte `DS:0b3e`); arms the 25-walk `DS:3e32` counter. The
+  name was open until Task 16 read it off the character sheet:
+  `1000:1d38 cmp byte [0x394d],0x0` selects the arm that prints
+  `^1У тебя есть пистолет` at `1000:1d51`, with no branch in between — see
+  `docs/re/character-sheet.md`. The JSON's `dealer_order_placed` is now a
+  stale name, not a disagreement.
 * **`20ae:38b2`** — left as `unk_38b2`. `1000:81e9` increments it under
   `^1Накладываю на тебя защиту!`; no consumer was traced.
 
@@ -593,7 +595,9 @@ that assumes a bounded per-turn draw count will be wrong on bucket 3.
     routine, not to the wander turn's own straight-line sequence.
 * Whether `FUN_1000_3d11(4)` returns, and therefore whether the chapter-5
   block at `1000:ae1f` really re-runs every turn.
-* The name of the item at `DS:394d`.
+* ~~The name of the item at `DS:394d`.~~ **CLOSED by Task 16** — the pistol,
+  named by the character sheet at `1000:1d38`/`1000:1d51`
+  (`docs/re/character-sheet.md`).
 * `unk_38b2`.
 * ~~No live breakpoint was used.~~ **Done in Task 11d** — `tools/rngtrace`,
   `docs/re/rng-trace.md`, `data/rng_trace.json`. The fourteen in-range sites

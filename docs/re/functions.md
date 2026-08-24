@@ -13,7 +13,7 @@ regenerate with `./tools/ghidra/run_ghidra.sh`).
 |------:|-------------|----------------|------:|-----------|
 | 17143 | 1000:ab59   | entry          | 33    | (none — root) |
 |  6971 | 1000:3d11   | FUN_1000_3d11  | 25    | entry |
-|  2700 | 1000:1a03   | FUN_1000_1a03  | 12    | entry, FUN_1000_3d11 |
+|  2700 | 1000:1a03   | FUN_1000_1a03  | 12    | entry, FUN_1000_3d11 — **the character sheet**, `docs/re/character-sheet.md` |
 |  2527 | 1000:6a0d   | FUN_1000_6a0d  | 24    | entry |
 |  1612 | 1000:7c67   | FUN_1000_7c67  | 9     | entry |
 |  1196 | 1000:0d14   | FUN_1000_0d14  | 10    | entry |
@@ -69,6 +69,17 @@ contains the combat routine, but the decompiled C uses only generic Ghidra
 variable names (no strings, no field names) and nothing in the disassembly
 positively distinguishes "combat" from "inventory", "shop", or another
 top-level screen.
+
+> **Superseded in part.** `FUN_1000_3d11` is **combat**, not the main loop
+> (`docs/re/combat.md`); `entry` (`1000:ab59`) is the main loop and command
+> dispatch (`docs/re/command-dispatch.md`); and `FUN_1000_1a03` is the
+> **character sheet** — mapped in Task 16, `docs/re/character-sheet.md`. It
+> takes no parameters and calls nothing but the Borland runtime, so it is not
+> a candidate for anything else. The `called_by` column above is also
+> incomplete for it: there are **four** call sites in those two functions
+> (`1000:ec89`, `1000:ee36`, `1000:4c35`, `1000:512b`), two of which are near
+> calls whose displacement wraps 16-bit. The paragraphs below are kept as the
+> record of what was believed at the time.
 
 **This is a hand-off, not a conclusion.** Per the RE ground rules for this
 project ("unknown means unknown"), we are not asserting which of
