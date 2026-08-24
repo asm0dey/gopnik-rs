@@ -1,0 +1,261 @@
+{
+  "note": "Task 16 Step 1: which typed verbs enter FUN_1000_1a03.  Live, under qemu+gdb, against orig/g.exe with RandSeed pinned by patching a COPY.  Nothing here comes from src/, and this file is a report, not a replay oracle.",
+  "harness": "tools/rngtrace/verbprobe.py",
+  "seed": 305419896,
+  "seed_hex": "0x12345678",
+  "seed_patch": {
+    "file_offset": "0x12230",
+    "ghidra_address": "1f78:11e0",
+    "runtime_seg_off": "0f78:11e0",
+    "bytes_before": "b4 2c cd 21 89 0e 7e 36 89 16 80 36 cb",
+    "bytes_after": "c7 06 7e 36 78 56 c7 06 80 36 34 12 cb",
+    "length": 13,
+    "seed": 305419896,
+    "seed_hex": "0x12345678",
+    "source": "/home/finkel/work_self/gopnik-rs/orig/g.exe",
+    "source_md5": "10eb0af07a2d2f5e9da790df7058891c",
+    "patched_copy": "/home/finkel/work_self/gopnik-rs/build/rngtrace/verbprobe/gamedir/G.EXE",
+    "patched_md5": "0eecede86797b952f3e32df59129b8b7"
+  },
+  "load_base": {
+    "load_seg": 8779,
+    "relocations_checked": 1580,
+    "relocations_total": 1580,
+    "image_base": 140464,
+    "image_base_hex": "0x224B0",
+    "anchor1_image_off": "0x2200",
+    "anchor2_image_off": "0xca33",
+    "anchor_window": 64
+  },
+  "runtime_checks": {
+    "random_linear": "0x32D7B",
+    "random_bytes": "e8 5a 00 8b dc 8b ca 36 f7 67 04 8b c1 8b ca 36 f7 67 04 03 c1 83 d2 00 8b c2 ca 02 00",
+    "randomize_linear": "0x32E10",
+    "randomize_bytes": "c7 06 7e 36 78 56 c7 06 80 36 34 12 cb",
+    "randseed_at_attach": "0x00000000",
+    "randseed_state": "image value -- patched Randomize has not run yet"
+  },
+  "guest_progressed": {
+    "screen_changed_during_drive": true,
+    "randseed_moved_during_drive": true
+  },
+  "final_state": {
+    "agility_38a0": 3,
+    "beer_38c3": 0,
+    "class_389c": 3,
+    "dmg_max_38aa": 3,
+    "dmg_min_38a8": 1,
+    "enemy_beer_396a": 2,
+    "enemy_hlam_396e": 0,
+    "enemy_money_396c": 5,
+    "hlam_38c9": 0,
+    "hp_38ac": 28,
+    "hpmax_38ae": 28,
+    "level_38a6": 0,
+    "luck_38a4": 3,
+    "money_38c7": 0,
+    "street_cred_38cb": 0,
+    "strength_389e": 3,
+    "vitality_38a2": 3,
+    "xp_38ce": 0,
+    "xp_threshold_38d0": 10,
+    "broken_jaw_38b0": 0,
+    "broken_leg_38b1": 0,
+    "den_errand_1_3b78": 0,
+    "den_errand_2_3b79": 0,
+    "district_3692": 1,
+    "flag_3695": 0,
+    "flag_club_3699": 1,
+    "flag_den_3696": 0,
+    "flag_girl_3697": 1,
+    "flag_gym_369a": 0,
+    "flag_market_3694": 1,
+    "flag_vet_3698": 1,
+    "has_mobile_38bb": 0,
+    "ring_38c1": 0,
+    "unk_38b2": 0,
+    "randseed_367e": 510377501
+  },
+  "markers": {
+    "P": {
+      "ghidra": "1000:ae63",
+      "what": "the top-level prompt's ReadLn (9a c6 06 78 0f)"
+    },
+    "C": {
+      "ghidra": "1000:441d",
+      "what": "the `Битва\\` prompt's ReadLn (9a c6 06 78 0f)"
+    },
+    "T": {
+      "ghidra": "1000:1a03",
+      "what": "FUN_1000_1a03's prologue (55 89 e5)"
+    }
+  },
+  "run": {
+    "class_value": 3,
+    "class_name": "Пацан",
+    "class_source": "read from the guest's own DS:389c at the end of the run",
+    "class_answer": 0,
+    "class_answer_agrees_with_guest": true,
+    "district_key": "1",
+    "creation": {
+      "district_prompt_seen": false,
+      "loaded_save": false,
+      "district_key": "1"
+    },
+    "street_plan": [
+      "s",
+      "stats",
+      "i",
+      "w",
+      "s",
+      "w"
+    ],
+    "combat_plan": [
+      "sv",
+      "sv",
+      "s",
+      "run"
+    ],
+    "street_filler": "w",
+    "combat_filler": "run",
+    "actions": 12,
+    "walks": 2,
+    "street_plan_consumed": 6,
+    "combat_plan_consumed": 4,
+    "guest_left_the_game": false,
+    "lines_typed_elsewhere": [
+      {
+        "prompt": "question",
+        "typed": "y"
+      }
+    ]
+  },
+  "marker_stream": "PTPPPPTPCCCTCP",
+  "prompt_windows": [
+    {
+      "index": 1,
+      "kind": "street",
+      "sheet_entries": 1,
+      "line": "s"
+    },
+    {
+      "index": 2,
+      "kind": "street",
+      "sheet_entries": 0,
+      "line": "stats"
+    },
+    {
+      "index": 3,
+      "kind": "street",
+      "sheet_entries": 0,
+      "line": "i"
+    },
+    {
+      "index": 4,
+      "kind": "street",
+      "sheet_entries": 0,
+      "line": "w"
+    },
+    {
+      "index": 5,
+      "kind": "street",
+      "sheet_entries": 1,
+      "line": "s"
+    },
+    {
+      "index": 6,
+      "kind": "street",
+      "sheet_entries": 0,
+      "line": "w"
+    },
+    {
+      "index": 7,
+      "kind": "combat",
+      "sheet_entries": 0,
+      "line": "sv"
+    },
+    {
+      "index": 8,
+      "kind": "combat",
+      "sheet_entries": 0,
+      "line": "sv"
+    },
+    {
+      "index": 9,
+      "kind": "combat",
+      "sheet_entries": 1,
+      "line": "s"
+    },
+    {
+      "index": 10,
+      "kind": "combat",
+      "sheet_entries": 0,
+      "line": "run"
+    },
+    {
+      "index": 11,
+      "kind": "street",
+      "sheet_entries": 0,
+      "line": null,
+      "note": "the prompt the guest came back to after the last line was typed; nothing was typed at it"
+    }
+  ],
+  "sheet_entries_before_first_prompt": 0,
+  "per_verb": {
+    "combat:run": {
+      "prompt_kind": "combat",
+      "line": "run",
+      "prompts": 1,
+      "sheet_entries": 0,
+      "reaches_1000_1a03": false
+    },
+    "combat:s": {
+      "prompt_kind": "combat",
+      "line": "s",
+      "prompts": 1,
+      "sheet_entries": 1,
+      "reaches_1000_1a03": true
+    },
+    "combat:sv": {
+      "prompt_kind": "combat",
+      "line": "sv",
+      "prompts": 2,
+      "sheet_entries": 0,
+      "reaches_1000_1a03": false
+    },
+    "street:i": {
+      "prompt_kind": "street",
+      "line": "i",
+      "prompts": 1,
+      "sheet_entries": 0,
+      "reaches_1000_1a03": false
+    },
+    "street:s": {
+      "prompt_kind": "street",
+      "line": "s",
+      "prompts": 2,
+      "sheet_entries": 2,
+      "reaches_1000_1a03": true
+    },
+    "street:stats": {
+      "prompt_kind": "street",
+      "line": "stats",
+      "prompts": 1,
+      "sheet_entries": 0,
+      "reaches_1000_1a03": false
+    },
+    "street:w": {
+      "prompt_kind": "street",
+      "line": "w",
+      "prompts": 2,
+      "sheet_entries": 0,
+      "reaches_1000_1a03": false
+    }
+  },
+  "totals": {
+    "prompt_stops_street": 7,
+    "prompt_stops_combat": 4,
+    "sheet_entries": 3,
+    "lines_typed": 10
+  }
+}

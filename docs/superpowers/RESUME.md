@@ -1,8 +1,12 @@
 # Resume checkpoint — gopnik-rs port
 
-**Branch: `main`.** Last updated after **Task 16**. The old feature branches
-(`port/gopnik-rust` @ `f2d4fce`, `fix/task-13-review`, `feat/mutation-gate`) are
-history now; `main` carries everything and PR #1 is merged.
+**Branch: `re/task-17-combat-dispatch`.** Last updated after **Task 18**,
+which is the **last task on this branch — development stops here.** The older
+feature branches (`port/gopnik-rust` @ `f2d4fce`, `fix/task-13-review`,
+`feat/mutation-gate`) are history; `main` carries everything up to Task 15 and
+PR #1 is merged, and Tasks 16, 17 and 18 live on this branch pending its
+merge. So this file is not a checkpoint any more — it is the **handover**, and
+whoever picks the project up reads it instead of asking.
 
 `.superpowers/sdd/progress.md` is the full ledger but is **git-ignored** — a
 `git clean -fdx` destroys it. This file is the committed backup. If they
@@ -12,11 +16,12 @@ disagree, trust `git log`.
 
 ## READ THIS FIRST
 
-Everything is green: **167 Rust**, and for Python **333 by `unittest`** —
+Everything is green: **204 Rust** (167 before Task 18), and for Python
+**366 by `unittest`** —
 
 ```
-python3 -m unittest discover -s tools -p 'test_*.py'    -> Ran 333 tests, OK
-.venv/bin/pytest tools/ -q                              -> 347 passed, 3 skipped, 668 subtests
+python3 -m unittest discover -s tools -p 'test_*.py'    -> Ran 366 tests, OK
+.venv/bin/pytest tools/ -q                              -> 380 passed, 3 skipped, 668 subtests
 ```
 
 **State the runner with the number, always.** The two disagree by design, both
@@ -26,9 +31,9 @@ module-level `def test_*` functions across 6 files** that `unittest` cannot see
 file's `__main__` block). 9 are in `tools/oracle/test_oracle_smoke.py`, 4 in
 `tools/test_extract_tables.py`, and one each in `test_decode_save.py`,
 `test_extract_strings.py`, `test_string_pointers.py`, `test_string_tables.py`.
-`347 + 3 = 350` collected, `350 − 333 = 17`, exactly. Subtests are NOT part of
+`380 + 3 = 383` collected, `383 − 366 = 17`, exactly. Subtests are NOT part of
 the difference: pytest reports the 668 separately, on its own line, and does not
-fold them into the 347. Re-measure with
+fold them into the 380. Re-measure with
 `git grep -c '^def test_' -- 'tools/test_*.py' 'tools/*/test_*.py'`
 (6 files, 17 hits — the single-`*` pathspecs are load-bearing: `tools/**/…`
 misses the flat `tools/test_*.py` and returns 9). `unittest discover` is this
@@ -45,10 +50,13 @@ project keeps finding, committed into the file whose job is to prevent it.
 
 Also green:
 `python3 tools/difftest.py` exit 0 / 126 records, `python3 tools/mutate.py`
-exit 0 with **19 red** + 10 findings, `cargo clippy --all-targets` clean.
+exit 0 with **29 red** + 10 findings, `cargo clippy --all-targets` clean,
+`cargo doc --no-deps` 12 warnings (all pre-existing private-item links).
 `cargo fmt --check` shows exactly three PRE-EXISTING diffs in
-`tests/wander_sequence.rs` (lines 241, 973, 1100) — six reviewers have now
-confirmed they predate current work. Leave them; do not let them mask a new one.
+`tests/wander_sequence.rs` — **lines 242, 993 and 1120** after Task 18's
+insertions moved them (they were 241, 973 and 1100; the content is
+byte-identical, confirmed by stashing). Seven reviewers have now confirmed
+they predate current work. Leave them; do not let them mask a new one.
 
 **The honest state of the project: the last session moved branch coverage by
 three.** See "How much is actually traced" below. Tasks 13-review, 14 and the
@@ -66,14 +74,16 @@ the port.
 | `data/combat_vectors.json` | RNG vectors | `705415b2…f044` |
 
 `combat_trace.json` records the first two files' digests inside itself.
-`tools/mutate.py` now guards 91 files across `data/`, `orig/` and `tools/`, and
+`tools/mutate.py` now guards **126** files across `data/`, `orig/`, `tools/`
+and `docs/` (122 before Task 18 committed `data/probes/`) — the count is derived from the tree, so it moves when files are added —
+and
 `combattrace.main()` refuses an `--out` naming a frozen oracle.
 
 ---
 
 ## State
 
-Tasks 1–16 complete and reviewed. Since the last checkpoint:
+Tasks 1–17 complete and reviewed. Since the last checkpoint:
 
 | Task | What | Commits | Status |
 |---|---|---|---|
@@ -84,6 +94,8 @@ Tasks 1–16 complete and reviewed. Since the last checkpoint:
 | 15 | The eight missed `cargo-mutants` findings in `src/` | `c47abb9..f27b73c` | complete, **reviewed and approved, no fix round** |
 | — | Task 15's four deferred Minors, batched | `1a9338a..0a29594` | complete |
 | 16 | `FUN_1000_1a03` mapped — **it is the character sheet** | `a293f51..e3e3963` | complete, reviewed (one fix round) |
+| 17 | The in-combat dispatcher mapped — `docs/re/combat-dispatch.md` | `54dd7b7..8632db5` | complete, reviewed (one fix round) |
+| 18 | The dispatcher arms **ported into `src/`** | `fc1d23d..c0e7dd7` | complete, reviewed (one fix round), **merge with fixes** |
 
 ### Task 16, and why it is the shape to copy
 
@@ -114,12 +126,114 @@ reach it" from "everything reaches it". Reuse it on the next function.
 its first run against the committed document, two of which two reviewers had
 walked past.
 
+### Task 17 — the in-combat dispatcher
+
+**233/838 → 281/838**, and `FUN_1000_3d11` 54/224 → 95/224. Map:
+`docs/re/combat-dispatch.md`; artifact `data/combat_dispatch.json`; test
+`tools/test_combat_dispatch.py`. What it settled, all from flow:
+
+- **`sv` is the ENEMY's sheet.** `FUN_1000_1348` references no address in
+  `[20ae:3690, 20ae:3951]` at all, and ends in a bare `ret` at `1000:165e`.
+  `combat.md`'s `1000:15bd`..`1000:1611` "second blow display" is the
+  **enemy's** accuracy inside it; the player's copy is `1000:21b0` in
+  `FUN_1000_1a03`.
+- **The verb set is closed at ten** — `k`, `run`, `kos`, `s`, `sv`, `e`, `v`,
+  `f` from the nine compares in `FUN_1000_3d11`, plus `h`/`mh` from
+  `FUN_1000_29c4` at `1000:4b00`. `20ae:3a72` has exactly twelve references
+  inside the function and only one near call receives it, so anything else
+  typed at the fight prompt is silently ignored. `x` and `wes` are `entry`'s.
+- **The four unmapped `Random` sites** are the backup's damage
+  (`Random(district*4)`, the untraced argument being `20ae:3692` shifted
+  twice), the backup's attrition tick, and the pistol's hit test and damage.
+- **`20ae:3c83` confirmed** as the rector-showdown flag; **`20ae:3696`'s
+  boolean closure**; **`1000:4e2a` is dead code**; and **`1000:4ebc` is a
+  third reader of `20ae:3693`** where `gaps.md` claimed two — the same
+  completeness-claim failure that entry was written to correct.
+
+`tools/rngtrace/verbprobe.py` now takes `--target`, and its output names the
+target rather than Task 16's. The re-pointed run: `sv` reaches `1000:1348`
+twice, six negatives do not, including combat `s`, which calls `1000:1a03`
+from the same chain.
+
+**Nine `tools/mutations.json` cases** now defend `data/combat_dispatch.json`
+and `docs/re/combat-dispatch.md`, so `mutate.py` read **28 red + 10
+findings** (was 19 + 10; Task 18 took it to **29 + 10**). Five are one-to-one twins of Task 16's
+`character-sheet-*` cases — guard address, literal text, caller scan, prose
+address, branch partition. Four defend claims Task 16's deliverable never
+made: the buffer's twelve-reference closure (which is what "any other verb is
+silently ignored" rests on), the four-`Random`-sites scan, the `1000:4e2a`
+dead-code argument, and the two `xor si,si` the hospital bill's `0.6` needs.
+They were added in the review fix round; the fourteen probes run by hand
+during the task are now redundant with them and are kept in the task report
+only as the record of what was checked when.
+
+### Task 18 — the arms turned into behaviour, and why it is the shape to copy
+
+**This is the task that ended the drought.** Tasks 16 and 17 documented +103
+branches between them and produced **zero Rust**; the owner's words, mid-
+session, were *"I see no changes in rs files for 3 hours."* Task 18 is the
+other half: `git diff --stat` for `src/` is **5 files, +2059/−115, of which
+1212 added lines are not comments**, and the branch metric moved by four — all
+four being gates the task implemented and tested, not citations added to move
+a number.
+
+It is the first task in this project to pass its own review with **zero
+Critical and zero Important**. The whole-branch review then re-derived ~40
+instruction sites and every hard-coded Cyrillic literal from `orig/g.exe` and
+found no wrong address, no wrong instruction text, no wrong constant, and no
+path that could move a frozen oracle.
+
+What it built:
+
+- **`src/combat_dispatch.rs`** — the arithmetic and state of the `v` and `f`
+  arms: `20ae:3c80` as `Backup` (a fight-local, because `1000:5841`/`5843`
+  zero it on return and all 17 of its image-wide references are inside
+  `FUN_1000_3d11`), and `20ae:394d`/`394e`/`394f` as `Pistol`. `game.rs`
+  prints; this module holds what a test can pin to a number — the same split
+  `src/combat.rs` already used for the blow loop.
+- **`run_combat`'s command loop is a straight line, not a `match`.** That is
+  the load-bearing correction and the whole-branch reviewer called it out as
+  such. The chain is **nine independent `if`s**: `1000:583e jmp 0x40f2` is the
+  function's only back edge, so every arm rejoins the line with the buffer
+  still holding what was typed. Two consequences a `match` cannot express —
+  the second `k` compare at `1000:4c75` is reachable because the blow loop's
+  three exits land on `1000:48d7` (the complete re-entry set, verified
+  image-wide: `1000:4447`/`467c`/`48cb`/`48d2` → `1000:48d7`), and the backup
+  block at `[1000:4d93, 1000:4e9e)` runs on **every** prompt, including one
+  whose line matched no compare at all.
+- **The flee penalty is applied.** `Progress::growth_log` is the
+  `array[1..40] of string[2]` at `.SAV 0x236`, reached through Borland's
+  biased base `20ae:38cf` (real base `20ae:38d2`).
+- **`20ae:3c83` as `Game::rector_showdown`**, with all three of its effects.
+  Nothing sets it — a reachability gap, not an implementation one.
+- **`20ae:394d` is the PISTOL**, not `dealer_order_placed`, "a 150-rouble
+  order placed with the dealers". `docs/re/gaps.md` had that closed since
+  Task 16 and had explicitly called the port's name stale; nobody had
+  propagated it. `bmar` rows 7/8/9 now apply their effects, which is what
+  makes `f` reachable in play at all.
+
+**The trap it fell into, and the one it caught.** `exit` typed at the fight
+prompt quit the game: `crate::commands::parse` folds `e` and `exit` into one
+`Command::Quit` because `entry` dispatches both, and `FUN_1000_3d11` compares
+only `e`. The task had **already solved that exact fold problem correctly**
+three blocks earlier — `run` is matched on the literal precisely because
+`parse` folds `w`/`run` — and did not apply the same treatment to `e`. It was
+harmless until the arm stopped being `=> {}`. **Whenever a fight-prompt arm
+keys off a `Command`, check whether `parse` folds two spellings into it.**
+
+What it caught, by mutating its own code 30 times: `if fled && enemy.hp > 0`
+survived a mutation to `if fled`, because the test meant to cover it killed
+the enemy a prompt too early and never reached the branch. **Mutate your own
+new code before reporting; it is the only thing that found that.**
+
 ### What Task 14 built, and what it is for
 
 `tools/mutate.py` mutates a **captured ground-truth artifact** and requires a
 named test to go red. It is the executable form of a rule `METHODOLOGY.md` could
 not previously enforce: *an assertion over a captured oracle is not evidence
-until it has been observed failing.* 23 cases; 13 red channels; 10 registered as
+until it has been observed failing.* Task 14 shipped it with 23 cases and 13
+red channels; the manifest is now **39 cases; 29 red channels**, Task 16 having
+added five, Task 17 nine and Task 18 one (the growth log's `.SAV` offset). 10 are registered as
 `expect_red: false` — columns the capture holds that **no assertion reads**,
 including `r_randseed_367e`/`e_randseed_367e`, which wander asserts per sample
 and combat does not.
@@ -197,8 +311,8 @@ is the one failure mode a replay cannot see.
 
 ## How much is actually traced
 
-**233 of 838 game branches (27.8%)** have their branch address or guard cited
-anywhere in `docs/re/*.md`, measured after Task 16.
+**285 of 838 game branches (34.0%)** have their branch address or guard cited
+anywhere in `docs/re/*.md`, measured after Task 18.
 
 This file previously said `134 / 838` here and `157/838` further down, both
 stale, and both left standing through a whole session because the instruction
@@ -212,6 +326,8 @@ the rate rather than trust a number:
 | `57c29b8` | Task 14 complete (mutation gate) | 175/838 |
 | `f27b73c` | Task 15 complete | **178/838** |
 | Task 16 complete (`FUN_1000_1a03` mapped) | | **233/838** |
+| Task 17 complete (the in-combat dispatcher mapped) | | **281/838** |
+| Task 18 complete (the dispatcher arms ported into `src/`) | | **285/838** |
 
 The whole of Tasks 13-review and 14 moved it by **zero**; Task 15's +3 are the
 addresses its equivalence proofs had to cite. That is the cost of a session
@@ -277,8 +393,9 @@ Two functions hold 75% of all game branches:
 | branches | cited | function |
 |---:|---:|---|
 | 406 | 93 | `1000:ab59` — main loop + command dispatch |
-| 224 | 54 | `1000:3d11` — combat |
+| 224 | 95 | `1000:3d11` — combat; its dispatcher half mapped in Task 17 |
 | 83 | 50 | `1000:1a03` — the character sheet, mapped in Task 16 |
+| 11 | 7 | `1000:1348` — the ENEMY's sheet, the `sv` handler, mapped in Task 17 |
 
 The metric undercounts (a function can be understood without every `jz` being
 cited) and a citation is not comprehension. Re-run the query above to track
@@ -326,9 +443,17 @@ question.
 2. Task 12 — now much smaller: the draw-replay covers the RNG half, so 12 is
    prices, XP thresholds, level-up gains, starting stats, menu numbering.
 3. The bulk, from `docs/re/gaps.md`: no `.SAV` load path and `write_save`
-   returns `Unsupported`; shop purchase effects; the class-keyed combat-opener
-   table (`1000:3d32..3e8a`); the rector death branch and hospital rescue
-   (`1000:4f8c`); `sv`/`v`/`x`/`wes` dispatcher sites; shop modality;
+   returns `Unsupported`; **shop purchase effects for every row except `bmar`
+   7/8/9** (Task 18 did those three because they are what makes the pistol
+   reachable; the generic path also echoes the MENU line where the original
+   prints each arm's own confirmation, and refuses a district-gated row where
+   the original's buy compares carry no district test at all); the class-keyed
+   combat-opener table (`1000:3d32..3e8a`); ~~the rector death branch and
+   hospital rescue (`1000:4f8c`)~~ and ~~`sv`/`v`/`x`/`wes` dispatcher
+   sites~~ — mapped in Task 17 and **both modelled in `src/` by Task 18**
+   (`Game::rector_showdown`, `Game::hospital_rescue`), though nothing SETS the
+   rector flag, so its three arms are reachable only from a test, and
+   `x`/`wes`'s own arms in `entry` are still unread; shop modality;
    `kl`/`trn` prices; `help` and `rename` content; the quit messages; the
    joint heal formula (rests on analogy with beer — a hypothesis, not a
    finding). The encounter decline branch itself is now resolved (Task 11f
@@ -350,7 +475,47 @@ question.
 5. Windows VT: compiles and runs under wine, but VT changes how a console
    *renders* bytes, not which bytes are written — no byte-capture test can
    verify it. Needs a human at a `cmd.exe` window.
-6. Final whole-branch review, then `superpowers:finishing-a-development-branch`.
+6. ~~Final whole-branch review~~ — **done after Task 18**; verdict *merge with
+   fixes*, and this file is one of the fixes. Next step is
+   `superpowers:finishing-a-development-branch`.
+
+## The highest-value cleanup left, and why it is one job not two
+
+**Add a `term` sink.** `crate::term` writes straight to this process's stdout,
+and nothing in the crate can capture it. That single missing seam is what
+blocks two separate things, which is why it is worth doing as one refactor
+rather than being rediscovered twice:
+
+* **The combat `s` and `sv` arms have no executable assertion.** Both are
+  print-only calls (`1000:4c35 call 0x1a03` → `Game::show_stats`,
+  `1000:4c49 call 0x1348` → `Game::print_enemy_block`), so a mutation
+  swapping one for the other survives every test in the suite. Task 18
+  reported them as known survivors rather than faking coverage;
+  `tests/game_flow.rs` had to drive the real binary as a **subprocess** to
+  assert anything at all about the street verbs, which works but cannot reach
+  a fight prompt without a deterministic seed the binary does not take.
+* **Test output is full of game text.** `cargo test` prints `Битва\`,
+  spectator taunts and encounter lines interleaved with the harness's own
+  output, because every fight a test runs writes to the real stdout. It makes
+  a failure genuinely hard to read.
+
+The same sink fixes both: give `term` an installable destination (a thread-
+local `Vec<u8>` is enough), have the tests install one, and the assertions and
+the quiet become available together. Nothing else in the deferred list has
+that leverage.
+
+### Also deferred from the Task 18 review, recorded so they are not lost
+
+None is a defect; each is a judgement call a future reader may want to
+revisit. The `chain_reentry` closure test; the den-flag scan's `mov byte`
+scope (judged over-stated — the test's assertion is about immediate stores and
+its scope matches its claim); the `live_probe` key-name divergence;
+`i32::from(agility)`'s zero-extension; `tests/game_flow.rs`'s backslash
+anchor; `Game::buy_pistol_row`'s home in `game.rs` rather than a shop module;
+the shop display-gate-as-action-gate divergence (`src/game.rs`'s
+`shop_action`); the duplicated gates inside `buy_pistol_row`; and
+`Game::backup_in_fight` passing one `has_mobile` to both `1000:4cdb`'s
+equality test and `1000:4d73`'s inequality test.
 
 ## Findings from 11c worth not losing
 

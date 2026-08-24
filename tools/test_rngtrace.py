@@ -1284,22 +1284,43 @@ class VerbProbeScriptTest(unittest.TestCase):
         self.assertIn('printf "? %04x\\n", $pc', s)
         self.assertIn("disable\n  stepi\n  enable", s)
 
-    def test_the_ready_line_names_the_sheet_field_for_what_it_is(self):
+    def test_the_ready_line_names_the_target_field_for_what_it_is(self):
         # The RNG script's middle READY field is `retf=`, for `Random`'s
         # `retf 2`.  The probe has no Random breakpoint, so copying that label
-        # printed a function PROLOGUE address under it.
+        # printed a function PROLOGUE address under it.  It is `target=` and
+        # not `sheet=` because the target is a parameter: a re-pointed run
+        # would otherwise print 1000:1348's prologue under 1000:1a03's name.
         s = self.script()
-        self.assertIn("READY base=%x sheet=%x readln=%x", s)
+        self.assertIn("READY base=%x target=%x readln=%x", s)
         self.assertNotIn("retf=", s)
+        self.assertNotIn("sheet=", s)
         parsed = verbprobe.parse_probe_log(
-            "READY base=224b0 sheet=23eb3 readln=2d313\n")
+            "READY base=224b0 target=23eb3 readln=2d313\n")
         self.assertEqual(parsed["ready"],
-                         {"image_base": 0x224B0, "sheet": 0x23EB3,
+                         {"image_base": 0x224B0, "target": 0x23EB3,
                           "readln": 0x2D313})
         # And the RNG script's own line is unchanged, so the frozen path's
         # reader keeps working.
         self.assertIn("retf=", gdbsession.build_script(
             self.BASE, 1234, [("a", loadbase.DATA_SEG_IMAGE_OFF, 2)]))
+
+    def test_the_target_is_a_parameter_and_the_default_is_task_16s(self):
+        # Task 17 re-points the same probe at FUN_1000_1348, the function the
+        # `sv` arm calls at 1000:4c49.  Both halves matter: the re-pointed
+        # script must break on -- and dispatch on -- 0x1348 and NOWHERE on
+        # 0x1a03, or a `T` would be Task 16's target under Task 17's label.
+        other = gdbsession.build_verbprobe_script(self.BASE, 1234, 0x1348)
+        self.assertIn("break *%s" % hex(self.BASE + 0x1348), other)
+        self.assertIn("if $pc == 0x1348", other)
+        self.assertNotIn(hex(gdbsession.OFF_SHEET_ENTRY), other)
+        self.assertNotIn(hex(self.BASE + gdbsession.OFF_SHEET_ENTRY), other)
+        self.assertEqual(other.count("\nbreak *"), 3)
+        # ... and the default is still Task 16's, so its invocation is
+        # unchanged by the parameter existing.
+        self.assertEqual(
+            self.script(),
+            gdbsession.build_verbprobe_script(self.BASE, 1234,
+                                              gdbsession.OFF_SHEET_ENTRY))
 
     def test_it_does_not_break_on_random(self):
         # The probe asks WHICH VERB, not how many draws; a Random breakpoint
@@ -1325,17 +1346,17 @@ class VerbProbeAlignTest(unittest.TestCase):
         out = verbprobe.align(
             self.typed(("street", "s"), ("street", "w"), ("combat", "s")),
             "PTPCTP")
-        got = [(w["kind"], w.get("line"), w["sheet_entries"])
+        got = [(w["kind"], w.get("line"), w["target_entries"])
                for w in out["windows"]]
         self.assertEqual(
             got, [("street", "s", 1), ("street", "w", 0),
                   ("combat", "s", 1), ("street", None, 0)])
-        self.assertEqual(out["sheet_entries_before_first_prompt"], 0)
+        self.assertEqual(out["target_entries_before_first_prompt"], 0)
 
     def test_stops_before_any_prompt_are_reported_not_attributed(self):
         out = verbprobe.align(self.typed(("street", "s")), "TTP")
-        self.assertEqual(out["sheet_entries_before_first_prompt"], 2)
-        self.assertEqual(out["windows"][0]["sheet_entries"], 0)
+        self.assertEqual(out["target_entries_before_first_prompt"], 2)
+        self.assertEqual(out["windows"][0]["target_entries"], 0)
 
     def test_a_misclassified_screen_stops_the_run(self):
         # The one way the attribution could be quietly wrong: the driver typed
@@ -1389,8 +1410,8 @@ class VerbProbeAlignTest(unittest.TestCase):
         out = verbprobe.align(
             self.typed(("street", "s"), ("street", "stats")), "PTP")
         t = verbprobe.tally(out["windows"])
-        self.assertTrue(t["street:s"]["reaches_1000_1a03"])
-        self.assertFalse(t["street:stats"]["reaches_1000_1a03"])
+        self.assertTrue(t["street:s"]["reaches_target"])
+        self.assertFalse(t["street:stats"]["reaches_target"])
         self.assertEqual(t["street:stats"]["prompts"], 1)
 
 
@@ -1399,7 +1420,7 @@ class VerbProbeLogGuardTest(unittest.TestCase):
 
     HEAD = ("Breakpoint 1 at 0x2d313\nBreakpoint 2 at 0x268cd\n"
             "Breakpoint 3 at 0x23eb3\n"
-            "READY base=224b0 sheet=23eb3 readln=2d313\n")
+            "READY base=224b0 target=23eb3 readln=2d313\n")
 
     def parsed(self, body):
         return verbprobe.parse_probe_log(self.HEAD + body)
@@ -1442,7 +1463,7 @@ class VerbProbeLogGuardTest(unittest.TestCase):
 
     def test_missing_breakpoints_fail(self):
         p = verbprobe.parse_probe_log(
-            "Breakpoint 1 at 0x2d313\nREADY base=224b0 sheet=23eb3 readln=2d313\nP\n")
+            "Breakpoint 1 at 0x2d313\nREADY base=224b0 target=23eb3 readln=2d313\nP\n")
         with self.assertRaises(verbprobe.ProbeError) as cm:
             verbprobe.check_log(p)
         self.assertIn("3 breakpoints", str(cm.exception))

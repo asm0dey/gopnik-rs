@@ -1,4 +1,5 @@
 pub mod combat;
+pub mod combat_dispatch;
 pub mod commands;
 pub mod data;
 pub mod game;
