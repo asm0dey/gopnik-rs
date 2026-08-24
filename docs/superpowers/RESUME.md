@@ -12,9 +12,29 @@ disagree, trust `git log`.
 
 ## READ THIS FIRST
 
-Everything is green: **167 Rust**, **309 Python** (3 skipped, 668 subtests),
+Everything is green: **167 Rust**, and for Python **322 by `unittest`** —
+
+```
+python3 -m unittest discover -s tools -p 'test_*.py'    -> Ran 322 tests, OK
+.venv/bin/pytest tools/ -q                              -> 336 passed, 3 skipped, 668 subtests
+```
+
+**State the runner with the number, always.** The two disagree by design and both
+are right: pytest collects the 8 module-level `def test_*` functions across 5
+files that `unittest` cannot see (it only gathers `TestCase` subclasses — those
+functions still run, via each file's `__main__` block), and it counts subtests
+separately. `unittest discover` is this project's documented method, from the
+Task 12 report, so **it is the number of record**.
+
+This block previously read "309 Python (3 skipped)" with no runner named. That
+was a pytest figure published into a handover document as if it were the
+project's own count, and a Task 16 implementer correctly could not reproduce it
+by the documented method. A number without its method is the defect class this
+project keeps finding, committed into the file whose job is to prevent it.
+
+Also green:
 `python3 tools/difftest.py` exit 0 / 126 records, `python3 tools/mutate.py`
-exit 0 with 14 red + 10 findings, `cargo clippy --all-targets` clean.
+exit 0 with **18 red** + 10 findings, `cargo clippy --all-targets` clean.
 `cargo fmt --check` shows exactly three PRE-EXISTING diffs in
 `tests/wander_sequence.rs` (lines 241, 973, 1100) — six reviewers have now
 confirmed they predate current work. Leave them; do not let them mask a new one.
