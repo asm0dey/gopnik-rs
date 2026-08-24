@@ -2761,18 +2761,6 @@ impl Game {
         Ok(())
     }
 
-    /// One round of blows, both sides, using the already-verified
-    /// blows-per-round budget and per-blow resolution from `crate::combat`.
-    /// Per-blow messages are `docs/re/combat.md`'s own cited strings, quoted
-    /// here with the markup they actually carry: miss (`^4Ты промазал` file
-    /// `0x4B13`, `^2Враг промазал` file `0x4C49`), hit (`^2Ты пнул врага на
-    /// #з. У него осталось #` file `0x4AEA`, and its mirror `^4Он пнул тебя
-    /// на #з. У тебя осталось #` file `0x4C21`), crit (`^2Точный удар!!!`
-    /// file `0x4A54`), and break (`^2Ты сломал врагу челюсть. ^4Враг: А!
-    /// козёл!` / `^2Ты сломал врагу ногу. ^4Враг: Ну что за урод!` files
-    /// `0x4A8D`/`0x4ABA`, whose inner `^4` is part of the string, and the
-    /// mirrors `^4Враг сломал тебе челюсть.` / `^4Враг сломал тебе ногу.`
-    /// files `0x4B95`/`0x4C08`).
     /// Begin recording the fight channels, discarding anything recorded.
     ///
     /// The same design as [`crate::rng::Rng::start_log`], and for the same
@@ -3153,9 +3141,16 @@ impl Game {
     ///
     /// The counter stops at 5 (`jae` skips the `inc`), so `== 5` stays true
     /// for every later prompt: **`Random(10)` fires at every `Битва\` prompt
-    /// from the fifth onward**, not once. The live capture is the
-    /// corroboration -- a fight with 14 prompts shows exactly 10 draws at
-    /// `1000:4135`.
+    /// from the fifth onward**, not once.
+    ///
+    /// **Corroborated by state.** Every run in `data/combat_trace.json`
+    /// spends exactly `sum(max(0, prompts - 4))` draws at `1000:4135`,
+    /// counted from the capture itself: run A's single 30-prompt fight
+    /// shows **26**, run B's six fights of 8/5/4/4/3/3 prompts show **5**
+    /// (4+1+0+0+0+0), run C's three of 4/5/3 show **1**, and run D's five
+    /// one-prompt fleeing fights show **0**. Per-fight, not per-session, and
+    /// per-prompt, not per-fight. `tests/combat_sequence.rs` is what holds
+    /// that to the port, draw for draw.
     ///
     /// `[0x3c83]` is the rector flag; nothing in this port sets it, so the
     /// `1000:411d` gate is always open here.
@@ -3230,6 +3225,43 @@ impl Game {
             .unwrap_or_else(|| panic!("data/enemies.json has no row for class {class}"))
     }
 
+    /// One round of blows, both sides, using the already-verified
+    /// blows-per-round budget and per-blow resolution from `crate::combat`.
+    ///
+    /// Per-blow messages are `docs/re/combat.md`'s own cited strings, quoted
+    /// here with the markup they actually carry, and every file offset below
+    /// was decoded from `orig/g.exe` as a length-prefixed CP866 string: miss
+    /// (`^4Ты промазал` file `0x4B13`, `^2Враг промазал` file `0x4C49`), hit
+    /// (`^2Ты пнул врага на #з. У него осталось #` file `0x4AEA`, and its
+    /// mirror `^4Он пнул тебя на #з. У тебя осталось #` file `0x4C21`), and
+    /// break (`^2Ты сломал врагу челюсть. ^4Враг: А! козёл!` /
+    /// `^2Ты сломал врагу ногу. ^4Враг: Ну что за урод!` files
+    /// `0x4A8D`/`0x4ABA`, whose inner `^4` is part of the string, and the
+    /// mirrors `^4Враг сломал тебе челюсть.` / `^4Враг сломал тебе ногу.`
+    /// files `0x4B95`/`0x4C08`).
+    ///
+    /// Task 13 added the lines the `Random(3)` crit pick and the зубная
+    /// защита choose between, which this port previously did not print at
+    /// all or printed only the first arm of:
+    ///
+    /// * the player's crit trio, picked by `1000:44e3` and printed at
+    ///   `1000:44ed`/`1000:450d`/`1000:452d` -- `^2Точный удар!!!`,
+    ///   `^2Не хило приложил!!!`, `^2Двойной урон!!!` (files `0x4A54`,
+    ///   `0x4A65`, `0x4A7B`);
+    /// * the enemy's, picked by `1000:4706` and printed at
+    ///   `1000:4710`/`1000:4730`/`1000:4750` -- `^4Враг:Сдохни урод!!`,
+    ///   `^4Тебе не хило врезали!`, `^4Враг:Получи гнида!!` (files `0x4B52`,
+    ///   `0x4B67`, `0x4B7F`);
+    /// * the two зубная защита arms the `Random(4)` at `1000:47fe` picks
+    ///   between -- `^4Враг сломал тебе челюсть, даже защита не помогла.`
+    ///   (`1000:4807`, file `0x4BB1`) on a 0, and
+    ///   `^2Защита спасла твои кривые клыки.` (`1000:4827`, file `0x4BE5`)
+    ///   otherwise;
+    /// * the two `ещё раз` lines, `^2Из-за большой ловкости ты можешь пнуть
+    ///   ещё раз` (`1000:4639`, file `0x4B21`) and its enemy mirror
+    ///   `^4Из-за большой ловкости враг может пнуть ещё раз` (`1000:48ad`,
+    ///   file `0x4C59`), whose guards are NOT mirror images -- see the
+    ///   comment on the enemy loop's tail below.
     fn combat_round(&mut self, enemy: &mut Fighter) {
         // Both loops' exits are SIGNED tests on a defender's hp word, and the
         // two are not the same test:
