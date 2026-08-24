@@ -667,11 +667,26 @@ fn run_b_final_state_matches() {
     assert_final_state("B", &run, &g);
 }
 
-/// Every run whose drive ended at the turn marker must exist, and there must
-/// be at least one -- otherwise [`assert_final_state`] would be a test that
-/// never runs on anything.
+/// Run D's whole 35-variable end state. D flees every fight, so it ends at
+/// the turn marker exactly as B does, and its premise holds for the same
+/// reason -- but it exercises the opposite side of the channel: a FRESH
+/// character (no save), five encounters accepted and fled, and therefore a
+/// purse, an XP total and a discovery-flag set that no victory block ever
+/// touched. Left unasserted until fix round 1, on the exact channel this
+/// task was careful about narrowing.
 #[test]
-fn at_least_one_run_reaches_the_final_state_channel() {
+fn run_d_final_state_matches() {
+    let run = run_named("D");
+    let g = replay("D");
+    assert_final_state("D", &run, &g);
+}
+
+/// Every run whose drive ended at the turn marker must exist, and every one
+/// of them must be asserted -- otherwise [`assert_final_state`] would be a
+/// test that never runs on anything, or one that quietly stopped covering a
+/// run the capture makes available.
+#[test]
+fn every_run_that_reaches_the_final_state_channel_is_asserted() {
     let t = trace();
     let usable: Vec<&str> = t
         .runs
@@ -684,9 +699,15 @@ fn at_least_one_run_reaches_the_final_state_channel() {
         "no captured run ended at a turn marker, so the whole-state channel \
          has nothing to assert against"
     );
-    assert!(
-        usable.contains(&"B"),
-        "run B is the one `run_b_final_state_matches` asserts; usable runs are {usable:?}"
+    // The list is spelled out rather than merely non-empty: a run that
+    // becomes usable and is not added to [`run_b_final_state_matches`] /
+    // [`run_d_final_state_matches`] fails here instead of silently going
+    // unchecked.
+    assert_eq!(
+        usable,
+        ["B", "D"],
+        "the runs whose final_state is asserted are B (run_b_final_state_matches) \
+         and D (run_d_final_state_matches); the capture now offers {usable:?}"
     );
 }
 
@@ -697,6 +718,26 @@ fn at_least_one_run_reaches_the_final_state_channel() {
 #[test]
 fn the_capture_covers_the_blow_loop_the_crowd_and_the_victory_block() {
     let t = trace();
+
+    // `fights_total` and `draws_total` are fields `combattrace.build()` WROTE;
+    // comparing them to literals checks the summary against this test, not
+    // the summary against the file. Count the runs' own arrays and compare,
+    // so a summary that drifts from the data it summarises fails here --
+    // which is the only way this test can speak for the file rather than for
+    // its header.
+    let counted_fights: usize = t.runs.iter().map(|r| r.fights.len()).sum();
+    let counted_draws: usize = t.runs.iter().map(|r| r.draws.len()).sum();
+    assert_eq!(
+        counted_fights, t.fights_total,
+        "data/combat_trace.json: fights_total says {} but the runs hold {}",
+        t.fights_total, counted_fights
+    );
+    assert_eq!(
+        counted_draws, t.draws_total,
+        "data/combat_trace.json: draws_total says {} but the runs hold {}",
+        t.draws_total, counted_draws
+    );
+
     assert_eq!(t.runs.len(), 4, "captured runs");
     for r in &t.runs {
         assert!(
