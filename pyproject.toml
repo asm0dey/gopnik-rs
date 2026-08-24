@@ -72,6 +72,18 @@ also_copy = ["orig", "data", "docs", "build"]
 # Both are worth doing.  Neither is worth doing by making the first run take a
 # day.
 
+# Mutate only lines a test actually executes.  Without this, 859 of the first
+# run's 2473 mutants came back "no tests" -- overwhelmingly the qemu+gdb
+# plumbing in fightrun.py, which cannot run in CI at all.  That is noise, and
+# it buries the signal: the mutants worth reading are the ones a test DID cover
+# and DID NOT notice.
+#
+# This is why fightrun.py stays in scope rather than being blacklisted.  Its
+# 720 "no tests" mutants are noise, but its 19 SURVIVED ones are not -- those
+# are lines a test covers and fails to pin.  Excluding the file would discard
+# the signal to silence the noise.
+mutate_only_covered_lines = true
+
 source_paths = ["tools"]
 
 only_mutate = [
