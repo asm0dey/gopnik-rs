@@ -54,9 +54,10 @@ project keeps finding, committed into the file whose job is to prevent it.
 
 Also green:
 `python3 tools/difftest.py` exit 0 / 126 records, `python3 tools/mutate.py`
-exit 0 with **32 red** + 10 findings over **130 guarded files** (29 red / 126
-files after Task 18; the file count is derived from the tree and Task 19 added
-three tools plus one probe), `cargo clippy --all-targets` clean,
+exit 0 with **32 red** + 10 findings over **131 guarded files** (29 red / 126
+files after Task 18; the file count is derived from the tree, and Task 19 added
+`tools/savegen.py`, `tools/test_savegen.py`, `tools/rngtrace/saveprobe.py` and
+two files under `data/probes/`), `cargo clippy --all-targets` clean,
 `cargo doc --no-deps` 12 warnings (all pre-existing private-item links).
 `cargo fmt --check` shows exactly three PRE-EXISTING diffs in
 `tests/wander_sequence.rs` — **lines 242, 993 and 1120** after Task 18's
@@ -81,11 +82,11 @@ load.
 | `data/combat_vectors.json` | RNG vectors | `705415b2…f044` |
 
 `combat_trace.json` records the first two files' digests inside itself.
-`tools/mutate.py` now guards **130** files across `data/`, `orig/`, `tools/`
-and `docs/` (122 before Task 18 committed `data/probes/`, 126 after it, 130
-after Task 19 added `savegen.py`, `test_savegen.py`, `saveprobe.py` and two
-probe outputs less one README that was already counted) — the count is derived
-from the tree, so it moves when files are added —
+`tools/mutate.py` now guards **131** files across `data/`, `orig/`, `tools/`
+and `docs/` (122 before Task 18 committed `data/probes/`, 126 after it, 131
+after Task 19 added `tools/savegen.py`, `tools/test_savegen.py`,
+`tools/rngtrace/saveprobe.py` and two files under `data/probes/`) — the count
+is derived from the tree, so it moves when files are added —
 and
 `combattrace.main()` refuses an `--out` naming a frozen oracle.
 
