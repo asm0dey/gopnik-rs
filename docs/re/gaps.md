@@ -203,10 +203,11 @@ no draw but consumes a line, and charges `district * 50` while printing
 **Still not reproduced inside those two:** the church's two long sermons (the
 `== 0` and `== 1` stage arms, `1000:7cf5`.. and `1000:7dd5`..) and the
 old/new rank names its level-up arm prints from the `DS:0b42` 256-byte-stride
-table; and the mage's two file writes on the paid path (`save_r0.sav` at
-`1000:764e`/`1000:765d`, `places.sav` at `1000:766f`..), because
-`Game::write_save` is `Unsupported` for every `Game` this port can build. All
-are text or I/O; none costs a draw.
+table. Both are text; neither costs a draw. ~~and the mage's two file writes
+on the paid path~~ — **Task 19 implemented those**: `save_r0.sav`
+(`1000:764e`/`1000:765d`), `places.sav` (`1000:766f`..`1000:7724`) and
+`^0Сохранено! ^1Можешь беспредельничать дальше.` (`1000:7729`) are all in
+`Game::mage` now, via `crate::persist::Game::mage_save`.
 
 ### The random-encounter opponent — `FUN_1000_0d14` — CLOSED (Task 11f)
 
@@ -468,29 +469,90 @@ BigMarket (`6d62`) and Den (`6d6e`), except that `1000:6d45`
 not pairs. It then writes `^6Чё-то глюкануло - немогу прoгрузить Places:Ресет ту Default` (file `0x7CE3`) and
 leaves via `1000:6d8c`/`1000:6da0`, never reaching `1000:6dbe`.
 `[0x389c]` is the character class (Task 11b) — the skips keep the class
-bonuses and clear only what was discovered. The port has no `.SAV` load path at
-all, so none of this is reproduced.
+bonuses and clear only what was discovered. ~~The port has no `.SAV` load path
+at all, so none of this is reproduced.~~ **Task 19 built the load path**, and
+`crate::persist::load_slot` reproduces the failure arm as an all-clear
+`Places` plus `1000:73bb`'s class bonus, which restores exactly the three
+flags the arm's compares spare. Note the arm is reached only from **slot 0**:
+`1000:6c50` `cmp byte [0x3692],0` sends slots 2..5 past `places.sav`
+entirely.
 
-## No `.SAV` load path
+## ~~No `.SAV` load path~~ — CLOSED by Task 19
 
-*Cited from `src/main.rs`.*
+*Cited from `src/main.rs` and `src/persist.rs`.*
 
-`orig/g.exe` runs from itself alone, so "no save file" is the ordinary
-new-game case (**corroborated** by running it). Loading an existing character
-is out of scope; `Save::parse` is the only constructor, and `.SAV` offsets
-`0x214` (29 bytes) and `0x2ae` (8 bytes) are still unknown, so
-`Game::write_save` returns `Unsupported` for every `Game` this code can build.
+`orig/g.exe` runs from itself alone, so "no save file" is still the ordinary
+new-game case (**corroborated** by running it) and the slot menu prints
+nothing at all when the directory holds no `save_r?.sav` (`1000:6b33`).
 
-## No typed save verb, and no "saved" message
+Everything else in this entry was true and is not any more. `.SAV` offsets
+`0x214` and `0x2ae` are established (`docs/re/save-format.md`), `Save::parse`
+is no longer the only constructor (`Save::blank`), and `Game::write_save`'s
+`Unsupported` is gone with the method. `crate::persist` holds the whole path
+with its addresses: the `FindFirst` scan and menu (`1000:6a62`..`1000:6b81`),
+the five accepted keys and the `1` that is not one (`1000:6b5e`..`1000:6b7f`),
+the `Reset`/`BlockRead` (`1000:6bcb`..`1000:6c13`), the district taken from
+the slot digit (`1000:6bf9`), and slot 0's two extras — `places.sav`
+(`1000:6c50`) and `district := level div 10 + 1` (`1000:6d93`).
+`tests/save_load.rs` covers it; `src/main.rs` runs the menu before character
+creation, the order `FUN_1000_6a0d` uses.
 
-*Cited from `src/game.rs`'s `write_save` note.*
+**Still not reproduced, and it is one thing.** The original does the
+save-slot menu, the district-advance check and the whole main loop inside one
+procedure, so its `ReadKey` at `1000:6b56` and its `ReadLn` at `1000:ac31`
+are both available where they are needed. This port's menu reads a **line**
+and takes its first character, because nothing in it does raw-key input at
+all — a port decision, recorded in `crate::persist::choose_slot`.
 
-**Established from flow** that `sv` is not save (it sizes up the enemy — see
-`src/commands.rs`). Saving in the original is checkpoint-only:
-`docs/re/tables.md`'s "Other price sources" names `1000:761d` (a paid service,
-`district * 50` rubles) and a second path at `0x9bcd`. Neither is a typed verb.
-There is no "saved OK" / "save failed" string anywhere in `data/strings.json`,
-so a wrapper could only print composed text — which is why there is none.
+## ~~No typed save verb, and no "saved" message~~ — half closed, half REFUTED
+
+*Cited from `src/persist.rs`.*
+
+**The "no typed save verb" half stands, from flow**: `sv` sizes up the enemy
+(`src/commands.rs`), and no compare in `entry` or `FUN_1000_3d11` reaches a
+file write. Saving is checkpoint-only, at `1000:761d` (the mage, a paid
+service at `district * 50`) and at the `0x9bcd` prompt (the district-advance
+autosave).
+
+**The "no 'saved' message" half was FALSE, and this entry is what made the
+port print nothing on a save.** There are two, both in `data/strings.json`:
+
+| decimal off | file off | string | printed at |
+|---:|---|---|---|
+| 36242 | `0x8D92` | `^0Сохранено! ^1Можешь беспредельничать дальше.` | `1000:7729`, the mage's paid arm |
+| 39937 | `0x9C01` | `^1Сохранено в save_r` (+ the digit + `.sav`) | `1000:ace0`..`1000:ad0d`, the district autosave |
+
+`0x9BCD` — which this entry cited as "a second path" without reading it — is
+`^0Хочешь сохранить свои достижения?`, the autosave's own prompt. The
+supporting claim ("a wrapper could only print composed text — which is why
+there is none") therefore justified an absence with a false premise. The
+mage's arm is implemented and prints its line; see below for the other.
+
+## The district-advance autosave is mapped but not wired
+
+*Cited from `src/persist.rs`'s module doc and `src/game.rs`'s `run_combat`.*
+
+**Established from flow**, `1000:ab75`..`1000:ad12`. At the top of every main
+loop iteration: `1000:ab7f` (`district * 10 <= level`) and `1000:ab88`
+(`district < 5`) gate `1000:ab92 inc [0x3692]`, then the discovery-flag
+resets and both ban countdowns are cleared (`1000:abce`/`1000:abd3`), then
+`^1Ты доказал, что ты самый крутой в этом районе - отправляйся в следующий`
+(file `0x9B83`), `^0Хочешь сохранить свои достижения?` (file `0x9BCD`), a
+bare `\` (file `0x9BF1`), `ReadLn` into `DS:3a72` (`1000:ac31`), and
+`1000:ac54`'s compare against `y` (file `0x9BF3`). On a match it builds
+`save_r` + `Str([0x3692])` + `.sav` — **the district AFTER the increment**,
+which is exactly why the shipped corpus is `SAVE_R2`..`SAVE_R5` with no
+`SAVE_R1` — `Rewrite(f, 694)` at `1000:acb9`, `BlockWrite` from `DS:369c` at
+`1000:acc8`, and the `^1Сохранено в save_r…` line at `1000:ad0d`.
+
+**The port advances the district in the wrong place**, and that is what
+blocks the rest. `Game::resolve_fight`'s `while self.district < 5 && …` loop
+reproduces both gates correctly but sits in the post-fight block, which has
+no input iterator, so there is nowhere to put the prompt's `ReadLn`. Moving
+the advance to the top of `Game::run` is the fix, and it is a change to the
+main loop's shape rather than to this task's subject. The two lines, the
+prompt, the `y` compare and the ban-countdown clears are all unreproduced
+with it.
 
 ## `help`'s printed content
 
@@ -1091,16 +1153,13 @@ are the questions that pass left open, and the ones it created.
   `places.sav` load path is not modelled and it is not known why the flags
   were clear when `orig/PLACES.SAV` (copied into the run's game directory) is
   all `01`.
-* **`.SAV` offsets `0x2b1` and `0x2b5` are inside `unk_02ae`.** The record
-  spans `DS:369c`..`DS:3952`, so `unk_02ae` (`.SAV 0x2ae`..`0x2b5`) is
-  `20ae:394a`..`20ae:3951` — which makes `.SAV 0x2b1` the
-  `dealer_order_placed` byte `20ae:394d` and `.SAV 0x2b5` the
-  `church_visits` byte `20ae:3951`, both named in `data/wander.json`'s
-  `globals`. `tests/wander_sequence.rs` reads run E's state from those two
-  offsets. `data/save_layout.json` and `docs/re/save-format.md` still carry
-  the whole span as one opaque `unk_02ae`; this task did not modify either
-  (both are outside its file list), so the two documents disagree about a
-  name, not about a byte.
+* ~~**`.SAV` offsets `0x2b1` and `0x2b5` are inside `unk_02ae`.**~~
+  **CLOSED by Task 19.** The reasoning here was right and its `0x2b1` label
+  was not: the span is `20ae:394a`..`20ae:3951`, but `20ae:394d` is the
+  **pistol**, not `dealer_order_placed` — Task 18 had already corrected that
+  name and this entry kept it. `data/save_layout.json` and
+  `docs/re/save-format.md` now name all eight bytes with their addresses and
+  their evidence, so nothing disagrees any more.
 * **`Fighter::stoned` and `Game::buff_countdown` are two models of one
   variable.** The original keeps only the countdown at `20ae:38cd`
   (`1000:e9b4` sets it to 10, `1000:aea8` decays it, `1000:aeb3` takes the
@@ -1112,11 +1171,14 @@ are the questions that pass left open, and the ones it created.
   draw: `run`'s extra line (`1000:aeda`, above), the church's two long
   sermons and its rank-name pair, bucket 1's and bucket 4's flavour lines, and
   the `0f16:031a` delays the original spaces its phone-call gags with.
-* **`Game::mage` charges but cannot save.** On the paid path the money leaves
-  and no file is written, because `Game::write_save` is `Unsupported` for
-  every `Game` this port can build (see "No `.SAV` load path"). No captured
-  run took that path — draw 14 returned `0` once, in run A's turn 24, and the
-  driver answered `n` — so this is untested against the original.
+* ~~**`Game::mage` charges but cannot save.**~~ **CLOSED by Task 19**: the
+  paid path writes both files and prints `1000:7729`'s line.
+  `tests/save_load.rs::the_mage_writes_both_files_when_paid` and its
+  `..._when_declined_or_broke` twin cover it. Still true, and unchanged: no
+  captured run took that path — draw 14 returned `0` once, in run A's turn
+  24, and the driver answered `n` — so the *whole arm* remains untested
+  against the original, and only the file contents are (against the five
+  shipped saves).
 * **Two claims the differential test cannot reach**, found by mutating the
   port and checking that runs C and D still passed:
   * **The mage spends no draw.** Since no *passing* run enters `1000:7538`

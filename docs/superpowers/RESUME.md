@@ -1,7 +1,8 @@
 # Resume checkpoint — gopnik-rs port
 
-**Branch: `re/task-17-combat-dispatch`.** Last updated after **Task 18**,
-which is the **last task on this branch — development stops here.** The older
+**Branch: `re/task-19-save-unknowns`, cut from `main` @ `3eb7c74`.** Last
+updated after **Task 19**. Tasks 16–18 landed on
+`re/task-17-combat-dispatch` and are merged into `main`. The older
 feature branches (`port/gopnik-rust` @ `f2d4fce`, `fix/task-13-review`,
 `feat/mutation-gate`) are history; `main` carries everything up to Task 15 and
 PR #1 is merged, and Tasks 16, 17 and 18 live on this branch pending its
@@ -16,12 +17,14 @@ disagree, trust `git log`.
 
 ## READ THIS FIRST
 
-Everything is green: **204 Rust** (167 before Task 18), and for Python
-**366 by `unittest`** —
+Everything is green: **220 Rust** (204 after Task 18), and for Python
+**390 by `unittest`** (366 after Task 18; Task 19 added 15 in
+`tools/test_decode_save.py` and 9 in the new `tools/test_savegen.py`) —
 
 ```
-python3 -m unittest discover -s tools -p 'test_*.py'    -> Ran 366 tests, OK
-.venv/bin/pytest tools/ -q                              -> 380 passed, 3 skipped, 668 subtests
+python3 -m unittest discover -s tools -p 'test_*.py'    -> Ran 390 tests, OK
+.venv/bin/pytest tools/ -q                              -> 404 passed, 3 skipped, 668 subtests
+                                                          (380 + 3 after Task 18)
 ```
 
 **State the runner with the number, always.** The two disagree by design, both
@@ -31,7 +34,8 @@ module-level `def test_*` functions across 6 files** that `unittest` cannot see
 file's `__main__` block). 9 are in `tools/oracle/test_oracle_smoke.py`, 4 in
 `tools/test_extract_tables.py`, and one each in `test_decode_save.py`,
 `test_extract_strings.py`, `test_string_pointers.py`, `test_string_tables.py`.
-`380 + 3 = 383` collected, `383 − 366 = 17`, exactly. Subtests are NOT part of
+`404 + 3 = 407` collected, `407 − 390 = 17`, exactly — the same 17, because
+Task 19's new tests are all `TestCase` methods that `unittest` does collect. Subtests are NOT part of
 the difference: pytest reports the 668 separately, on its own line, and does not
 fold them into the 380. Re-measure with
 `git grep -c '^def test_' -- 'tools/test_*.py' 'tools/*/test_*.py'`
@@ -50,7 +54,9 @@ project keeps finding, committed into the file whose job is to prevent it.
 
 Also green:
 `python3 tools/difftest.py` exit 0 / 126 records, `python3 tools/mutate.py`
-exit 0 with **29 red** + 10 findings, `cargo clippy --all-targets` clean,
+exit 0 with **32 red** + 10 findings over **130 guarded files** (29 red / 126
+files after Task 18; the file count is derived from the tree and Task 19 added
+three tools plus one probe), `cargo clippy --all-targets` clean,
 `cargo doc --no-deps` 12 warnings (all pre-existing private-item links).
 `cargo fmt --check` shows exactly three PRE-EXISTING diffs in
 `tests/wander_sequence.rs` — **lines 242, 993 and 1120** after Task 18's
@@ -58,11 +64,12 @@ insertions moved them (they were 241, 973 and 1100; the content is
 byte-identical, confirmed by stashing). Seven reviewers have now confirmed
 they predate current work. Leave them; do not let them mask a new one.
 
-**The honest state of the project: the last session moved branch coverage by
-three.** See "How much is actually traced" below. Tasks 13-review, 14 and the
-mutation tooling are sound and found real defects in the *evidence*, but none of
-it was decompilation and none of it found a port bug. Task 16 is the return to
-the port.
+**The honest state of the project.** Tasks 13-review and 14 moved branch
+coverage by zero — sound work on the measuring apparatus that found real
+defects in the *evidence* and none in the port. Tasks 16–19 are the return to
+the thing measured: +118 branches and, in 18 and 19, real behaviour. Task 19
+in particular closed the largest single hole — the game can now save and
+load.
 
 ### Four oracles now, all ground truth, none ever regenerated
 
@@ -74,8 +81,11 @@ the port.
 | `data/combat_vectors.json` | RNG vectors | `705415b2…f044` |
 
 `combat_trace.json` records the first two files' digests inside itself.
-`tools/mutate.py` now guards **126** files across `data/`, `orig/`, `tools/`
-and `docs/` (122 before Task 18 committed `data/probes/`) — the count is derived from the tree, so it moves when files are added —
+`tools/mutate.py` now guards **130** files across `data/`, `orig/`, `tools/`
+and `docs/` (122 before Task 18 committed `data/probes/`, 126 after it, 130
+after Task 19 added `savegen.py`, `test_savegen.py`, `saveprobe.py` and two
+probe outputs less one README that was already counted) — the count is derived
+from the tree, so it moves when files are added —
 and
 `combattrace.main()` refuses an `--out` naming a frozen oracle.
 
@@ -96,6 +106,7 @@ Tasks 1–17 complete and reviewed. Since the last checkpoint:
 | 16 | `FUN_1000_1a03` mapped — **it is the character sheet** | `a293f51..e3e3963` | complete, reviewed (one fix round) |
 | 17 | The in-combat dispatcher mapped — `docs/re/combat-dispatch.md` | `54dd7b7..8632db5` | complete, reviewed (one fix round) |
 | 18 | The dispatcher arms **ported into `src/`** | `fc1d23d..c0e7dd7` | complete, reviewed (one fix round), **merge with fixes** |
+| 19 | The 33 unknown save bytes, and the save/load path they blocked | `a5a6e67..` | complete |
 
 ### Task 16, and why it is the shape to copy
 
@@ -226,6 +237,65 @@ survived a mutation to `if fled`, because the test meant to cover it killed
 the enemy a prompt too early and never reached the branch. **Mutate your own
 new code before reporting; it is the only thing that found that.**
 
+### Task 19 — persistence, and the instrument that came out of it
+
+**`.SAV` offset + `0x369c` IS the DGROUP address of that byte**, established
+from flow: the whole 694-byte record moves between the file and `DS:369c`
+with one *untyped* block operation in each direction (`1000:6c01`
+`BlockRead`, `1000:acc8` and `1000:765d` `BlockWrite`), so there is no
+marshalling for a per-field mapping to hide in. That resolves both `unk_`
+spans at once against `FUN_1000_1a03`'s flag lines, which Task 16 had already
+mapped and which nobody had read against the save format. `.SAV` now has
+**no unestablished byte**.
+
+Three corrections, not just additions:
+
+- **`cartridges` is a WORD at `0x2b3`** (`1000:1d8a cmp word [0x394f],0`), so
+  `0x2b4` is its high byte, not a 32nd flag. The obvious byte reading — which
+  the task brief carried — was wrong.
+- **`0x221`–`0x225` are FIVE post-kill item flags**, four of which grant a
+  stat delta. `save-format.md` said "four … at `0x221`–`0x225`";
+  `data/xp.json`'s 545–548 was the right list and the prose count was wrong.
+- **`gaps.md`'s "there is no 'saved OK' string anywhere in
+  `data/strings.json`" was FALSE.** There are two, at decimal 36242 and
+  39937, and that false premise is why the port printed nothing on a save.
+
+**The instrument, and why it outlives the task.** **355 of the game's 838
+branches (42%) have a guard that reads a byte inside the save record** —
+`entry` 168 of 406, `FUN_1000_1a03` 77 of 83, `FUN_1000_3d11` 72 of 224. So
+a save file is a direct write into guest memory for 42% of the game's
+branch guards:
+
+- **`tools/savegen.py`** — synthesise a valid record by name
+  (`--set money=5000 --set level=6`) or by raw offset, starting from a real
+  save so everything unnamed is known-good. Refuses an `--out` inside
+  `orig/`. Tests in `tools/test_savegen.py`.
+- **`tools/rngtrace/saveprobe.py`** — load a synthesised record in the real
+  `orig/g.exe` under qemu and read guest memory back. Two committed runs:
+  `data/probes/saveprobe-record-base.json` (all 694 bytes verbatim at
+  `20ae:369c`, 37 sentinels at their predicted addresses) and
+  `saveprobe-fresh-record.json` (`--fresh`, the record a brand-new character
+  starts with — which is how "a fresh save fills the unknown bytes with
+  zero" became an observation rather than a port decision).
+
+Both are **state-tier** and say so in their own output. Use them to
+*localise* (which guest byte, and what visibly changes), then disassemble the
+read site to *establish*. And a synthesised record can build states no
+playthrough reaches: say "forced" when you report one.
+
+**The port saves and loads.** `src/persist.rs` holds `Game::to_save` /
+`from_save`, the slot menu (`1000:6a62`..`1000:6b81`), the loader, and both
+writers. `src/save.rs`'s `to_bytes` now starts from a **zeroed** buffer and
+copies through only the shortstring padding, so the five reference saves'
+round trip is an offset check rather than a copy — verified by breaking one
+offset and watching it fail. The port's fresh 694-byte record is
+byte-identical to the original's own.
+
+**Still open, and it is one thing:** the district-advance autosave
+(`1000:ab75`..`1000:ad12`) is mapped but not wired, because this port
+advances the district inside the post-fight block rather than at the top of
+the main loop, and its prompt needs a `ReadLn` there. See `docs/re/gaps.md`.
+
 ### What Task 14 built, and what it is for
 
 `tools/mutate.py` mutates a **captured ground-truth artifact** and requires a
@@ -311,8 +381,8 @@ is the one failure mode a replay cannot see.
 
 ## How much is actually traced
 
-**285 of 838 game branches (34.0%)** have their branch address or guard cited
-anywhere in `docs/re/*.md`, measured after Task 18.
+**296 of 838 game branches (35.3%)** have their branch address or guard cited
+anywhere in `docs/re/*.md`, measured after Task 19 with the snippet below.
 
 This file previously said `134 / 838` here and `157/838` further down, both
 stale, and both left standing through a whole session because the instruction
@@ -328,6 +398,7 @@ the rate rather than trust a number:
 | Task 16 complete (`FUN_1000_1a03` mapped) | | **233/838** |
 | Task 17 complete (the in-combat dispatcher mapped) | | **281/838** |
 | Task 18 complete (the dispatcher arms ported into `src/`) | | **285/838** |
+| Task 19 complete (the save bytes, and the save/load path) | | **296/838** |
 
 The whole of Tasks 13-review and 14 moved it by **zero**; Task 15's +3 are the
 addresses its equivalence proofs had to cite. That is the cost of a session
@@ -442,8 +513,11 @@ question.
    `docs/re/METHODOLOGY.md`, "How to check this mechanically".
 2. Task 12 — now much smaller: the draw-replay covers the RNG half, so 12 is
    prices, XP thresholds, level-up gains, starting stats, menu numbering.
-3. The bulk, from `docs/re/gaps.md`: no `.SAV` load path and `write_save`
-   returns `Unsupported`; **shop purchase effects for every row except `bmar`
+3. The bulk, from `docs/re/gaps.md`: ~~no `.SAV` load path and `write_save`
+   returns `Unsupported`~~ — **done in Task 19**, along with the mage's paid
+   save; what is left of persistence is the district-advance autosave, which
+   needs the district advance moved to the top of the main loop.
+   **Shop purchase effects for every row except `bmar`
    7/8/9** (Task 18 did those three because they are what makes the pistol
    reachable; the generic path also echoes the MENU line where the original
    prints each arm's own confirmation, and refuses a district-gated row where
