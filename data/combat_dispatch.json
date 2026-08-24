@@ -1594,6 +1594,10 @@
           "addr": "1000:4ff5",
           "text": "mov cx,0x83"
         },
+        "divisor_mantissa_low": {
+          "addr": "1000:4ff8",
+          "text": "xor si,si"
+        },
         "divisor_mantissa": {
           "addr": "1000:4ffa",
           "text": "mov di,0x2000"
@@ -1605,6 +1609,10 @@
         "multiplier_exponent": {
           "addr": "1000:5002",
           "text": "mov cx,0x82"
+        },
+        "multiplier_mantissa_low": {
+          "addr": "1000:5005",
+          "text": "xor si,si"
         },
         "multiplier_mantissa": {
           "addr": "1000:5007",
@@ -1624,7 +1632,7 @@
         },
         "ratio": "0.6",
         "ratio_is_bias_free": true,
-        "ratio_note": "the exponents differ by exactly one step, so 2^(e2-e1) = 1/2 whatever the bias; under the mantissa layout docs/re/rtl.md already uses the significands are 1.25 and 1.5, so K2/K1 = 0.6 for every bias.  The DECIMAL value of either constant alone still needs the bias and is not established.",
+        "ratio_note": "the exponents differ by exactly one step, so 2^(e2-e1) = 1/2 whatever the bias; both significands' low mantissa halves are ZERO (1000:4ff8 and 1000:5005, each `xor si,si`), so each significand is fixed by its `di` word alone, and under the mantissa layout docs/re/rtl.md already uses they are 1.25 and 1.5.  K2/K1 = 0.6 for every bias.  The DECIMAL value of either constant alone still needs the bias and is not established.",
         "decimal_value_of_either_constant": null
       },
       "heal": [
@@ -1936,7 +1944,9 @@
         "entries": 0,
         "reaches": false
       }
-    ]
+    ],
+    "provenance": "These seven rows are TRANSCRIBED from build/rngtrace/verbprobe-1348.json, which is gitignored and NOT committed -- so the observed half of this node cannot be re-derived from this tree, only re-produced by re-running the harness with the command below.  What tools/test_combat_dispatch.py does check is that these rows agree with the STATIC reading: for every (prompt, verb) pair the observed answer must equal the answer the compare table predicts, so a transcription error that changed an answer fails.  A transcription error that changed a `prompts` count would not.  Same status as data/character_sheet.json's live_probe node.",
+    "reproduce": "python3 tools/rngtrace/verbprobe.py --boot-img build/rngtrace/boot.img --target 1000:1348 --street-plan s,w,w --combat-plan sv,s,sv,kos,k,run --want-combat-prompts 6 --out build/rngtrace/verbprobe-1348.json"
   },
   "branch_partition": {
     "range": [

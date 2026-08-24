@@ -45,7 +45,7 @@ project keeps finding, committed into the file whose job is to prevent it.
 
 Also green:
 `python3 tools/difftest.py` exit 0 / 126 records, `python3 tools/mutate.py`
-exit 0 with **19 red** + 10 findings, `cargo clippy --all-targets` clean.
+exit 0 with **28 red** + 10 findings, `cargo clippy --all-targets` clean.
 `cargo fmt --check` shows exactly three PRE-EXISTING diffs in
 `tests/wander_sequence.rs` (lines 241, 973, 1100) — six reviewers have now
 confirmed they predate current work. Leave them; do not let them mask a new one.
@@ -146,17 +146,26 @@ target rather than Task 16's. The re-pointed run: `sv` reaches `1000:1348`
 twice, six negatives do not, including combat `s`, which calls `1000:1a03`
 from the same chain.
 
-**Not done, deliberately:** no `tools/mutations.json` cases were added for
-`data/combat_dispatch.json`, so `mutate.py` stays at 19 red + 10 findings.
-Nine falsification probes were run by hand instead and are recorded in the
-task report. Adding the cases is the obvious follow-up.
+**Nine `tools/mutations.json` cases** now defend `data/combat_dispatch.json`
+and `docs/re/combat-dispatch.md`, so `mutate.py` reads **28 red + 10
+findings** (was 19 + 10). Five are one-to-one twins of Task 16's
+`character-sheet-*` cases — guard address, literal text, caller scan, prose
+address, branch partition. Four defend claims Task 16's deliverable never
+made: the buffer's twelve-reference closure (which is what "any other verb is
+silently ignored" rests on), the four-`Random`-sites scan, the `1000:4e2a`
+dead-code argument, and the two `xor si,si` the hospital bill's `0.6` needs.
+They were added in the review fix round; the fourteen probes run by hand
+during the task are now redundant with them and are kept in the task report
+only as the record of what was checked when.
 
 ### What Task 14 built, and what it is for
 
 `tools/mutate.py` mutates a **captured ground-truth artifact** and requires a
 named test to go red. It is the executable form of a rule `METHODOLOGY.md` could
 not previously enforce: *an assertion over a captured oracle is not evidence
-until it has been observed failing.* 23 cases; 13 red channels; 10 registered as
+until it has been observed failing.* Task 14 shipped it with 23 cases and 13
+red channels; the manifest is now **38 cases; 28 red channels**, Task 16 having
+added five and Task 17 nine. 10 are registered as
 `expect_red: false` — columns the capture holds that **no assertion reads**,
 including `r_randseed_367e`/`e_randseed_367e`, which wander asserts per sample
 and combat does not.

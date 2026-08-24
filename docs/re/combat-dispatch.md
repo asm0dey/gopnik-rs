@@ -416,7 +416,7 @@ image-wide, two writes and four reads, and **nothing ever clears it**.
 |---|---|---|
 | `1000:7364` | `FUN_1000_6a0d` | `mov byte [0x3c83],0x1`, immediately after `^1Пора наконец отомстить ректору...` (CS `0x6925`) in the `al == 5` arm at `1000:7347` |
 | `1000:ae13` | `entry` | `mov byte [0x3c83],0x1`, immediately after `^1А вот и он...` (CS `0x847e`) |
-| `1000:ae18` | `entry` | `cmp byte [0x3c83],0x1` — a test of the value stored eight bytes earlier, so `1000:ae1d jnz 0xae3c` is never taken and the two fights it guards are unconditional: `1000:ae2d call 0x3d11` with opponent kind 3 and `1000:ae39 call 0x3d11` with kind 4 |
+| `1000:ae18` | `entry` | `cmp byte [0x3c83],0x1` — a test of the value the **immediately preceding** instruction stored (`1000:ae13` is `c6 06 83 3c 01`, five bytes, so `1000:ae13 + 5 == 1000:ae18`), so `1000:ae1d jnz 0xae3c` is never taken and the two fights it guards are unconditional: `1000:ae2d call 0x3d11` with opponent kind 3 and `1000:ae39 call 0x3d11` with kind 4 |
 | `1000:411d` | `FUN_1000_3d11` | `cmp byte [0x3c83],0x0` — the spectator taunts run only while it is **clear** |
 | `1000:48eb` | `FUN_1000_3d11` | the flee refusal above |
 | `1000:4f8c` | `FUN_1000_3d11` | the rector death message below |
@@ -456,15 +456,26 @@ established**"; `docs/re/combat.md` nevertheless prints them as `5.0` and
 `3.0`. Both can be right at once, because **the bill only depends on their
 ratio, and the bias cancels out of it.**
 
-The divisor is materialised at `1000:4ff5 mov cx,0x83` with `si = 0` and
-`di = 0x2000` and consumed by `1000:4ffd call 0xf78:0x1117`; the multiplier at
-`1000:5002 mov cx,0x82` with `si = 0` and `di = 0x4000`, consumed by
-`1000:500a call 0xf78:0x1111`. `cl` is the exponent byte
-(`docs/re/rtl.md`, from `0f78:1117`'s zero-divisor test), so the exponents
-differ by exactly one step whatever the bias is, contributing a factor of
-`1/2`. Under the mantissa layout the same two documents already use — sign in
-the mantissa's top bit, leading `1` implicit — the significands are `1.25` and
-`1.5`. So
+The two constants are materialised three instructions each, and every one of
+the six is cited because the argument uses all three:
+
+| | divisor | multiplier |
+|---|---|---|
+| exponent | `1000:4ff5 mov cx,0x83` | `1000:5002 mov cx,0x82` |
+| low mantissa half | `1000:4ff8 xor si,si` | `1000:5005 xor si,si` |
+| high mantissa half | `1000:4ffa mov di,0x2000` | `1000:5007 mov di,0x4000` |
+| consumed by | `1000:4ffd call 0xf78:0x1117` | `1000:500a call 0xf78:0x1111` |
+
+`cl` is the exponent byte (`docs/re/rtl.md`, from `0f78:1117`'s zero-divisor
+test), so the exponents differ by exactly one step whatever the bias is,
+contributing a factor of `1/2`. **The two `xor si,si` are load-bearing, not
+noise:** they are what makes the low mantissa half zero, so each significand is
+fixed by its `di` word alone. Under the mantissa layout the same two documents
+already use — sign in the mantissa's top bit, leading `1` implicit — those
+words give `1.25` and `1.5`. A non-zero `si` would change both significands and
+with them the ratio, so `tools/test_combat_dispatch.py` asserts each `xor si,si`
+by text and asserts it sits between its exponent load and the runtime call that
+consumes the pair. So
 
 ```
 K2/K1 = (1.5 / 1.25) * 2^-1 = 0.6      for every possible bias

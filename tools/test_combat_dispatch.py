@@ -541,20 +541,41 @@ class DispatchTest(unittest.TestCase):
     def test_the_hospital_bill_ratio_needs_no_exponent_bias(self):
         b = self.art["death_and_hospital"]["hospital"]["bill"]
         for key in ("to_real", "divide", "multiply", "round", "debit",
-                    "divisor_exponent", "divisor_mantissa",
-                    "multiplier_exponent", "multiplier_mantissa"):
+                    "divisor_exponent", "divisor_mantissa_low",
+                    "divisor_mantissa", "multiplier_exponent",
+                    "multiplier_mantissa_low", "multiplier_mantissa"):
             self.check_insn(b[key], "bill %s" % key)
         e1 = int(b["divisor_exponent"]["text"].split(",")[-1], 16)
         e2 = int(b["multiplier_exponent"]["text"].split(",")[-1], 16)
         m1 = int(b["divisor_mantissa"]["text"].split(",")[-1], 16)
         m2 = int(b["multiplier_mantissa"]["text"].split(",")[-1], 16)
-        # Borland's 6-byte real: `cl` is the exponent, the mantissa's top bit is
-        # the sign and the leading 1 is implicit.  The BIAS cancels out of the
-        # ratio because it appears in both exponents.
-        sig = lambda w: 1.0 + ((w << 1) & 0xFFFF) / 0x10000
-        self.assertEqual(0.0, (m1 | m2) & 0x8000,
+        # Borland's 6-byte real: `cl` is the exponent, `ch`+`si` the low
+        # mantissa and `di` the high half, whose top bit is the sign with the
+        # leading 1 implicit.  Reading each significand off `di` ALONE is only
+        # valid because the low half is zeroed, so that is asserted rather than
+        # assumed -- a non-zero `si` would change both significands and with
+        # them the 0.6, and nothing else in this tree would notice.
+        for key in ("divisor_mantissa_low", "multiplier_mantissa_low"):
+            self.assertEqual(
+                b[key]["text"], "xor si,si",
+                "bill %s is %r, not the `xor si,si` that makes the low "
+                "mantissa half zero; the significands cannot be read off `di` "
+                "alone and the 0.6 does not follow" % (key, b[key]["text"]))
+        # ... and each `xor si,si` really is between its exponent load and the
+        # runtime call that consumes the pair.
+        for lo, mid, hi in (("divisor_exponent", "divisor_mantissa_low", "divide"),
+                            ("multiplier_exponent", "multiplier_mantissa_low",
+                             "multiply")):
+            self.assertTrue(
+                self.off(b[lo]["addr"]) < self.off(b[mid]["addr"])
+                < self.off(b[hi]["addr"]),
+                "bill %s is not between %s and %s, so it may be zeroing `si` "
+                "for something else" % (mid, lo, hi))
+        # The mantissa's top bit is the sign; both constants are positive.
+        self.assertEqual((m1 | m2) & 0x8000, 0,
                          "a mantissa's top bit is set, so one of the constants "
                          "is negative and the significand reading is wrong")
+        sig = lambda w: 1.0 + ((w << 1) & 0xFFFF) / 0x10000
         ratio = (sig(m2) / sig(m1)) * 2.0 ** (e2 - e1)
         self.assertAlmostEqual(ratio, float(b["ratio"]), places=9,
                                msg="the recorded ratio is not what the two "

@@ -160,13 +160,26 @@ accuracy% = min(budget_left * 5, 90)
 ```
 
 and since `budget = agility + 4`, the first blow's chance is
-`agility * 5 + 20` capped at 90 — exactly what the status screen prints
-(`1000:1574` tests `agility > 14`; `1000:157b` prints `Точность #%` with
-`agility * 5 + 20`; `1000:15a4` prints the flat `Точность 90% `), and what
-the in-game help text at `1000:613e` states in words:
+`agility * 5 + 20` capped at 90 — exactly what the **player's** status screen
+prints, and what the in-game help text at `1000:613e` states in words:
 `^0 Точность = (20+Ловкость*5)%`.
 
-The enemy's copy of the same test is `1000:468d`..`1000:46a7`.
+The status-screen citations here used to be `1000:1574` / `1000:157b` /
+`1000:15a4`, which are the **enemy's** copy inside `FUN_1000_1348` (the `sv`
+sheet) and read `20ae:3956`, not the player's agility — see the correction in
+the next section and `docs/re/combat-dispatch.md`. The player's copy is in
+`FUN_1000_1a03` (`docs/re/character-sheet.md`), and these are its matching
+sites:
+
+| at | what |
+|---|---|
+| `1000:21b0` | `mov ax,[0x38a0]` — the **player's** agility, into `[bp-0x104]` |
+| `1000:21b7` | `cmp word [bp-0x104],0xe` / `1000:21bc jnle 0x21e7` — the `agility > 14` test |
+| `1000:21be` | `mov di,0x1909` — prints `Точность #%` with `agility * 5 + 20` (`1000:21c9` / `1000:21cb` are the two `shl ax,1`, `1000:21cd add ax,si` makes ×5, `1000:21cf add ax,0x14`) |
+| `1000:21e7` | `mov di,0x1915` — the flat `Точность 90% `, the `jnle` target |
+
+The enemy's copy of the same **blow-loop** test (a different thing again: the
+per-blow roll, not the display) is `1000:468d`..`1000:46a7`.
 
 ### Second blow and multi-blow display — `1000:15bd`..`1000:1611`
 
