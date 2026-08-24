@@ -17,14 +17,15 @@ disagree, trust `git log`.
 
 ## READ THIS FIRST
 
-Everything is green: **228 Rust** (204 after Task 18), and for Python
-**399 by `unittest`** (366 after Task 18; Task 19 added 15 in
-`tools/test_decode_save.py`, 9 in the new `tools/test_savegen.py` and 9 in
-the new `tools/test_branch_reach.py`) —
+Everything is green: **231 Rust** (204 after Task 18), and for Python
+**404 by `unittest`** (366 after Task 18; Task 19 added 16 in
+`tools/test_decode_save.py`, 9 in the new `tools/test_savegen.py`, 9 in the
+new `tools/test_branch_reach.py` and 4 in the new
+`tools/test_string_citations.py`) —
 
 ```
-python3 -m unittest discover -s tools -p 'test_*.py'    -> Ran 399 tests, OK
-.venv/bin/pytest tools/ -q                              -> 413 passed, 3 skipped, 668 subtests
+python3 -m unittest discover -s tools -p 'test_*.py'    -> Ran 404 tests, OK
+.venv/bin/pytest tools/ -q                              -> 418 passed, 3 skipped, 668 subtests
                                                           (380 + 3 after Task 18)
 ```
 
@@ -35,7 +36,7 @@ module-level `def test_*` functions across 6 files** that `unittest` cannot see
 file's `__main__` block). 9 are in `tools/oracle/test_oracle_smoke.py`, 4 in
 `tools/test_extract_tables.py`, and one each in `test_decode_save.py`,
 `test_extract_strings.py`, `test_string_pointers.py`, `test_string_tables.py`.
-`413 + 3 = 416` collected, `416 − 399 = 17`, exactly — the same 17, because
+`418 + 3 = 421` collected, `421 − 404 = 17`, exactly — the same 17, because
 Task 19's new tests are all `TestCase` methods that `unittest` does collect. Subtests are NOT part of
 the difference: pytest reports the 668 separately, on its own line, and does not
 fold them into the 380. Re-measure with
@@ -55,7 +56,7 @@ project keeps finding, committed into the file whose job is to prevent it.
 
 Also green:
 `python3 tools/difftest.py` exit 0 / 126 records, `python3 tools/mutate.py`
-exit 0 with **32 red** + 10 findings over **133 guarded files** (29 red / 126
+exit 0 with **32 red** + 10 findings over **134 guarded files** (29 red / 126
 files after Task 18; the file count is derived from the tree, and Task 19 added
 `tools/savegen.py`, `tools/test_savegen.py`, `tools/branch_reach.py`,
 `tools/test_branch_reach.py`, `tools/rngtrace/saveprobe.py` and two files under
@@ -84,9 +85,9 @@ load.
 | `data/combat_vectors.json` | RNG vectors | `705415b2…f044` |
 
 `combat_trace.json` records the first two files' digests inside itself.
-`tools/mutate.py` now guards **133** files across `data/`, `orig/`, `tools/`
-and `docs/` (122 before Task 18 committed `data/probes/`, 126 after it, 133
-after Task 19 added five tools and two files under `data/probes/`) — the count
+`tools/mutate.py` now guards **134** files across `data/`, `orig/`, `tools/`
+and `docs/` (122 before Task 18 committed `data/probes/`, 126 after it, 134
+after Task 19 added six tools and two files under `data/probes/`) — the count
 is derived from the tree, so it moves when files are added —
 and
 `combattrace.main()` refuses an `--out` naming a frozen oracle.
@@ -294,7 +295,15 @@ branch guards:
   starts with — which is how "a fresh save fills the unknown bytes with
   zero" became an observation rather than a port decision).
 
-Both are **state-tier** and say so in their own output. Use them to
+* **`tools/test_string_citations.py`** — decodes every `file`/`CS`/`image
+  0xNNNN` citation in `src/persist.rs`, `src/save.rs`, `src/locations.rs` and
+  `docs/re/save-format.md` and requires the quoted literal beside it to be
+  what that offset holds. The final review found **four** wrong `file` offsets
+  on this branch, each the offset of a neighbouring string and two of them
+  values used CORRECTLY elsewhere in the same file. Grep cannot tell those
+  apart; decoding can. Point it at a new source by adding to `SOURCES`.
+
+Both probes are **state-tier** and say so in their own output. Use them to
 *localise* (which guest byte, and what visibly changes), then disassemble the
 read site to *establish*. And a synthesised record can build states no
 playthrough reaches: say "forced" when you report one.
@@ -325,7 +334,13 @@ including `r_randseed_367e`/`e_randseed_367e`, which wander asserts per sample
 and combat does not.
 
 `cargo-mutants` covers the half that gate structurally cannot — mutating `src/`
-itself. `-f src/combat.rs -f src/rng.rs` is now **76 mutants, 0 missed**.
+itself. `-f src/combat.rs -f src/rng.rs` is **76 mutants, 0 missed**, and
+`-f src/save.rs -f src/persist.rs` is **152 mutants, 0 missed** after Task 19.
+Its first run there found 2 survivors in `save.rs` and **10 in `persist.rs`**,
+all ten in the load path's DECISIONS — which file is opened, which menu line
+is printed, which arm a malformed `places.sav` takes, what district a level
+maps to — while the data transformations were already covered. Expect that
+asymmetry on the next port task.
 Whole-crate, as a measurement only: **1175 mutants, 446 missed**, `game.rs` 416
 of 833. Nothing was fixed there.
 
