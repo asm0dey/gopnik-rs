@@ -503,7 +503,10 @@ mod tests {
                 seen_hi |= d == hi;
             }
             assert!(seen_lo, "district {district}: the floor {lo} is reachable");
-            assert!(seen_hi, "district {district}: the ceiling {hi} is reachable");
+            assert!(
+                seen_hi,
+                "district {district}: the ceiling {hi} is reachable"
+            );
         }
     }
 

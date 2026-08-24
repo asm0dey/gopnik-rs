@@ -339,6 +339,7 @@ fn captured_level_ups_replay() {
         let mut p = Progress {
             xp: c.xp_before,
             threshold: c.threshold_before,
+            ..Progress::new()
         };
         assert_eq!(f.level, c.level_before, "{} frame {}", c.run, c.frame);
         assert_eq!(

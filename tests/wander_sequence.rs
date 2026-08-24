@@ -84,10 +84,11 @@
 //! five matching end states is a real second check on the encounter generator
 //! and not a restatement of the draw comparison.
 
+use gopnik::combat_dispatch::Pistol;
 use gopnik::game::Game;
 use gopnik::locations::Location;
 use gopnik::model::Fighter;
-use gopnik::progress::{new_character, Progress};
+use gopnik::progress::{new_character, Progress, GAINS_PER_LEVEL, MAX_LEVEL};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -245,9 +246,20 @@ fn game_for(run: &Run) -> Game {
         junk: u16at(0x22d),     // 20ae:38c9
         ..Fighter::default()
     };
+    // `array[1..40] of string[2]` at `.SAV 0x236` (`20ae:38d2`, reached
+    // through Borland's biased base `20ae:38cf`): element `n` is a length
+    // byte then two code characters at `0x236 + (n - 1) * 3`. The flee
+    // penalty at `1000:4954` is the only reader, and a fleeing run needs it.
+    let mut growth_log = [[0u8; GAINS_PER_LEVEL]; MAX_LEVEL as usize + 1];
+    for (n, entry) in growth_log.iter_mut().enumerate().skip(1) {
+        let base = 0x236 + (n - 1) * 3;
+        let len = usize::from(b[base]).min(GAINS_PER_LEVEL);
+        entry[..len].copy_from_slice(&b[base + 1..base + 1 + len]);
+    }
     let progress = Progress {
         xp: u32::from(u16at(0x232)),        // 20ae:38ce
         threshold: u32::from(u16at(0x234)), // 20ae:38d0
+        growth_log,
     };
     let mut g = Game::new(player, progress, seed);
     g.district = run
@@ -262,7 +274,15 @@ fn game_for(run: &Run) -> Game {
     g.ring_gospodi_pomilui = b[0x225] != 0; // 20ae:38c1
     g.pontovost_street = i32::from(u16at(0x22f)); // 20ae:38cb
     g.buff_countdown = b[0x231]; // 20ae:38cd
-    g.dealer_order_placed = b[0x2b1] != 0; // 20ae:394d
+
+    // 20ae:394d / 394e / 394f, three adjacent bytes and a word: the pistol,
+    // its silencer and its magazine. `20ae:394d` used to be read into a field
+    // called `dealer_order_placed`; it is the pistol flag.
+    g.pistol = Pistol {
+        owned: b[0x2b1] != 0,
+        silencer: b[0x2b2] != 0,
+        cartridges: u16at(0x2b3) as i16,
+    };
     g.church_visits = b[0x2b5]; // 20ae:3951
 
     // The seven discovery flags are NOT in the record: they live in

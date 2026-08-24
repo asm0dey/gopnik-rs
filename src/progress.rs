@@ -137,6 +137,10 @@ pub struct LevelUp {
     pub gains: [Option<Stat>; GAINS_PER_LEVEL],
 }
 
+/// One level's worth of growth-log codes — `string[2]`, `'1'`..`'4'`, with
+/// `0` for an empty position. See [`Progress::growth_log`].
+pub type GrowthEntry = [u8; GAINS_PER_LEVEL];
+
 /// The XP bookkeeping the original keeps outside the fighter record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Progress {
@@ -144,16 +148,59 @@ pub struct Progress {
     pub xp: u32,
     /// `DS:38d0` / `.SAV 0x234`.
     pub threshold: u32,
+    /// `array[1..40] of string[2]` at `.SAV 0x236`, addressed through
+    /// Borland's biased base `20ae:38cf` — the real base is `20ae:38d2` and
+    /// `1000:2647`..`1000:2651` reaches element `n` as `20ae:38cf + n * 3`,
+    /// which is `base - 1 * 3 + n * 3`. **Established from flow.**
+    ///
+    /// Ten references image-wide (`python3 tools/re_query.py xrefs-to
+    /// 20ae:38cf`): eight in `FUN_1000_2526` — two per stat, the read at
+    /// `1000:2651`/`26f9`/`2795`/`284d` and the write-back at
+    /// `1000:2670`/`2718`/`27b4`/`286c` — and two in `FUN_1000_3d11`, the
+    /// flee penalty's copy at `1000:495e` and its clear at `1000:497d`. So
+    /// the log is written **only** by the level-up and read **only** by the
+    /// de-level, which is why it lives here and not on
+    /// [`crate::model::Fighter`].
+    ///
+    /// Index 0 exists to keep the original's 1-based indexing: `1000:258e`
+    /// raises the level *before* `1000:2647` reads it, so nothing is ever
+    /// appended at 0. There are `MAX_LEVEL + 1` slots and
+    /// [`append_growth_code`] drops anything past the last, where the
+    /// original would run off the end of its array — that overrun is
+    /// reachable only through the two uncapped level-ups at `1000:5094` and
+    /// `1000:5145` (opponent kind 3 and 4), which this port never triggers,
+    /// and reproducing a memory overwrite is not something a port should do.
+    pub growth_log: [GrowthEntry; MAX_LEVEL as usize + 1],
 }
 
 impl Progress {
     /// A new character's state: `1000:6de0` sets the threshold to 10 and
     /// nothing writes the level or the XP total, both of which start at 0.
+    /// The growth log is BSS and starts as 41 empty shortstrings.
     pub fn new() -> Progress {
         Progress {
             xp: 0,
             threshold: THRESHOLD_BASE,
+            growth_log: [[0; GAINS_PER_LEVEL]; MAX_LEVEL as usize + 1],
         }
+    }
+}
+
+/// `1000:2657`..`1000:267a` and its three siblings — append one stat code to
+/// `growth_log[level]`.
+///
+/// The original does it as a Pascal string concatenation
+/// (`rtl_str_concat` at `0f78:0b66` with the CS literal, then
+/// `rtl_str_assign_max` at `0f78:0b01` with a max of **2**), so the entry
+/// holds at most two codes and a third would be dropped by the truncation.
+/// That is why the array element is `string[2]` and why
+/// [`GAINS_PER_LEVEL`] is the same 2.
+fn append_growth_code(p: &mut Progress, level: u16, stat: Stat) {
+    let Some(entry) = p.growth_log.get_mut(usize::from(level)) else {
+        return;
+    };
+    if let Some(slot) = entry.iter_mut().find(|c| **c == 0) {
+        *slot = stat.code();
     }
 }
 
@@ -317,6 +364,11 @@ pub fn apply_levels(
             let stat = pick(weights, roll);
             if let Some(stat) = stat {
                 grant(f, stat);
+                // 1000:2657/26ff/279b/2853 -- the code is appended inside the
+                // arm that granted the stat, so a roll that matches no range
+                // (only class 10, whose weights are all zero) records
+                // nothing.
+                append_growth_code(p, f.level, stat);
             }
             *slot = stat;
         }
@@ -327,6 +379,112 @@ pub fn apply_levels(
         });
     }
     ups
+}
+
+/// Take back the stat grants `growth_log[level]` records, and spend the entry
+/// — `[1000:4954, 1000:4a78)`, the first half of the flee penalty.
+///
+/// **Established from flow**, re-derived from `orig/g.exe` for this
+/// implementation. The block:
+///
+/// ```text
+/// 4954  growth_log[level] -> the local at [bp-0x10a]   (rtl_str_assign_max, max 0xff)
+/// 497d  mov byte [di+0x38cf],0        ; the SOURCE entry's length byte
+/// 4982  for i := 1 to 2 do            ; 1000:4989 inc / 1000:4a6f cmp,2 / 1000:4a73 jz
+/// 498f    '1' -> dec [0x389e] ... 49b3 dec [0x38aa] ... 49ca dec [0x38ae], clamp hp
+/// 49e3    '2' -> dec [0x38a0]
+/// 4a0c    '3' -> dec [0x38a2] ... 4a30 sub word [0x38ae],5, clamp hp
+/// 4a49    '4' -> dec [0x38a4]
+/// ```
+///
+/// The codes are the inverse of [`grant`], including the parity branch:
+/// `1000:49b7`..`1000:49c4` divides the *new* strength by two and takes the
+/// `dmg_min` decrement when the remainder is 1, where `1000:2683` takes the
+/// increment when it is 0. So a strength that gained `dmg_min` on the way up
+/// loses it on the way down, at the same crossing.
+///
+/// **The copy is what makes the clear safe:** `1000:497d` zeroes the source
+/// *before* the loop runs, and the loop reads the copy at `[bp-0x10a]`. Two
+/// divergences, both deliberate and neither reachable in play:
+///
+/// * the loop does not consult the copied string's length byte, so an entry
+///   that was already spent would have the loop read whatever the shortstring
+///   assignment left in the local's positions 1 and 2 — uninitialised stack.
+///   This clears **both codes** instead of only the length, so a spent entry
+///   reliably costs nothing. Reaching that state means fleeing twice at the
+///   same level without levelling in between, and the flee itself decrements
+///   the level, so the entry is always re-earned first.
+/// * the stat decrements use `wrapping_sub`, matching [`grant`]'s
+///   `wrapping_add`, rather than the original's signed word arithmetic.
+///
+/// Returns the codes it acted on, in order, so the caller can write the four
+/// `^4… -1 ` lines the original writes between the decrements. Nothing else is
+/// written inside the loop, so collecting them and printing afterwards is
+/// byte-identical.
+///
+/// **No draw**: there is no `9a 4b 11 78 0f` anywhere in
+/// `[1000:48eb, 1000:4afb)`.
+pub fn undo_growth(p: &mut Progress, f: &mut Fighter) -> Vec<Stat> {
+    let level = usize::from(f.level);
+    let entry = p.growth_log.get(level).copied().unwrap_or_default();
+    if let Some(slot) = p.growth_log.get_mut(level) {
+        *slot = GrowthEntry::default();
+    }
+    let mut undone = Vec::new();
+    for code in entry {
+        // 1000:4a6f is reached by every non-matching code, so an empty
+        // position costs nothing.
+        let Some(stat) = Stat::from_code(code) else {
+            continue;
+        };
+        match stat {
+            Stat::Strength => {
+                f.strength = f.strength.wrapping_sub(1);
+                f.dmg_max = f.dmg_max.wrapping_sub(1);
+                if !f.strength.is_multiple_of(2) {
+                    f.dmg_min = f.dmg_min.wrapping_sub(1);
+                }
+                f.hpmax = f.hpmax.wrapping_sub(1);
+            }
+            Stat::Agility => f.agility = f.agility.wrapping_sub(1),
+            Stat::Vitality => {
+                f.vitality = f.vitality.wrapping_sub(1);
+                f.hpmax = f.hpmax.wrapping_sub(5);
+            }
+            Stat::Luck => f.luck = f.luck.wrapping_sub(1),
+        }
+        // 1000:49ce and 1000:4a35 -- the same three-instruction clamp, only
+        // after the two codes that move `hpmax`.
+        if matches!(stat, Stat::Strength | Stat::Vitality) && f.hp > f.hpmax {
+            f.hp = f.hpmax;
+        }
+        undone.push(stat);
+    }
+    undone
+}
+
+/// Give the level back — `1000:4ac3`..`1000:4ad9`, the last three steps of the
+/// flee penalty.
+///
+/// ```text
+/// 4ac3  ff 0e a6 38        dec [0x38a6]              ; the level
+/// 4ac7  83 2e d0 38 0a     sub word [0x38d0],10      ; the threshold
+/// 4acc  xp >= threshold -> xp := threshold - 1       ; 1000:4acf jl 0x4adc
+/// ```
+///
+/// The threshold step is exactly the one `apply_levels` adds at
+/// `1000:2550`, which is what keeps [`xp_to_next`] true of the pair after a
+/// de-level as well as after a level-up. Both subtractions saturate here;
+/// the original's are signed word arithmetic, and neither can go negative
+/// from a state this port can reach — `1000:4931`'s `[0x38a6] > 0` guard is
+/// what stops the level, and the threshold is `10 + 10 * level` whenever the
+/// level cap has not bitten.
+pub fn demote(p: &mut Progress, f: &mut Fighter) {
+    f.level = f.level.saturating_sub(1);
+    p.threshold = p.threshold.saturating_sub(THRESHOLD_STEP);
+    if p.xp >= p.threshold {
+        p.xp = p.threshold.saturating_sub(1);
+    }
 }
 
 /// A freshly created character: `1000:7140`..`1000:71e8`.

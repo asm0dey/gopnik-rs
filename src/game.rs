@@ -66,6 +66,7 @@
 //! reported blocker, scoped to this one method.
 
 use crate::combat::{blows_per_round, resolve_blow_nth, Break, Swing};
+use crate::combat_dispatch::{self, Backup, Called, Shot, Status};
 use crate::commands::{parse, Command};
 use crate::data;
 use crate::locations::{Location, Places};
@@ -357,12 +358,42 @@ pub struct Game {
     pub den_errand_1_pending: bool,
     /// `20ae:3b79` -- den errand two (`1000:afd0`, same shape).
     pub den_errand_2_pending: bool,
-    /// `20ae:394d` / `.SAV 0x2b1` -- a 150-rouble order placed with the
-    /// dealers (`1000:cd05`); arms [`Game::dealer_delivery_counter`].
-    pub dealer_order_placed: bool,
-    /// `20ae:3e32` -- counts walks 0..25 once the order is placed; the phone
-    /// call fires at exactly 25 (`1000:af36`).
+    /// `20ae:394d` / `.SAV 0x2b1`, `20ae:394e`, `20ae:394f` -- the pistol, its
+    /// silencer and its magazine. See [`crate::combat_dispatch::Pistol`],
+    /// which carries the evidence for all three.
+    ///
+    /// This field used to be `dealer_order_placed: bool`, documented as "a
+    /// 150-rouble order placed with the dealers (`1000:cd05`)". The address
+    /// and the price were right; the reading was not. `1000:cd05`'s arm is
+    /// `bmar` row 7 and it hands over the pistol -- `mov byte [0x394d],1`
+    /// followed immediately by `1000:cd0a` `add word [0x394f],3` -- and
+    /// `1000:cd7b` refuses row 8 without it with `^6Нету пушки. Сначала купи
+    /// пистолет` (CS `0x9666`).
+    pub pistol: crate::combat_dispatch::Pistol,
+    /// `20ae:3e32` -- counts walks 0..25 once the PISTOL is owned
+    /// (`1000:af24` `cmp byte [0x394d],0` is the gate on the increment), and
+    /// the phone call fires at exactly 25 (`1000:af36`).
+    ///
+    /// What it is counting down to is the **silencer**: `1000:ce00`
+    /// `cmp byte [0x3e32],0x19` is the only other reader, and it is `bmar`
+    /// row 9's gate. So the counter is the dealers' delivery time on the one
+    /// item they have to order in.
     pub dealer_delivery_counter: u8,
+    /// `20ae:3c83` -- the rector showdown. **Confirmed** in Task 17
+    /// (`docs/re/combat-dispatch.md`): six references image-wide, two writes
+    /// (`1000:7364` after `^1Пора наконец отомстить ректору...` and
+    /// `1000:ae13` after `^1А вот и он...`) and four reads, and **nothing
+    /// ever clears it**. Its three effects are all in `FUN_1000_3d11`: no
+    /// crowd (`1000:411d`), no fleeing (`1000:48eb`) and a death message that
+    /// names the killer (`1000:4f8c`).
+    ///
+    /// **Nothing in this port sets it**, because neither of the two writers
+    /// is modelled: `1000:ae2d`/`1000:ae39` are the endgame's own two calls
+    /// to `FUN_1000_3d11` with opponent kinds 3 and 4, and this port has no
+    /// endgame. All three effects are implemented and reachable only from a
+    /// test that sets the field. Same shape as
+    /// [`Game::market_ban_countdown`]; registered in `docs/re/gaps.md`.
+    pub rector_showdown: bool,
     /// `20ae:3e35` -- the den's loan credit. Set to 5 at `1000:73e5` and
     /// topped up once per walk while below `district * 10` (`1000:af19`).
     pub den_loan_credit: u8,
@@ -485,7 +516,8 @@ impl Game {
             club_ban_countdown: 0,
             den_errand_1_pending: false,
             den_errand_2_pending: false,
-            dealer_order_placed: false,
+            pistol: crate::combat_dispatch::Pistol::default(),
+            rector_showdown: false,
             dealer_delivery_counter: 0,
             den_loan_credit: 0,
             church_visits: 0,
@@ -1141,20 +1173,50 @@ impl Game {
         term::println(&text::fill("^2Броня #    ", &[enemy.armor as i64]));
     }
 
-    /// `v`. Corroboration-only verb (see `crate::commands`); the original's
-    /// gating condition (befriended the den's gopota) is not tracked here,
-    /// so this always prints the real refusal line
-    /// (`^4Ни кто не хочет за тебя впрягаться.`, file `0x4EB9`).
-    fn call_backup(&self) {
-        term::println("^4Ни кто не хочет за тебя впрягаться.");
-    }
+    /// `v` at the STREET prompt: the original does nothing at all, so
+    /// neither does this.
+    ///
+    /// **Established from flow.** `v` is compared at exactly **one** site in
+    /// the whole image, `1000:4caa`, and that site pushes the *fight*
+    /// prompt's buffer `20ae:3a72`. Scanning every `9a d8 0b 78 0f`
+    /// (`rtl_str_compare`) call in `orig/g.exe` and reading each one's token
+    /// out of its own `mov di,<token>` / `push cs` / `push di` setup returns
+    /// 75 sites and one `v` among them. `entry`'s chain --
+    /// `crate::commands`' module doc lists it in full -- never compares `v`
+    /// against `20ae:3972`.
+    ///
+    /// This method used to print `^4Ни кто не хочет за тебя впрягаться.`
+    /// (CS `0x35e9`). That line is real, but it belongs to the fight prompt's
+    /// `v` arm at `1000:4d0a`, where it is the *cred too low* refusal --
+    /// see [`Game::backup_in_fight`]. Printing it here made the street
+    /// answer a verb the original leaves unanswered.
+    fn call_backup(&self) {}
 
-    /// `f`. Corroborated as "shoot"; gating (owns a pistol, bandit district)
-    /// is not tracked by `crate::model::Fighter`, so this always prints the
-    /// refusal line found immediately after `f`'s own compare in the code
-    /// layout (`^6Ты чё псих? мигом менты накроют!`, file `0xC31E`).
+    /// `f` at the STREET prompt -- `1000:ec96`..`1000:ecbd`.
+    ///
+    /// **Established from flow**, re-derived from an aligned walk out of
+    /// `entry`:
+    ///
+    /// ```text
+    /// ec96  call 0f78:0bd8            ; the `f` token, CS 0xaa4c
+    /// ec9b  jnz 0xecbd
+    /// ec9d  cmp byte [0x394d],0
+    /// eca2  jz 0xecbd                 ; NO pistol -> nothing is printed
+    /// eca4  mov di,0xaa4e             ; ^6Ты чё псих? мигом менты накроют!
+    /// ```
+    ///
+    /// So the refusal is what the game says to someone who is **carrying** a
+    /// pistol on the street; without one the verb is accepted and answered
+    /// with silence. This method used to print it unconditionally, with a doc
+    /// comment admitting the gating "is not tracked by
+    /// `crate::model::Fighter`" -- it is [`Game::pistol`] now.
+    ///
+    /// Nothing else happens either way: no draw, no state change, and the
+    /// pistol is not fired. `1000:ecbd` is the next verb's compare.
     fn shoot(&self) {
-        term::println("^6Ты чё псих? мигом менты накроют!");
+        if self.pistol.owned {
+            term::println("^6Ты чё псих? мигом менты накроют!");
+        }
     }
 
     /// `w`/`run` -- one whole wander turn, the complete `Random` sequence
@@ -1434,7 +1496,7 @@ impl Game {
         // gates before the increment (1000:af1d, af24, af2b), then the call
         // only on the turn it becomes exactly 25 and only with a phone.
         if self.places.is_found(Location::BigMarket)
-            && self.dealer_order_placed
+            && self.pistol.owned
             && self.dealer_delivery_counter < 25
         {
             self.dealer_delivery_counter += 1;
@@ -2619,6 +2681,10 @@ impl Game {
         // `jmp 0x40f2`, the only branch in the whole function that targets
         // it). So the counter is per FIGHT, not per session.
         let mut prompts_seen: u8 = 0;
+        // `20ae:3c80`. A fight-local even though it lives in DGROUP:
+        // `1000:5841` / `1000:5843` zero it as the function returns, and all
+        // 17 of its image-wide references are inside `FUN_1000_3d11`.
+        let mut backup = Backup::default();
         loop {
             if self.player.hp == 0 || enemy.hp == 0 {
                 break;
@@ -2649,61 +2715,106 @@ impl Game {
                 return Ok(());
             };
             let line = line?;
-            // 1000:48dc -- combat's own `run` compare, ahead of everything
-            // `parse` knows about.
-            if line.trim().eq_ignore_ascii_case("run") {
-                if self.player.broken_leg {
-                    // 1000:4915, file 0x4CC6.
-                    term::println("^4Ты не можешь убежать на сломаной ноге.");
-                    continue;
-                }
-                if self.player.level > 0 {
-                    // 1000:493b, file 0x4CEF. The growth-log reversal that
-                    // follows it in the original is not modelled; see this
-                    // method's doc.
-                    term::print("^4Враг: Трусливый засранец! ");
-                } else {
-                    // 1000:4ade, file 0x4D6F.
-                    term::println("^4Враг: Засранец!");
-                }
-                self.last_enemy = Some(enemy);
-                return Ok(());
+            let cmd = parse(&line);
+            // 1000:4af7 / 1000:5077 / 1000:51a2 all write `[bp-0x1]`, and
+            // 1000:5838 at the bottom of the loop is what reads it. Only the
+            // first of the three is set inside the chain; the other two are
+            // the death and victory blocks, which this port runs after the
+            // loop.
+            let mut fled = false;
+
+            // 1000:4440, token file 0x4A52 -- the blow exchange. The arm
+            // rejoins the chain at 1000:48d7, so everything below still runs.
+            if cmd == Command::Fight {
+                self.combat_round(&mut enemy);
             }
-            match parse(&line) {
-                // 1000:4c42, token file 0x4E71.
-                Command::Inspect => self.print_enemy_block(&enemy),
-                // 1000:4440, token file 0x4A52. (1000:4c75 is a second `k`
-                // compare, gated on `[0x3c80] >= 1` at 1000:4c64, which this
-                // port does not model -- see run_combat's doc.)
-                Command::Fight => self.combat_round(&mut enemy),
-                // 1000:4b00 -- FUN_1000_3d11 calls FUN_1000_29c4, the same
-                // routine `entry` calls at 1000:e966, with its own DS:3a72.
+
+            // 1000:48dc -- combat's own `run` compare, ahead of everything
+            // `parse` knows about (`parse` folds `w` and `run` into
+            // `Command::Walk`).
+            if line.trim().eq_ignore_ascii_case("run") {
+                fled = self.flee();
+            }
+
+            // 1000:4afb / 1000:4b00 -- FUN_1000_3d11 calls FUN_1000_29c4, the
+            // same routine `entry` calls at 1000:e966, with its own DS:3a72.
+            match cmd {
                 Command::Drink => self.beer(Beer::One),
                 Command::BingeDrink => self.beer(Beer::Binge),
                 // 1000:4b0d, token file 0x4D81 -> the arm at 1000:4b17.
                 Command::Joint => self.smoke(Joint::Fight),
-
-                // The four verbs `FUN_1000_3d11` compares that this port does
-                // NOT act on. Registered, not silently swallowed: each one's
-                // compare site is established from flow (see run_combat's
-                // doc), and only its *arm* is untraced, so implementing any
-                // of them starts by disassembling from the address here.
-                //
-                //   Command::Stats  `s`  1000:4c2e -> 1000:4c35 `call 0x1a03`
-                //   Command::Quit   `e`  1000:4c56 -> 1000:4c5d `xor ax,ax`
-                //                                     / `call 0f78:0116`
-                //   Command::Backup `v`  1000:4caa -> 1000:4cb4, gated on the
-                //                                     den flag `[0x3696]`
-                //   Command::Shoot  `f`  1000:4ea8 -> its own arm
-                Command::Stats | Command::Quit | Command::Backup | Command::Shoot => {}
-
-                // Everything else really is not compared here. The nine
-                // compares are the whole in-combat table, so a street verb
-                // typed at `^0Битва\` reaches no handler at all -- which is
-                // what the live capture saw for `mar` and `i`. That capture
-                // is evidence about `mar` and `i`; the line above is what
-                // covers the four verbs it never tested.
+                // 1000:4c2e, token CS 0x359f -> 1000:4c35 `call 0x1a03`, the
+                // PLAYER's sheet (Task 16, `docs/re/character-sheet.md`).
+                Command::Stats => self.show_stats(),
+                // 1000:4c42, token CS 0x35a1 -> 1000:4c49 `call 0x1348`, the
+                // ENEMY's sheet -- a different function, settled in Task 17.
+                // `FUN_1000_1348` references no address in the player's
+                // record at all, so `print_enemy_block` is the right callee
+                // here and `show_stats` would be the wrong one.
+                Command::Inspect => self.print_enemy_block(&enemy),
                 _ => {}
+            }
+
+            // 1000:4c56, token CS 0x35a4 -> 1000:4c5d `xor ax,ax` /
+            // `call 0f78:0116`, which is `System.Halt(0)`: the RTL restores
+            // the saved interrupt vectors and ends the process with
+            // `mov ah,0x4c` / `int 0x21`. So `e` at the fight prompt does not
+            // leave the fight -- it leaves the GAME, without writing a save
+            // and without the end screen `FUN_1000_074b` draws on death.
+            if cmd == Command::Quit {
+                self.last_enemy = Some(enemy);
+                self.running = false;
+                return Ok(());
+            }
+
+            // 1000:4c64 `cmp word [0x3c80],1` / `jl 0x4ca0` guards the SECOND
+            // `k` compare at 1000:4c75, so the countdown only ticks once the
+            // backup has been called.
+            if backup.count() >= 1 && cmd == Command::Fight && backup.tick_on_attack() {
+                // 1000:4c87, CS 0x35a6 -- the copy WITHOUT the trailing dot.
+                term::println("^2Подошли пацаны - Ща начнется!");
+            }
+
+            // 1000:4caa, token CS 0x35c6 -> the arm at 1000:4cb4.
+            if cmd == Command::Backup {
+                self.backup_in_fight(&mut backup);
+            }
+
+            // [1000:4d93, 1000:4e9e) -- the gopota's own attack, and NOT part
+            // of the `v` arm: it is on the straight line between `v` and `f`,
+            // so it runs whatever was typed, including a line no compare
+            // matched. Both fighters' hp are carried as `i32` across it for
+            // the same reason `combat_round` does; only the stored value
+            // saturates.
+            let mut ehp = i32::from(enemy.hp);
+            self.backup_attacks(&mut backup, &mut ehp, &enemy);
+
+            // 1000:4ea8, token CS 0x3714 -> the arm at 1000:4eb2. There is no
+            // enemy-alive gate on it, unlike the backup block's 1000:4d93 --
+            // so a shot fired in the same prompt the backup landed a killing
+            // blow still lands, and its `У него осталось #` is negative.
+            if cmd == Command::Shoot {
+                self.shoot_in_fight(&mut ehp);
+            }
+            enemy.hp = ehp.max(0) as u16;
+
+            // Everything else really is not compared here. The ten verbs are
+            // the whole in-combat table (`docs/re/combat-dispatch.md` closes
+            // the buffer's reference set at twelve, of which nine are the
+            // compares and one is the `h`/`mh` subroutine), so a street verb
+            // typed at `^0Битва\` reaches no handler at all -- which is what
+            // the live capture saw for `mar` and `i`.
+
+            // 1000:5838 `cmp byte [bp-0x1],0` is the loop's exit test, and it
+            // is read AFTER the death test at 1000:4f82 and the victory test
+            // at 1000:507b. Those two are the loop-top `break` below, so the
+            // one case the two orderings disagree about is a `run` in the
+            // same prompt where the backup landed the killing blow: there
+            // `1000:507b`'s `jle 0x5085` takes the victory arm and the flee
+            // flag never gets read.
+            if fled && enemy.hp > 0 {
+                self.last_enemy = Some(enemy);
+                return Ok(());
             }
         }
 
@@ -2711,6 +2822,19 @@ impl Game {
         if self.player.hp == 0 {
             // 1000:4f82 `cmp word [0x38ac],0` / `jle 0x4f8c` -- the death
             // test, and it runs BEFORE the victory test at 1000:507b.
+            //
+            // 1000:4f8c `cmp byte [0x3c83],1` / `jnz 0x4fba` -- the rector's
+            // own death line (CS 0x37cc), ahead of the hospital and with no
+            // rescue behind it: 1000:4fac is `ReadKey` and 1000:4fb4 calls
+            // FUN_1000_074b with `al = 0`, the end screen, which halts. So
+            // dying to the rector is final however much cred and whatever
+            // flags the player is carrying. [`Game::rector_showdown`] is
+            // never set by this port.
+            if self.rector_showdown {
+                term::println("^4Ты сдох. Ректор тебя замочил. Ты так и не доказал свою крутизну.");
+                self.running = false;
+                return Ok(());
+            }
             if self.hospital_rescue() {
                 return Ok(());
             }
@@ -2838,6 +2962,202 @@ impl Game {
             self.player.money = 0;
         }
         true
+    }
+
+    /// `run` at the fight prompt -- `[1000:48eb, 1000:4af7]`. Returns `true`
+    /// when the arm reached `1000:4af7 mov byte [bp-0x1],1`, i.e. the fight
+    /// is over.
+    ///
+    /// Two refusals leave the fight running; both `jmp 0x4afb`, the next step
+    /// of the chain, so a refused flee is still followed by every compare
+    /// after `run`.
+    ///
+    /// **No draw**: there is no `9a 4b 11 78 0f` anywhere in
+    /// `[1000:48eb, 1000:4afb)`. That is what makes run A turn 7 of
+    /// `data/rng_trace.json` -- a cop fight entered and fled -- show zero
+    /// draws between `1000:b792` and the next turn's `1000:af68`.
+    fn flee(&mut self) -> bool {
+        // 1000:48eb `cmp byte [0x3c83],1` / `jnz 0x490e`, CS 0x33bf.
+        if self.rector_showdown {
+            term::println("^4Ректор: Кудa? Стоять! Бейся до конца трусливый урод!");
+            return false;
+        }
+        // 1000:490e `cmp byte [0x38b1],1` / `jnz 0x4931`, CS 0x33f6.
+        if self.player.broken_leg {
+            term::println("^4Ты не можешь убежать на сломаной ноге.");
+            return false;
+        }
+        // 1000:4931 `cmp word [0x38a6],0` / `jnle 0x493b`.
+        if self.player.level > 0 {
+            self.flee_penalty();
+        } else {
+            // 1000:4ade, CS 0x349f -- at level 0 there is nothing to take.
+            term::println("^4Враг: Засранец!");
+        }
+        true
+    }
+
+    /// The flee penalty -- `[1000:493b, 1000:4adc]`, one level given back.
+    ///
+    /// `docs/re/combat.md` recorded this as "replayed in reverse when the
+    /// player flees (`1000:499a`)" and `run_combat`'s own doc as "this port
+    /// carries no growth log, so the penalty is not applied". Task 17
+    /// corrected the first (`1000:499a` is the `^4Сила -1 ` literal push, the
+    /// codes are **inverted** rather than walked backwards, and the loop runs
+    /// forward); this method is what closes the second.
+    /// [`crate::progress::undo_growth`] carries the per-code table and
+    /// [`crate::progress::demote`] the three steps after it.
+    ///
+    /// The middle block is here rather than in `crate::progress` because it
+    /// reads the district and the discovery flags:
+    ///
+    /// * `1000:4a87 cmp word [0x389c],5` / `jz 0x4ac3` -- class 5 skips it.
+    /// * `1000:4a8e`..`1000:4aa3` computes `level - (district - 1) * 10` and
+    ///   tests it against 3 with `cmp ax,3` / `jnz 0x4ac3` -- **equality**,
+    ///   where the post-kill twin in [`Game::claim_spoils`] (`1000:52ae`)
+    ///   uses `jl` on the same expression.
+    /// * on equality, `1000:4aa5 mov byte [0x3696],0x1` **sets** the den flag
+    ///   while `1000:4aaa` writes `^4Такого конявого непустят в местный
+    ///   притон!` (CS `0x3472`) -- an announcement that the player is now too
+    ///   shabby for the den, granting den access. That is the original's own
+    ///   behaviour, not a decode error: `20ae:3696` is a boolean whose every
+    ///   immediate store image-wide is a 0 or a 1, `1000:d80c` is the gate
+    ///   that reads it, and this is one of the stores of 1
+    ///   (`docs/re/combat-dispatch.md`). The store is reproduced as written.
+    ///
+    /// Unlike `claim_spoils`, there is no "already discovered" gate on the
+    /// store or on the line, so both happen again on a second flee at the
+    /// same measured level.
+    fn flee_penalty(&mut self) {
+        // 1000:493b, CS 0x341f -- `call 0eed:0x0`, no newline, so the stat
+        // lines run on from it.
+        term::print("^4Враг: Трусливый засранец! ");
+        for stat in progress::undo_growth(&mut self.progress, &mut self.player) {
+            term::print(match stat {
+                // 1000:499a / 49ee / 4a17 / 4a54, CS 0x343c / 3447 / 3456 /
+                // 3466. All four are `call 0eed:0x0` too.
+                progress::Stat::Strength => "^4Сила -1 ",
+                progress::Stat::Agility => "^4Ловкость -1 ",
+                progress::Stat::Vitality => "^4Живучесть -1 ",
+                progress::Stat::Luck => "^4Удача -1 ",
+            });
+        }
+        // 1000:4a78..1000:4a82 -- a bare `WriteLn` on the Text at 20ae:3fcc,
+        // which closes the line the four writes above left open.
+        term::println("");
+        if self.player.class != 5
+            && i32::from(self.player.level) - (i32::from(self.district) - 1) * 10 == 3
+        {
+            self.places.mark_found(Location::Den);
+            term::println("^4Такого конявого непустят в местный притон!");
+        }
+        progress::demote(&mut self.progress, &mut self.player);
+    }
+
+    /// `v` at the fight prompt -- `[1000:4cb4, 1000:4d93)`.
+    ///
+    /// The arm and the status line are two blocks, not one: every arm of the
+    /// first falls through to the second, so a refused call still gets a
+    /// countdown line if a countdown is already running.
+    /// [`crate::combat_dispatch::Backup`] carries both.
+    ///
+    /// **No draw**: there is no `9a 4b 11 78 0f` in `[1000:4cb4, 1000:4d93)`.
+    fn backup_in_fight(&mut self, backup: &mut Backup) {
+        match backup.call(
+            self.places.is_found(Location::Den),
+            self.pontovost_street,
+            self.district,
+            self.has_mobile,
+        ) {
+            // 1000:4ce8, CS 0x35c8 -- WITH the trailing dot, unlike
+            // 1000:4c87's copy.
+            Called::ByPhone => term::println("^2Подошли пацаны - Ща начнется!."),
+            // 1000:4d0a, CS 0x35e9.
+            Called::NobodyWillBackYou => term::println("^4Ни кто не хочет за тебя впрягаться."),
+            // 1000:4d25, CS 0x360f.
+            Called::NoDen => term::println("^6Сначала надо скорешиться с местной гопотой."),
+            // 1000:4cd5 sets the counter and writes nothing; the status line
+            // below is what the player sees.
+            Called::OnTheWay => {}
+        }
+        match backup.status(self.has_mobile) {
+            // 1000:4d4c, CS 0x363d, with 1000:4d51/1000:4d54's `3 - counter`.
+            Status::KicksToHold(n) => term::println(&text::fill(
+                "^6Тебе надо продержатся до подхода братвы # пинка.",
+                &[i64::from(n)],
+            )),
+            // 1000:4d7a, CS 0x3670.
+            Status::TheyAreHere => term::println("^2Они уже здесь."),
+            Status::Nothing => {}
+        }
+    }
+
+    /// `[1000:4d93, 1000:4e9e)` -- the gopota swing, on every prompt once
+    /// they have arrived. [`crate::combat_dispatch::backup_round`] carries
+    /// the arithmetic, the two draws and the argument for not porting
+    /// `1000:4e2a`.
+    fn backup_attacks(&mut self, backup: &mut Backup, ehp: &mut i32, enemy: &Fighter) {
+        let Some(fought) = combat_dispatch::backup_round(
+            &mut self.rng,
+            backup,
+            self.district,
+            enemy.armor,
+            *ehp,
+            &mut self.pontovost_street,
+        ) else {
+            return;
+        };
+        *ehp = fought.enemy_hp_after;
+        // 1000:4df3, CS 0x3681. 1000:4df8/1000:4dfb push `hp_before - hp_now`
+        // and 1000:4e00 the remainder.
+        term::println(&text::fill(
+            "^2Врага отпинали на #з. У него осталось #",
+            &[i64::from(fought.damage), i64::from(*ehp)],
+        ));
+        // 1000:4e4f, CS 0x36bd.
+        if fought.beaten {
+            term::println("^2Твою подмогу отпинали.");
+        }
+        // 1000:4e85, CS 0x36d6.
+        if fought.gave_up {
+            term::println("^4Подмоге надоело столько парится из-за мало понтового мудака");
+        }
+    }
+
+    /// `f` at the fight prompt -- `[1000:4eb2, 1000:4f82)`.
+    /// [`crate::combat_dispatch::fire`] carries the gates, the hit test and
+    /// the damage.
+    fn shoot_in_fight(&mut self, ehp: &mut i32) {
+        match combat_dispatch::fire(
+            &mut self.rng,
+            &mut self.pistol,
+            self.flag_3693,
+            self.player.agility,
+        ) {
+            // 1000:4eb9 jumps straight to the death test: an accepted verb
+            // that prints nothing at all.
+            Shot::NoPistol => {}
+            // 1000:4eca, CS 0x3716 -- the game's own typo for `Нельзя`.
+            Shot::NotHere => term::println("^6Тельзя тут стрелять! Менты накроют!"),
+            // 1000:4f69, CS 0x37a5.
+            Shot::NoCartridges => term::println("^6Чё за батва? Блин патроны кончились!"),
+            // 1000:4f4e, CS 0x3789.
+            Shot::Miss => term::println("^2Это был хреновый выстрел."),
+            Shot::Hit { damage } => {
+                *ehp -= i32::from(damage);
+                // 1000:4f2c, CS 0x373c. 1000:4f31/1000:4f34 push the
+                // difference, 1000:4f39 the remainder and 1000:4f3d the
+                // cartridges LEFT -- 1000:4eed has already spent one.
+                term::println(&text::fill(
+                    "^2Ты выстрелил и ранил врага на #з. У него осталось #з., осталось патронов #",
+                    &[
+                        i64::from(damage),
+                        i64::from(*ehp),
+                        i64::from(self.pistol.cartridges),
+                    ],
+                ));
+            }
+        }
     }
 
     /// `1000:523e`..`1000:57cc` -- everything the victory block does after
@@ -3152,9 +3472,6 @@ impl Game {
     /// per-prompt, not per-fight. `tests/combat_sequence.rs` is what holds
     /// that to the port, draw for draw.
     ///
-    /// `[0x3c83]` is the rector flag; nothing in this port sets it, so the
-    /// `1000:411d` gate is always open here.
-    ///
     /// Called BEFORE the prompt is written, because `1000:43f6` (the
     /// `^0Битва\` write) is what this block falls through to.
     fn crowd(&mut self, prompts_seen: &mut u8) {
@@ -3164,6 +3481,14 @@ impl Game {
                 // file 0x4744
                 term::println("^7Начинают собираться зрители");
             }
+        }
+        // 1000:411d `cmp byte [0x3c83],0` / `jz 0x4127` -- the rector
+        // showdown has no spectators. The gate sits AFTER the counter block
+        // at 1000:40f2, so `^7Начинают собираться зрители` still prints and
+        // only the taunts (and their two draws) are suppressed.
+        // [`Game::rector_showdown`] is never set by this port.
+        if self.rector_showdown {
+            return;
         }
         if *prompts_seen != 5 {
             return;
