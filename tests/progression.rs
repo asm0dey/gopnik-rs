@@ -15,8 +15,9 @@
 
 use gopnik::model::Fighter;
 use gopnik::progress::{
-    apply_levels, class_weights, grant, new_character, xp_award, xp_to_next, Progress, Stat,
-    CLASS_WEIGHTS, GAINS_PER_LEVEL, MAX_LEVEL, START_STATS, THRESHOLD_BASE, THRESHOLD_STEP,
+    apply_levels, class_weights, demote, grant, new_character, undo_growth, xp_award, xp_to_next,
+    Progress, Stat, CLASS_WEIGHTS, GAINS_PER_LEVEL, MAX_LEVEL, START_STATS, THRESHOLD_BASE,
+    THRESHOLD_STEP,
 };
 use gopnik::rng::Rng;
 use gopnik::save::Save;
@@ -623,4 +624,233 @@ fn reference_saves_agree_with_the_curve() {
     }
     assert_eq!(checked, 5);
     assert_eq!(buffed, 2, "SAVE_R2 and SAVE_R4 carry the +2 strength buff");
+}
+
+// ---------------------------------------------------------------------------
+// Task 18: the growth log and the flee penalty that spends it.
+//
+// `array[1..40] of string[2]` at `.SAV 0x236` (`20ae:38d2`, reached through
+// Borland's biased base `20ae:38cf`). Ten references image-wide: eight in
+// `FUN_1000_2526` that write it (`1000:2651` and its three siblings, each
+// with a write-back) and two in `FUN_1000_3d11`'s flee arm that read it
+// (`1000:495e`) and then clear the entry (`1000:497d`).
+// ---------------------------------------------------------------------------
+
+/// The round trip, run against the ORIGINAL's own captured level-ups:
+/// replay each one's announced gains through [`grant`], log them the way
+/// `1000:2651` does, then flee every level back with [`undo_growth`] and
+/// [`demote`] and require the stats to land on the record the original held
+/// **before** the kill.
+///
+/// This is what pins the de-level against something other than this crate:
+/// `player_before` and `gains_announced` both come out of `data/xp.json`, so
+/// a wrong parity branch (`1000:49b7`..`1000:49c4` takes `dmg_min` back when
+/// the NEW strength is odd, where `1000:2683` grants it when the new strength
+/// is even), a missing `hpmax` term or a missing `dmg_max` shows up as a
+/// number that does not match the guest's memory.
+///
+/// `hp` and `xp` are deliberately not compared. `player_after`'s hp includes
+/// the victory block's own `+5` (`1000:526c`), which is not part of the
+/// level-up; and the de-level's XP clamp (`1000:4acc`) is lossy by design, so
+/// the original does not restore the XP either.
+#[test]
+fn the_captured_level_ups_undo_back_to_the_record_before_the_kill() {
+    let x = xp();
+    let mut checked = 0;
+    for c in &x.level_up_cases {
+        if c.gains_announced.is_empty() {
+            continue;
+        }
+        let where_ = format!("{} frame {}", c.run, c.frame);
+        let mut f = c.player_before.build();
+        let mut p = Progress {
+            xp: c.xp_after,
+            threshold: c.threshold_after,
+            ..Progress::new()
+        };
+        // 1000:258e raises the level BEFORE 1000:2647 reads it, so the codes
+        // for a level land in that level's own entry.
+        for (i, name) in c.gains_announced.iter().enumerate() {
+            if i % GAINS_PER_LEVEL == 0 {
+                f.level += 1;
+            }
+            let stat = stat_of(name);
+            grant(&mut f, stat);
+            p.growth_log[usize::from(f.level)][i % GAINS_PER_LEVEL] = stat.code();
+        }
+        // The rebuilt state has to BE the captured one, or the round trip
+        // below starts from the wrong place and proves nothing.
+        assert_eq!(f.level, c.level_after, "rebuilt level, {where_}");
+        assert_eq!(f.hpmax, c.player_after.hpmax, "rebuilt hpmax, {where_}");
+        assert_eq!(
+            f.dmg_min, c.player_after.dmg_min,
+            "rebuilt dmg_min, {where_}"
+        );
+
+        for _ in 0..c.levels_announced {
+            let undone = undo_growth(&mut p, &mut f);
+            assert_eq!(undone.len(), GAINS_PER_LEVEL, "codes undone, {where_}");
+            demote(&mut p, &mut f);
+        }
+
+        let b = &c.player_before;
+        assert_eq!(f.level, c.level_before, "level back, {where_}");
+        assert_eq!(f.strength, b.strength, "strength back, {where_}");
+        assert_eq!(f.agility, b.agility, "agility back, {where_}");
+        assert_eq!(f.vitality, b.vitality, "vitality back, {where_}");
+        assert_eq!(f.luck, b.luck, "luck back, {where_}");
+        assert_eq!(f.hpmax, b.hpmax, "hpmax back, {where_}");
+        assert_eq!(f.dmg_min, b.dmg_min, "dmg_min back, {where_}");
+        assert_eq!(f.dmg_max, b.dmg_max, "dmg_max back, {where_}");
+        assert_eq!(p.threshold, c.threshold_before, "threshold back, {where_}");
+        assert_eq!(
+            p.growth_log,
+            Progress::new().growth_log,
+            "every entry spent, {where_}"
+        );
+        checked += 1;
+    }
+    assert!(checked >= 6, "only {checked} captured level-ups to undo");
+}
+
+/// The same round trip driven by `apply_levels` itself rather than by the
+/// capture, so it can sweep every class and reach the parity branch on both
+/// sides many times over. The awards are exactly the outstanding threshold,
+/// which empties the XP pool at every level and leaves `1000:4acc`'s clamp
+/// nothing to do — so here `Progress` has to come back *exactly*, log
+/// included.
+#[test]
+fn a_level_gained_and_then_fled_back_restores_the_character_exactly() {
+    let mut classes_checked = 0;
+    for class in 0..CLASS_WEIGHTS.len() as u16 {
+        if class_weights(class).iter().sum::<u16>() == 0 {
+            // Class 10 (Ректор НГУ) has all-zero weights, so `1000:2814`'s
+            // last range test never passes, no stat is granted and no code is
+            // logged. Nothing to round-trip, and no player can hold it.
+            continue;
+        }
+        for seed in [1u32, 7, 4242] {
+            let (mut f, mut p) = new_character("^7 t", 0);
+            f.class = class;
+            let before_f = f.clone();
+            let before_p = p.clone();
+            let mut rng = Rng::new(seed);
+            for _ in 0..5 {
+                let award = p.threshold - p.xp;
+                apply_levels(&mut p, &mut f, &mut rng, award, false);
+            }
+            assert_eq!(f.level, 5, "class {class} seed {seed}");
+            assert_ne!(f, before_f, "five levels must have changed something");
+            for lvl in 1..=5 {
+                assert_eq!(
+                    p.growth_log[lvl].iter().filter(|c| **c != 0).count(),
+                    GAINS_PER_LEVEL,
+                    "class {class} seed {seed}: level {lvl}'s log"
+                );
+            }
+            for _ in 0..5 {
+                undo_growth(&mut p, &mut f);
+                demote(&mut p, &mut f);
+            }
+            assert_eq!(f, before_f, "class {class} seed {seed}: the fighter");
+            assert_eq!(p, before_p, "class {class} seed {seed}: xp, threshold, log");
+        }
+        classes_checked += 1;
+    }
+    assert_eq!(classes_checked, CLASS_WEIGHTS.len() - 1);
+}
+
+/// `1000:497d` clears the entry before the loop reads the copy, so the same
+/// level cannot be undone twice. The second call must cost nothing at all.
+#[test]
+fn a_spent_growth_log_entry_costs_nothing_the_second_time() {
+    let (mut f, mut p) = new_character("^7 t", 0);
+    let mut rng = Rng::new(9);
+    let award = p.threshold;
+    apply_levels(&mut p, &mut f, &mut rng, award, false);
+    assert_eq!(f.level, 1);
+
+    let first = undo_growth(&mut p, &mut f);
+    assert_eq!(first.len(), GAINS_PER_LEVEL, "two codes were logged");
+    let after_first = f.clone();
+    assert_eq!(p.growth_log[1], [0; GAINS_PER_LEVEL]);
+
+    let second = undo_growth(&mut p, &mut f);
+    assert!(second.is_empty(), "the entry is spent");
+    assert_eq!(f, after_first, "and nothing moved");
+}
+
+/// `1000:4acc`..`1000:4ad9` — `if xp >= threshold then xp := threshold - 1`,
+/// evaluated on the threshold AFTER `1000:4ac7` took ten off it. All three
+/// sides of `1000:4acf`'s `jl`.
+#[test]
+fn demote_clamps_the_xp_to_one_below_the_restored_threshold() {
+    let at_level_5 = || {
+        let (mut f, mut p) = new_character("^7 t", 0);
+        f.level = 5;
+        p.threshold = xp_to_next(5);
+        (f, p)
+    };
+
+    // Above the restored threshold: clamped.
+    let (mut f, mut p) = at_level_5();
+    p.xp = xp_to_next(5) - 1;
+    demote(&mut p, &mut f);
+    assert_eq!(f.level, 4);
+    assert_eq!(p.threshold, xp_to_next(4));
+    assert_eq!(p.xp, xp_to_next(4) - 1);
+
+    // Exactly equal: `>=`, so still clamped.
+    let (mut f, mut p) = at_level_5();
+    p.xp = xp_to_next(4);
+    demote(&mut p, &mut f);
+    assert_eq!(p.xp, xp_to_next(4) - 1);
+
+    // Below it: `1000:4acf jl 0x4adc` skips the store, so the XP is left
+    // exactly alone rather than being clamped down to threshold - 1.
+    let (mut f, mut p) = at_level_5();
+    p.xp = 7;
+    demote(&mut p, &mut f);
+    assert_eq!(p.xp, 7);
+    assert_eq!(p.threshold, xp_to_next(4));
+}
+
+/// The `.SAV` files are the independent check on the offset and the stride:
+/// five shipped saves at five different levels, each with exactly `level`
+/// two-character entries at `0x236 + (n - 1) * 3` and nothing beyond, every
+/// code in `'1'..'4'`. A wrong biased base or a wrong stride would not
+/// produce this pattern at five different levels at once.
+#[test]
+fn the_shipped_saves_hold_one_growth_log_entry_per_level_reached() {
+    let mut checked = 0;
+    for name in ["SAVE_R0", "SAVE_R2", "SAVE_R3", "SAVE_R4", "SAVE_R5"] {
+        let b = std::fs::read(root().join("orig").join(format!("{name}.SAV"))).unwrap();
+        let level = usize::from(u16::from_le_bytes([b[0x20a], b[0x20b]]));
+        assert!((10..=40).contains(&level), "{name}: level {level}");
+        // The offset comes from `data/save_layout.json`, which
+        // `tools/decode_save.py` derives from the original -- not from a
+        // literal typed here.
+        let log_at = save_layout_off("growth_log");
+        for n in 1..=usize::from(MAX_LEVEL) {
+            let base = log_at + (n - 1) * 3;
+            let len = usize::from(b[base]);
+            if n <= level {
+                assert_eq!(len, GAINS_PER_LEVEL, "{name}: entry {n} length");
+                for k in 0..GAINS_PER_LEVEL {
+                    assert!(
+                        (b'1'..=b'4').contains(&b[base + 1 + k]),
+                        "{name}: entry {n} byte {k} is {:?}",
+                        b[base + 1 + k] as char
+                    );
+                }
+            } else {
+                assert_eq!(
+                    len, 0,
+                    "{name}: entry {n} is past the level and must be empty"
+                );
+            }
+        }
+        checked += 1;
+    }
+    assert_eq!(checked, 5);
 }

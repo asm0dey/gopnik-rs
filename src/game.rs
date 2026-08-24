@@ -4063,6 +4063,490 @@ mod tests {
         );
     }
 
+    // --- Task 18: the rest of the in-combat dispatcher ---------------------
+
+    /// A fight the player can stand in indefinitely: the enemy has a lot of
+    /// hp and no agility, so nothing but the verb under test moves the
+    /// numbers these tests read.
+    fn punchbag() -> Fighter {
+        Fighter {
+            name: "Мудак".to_string(),
+            hp: 500,
+            hpmax: 500,
+            ..Fighter::default()
+        }
+    }
+
+    /// A game whose player can actually call for backup: `1000:4cb4` wants
+    /// the den flag and `1000:4cc8` wants `cred >= district * 10 + 10`.
+    fn game_with_gopota() -> Game {
+        let mut g = game();
+        g.places.mark_found(Location::Den);
+        g.pontovost_street = 500;
+        g.player.hp = 10_000;
+        g.player.hpmax = 10_000;
+        g
+    }
+
+    fn draws_at(g: &mut Game, site: &str) -> usize {
+        g.rng.take_log().iter().filter(|d| d.site == site).count()
+    }
+
+    /// The whole `v` sequence, measured on the two draw sites only the
+    /// backup block owns. `v` places the call and three `k`s take the
+    /// counter 1 -> 2 -> 3; `1000:4d9d` opens on the prompt the counter
+    /// reaches 3, so the gopota swing on that prompt and on every one after.
+    ///
+    /// The control is the same script with the den flag clear: `1000:4cb4`
+    /// refuses, the counter never leaves 0 and neither site ever fires.
+    #[test]
+    fn v_starts_a_countdown_that_k_ticks_and_then_the_gopota_swing() {
+        let script = ["v", "k", "k", "k"];
+
+        let mut g = game_with_gopota();
+        g.rng.start_log();
+        g.run_combat(punchbag(), &mut input(&script)).unwrap();
+        let log = g.rng.take_log();
+        let n = |site: &str| log.iter().filter(|d| d.site == site).count();
+        assert_eq!(n("1000:4db7"), 2, "the last two prompts have the gopota");
+        assert_eq!(n("1000:4e16"), 2, "the attrition coin, once per swing");
+        // Order matters: 1000:4db7 is the damage roll and 1000:4e16 the
+        // attrition, in that order, every time.
+        let backup: Vec<&str> = log
+            .iter()
+            .map(|d| d.site)
+            .filter(|s| *s == "1000:4db7" || *s == "1000:4e16")
+            .collect();
+        assert_eq!(backup, ["1000:4db7", "1000:4e16", "1000:4db7", "1000:4e16"]);
+
+        let mut g = game_with_gopota();
+        g.places = Places::from_bytes(&[0u8; 7]);
+        g.rng.start_log();
+        g.run_combat(punchbag(), &mut input(&script)).unwrap();
+        assert_eq!(draws_at(&mut g, "1000:4db7"), 0, "no den, no gopota");
+    }
+
+    /// `1000:4cc8` -- the cred gate is `cred >= district * 10 + 10`, and the
+    /// `jnle` makes the boundary itself pass. Measured on whether the
+    /// countdown started, one either side of the boundary, in two districts
+    /// so the `district * 10` term is exercised and not just the `+ 10`.
+    #[test]
+    fn the_backup_cred_gate_moves_with_the_district() {
+        for (district, need) in [(1u8, 20i32), (3, 40)] {
+            for (cred, expect_call) in [(need - 1, false), (need, true)] {
+                let mut g = game_with_gopota();
+                g.district = district;
+                g.pontovost_street = cred;
+                g.rng.start_log();
+                // `v` then three `k`s: if the call went through, the gopota
+                // arrive and their damage roll fires.
+                g.run_combat(punchbag(), &mut input(&["v", "k", "k", "k"]))
+                    .unwrap();
+                let fired = draws_at(&mut g, "1000:4db7") > 0;
+                assert_eq!(
+                    fired, expect_call,
+                    "district {district}, cred {cred} (needs {need})"
+                );
+            }
+        }
+    }
+
+    /// `1000:4cdb` -- the mobile phone stores 3 outright, and `1000:4d93` is
+    /// DOWNSTREAM of the `v` arm on the same straight line, so the gopota
+    /// swing in the very prompt the call was placed in and again in the next
+    /// one. Without a phone the same script leaves the counter at 1 and
+    /// neither prompt swings.
+    #[test]
+    fn the_mobile_phone_puts_the_gopota_in_the_fight_at_once() {
+        for (phone, want) in [(false, 0usize), (true, 2)] {
+            let mut g = game_with_gopota();
+            g.has_mobile = phone;
+            g.rng.start_log();
+            // `v`, then one line no compare matches -- so the only thing that
+            // can draw at 1000:4db7 is the backup block itself.
+            g.run_combat(punchbag(), &mut input(&["v", "zzz"])).unwrap();
+            assert_eq!(draws_at(&mut g, "1000:4db7"), want, "phone {phone}");
+        }
+    }
+
+    /// `[1000:4d93, 1000:4e9e)` is between the `v` arm and the `f` compare on
+    /// the dispatcher's straight line, not inside either -- so once the
+    /// gopota have arrived they swing on a line the chain never matched.
+    #[test]
+    fn the_gopota_swing_on_a_prompt_that_matched_no_verb_at_all() {
+        let mut g = game_with_gopota();
+        g.has_mobile = true;
+        g.player.level = 0; // so the closing `run` costs nothing
+        g.rng.start_log();
+        // `zzz` and `qqq` match no compare at all; `wes` is a DEALERS verb,
+        // compared at `1000:ced8` against `entry`'s buffer and never here.
+        // The closing `run` ends the fight so `last_enemy` is recorded.
+        g.run_combat(punchbag(), &mut input(&["v", "zzz", "qqq", "run"]))
+            .unwrap();
+        let log = g.rng.take_log();
+        assert_eq!(
+            log.iter().filter(|d| d.site == "1000:4db7").count(),
+            4,
+            "the call prompt and the three after it, whatever was typed"
+        );
+        // ... and the enemy really lost the hp those rolls bought. District
+        // 1: `3 + Random(4)` per swing, armour 0, so 12..=24 over four.
+        let left = g
+            .last_enemy
+            .as_ref()
+            .expect("the fight recorded an enemy")
+            .hp;
+        assert!(
+            (500 - 24..=500 - 12).contains(&left),
+            "enemy hp {left} is outside four district-1 backup blows"
+        );
+    }
+
+    /// `1000:507b` `cmp word [0x3962],0` / `jle 0x5085` is read AFTER the
+    /// whole chain and BEFORE `1000:5838`'s test of the flee flag, so a `run`
+    /// in the prompt where the gopota landed the killing blow is a VICTORY,
+    /// not an escape.
+    ///
+    /// Marked by the victory block's own `Random(30)` at `1000:52d5`, which
+    /// no other path in the function reaches.
+    #[test]
+    fn fleeing_in_the_prompt_the_gopota_win_is_still_a_victory() {
+        // Just enough hp that one district-1 backup blow (3..=6) cannot miss
+        // killing it.
+        // `strength` is there only so `1000:51b9`'s award (the sum of the
+        // enemy's four stats) is non-zero and the kill is visible in the XP.
+        let dying = || Fighter {
+            hp: 3,
+            hpmax: 50,
+            strength: 4,
+            ..punchbag()
+        };
+
+        let mut g = game_with_gopota();
+        g.has_mobile = true;
+        g.rng.start_log();
+        g.run_combat(dying(), &mut input(&["v"])).unwrap();
+        assert_eq!(draws_at(&mut g, "1000:4db7"), 1, "the gopota swung once");
+
+        let mut g = game_with_gopota();
+        g.has_mobile = true;
+        g.rng.start_log();
+        // Second prompt: the gopota kill it, and the `run` is typed in the
+        // same prompt.
+        g.run_combat(dying(), &mut input(&["v", "run"])).unwrap();
+        let log = g.rng.take_log();
+        assert!(
+            log.iter().any(|d| d.site == "1000:52d5"),
+            "the victory block must run: {:?}",
+            log.iter().map(|d| d.site).collect::<Vec<_>>()
+        );
+        assert!(g.progress.xp > 0, "the kill was awarded");
+    }
+
+    /// `1000:4e79` -- the gopota bill `district * 5` of street cred per
+    /// swing and walk out the moment it is not positive.
+    #[test]
+    fn the_gopota_leave_when_the_street_cred_runs_out() {
+        let mut g = game_with_gopota();
+        g.has_mobile = true;
+        g.district = 1;
+        // 20 clears 1000:4cc8's gate for district 1, and then four swings at
+        // 5 apiece take it to exactly 0.
+        g.pontovost_street = 20;
+        g.rng.start_log();
+        g.run_combat(punchbag(), &mut input(&["v", "z", "z", "z", "z", "z", "z"]))
+            .unwrap();
+        assert_eq!(g.pontovost_street, 0);
+        assert_eq!(
+            draws_at(&mut g, "1000:4db7"),
+            4,
+            "four swings at 5 cred each, then 1000:4e82 zeroes the counter"
+        );
+    }
+
+    /// `1000:4eb2` and `1000:4ebc`/`1000:4ec3` -- the two gates that make
+    /// `f` do nothing, measured on the draw count and on the magazine.
+    #[test]
+    fn shooting_needs_a_pistol_and_somewhere_it_is_allowed() {
+        let cases = [
+            (false, false, false, 0usize),
+            (true, false, false, 0),
+            (true, true, false, 1),
+            (true, false, true, 1),
+        ];
+        for (owned, silencer, flag_3693, want_draws) in cases {
+            let mut g = game();
+            g.pistol = combat_dispatch::Pistol {
+                owned,
+                silencer,
+                cartridges: 6,
+            };
+            g.flag_3693 = flag_3693;
+            g.rng.start_log();
+            g.run_combat(punchbag(), &mut input(&["f"])).unwrap();
+            let fired = draws_at(&mut g, "1000:4ef5");
+            assert_eq!(
+                fired, want_draws,
+                "owned {owned}, silencer {silencer}, 3693 {flag_3693}"
+            );
+            assert_eq!(
+                g.pistol.cartridges,
+                6 - want_draws as i16,
+                "1000:4eed spends one only when the shot is taken"
+            );
+        }
+    }
+
+    /// `1000:4ee6` -- an empty magazine is its own refusal, and it must not
+    /// take the count below zero however often `f` is typed.
+    #[test]
+    fn an_empty_magazine_refuses_without_drawing_or_going_negative() {
+        let mut g = game();
+        g.pistol = combat_dispatch::Pistol {
+            owned: true,
+            silencer: true,
+            cartridges: 1,
+        };
+        g.rng.start_log();
+        g.run_combat(punchbag(), &mut input(&["f", "f", "f", "f"]))
+            .unwrap();
+        assert_eq!(g.pistol.cartridges, 0);
+        assert_eq!(
+            draws_at(&mut g, "1000:4ef5"),
+            1,
+            "only the first `f` had a cartridge to spend"
+        );
+    }
+
+    /// The shot lands on the enemy record, and its 20..=29 is subtracted with
+    /// no armour term (`1000:4f28`) -- so an enemy in full armour loses
+    /// exactly as much as a naked one from the same seed.
+    #[test]
+    fn the_pistol_ignores_the_enemy_armour() {
+        let hit = |armor: u16| {
+            let mut g = game();
+            g.rng = Rng::new(4);
+            g.player.agility = 50; // beats every Random(0x32)
+            g.pistol = combat_dispatch::Pistol {
+                owned: true,
+                silencer: true,
+                cartridges: 6,
+            };
+            let enemy = Fighter {
+                armor,
+                ..punchbag()
+            };
+            // The closing `run` (level 0, so no penalty) is what makes the
+            // fight record `last_enemy`; running out of input does not.
+            g.run_combat(enemy, &mut input(&["f", "run"])).unwrap();
+            g.last_enemy.as_ref().unwrap().hp
+        };
+        let bare = hit(0);
+        assert!((500 - 29..=500 - 20).contains(&bare), "hp {bare}");
+        assert_eq!(hit(60), bare, "1000:4f28 has no `armour div 3` term");
+    }
+
+    /// `1000:4c5d` `xor ax,ax` / `call 0f78:0116` is `Halt(0)`: `e` at the
+    /// fight prompt leaves the whole game, not the fight, and reads no
+    /// further line.
+    #[test]
+    fn e_at_the_fight_prompt_halts_the_game() {
+        let mut g = game();
+        let mut lines = input(&["e", "k", "k"]);
+        g.run_combat(punchbag(), &mut lines).unwrap();
+        assert!(!g.running, "1000:4c5f ends the process");
+        assert_eq!(lines.count(), 2, "nothing after `e` is read");
+        assert!(g.last_enemy.is_some(), "the fight still recorded its enemy");
+    }
+
+    /// The property the captured oracles rest on: a fight that types only
+    /// the verbs the captures typed spends its draws at exactly the sites it
+    /// spent them at before Task 18 -- none of the four new ones -- even
+    /// when the player is carrying everything the new arms need.
+    ///
+    /// `data/combat_trace.json` is the real check (15 fights, 1900 draws);
+    /// this is the same statement in a form that names the four sites, so a
+    /// regression says which one leaked rather than only that the stream
+    /// moved.
+    #[test]
+    fn an_ordinary_fight_never_touches_the_four_new_random_sites() {
+        const NEW: [&str; 4] = ["1000:4db7", "1000:4e16", "1000:4ef5", "1000:4f18"];
+        let mut blows = 0;
+        for seed in 0..40u32 {
+            let mut g = game_with_gopota();
+            g.rng = Rng::new(seed);
+            g.has_mobile = true;
+            g.pistol = combat_dispatch::Pistol {
+                owned: true,
+                silencer: true,
+                cartridges: 99,
+            };
+            g.rng.start_log();
+            // Ten `k`s on a player who owns a pistol and could call the
+            // gopota, but types neither `f` nor `v`.
+            g.run_combat(punchbag(), &mut input(&["k"; 10])).unwrap();
+            let log = g.rng.take_log();
+            blows += log.iter().filter(|d| d.site == "1000:4460").count();
+            for site in NEW {
+                assert_eq!(
+                    log.iter().filter(|d| d.site == site).count(),
+                    0,
+                    "seed {seed}: {site} fired without `v` or `f` being typed"
+                );
+            }
+            assert!(
+                !log.is_empty(),
+                "seed {seed}: the fight drew nothing at all"
+            );
+        }
+        assert!(
+            blows > 0,
+            "no blow was ever rolled -- the script did nothing"
+        );
+    }
+
+    /// The flee penalty end to end -- `1000:493b`..`1000:4adc`. The growth
+    /// log is spent, the level and the threshold come back down, and the
+    /// stats the level granted go with them.
+    ///
+    /// [`crate::progress::undo_growth`]'s own round trip against
+    /// `data/xp.json` is in `tests/progression.rs`; what this adds is that
+    /// `run` at the fight prompt is wired to it at all, and that a level-0
+    /// player still gets `1000:4931`'s free exit.
+    #[test]
+    fn fleeing_above_level_zero_gives_a_level_back() {
+        let mut g = game();
+        let mut rng = Rng::new(5);
+        let award = g.progress.threshold;
+        progress::apply_levels(&mut g.progress, &mut g.player, &mut rng, award, false);
+        assert_eq!(g.player.level, 1);
+        let grown = g.player.clone();
+        let threshold = g.progress.threshold;
+
+        g.run_combat(punchbag(), &mut input(&["run"])).unwrap();
+        assert_eq!(g.player.level, 0, "1000:4ac3 dec [0x38a6]");
+        assert_eq!(
+            g.progress.threshold,
+            threshold - progress::THRESHOLD_STEP,
+            "1000:4ac7 sub word [0x38d0],0xa"
+        );
+        assert_eq!(
+            g.progress.growth_log[1],
+            [0; progress::GAINS_PER_LEVEL],
+            "1000:497d clears the entry"
+        );
+        assert_ne!(
+            (
+                g.player.strength,
+                g.player.agility,
+                g.player.vitality,
+                g.player.luck
+            ),
+            (grown.strength, grown.agility, grown.vitality, grown.luck),
+            "two stats were taken back"
+        );
+
+        // Level 0 is `1000:4931`'s other arm: nothing to take, nothing taken.
+        let mut g = game();
+        let before = g.player.clone();
+        let before_p = g.progress.clone();
+        g.run_combat(punchbag(), &mut input(&["run"])).unwrap();
+        assert_eq!(g.player, before);
+        assert_eq!(g.progress, before_p);
+    }
+
+    /// `1000:4a87`..`1000:4abe` -- the den block inside the flee penalty.
+    /// `1000:4aa0 cmp ax,3` / `jnz` is **equality** on
+    /// `level - (district - 1) * 10`, unlike the post-kill twin at
+    /// `1000:52ae` which uses `jl`; and `1000:4a87` lets class 5 out of the
+    /// whole thing.
+    ///
+    /// The store at `1000:4aa5` SETS the den flag while announcing that the
+    /// player is too shabby for the den. That is the original's, and it is
+    /// asserted here as written rather than corrected.
+    #[test]
+    fn the_flee_penalty_opens_the_den_on_the_exact_measured_level() {
+        let cases = [
+            (1u8, 2u16, false), // 2, below
+            (1, 3, true),       // 3, exactly
+            (1, 4, false),      // 4, above -- `jnz`, not `jl`
+            (2, 13, true),      // 13 - 10 = 3
+            (2, 3, false),      // 3 - 10 = -7
+            (3, 23, true),      // 23 - 20 = 3
+        ];
+        for (district, level, want_den) in cases {
+            let mut g = game();
+            g.district = district;
+            g.player.level = level;
+            g.run_combat(punchbag(), &mut input(&["run"])).unwrap();
+            assert_eq!(
+                g.places.is_found(Location::Den),
+                want_den,
+                "district {district}, level {level}"
+            );
+        }
+
+        // 1000:4a87 `cmp word [0x389c],5` / `jz 0x4ac3` -- class 5 skips the
+        // block even on the level that would otherwise open the den.
+        let mut g = game();
+        g.district = 1;
+        g.player.level = 3;
+        g.player.class = 5;
+        g.run_combat(punchbag(), &mut input(&["run"])).unwrap();
+        assert!(!g.places.is_found(Location::Den), "class 5 skips 1000:4a8e");
+        assert_eq!(g.player.level, 2, "but still pays the level");
+    }
+
+    /// `1000:411d` -- the rector showdown suppresses the spectators, and
+    /// with them their two draws, while leaving the counter (and its
+    /// `^7Начинают собираться зрители` at exactly five) alone.
+    #[test]
+    fn the_rector_showdown_has_no_spectators() {
+        for (rector, want) in [(false, 6usize), (true, 0)] {
+            let mut g = game();
+            g.rector_showdown = rector;
+            g.rng.start_log();
+            // Ten prompts, the last of them the `run` that ends the fight --
+            // without it the loop prompts an eleventh time before it sees the
+            // input end. 1000:4135 fires from the fifth prompt onward, so six.
+            let mut script = vec!["zzz"; 9];
+            script.push("run");
+            g.run_combat(punchbag(), &mut input(&script)).unwrap();
+            assert_eq!(
+                draws_at(&mut g, "1000:4135"),
+                want,
+                "rector_showdown = {rector}"
+            );
+        }
+    }
+
+    /// `1000:48eb` and `1000:4f8c` -- the rector refuses the flee and, when
+    /// he wins, there is no hospital behind the death message however much
+    /// cred and whatever den flag the player is carrying.
+    #[test]
+    fn the_rector_refuses_the_flee_and_leaves_no_hospital() {
+        let mut g = game();
+        g.rector_showdown = true;
+        g.player.level = 5;
+        let mut lines = input(&["run", "run", "run"]);
+        g.run_combat(punchbag(), &mut lines).unwrap();
+        assert_eq!(lines.count(), 0, "1000:490b re-prompts instead of leaving");
+        assert_eq!(g.player.level, 5, "and the penalty never runs");
+
+        // Death: the hospital's own gates are wide open and it still must
+        // not fire.
+        let mut g = game_with_gopota();
+        g.rector_showdown = true;
+        g.player.hp = 0;
+        g.player.hpmax = 40;
+        g.player.money = 100;
+        g.run_combat(punchbag(), &mut no_input()).unwrap();
+        assert!(!g.running, "1000:4fb4 calls the end screen, which halts");
+        assert_eq!(g.player.hp, 0, "1000:5018's `hp := hpmax` is not reached");
+        assert_eq!(g.player.money, 100, "and no bill was paid");
+        assert_eq!(g.pontovost_street, 500, "1000:4fe7's -10 is not reached");
+    }
+
     /// `1000:4b0d`'s arm, reached through the combat prompt rather than
     /// through `Game::dispatch`: `kos` is one of the nine tokens
     /// `FUN_1000_3d11` compares, and its arm sets the 3-turn buff.
