@@ -1,7 +1,7 @@
 {
   "note": "Mutation cases for tools/mutate.py -- read that file's docstring first. One case per independently falsifiable CHANNEL of the three frozen oracles plus data/combat_vectors.json: each perturbs the smallest thing that isolates one claim, and the named test must go red with `expect` in its output. Several mutations that all red the same assertion would be noise, so there is at most one per channel. A channel NOT listed here has not been shown to be falsifiable. Nothing here is ever applied to the real files: the runner works on a copy.",
   "manifest_lives_here_because": "This is configuration for a tool, not captured data. data/ is the read-only ground-truth tree the gate exists to protect, and a manifest living there would be copied -- and mutable -- inside the gate's own shadow of it.",
-  "findings": "Cases carrying \"expect_red\": false are not coverage. Each is a column the captures hold that no assertion in the suite reads -- found by this gate on its first run, by mutating the column and watching the whole test binary stay green. They are kept here, and kept executable, so the record cannot rot: when an assertion finally reaches one, the gate fails on it and the case is promoted to a red one.",
+  "findings": "Cases carrying \"expect_red\": false are not coverage. Each is a column the captures hold that no assertion reads -- found by this gate on its first run, by mutating the column and watching the whole test binary stay green. They are kept here, and kept executable, so the record cannot rot: when an assertion finally reaches one, the gate fails on it and the case is promoted to a red one. SCOPE OF THE SILENCE: each of these runs ONE cargo test binary, so what it establishes is that no RUST test in that binary reads the column. That a Python test does not read it either was checked by hand (git grep, fix round 1) and is NOT what the gate watches; a Python-side assertion arriving on one of these columns would not fail the case. Registering a finding whose test is a Python command is allowed -- the manifest and the runner take any argv -- so a future finding on that side can be recorded the same way.",
   "cases": [
     {
       "label": "wander-draw-stream",
@@ -84,6 +84,14 @@
       "expect": "B: 20ae:38ce"
     },
     {
+      "label": "combat-final-state-d",
+      "defends": "run_d_final_state_matches asserts the same 35-variable channel on the opposite side of it: a FRESH character that fled every fight, so a purse, an XP total and a discovery-flag set no victory block ever touched. A separate case because it is a separate assertion -- and because this is the one Task 13's re-review had to add after it was left out once already.",
+      "artifact": "data/combat_trace.json",
+      "mutate": {"op": "json-set", "path": ["runs", 3, "final_state", "xp_38ce"], "from": 0, "to": 1},
+      "test": ["cargo", "test", "--test", "combat_sequence", "run_d_final_state_matches"],
+      "expect": "D: 20ae:38ce"
+    },
+    {
       "label": "combat-vectors",
       "defends": "tests/combat_vectors.rs replays 295 seed-pinned blows captured off the original's own screen, asserting hit and damage per blow.",
       "artifact": "data/combat_vectors.json",
@@ -97,7 +105,7 @@
       "artifact": "tools/rngtrace/combattrace.py",
       "mutate": {"op": "text-replace", "from": "        if named is not None:\n            ap.error(\"--out %s names %s, a FROZEN oracle: it is read for its \"\n                     \"SHA-256 and never written.  Write the fight oracle to \"\n                     \"data/combat_trace.json instead.\" % (args.out, named))", "to": "        if named is not None:\n            pass"},
       "test": ["python3", "tools/test_rngtrace.py", "FightFoldTest.test_the_fold_refuses_to_write_over_a_frozen_oracle"],
-      "expect": "SystemExit not raised"
+      "expect": "combattrace.main() accepted --out naming a FROZEN oracle"
     },
     {
       "label": "combat-prompt-randseed",
@@ -174,7 +182,7 @@
     {
       "label": "combat-draws-until-next-fight",
       "expect_red": false,
-      "defends": "FINDING: the per-fight draw span the fold computes. Its sibling first_draw_index IS asserted (see combat-enemy-record); this derived span is not.",
+      "defends": "FINDING: the per-fight draw span in the SHIPPED file is compared to nothing. The fold's computation of it is asserted, on synthetic input, at tools/test_rngtrace.py:1529 and :1535 -- so the arithmetic is covered and the shipped value is not. Its sibling first_draw_index IS asserted against the port (see combat-enemy-record).",
       "artifact": "data/combat_trace.json",
       "mutate": {"op": "json-set", "path": ["runs", 0, "fights", 0, "draws_until_next_fight"], "from": 163, "to": 164},
       "test": ["cargo", "test", "--test", "combat_sequence"]

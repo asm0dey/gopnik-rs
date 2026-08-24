@@ -1628,12 +1628,20 @@ class FightFoldTest(unittest.TestCase):
                 shutil.copyfile(real_repo / name, fake_repo / name)
             copies_before = {n: combattrace.digest(fake_repo / n)
                              for n in combattrace.FROZEN}
+            # The message names the CLAIM, not the framework's "SystemExit not
+            # raised".  It is held in a variable rather than written inline
+            # because a traceback echoes the source line it failed on: spelled
+            # out at the `with`, the sentence would appear in the output of any
+            # failure on that line, and anything matching on it would match the
+            # wrong one.
+            refused = ("combattrace.main() accepted --out naming a FROZEN "
+                       "oracle")
             with mock.patch.object(combattrace, "REPO", fake_repo):
                 for name in combattrace.FROZEN:
                     target = fake_repo / name
                     err = io.StringIO()
                     with contextlib.redirect_stderr(err):
-                        with self.assertRaises(SystemExit):
+                        with self.assertRaises(SystemExit, msg=refused):
                             combattrace.main([str(src), "--labels", "A",
                                               "--out", str(target)])
                     self.assertIn("FROZEN oracle", err.getvalue())
