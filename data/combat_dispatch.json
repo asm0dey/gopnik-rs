@@ -1945,8 +1945,10 @@
         "reaches": false
       }
     ],
-    "provenance": "These seven rows are TRANSCRIBED from build/rngtrace/verbprobe-1348.json, which is gitignored and NOT committed -- so the observed half of this node cannot be re-derived from this tree, only re-produced by re-running the harness with the command below.  What tools/test_combat_dispatch.py does check is that these rows agree with the STATIC reading: for every (prompt, verb) pair the observed answer must equal the answer the compare table predicts, so a transcription error that changed an answer fails.  A transcription error that changed a `prompts` count would not.  Same status as data/character_sheet.json's live_probe node.",
-    "reproduce": "python3 tools/rngtrace/verbprobe.py --boot-img build/rngtrace/boot.img --target 1000:1348 --street-plan s,w,w --combat-plan sv,s,sv,kos,k,run --want-combat-prompts 6 --out build/rngtrace/verbprobe-1348.json"
+    "provenance": "These seven rows are TRANSCRIBED from data/probes/verbprobe-1000-1348.json, which is COMMITTED (Task 18 fix wave; it used to live only at build/rngtrace/verbprobe-1348.json, and /build is gitignored, so the observed half of this node could not be read from a clean clone at all).  Reading it is not the same as re-deriving it: re-RUNNING the harness needs build/rngtrace/boot.img, which is not committed, so this node stays state-tier evidence and every claim it supports is also carried by a flow-tier reading of the compare chain.  What tools/test_combat_dispatch.py does check is that these rows agree with the STATIC reading: for every (prompt, verb) pair the observed answer must equal the answer the compare table predicts, so a transcription error that changed an answer fails.  A transcription error that changed a `prompts` count would not.  `runs_agree` is deliberately NOT asserted there -- it is the artifact reporting a fact about its own capture -- and both runs are now committed so it can be checked by hand instead; see data/probes/README.md.  Same status as data/character_sheet.json's live_probe node, whose source is committed alongside.",
+    "reproduce": "python3 tools/rngtrace/verbprobe.py --boot-img build/rngtrace/boot.img --target 1000:1348 --street-plan s,w,w --combat-plan sv,s,sv,kos,k,run --want-combat-prompts 6 --out build/rngtrace/verbprobe-1348.json",
+    "source": "data/probes/verbprobe-1000-1348.json",
+    "source_run2": "data/probes/verbprobe-1000-1348-run2.json"
   },
   "branch_partition": {
     "range": [

@@ -1500,7 +1500,9 @@
         "reaches": false
       }
     ],
-    "reproduced": "the marker stream is byte-identical across the two runs this was driven on the same pinned seed"
+    "reproduced": "the marker stream is byte-identical across the two runs this was driven on the same pinned seed",
+    "source": "data/probes/verbprobe-1000-1a03.json",
+    "provenance_source_note": "The raw probe output is COMMITTED at data/probes/verbprobe-1000-1a03.json (Task 18 fix wave; it used to live only under the gitignored /build).  That makes the observed half readable and diffable, not re-derivable: re-running the harness needs build/rngtrace/boot.img, which is not committed.  This file predates verbprobe.py's --target flag, so it carries no `target` key; its breakpoint is 1000:1a03 and its `markers` node names the three addresses it broke on.  See data/probes/README.md."
   },
   "branch_partition": {
     "total": 83,
