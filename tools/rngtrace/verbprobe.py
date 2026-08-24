@@ -1,14 +1,24 @@
 #!/usr/bin/env python3
-"""Which typed verbs reach `FUN_1000_1a03`, and which provably do not.
+"""Which typed verbs reach a chosen function, and which provably do not.
 
     python3 tools/rngtrace/verbprobe.py --boot-img build/rngtrace/boot.img \
         --out build/rngtrace/verbprobe.json
+    python3 tools/rngtrace/verbprobe.py --boot-img build/rngtrace/boot.img \
+        --target 1000:1348 --combat-plan sv,s,run,k,kos \
+        --out build/rngtrace/verbprobe-1348.json
 
 Task 16, Step 1.  `docs/superpowers/RESUME.md` carried an `unverified`
 hypothesis that `1000:1a03` is the body behind `stats` from the main loop and
 `sv` from combat.  This tool settles it from FLOW: three breakpoints
 (`gdbsession.build_verbprobe_script`), a scripted list of verbs, and a per-verb
-count of how many times `1000:1a03` was entered in that verb's window.
+count of how many times the TARGET was entered in that verb's window.
+
+`--target` is what makes this a probe rather than one task's script.  It
+defaults to `1000:1a03`, Task 16's question; Task 17 points it at `1000:1348`,
+the function the `sv` arm calls at `1000:4c49`.  Nothing downstream is named
+after the default -- the counts are `target_entries`, the verdict is
+`reaches_target`, and the report records which citation was installed -- so a
+re-pointed run cannot publish a right number under the previous target's name.
 
 **The negative is the point.**  A run showing only that two verbs reach the
 function cannot tell that apart from "everything reaches it", so the plan types
@@ -45,6 +55,9 @@ else:
     from . import driver, gdbsession, loadbase, seedpatch, tracelog, vm
     from . import run as runmod
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import addr as addrmod            # noqa: E402  the address convention, executable
+
 REPO = Path(__file__).resolve().parents[2]
 
 # The default plan.  Every entry is a verb the dispatcher really compares
@@ -75,7 +88,7 @@ class ProbeError(RuntimeError):
 # `retf=23eb3` for `1000:1a03`.  A wrong label on a right number is the defect
 # class this project keeps finding, so the probe names its own field.
 RE_READY = re.compile(
-    r"^READY base=([0-9a-f]+) sheet=([0-9a-f]+) readln=([0-9a-f]+)\s*$")
+    r"^READY base=([0-9a-f]+) target=([0-9a-f]+) readln=([0-9a-f]+)\s*$")
 
 
 def parse_probe_log(text: str) -> dict:
@@ -109,7 +122,7 @@ def parse_probe_log(text: str) -> dict:
         m = RE_READY.match(line)
         if m:
             ready = {"image_base": int(m.group(1), 16),
-                     "sheet": int(m.group(2), 16),
+                     "target": int(m.group(2), 16),
                      "readln": int(m.group(3), 16)}
             continue
         if line in ("P", "C", "T"):
@@ -256,12 +269,12 @@ def align(typed, markers):
                 windows.append(cur)
             cur = {"index": len(windows) + 1,
                    "kind": "street" if m == "P" else "combat",
-                   "sheet_entries": 0}
+                   "target_entries": 0}
         elif m == "T":
             if cur is None:
                 pre += 1
             else:
-                cur["sheet_entries"] += 1
+                cur["target_entries"] += 1
     if cur is not None:
         windows.append(cur)
     for i, t in enumerate(typed):
@@ -270,7 +283,7 @@ def align(typed, markers):
         w["line"] = None
         w["note"] = ("the prompt the guest came back to after the last line "
                      "was typed; nothing was typed at it")
-    return {"windows": windows, "sheet_entries_before_first_prompt": pre,
+    return {"windows": windows, "target_entries_before_first_prompt": pre,
             "prompt_stops_by_kind": counts, "lines_typed_by_kind": want,
             "unanswered_prompts_by_kind": surplus}
 
@@ -283,11 +296,11 @@ def tally(windows):
             continue
         key = "%s:%s" % (w["kind"], w["line"])
         rec = out.setdefault(key, {"prompt_kind": w["kind"], "line": w["line"],
-                                   "prompts": 0, "sheet_entries": 0})
+                                   "prompts": 0, "target_entries": 0})
         rec["prompts"] += 1
-        rec["sheet_entries"] += w["sheet_entries"]
+        rec["target_entries"] += w["target_entries"]
     for rec in out.values():
-        rec["reaches_1000_1a03"] = rec["sheet_entries"] > 0
+        rec["reaches_target"] = rec["target_entries"] > 0
     return dict(sorted(out.items()))
 
 
@@ -351,7 +364,19 @@ def main(argv=None):
     ap.add_argument("--gdb-port", type=int, default=1234)
     ap.add_argument("--sock-dir", default="/tmp")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--target", default="1000:1a03",
+                    help="the function whose entry is the `T` marker, as a "
+                         "Ghidra citation (default 1000:1a03, Task 16's "
+                         "target; Task 17 used 1000:1348)")
     args = ap.parse_args(argv)
+
+    # `tools/addr.py` is the only place the two-form arithmetic lives; a
+    # citation outside segment 1000 raises there rather than producing a
+    # plausible breakpoint 64 KiB away.
+    target_cit = addrmod.citation(args.target).ghidra_label
+    target_off = addrmod.image_off_of_citation(args.target)
+    if target_off > 0xFFFF:
+        ap.error("--target %s is outside the game code segment" % args.target)
 
     street_plan = [v for v in args.street_plan.split(",") if v]
     combat_plan = [v for v in args.combat_plan.split(",") if v]
@@ -380,7 +405,8 @@ def main(argv=None):
 
         script = work / "probe.gdb"
         log = work / "probe.gdb.log"
-        script.write_text(gdbsession.build_verbprobe_script(base, args.gdb_port))
+        script.write_text(gdbsession.build_verbprobe_script(
+            base, args.gdb_port, target_off))
         gdb = gdbsession.GdbSession(script, log).start()
         gdb.wait_ready()
 
@@ -403,7 +429,7 @@ def main(argv=None):
         # The guest is idle in a ReadLn here (running, not stopped), so a
         # second dump is safe.  It is read for two reasons: RandSeed is the
         # second half of the progress guard, and `final_state` records the
-        # state the sheet was rendered against -- which is what makes the
+        # state the target ran against -- which is what makes the
         # per-verb result readable as "this character, these flags".
         dump = machine.dump_memory()
         final_state = runmod.read_state(dump, base)
@@ -421,11 +447,12 @@ def main(argv=None):
         final_state["randseed_367e"])
     aligned = align(typed, parsed["markers"])
     result = {
-        "note": ("Task 16 Step 1: which typed verbs enter FUN_1000_1a03.  "
-                 "Live, under qemu+gdb, against orig/g.exe with RandSeed "
-                 "pinned by patching a COPY.  Nothing here comes from src/, "
-                 "and this file is a report, not a replay oracle."),
+        "note": ("Which typed verbs enter %s.  Live, under qemu+gdb, "
+                 "against orig/g.exe with RandSeed pinned by patching a COPY.  "
+                 "Nothing here comes from src/, and this file is a report, "
+                 "not a replay oracle." % target_cit),
         "harness": "tools/rngtrace/verbprobe.py",
+        "target": target_cit,
         "seed": seed,
         "seed_hex": "0x%08X" % seed,
         "seed_patch": patch,
@@ -438,8 +465,8 @@ def main(argv=None):
                   "what": "the top-level prompt's ReadLn (9a c6 06 78 0f)"},
             "C": {"ghidra": "1000:441d",
                   "what": "the `Битва\\` prompt's ReadLn (9a c6 06 78 0f)"},
-            "T": {"ghidra": "1000:1a03",
-                  "what": "FUN_1000_1a03's prologue (55 89 e5)"},
+            "T": {"ghidra": target_cit,
+                  "what": "the target function's prologue"},
         },
         "run": {
             # The class comes from the guest's own DS:389c, never from the CLI
@@ -457,13 +484,13 @@ def main(argv=None):
         },
         "marker_stream": parsed["markers"],
         "prompt_windows": aligned["windows"],
-        "sheet_entries_before_first_prompt":
-            aligned["sheet_entries_before_first_prompt"],
+        "target_entries_before_first_prompt":
+            aligned["target_entries_before_first_prompt"],
         "per_verb": tally(aligned["windows"]),
         "totals": {
             "prompt_stops_street": parsed["markers"].count("P"),
             "prompt_stops_combat": parsed["markers"].count("C"),
-            "sheet_entries": parsed["markers"].count("T"),
+            "target_entries": parsed["markers"].count("T"),
             "lines_typed": len(typed),
         },
     }
@@ -471,9 +498,10 @@ def main(argv=None):
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
     for key, rec in result["per_verb"].items():
-        print("%-14s prompts=%-3d entries_1a03=%-3d %s"
-              % (key, rec["prompts"], rec["sheet_entries"],
-                 "REACHES" if rec["reaches_1000_1a03"] else "does NOT reach"))
+        print("%-14s prompts=%-3d entries_%s=%-3d %s"
+              % (key, rec["prompts"], target_cit.replace(":", "_"),
+                 rec["target_entries"],
+                 "REACHES" if rec["reaches_target"] else "does NOT reach"))
     print("-> %s" % out)
     return 0
 
