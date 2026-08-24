@@ -351,6 +351,11 @@ add that carry into the *magnitude*, before the sign is applied at
   carries no growth log, so it prints the arm's line (file `0x4CEF`) and
   leaves the fight without applying the penalty. Costs no draw, and no
   captured run reaches it: run A's cop fight is fled at level 0.
+  **Task 17 has the per-code table** (`docs/re/combat-dispatch.md`), including
+  the two details this entry does not carry: the walk is *forward* over
+  positions 1 and 2 without consulting the copied length byte
+  (`1000:4982` / `1000:4989` / `1000:4a6f`), and code `'1'` also decrements
+  `dmg_min` at `1000:49c6`, but only when strength is odd.
 * `1000:48eb`'s `[0x3c83] == 1` arm (file `0x4C8F`, the rector refusing to
   let you run). Nothing in this port sets `[0x3c83]`, so the arm is
   unreachable rather than wrong.
@@ -623,8 +628,14 @@ So `k` **is** the in-combat attack verb — established from flow, at
 `FUN_1000_29c4` at `1000:4b00`, which is a *subroutine* call and therefore not
 one of the nine.
 
-**What is NOT established.** The verb *set* is; the *effects* of most arms are
-not. Three of the nine arms have been followed into their bodies:
+**What is NOT established.** *(Superseded by Task 17: all nine arms are now
+followed into their bodies in `docs/re/combat-dispatch.md`, which also
+establishes that these nine plus `FUN_1000_29c4`'s `h`/`mh` are the whole
+accepted set — the buffer has exactly twelve references inside
+`FUN_1000_3d11` and only one near call receives it. The paragraph and table
+below are kept as the record of what was open before that.)* The verb *set*
+was established; the *effects* of most arms were not. Three of the nine arms
+had been followed into their bodies:
 
 * `1000:4440` `k` — the fight itself. `docs/re/combat.md` traces the blow
   budget, accuracy and damage inside it (`1000:445c`..`1000:4660` and the
@@ -644,10 +655,15 @@ instruction that was actually read at its jump target:
 | `v` | `1000:4caa` | `1000:4cb4` `cmp byte [0x3696],1` (the den flag) | no |
 | `f` | `1000:4ea8` | its own arm | no |
 
-Nothing beyond those instructions is claimed for any of the six. `sv`'s row is
-the one place where the port does something at a dispatch site whose arm it has
-not read: what it prints comes from `docs/re/tables.md`'s capture, which is
-output-tier evidence and is labelled as such in `Command::Inspect`'s doc.
+Nothing beyond those instructions was claimed for any of the six when this was
+written. **Task 17 traced all six**: `sv` calls the enemy's sheet
+(`FUN_1000_1348`, which reads no address in the player's record at all), `e` is
+`Halt(0)` through `rtl_halt`, the second `k` is the backup countdown, `v` calls
+the local gopota, and `f` fires the pistol. `sv`'s row was the one place where
+the port did something at a dispatch site whose arm it had not read: what it
+prints comes from `docs/re/tables.md`'s capture, which is output-tier evidence
+and is labelled as such in `Command::Inspect`'s doc — and
+`docs/re/combat-dispatch.md` now has the flow-tier reading beside it.
 
 ### `kos` inside a fight: the same handler with a shorter buff
 
@@ -812,7 +828,10 @@ points at this entry.
   generator: scanning `[0x3d11, 0x3f00)` for `9a 4b 11 78 0f` returns **zero**
   hits, so the whole `cmp [0x3952],N` chain is print-only.
 * **The rector death branch** (`1000:4f8c`) — nothing in this port sets
-  `[0x3c83]`, so it is unreachable rather than wrong. ~~**and the hospital
+  `[0x3c83]`, so it is unreachable rather than wrong. **Mapped by Task 17**
+  (`docs/re/combat-dispatch.md`): `[0x3c83]` is the rector-showdown flag,
+  armed at `1000:7364` and `1000:ae13`, and the branch prints file `0x513C`
+  before `FUN_1000_074b`. Still not modelled here. ~~**and the hospital
   rescue** (`1000:4fce`) — need fields `crate::model::Fighter` does not
   have.~~ **The hospital rescue is implemented** (Task 13,
   `Game::hospital_rescue`): it needs the den flag, `20ae:38cb` and
@@ -820,13 +839,14 @@ points at this entry.
   observation** — see `docs/re/combat.md`, "What Task 13's capture did and did
   not reach": both captured deaths are of characters whose den flag is clear,
   so the branch was never taken in the original either.
-* ~~**`sv`, `v`, `x`, `wes` token compare sites** — not located.~~ **Half
-  closed by the final-review fix wave.** `sv` (`1000:4c42`) and `v`
-  (`1000:4caa`) are located and **established from flow** — they are combat
-  verbs, compared against `DS:3a72`, which is why a search of `entry`'s
-  `DS:3972` chain could never find them; see "The in-combat verb set" above.
-  `x` and `wes` remain corroboration-only, and are most likely `bmar`'s own
-  submenu keys.
+* ~~**`sv`, `v`, `x`, `wes` token compare sites** — not located.~~ **Closed by
+  Task 17.** `sv` (`1000:4c42`) and `v` (`1000:4caa`) are combat verbs,
+  compared against `DS:3a72`, which is why a search of `entry`'s `DS:3972`
+  chain could never find them; both arms are now mapped in
+  `docs/re/combat-dispatch.md`. `x` and `wes` are **not** combat verbs: they
+  are compared at `1000:ce80` (CS `0x96ce`) and `1000:ced8` (CS `0x970a`),
+  both in `entry`, and no instruction anywhere in `FUN_1000_3d11`
+  materialises either literal. What their arms do is still open.
 * **The quit message** (files `0xC3F3`, `0xC41A`, written at `1000:ee04`) and
   the university backstory (`0x7D81`..`0x7F1F`) — real strings, not wired up.
 * **Shop purchase effects** — `data/shops.json` rows deduct `price` and print
@@ -906,7 +926,12 @@ are the questions that pass left open, and the ones it created.
   `c6 06 96 36 01` (verified) and the line is
   `^4Такого конявого непустят в местный притон!` (file `0x4D42`); the den gate
   at `1000:d80c` reads nothing but that flag. Whether a clear was intended is
-  **unverified** and cannot be settled from the binary.
+  **unverified** and cannot be settled from the binary. Task 17 adds two
+  mechanical facts either way: every immediate store to `20ae:3696` in the
+  image is `0` or `1`, so it is a boolean and `1` is the value the gate
+  admits; and the post-kill twin at `1000:52ae` tests the same
+  `level - (district-1)*10` expression with `jl` where `1000:4aa3` uses `jnz`,
+  so the flee arm fires only on the exact value 3.
 * **Does the chapter-5 block re-run every turn?** `1000:ae18` is at the top of
   every iteration (back-edge `1000:ee01` `jmp 0xab75`) and nothing clears
   `[0x3c83]` — its only writes are `1000:7364` and `1000:ae13`. So on the face

@@ -9,6 +9,11 @@ fleeing, and the post-kill XP award.
 Ported to `src/combat.rs` and `src/model.rs`; vectors in
 `data/combat_vectors.json`, captured by `tools/capture_combat_vectors.py`.
 
+The **command dispatcher** half of it — the verb table, the flee arm, the `v`
+backup arc, the pistol, and the four `Random` sites this file could only
+inventory — is mapped in **`docs/re/combat-dispatch.md`** (Task 17), with
+`data/combat_dispatch.json` and `tools/test_combat_dispatch.py` beside it.
+
 ## How the function was identified
 
 Not by size, and not by assuming Task 4's guess. Task 4's
@@ -164,6 +169,15 @@ the in-game help text at `1000:613e` states in words:
 The enemy's copy of the same test is `1000:468d`..`1000:46a7`.
 
 ### Second blow and multi-blow display — `1000:15bd`..`1000:1611`
+
+**Whose display: the ENEMY's.** This block is inside `FUN_1000_1348`, the
+`sv` (size-up) sheet, and `1000:156d mov ax,[0x3956]` loads the ENEMY record's
+agility word — see `docs/re/combat-dispatch.md`. The player's copy of the same
+formula is a different block in a different function, `1000:21b0` onwards in
+`FUN_1000_1a03` (`docs/re/character-sheet.md`), and that is the one the
+`SAVE_R2` / `SAVE_R5` screens below exercised. The arithmetic is identical in
+both, so nothing about `PER_BLOW = 18` or the `+4` changes; only the
+attribution of each citation does.
 
 ```
 if agility <= 14 then no second blow        ; 1000:1574  cmp agility,0x0e / jg
@@ -453,6 +467,13 @@ register loads, not guessed: `cx=0x83, si=0, di=0x2000` is
 `1.25 * 2^(0x83-129) = 5.0` (the divisor, `0f78:1117`) and
 `cx=0x82, si=0, di=0x4000` is `1.5 * 2^(0x82-129) = 3.0` (the multiplier,
 `0f78:1111`), with `0f78:1131` rounding half away from zero.
+
+Those two decimals assume a bias of 129, which `docs/re/rtl.md` records as
+**not established**. The bill does not need it: the exponent bytes differ by
+exactly one step, so the bias cancels out of `K2/K1` and the debit is
+`Round(hpmax * 3 / 5)` under any bias — see `docs/re/combat-dispatch.md`,
+"The bill does not need the exponent bias". `5.0` and `3.0` are one consistent
+pair, not the only one.
 
 ### What Task 13's capture did and did not reach
 
@@ -868,13 +889,27 @@ been the only caller.
   (`1000:712a`, `1000:71b8`), so a fresh `0-Пацан` gets `3` and `3-Вор` gets
   `6`, matching `SAVE_R2`. All eleven rank names and weight rows are read out
   of the image into `data/xp.json`; see `docs/re/progression.md`.
-* **The `string[2]` array at `+0x33`.** Indexed by level, holding the codes
-  `'1'`..`'4'` for which stats each level granted, written by
-  `FUN_1000_2526` next to each `^1Сила +1`-style message (the first at
-  `1000:2621`) and replayed in reverse when the player flees (`1000:499a`). Segmented enough
-  to explain the flee penalty; the rest of the 162-byte tail is still opaque.
-* **`DS:3c83`** gates the spectator taunts and the flee refusal
-  (`^4Ректор: Кудa? Стоять!`). Read as an arena/boss flag; not confirmed.
+* ~~**The `string[2]` array at `+0x33`.**~~ **Closed by Task 17 for the flee
+  half.** It is `growth_log`, `array[1..40] of string[2]` at `.SAV 0x236`
+  (`docs/re/save-format.md`), indexed by level, holding the codes `'1'`..`'4'`
+  for which stats each level granted, written by `FUN_1000_2526` next to each
+  `^1Сила +1`-style message (the first at `1000:2621`). The flee arm copies
+  `growth_log[level]` at `1000:4954`..`1000:496e`, **clears the source entry**
+  at `1000:497d`, and then walks the copy **forward**, `i := 1` then `2`
+  (`1000:4982` / `1000:4989` / `1000:4a6f`), applying the inverse of each code.
+  "In reverse" meant *inverted*, not *backwards*, and `1000:499a` is the
+  `^4Сила -1 ` literal push, not the replay.
+  `docs/re/combat-dispatch.md` has the per-code table. The rest of the
+  162-byte tail is still opaque.
+* ~~**`DS:3c83`** ... not confirmed.~~ **Confirmed by Task 17: it is the
+  rector-showdown flag.** Six references image-wide, two writes and four
+  reads, and nothing ever clears it. `1000:7364` arms it after
+  `^1Пора наконец отомстить ректору...` and `1000:ae13` after
+  `^1А вот и он...`, immediately before the two fights at `1000:ae2d`
+  (opponent kind 3) and `1000:ae39` (kind 4, the rector). Set, it suppresses
+  the spectator taunts (`1000:411d`, which requires it CLEAR), refuses the
+  flee (`1000:48eb`) and selects the rector death message (`1000:4f8c`).
+  `docs/re/combat-dispatch.md` has the reference table.
 * **The spectator taunt block draws RNG.** From the fifth iteration of the
   battle command loop onward, `1000:4131` draws `Random(10)` and, on a 0,
   `Random(0x12)` (`1000:4141`) picks one of 18 lines to print — *before* the command is read. Task
@@ -892,9 +927,14 @@ been the only caller.
   disassembling each address (`python3 tools/re_query.py is-call-site
   1000:XXXX`, which reports identity and alignment separately), not
   assumed from the address list alone:
-  * Flee/other command handlers: `1000:4db7` (argument is a shifted
-    variable, `shl ax,1` twice, not a literal), `1000:4e16` (`Random(2)`),
-    `1000:4ef5` (`Random(0x32)`), `1000:4f18` (`Random(0xa)`).
+  * ~~Flee/other command handlers~~ — **all four mapped by Task 17**, and
+    none of them is in the flee arm, which draws nothing at all:
+    `1000:4db7` is `Random(district * 4)`, the argument built from
+    `20ae:3692` at `1000:4dad`..`1000:4db4`, and it rolls the backup's damage;
+    `1000:4e16` (`Random(2)`) is the backup's attrition tick;
+    `1000:4ef5` (`Random(0x32)`) is the pistol's hit test and
+    `1000:4f18` (`Random(0xa)`) its damage. See
+    `docs/re/combat-dispatch.md`.
   * Post-kill loot/stat-gain, after the XP award: `1000:52d5`
     (`Random(0x1e)`), `1000:5402` (argument is `ax` after `mul dx` with
     `dx = 0x19`, not a literal), `1000:5427` (`Random(3)`), `1000:5454`
