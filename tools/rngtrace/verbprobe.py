@@ -31,6 +31,7 @@ report, not a replay input.  It writes only where `--out` says.
 """
 import argparse
 import json
+import re
 import shutil
 import sys
 import time
@@ -67,6 +68,16 @@ class ProbeError(RuntimeError):
     pass
 
 
+# The probe's own READY line.  `tracelog.RE_READY` is not reused: its middle
+# field is named `retf=`, for the `retf 2` at the tail of `Random`, and the
+# probe has no Random breakpoint -- printing a function PROLOGUE under that
+# label is how `build/rngtrace/verbprobe/probe.gdb.log` came to read
+# `retf=23eb3` for `1000:1a03`.  A wrong label on a right number is the defect
+# class this project keeps finding, so the probe names its own field.
+RE_READY = re.compile(
+    r"^READY base=([0-9a-f]+) sheet=([0-9a-f]+) readln=([0-9a-f]+)\s*$")
+
+
 def parse_probe_log(text: str) -> dict:
     """The marker stream, in order, plus everything that must fail a run.
 
@@ -95,9 +106,11 @@ def parse_probe_log(text: str) -> dict:
         if pending == "warning":
             pending = None
             continue
-        m = tracelog.RE_READY.match(line)
+        m = RE_READY.match(line)
         if m:
-            ready = {"image_base": int(m.group(1), 16)}
+            ready = {"image_base": int(m.group(1), 16),
+                     "sheet": int(m.group(2), 16),
+                     "readln": int(m.group(3), 16)}
             continue
         if line in ("P", "C", "T"):
             markers.append(line)
@@ -193,18 +206,40 @@ def align(typed, markers):
     prompts = [m for m in markers if m in ("P", "C")]
     kinds = ["street" if m == "P" else "combat" for m in prompts]
     typed_kinds = [t["kind"] for t in typed]
-    if len(prompts) < len(typed):
+    # PER-KIND counts, checked first so they own the diagnosis.
+    #
+    # The argument that `sv`'s two null windows really are `sv`'s rests on
+    # "the guest stopped at the combat ReadLn exactly as often as the driver
+    # typed a combat line" -- and until this block existed nothing SAID that,
+    # it only followed from the two guards below.  It does follow: the kind zip
+    # pins markers[0 : len(typed)] to the typed kinds elementwise, and the
+    # total guard leaves at most one further marker, so each kind's surplus is
+    # 0 or 1 and the two sum to at most 1.  Deriving a load-bearing fact from
+    # two other guards is exactly the shape this project keeps getting wrong,
+    # so it is asserted rather than derived, and `counts` is published.
+    counts = {"street": kinds.count("street"), "combat": kinds.count("combat")}
+    want = {"street": typed_kinds.count("street"),
+            "combat": typed_kinds.count("combat")}
+    surplus = {k: counts[k] - want[k] for k in counts}
+    for k, n in surplus.items():
+        if n < 0:
+            raise ProbeError(
+                "the driver typed %d line(s) at the %s prompt but the guest "
+                "stopped at that prompt's ReadLn only %d time(s): a line was "
+                "typed at a screen the guest never read, so no verb of that "
+                "kind may be credited or cleared"
+                % (want[k], k, counts[k]))
+    if sum(surplus.values()) > 1:
         raise ProbeError(
-            "the driver typed %d line(s) at prompts but the guest stopped at a "
-            "prompt ReadLn only %d time(s): the two streams cannot be aligned, "
-            "so no verb may be credited or cleared"
-            % (len(typed), len(prompts)))
-    if len(prompts) > len(typed) + 1:
-        raise ProbeError(
-            "the guest stopped at a prompt ReadLn %d time(s) for %d line(s) "
-            "typed: more than the one trailing prompt the guest comes back to, "
-            "so a prompt was answered by something this driver did not record"
-            % (len(prompts), len(typed)))
+            "prompt-stop surplus %r over the lines typed (%r): at most ONE "
+            "unanswered prompt is expected -- the one the guest came back to "
+            "after the last line -- so a prompt was read by something this "
+            "driver did not record and every window after it is shifted"
+            % (surplus, want))
+    # The two whole-stream guards this replaced -- `prompts < typed` and
+    # `prompts > typed + 1` -- are subsumed exactly: a short stream drives some
+    # kind's surplus negative, and a long one drives the sum above 1.  Keeping
+    # both layers would have left two branches no input can reach.
     for i, (a, b) in enumerate(zip(typed_kinds, kinds)):
         if a != b:
             raise ProbeError(
@@ -235,7 +270,9 @@ def align(typed, markers):
         w["line"] = None
         w["note"] = ("the prompt the guest came back to after the last line "
                      "was typed; nothing was typed at it")
-    return {"windows": windows, "sheet_entries_before_first_prompt": pre}
+    return {"windows": windows, "sheet_entries_before_first_prompt": pre,
+            "prompt_stops_by_kind": counts, "lines_typed_by_kind": want,
+            "unanswered_prompts_by_kind": surplus}
 
 
 def tally(windows):

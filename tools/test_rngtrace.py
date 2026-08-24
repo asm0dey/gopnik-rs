@@ -1284,6 +1284,23 @@ class VerbProbeScriptTest(unittest.TestCase):
         self.assertIn('printf "? %04x\\n", $pc', s)
         self.assertIn("disable\n  stepi\n  enable", s)
 
+    def test_the_ready_line_names_the_sheet_field_for_what_it_is(self):
+        # The RNG script's middle READY field is `retf=`, for `Random`'s
+        # `retf 2`.  The probe has no Random breakpoint, so copying that label
+        # printed a function PROLOGUE address under it.
+        s = self.script()
+        self.assertIn("READY base=%x sheet=%x readln=%x", s)
+        self.assertNotIn("retf=", s)
+        parsed = verbprobe.parse_probe_log(
+            "READY base=224b0 sheet=23eb3 readln=2d313\n")
+        self.assertEqual(parsed["ready"],
+                         {"image_base": 0x224B0, "sheet": 0x23EB3,
+                          "readln": 0x2D313})
+        # And the RNG script's own line is unchanged, so the frozen path's
+        # reader keeps working.
+        self.assertIn("retf=", gdbsession.build_script(
+            self.BASE, 1234, [("a", loadbase.DATA_SEG_IMAGE_OFF, 2)]))
+
     def test_it_does_not_break_on_random(self):
         # The probe asks WHICH VERB, not how many draws; a Random breakpoint
         # would multiply the stop count by three orders of magnitude for
@@ -1324,21 +1341,49 @@ class VerbProbeAlignTest(unittest.TestCase):
         # The one way the attribution could be quietly wrong: the driver typed
         # into a screen it named `combat` and the guest was at the street
         # prompt, so every later window is off by one.
+        # Counts balance (one of each kind either way), so only the ORDER is
+        # wrong -- which is precisely what the per-kind check cannot see and
+        # the zip must.
         with self.assertRaises(verbprobe.ProbeError) as cm:
-            verbprobe.align(self.typed(("street", "s"), ("combat", "k")), "PPT")
+            verbprobe.align(self.typed(("street", "s"), ("combat", "k")), "CPT")
         self.assertIn("the guest's own breakpoint says", str(cm.exception))
 
     def test_more_lines_than_prompt_stops_stops_the_run(self):
         with self.assertRaises(verbprobe.ProbeError) as cm:
             verbprobe.align(self.typed(("street", "s"), ("street", "w")), "PT")
-        self.assertIn("cannot be aligned", str(cm.exception))
+        self.assertIn("typed at a screen the guest never read",
+                      str(cm.exception))
 
     def test_two_extra_prompt_stops_stops_the_run(self):
         # One trailing prompt is the guest coming back; two means a prompt was
         # answered by something this driver did not record.
         with self.assertRaises(verbprobe.ProbeError) as cm:
             verbprobe.align(self.typed(("street", "s")), "PPP")
-        self.assertIn("more than the one trailing prompt", str(cm.exception))
+        self.assertIn("at most ONE unanswered prompt", str(cm.exception))
+
+    def test_the_per_kind_counts_are_asserted_and_published(self):
+        # The fact the whole `sv does not reach it` argument rests on:
+        # combat prompt stops == combat lines typed.  It used to FOLLOW from
+        # the kind zip plus the total guard; now it is stated.
+        out = verbprobe.align(
+            self.typed(("street", "s"), ("combat", "sv"), ("combat", "run")),
+            "PCCP")
+        self.assertEqual(out["prompt_stops_by_kind"], {"street": 2, "combat": 2})
+        self.assertEqual(out["lines_typed_by_kind"], {"street": 1, "combat": 2})
+        self.assertEqual(out["unanswered_prompts_by_kind"],
+                         {"street": 1, "combat": 0})
+
+    def test_a_surplus_in_two_kinds_at_once_stops_the_run(self):
+        with self.assertRaises(verbprobe.ProbeError) as cm:
+            verbprobe.align(self.typed(("street", "s")), "PPC")
+        self.assertIn("at most ONE", str(cm.exception))
+
+    def test_a_line_typed_at_a_prompt_the_guest_never_read_stops_the_run(self):
+        # Per-kind, so a combat line with no combat stop is refused even when
+        # the TOTAL prompt count is high enough to hide it.
+        with self.assertRaises(verbprobe.ProbeError) as cm:
+            verbprobe.align(self.typed(("combat", "sv"), ("combat", "s")), "CP")
+        self.assertIn("typed at a screen the guest never read", str(cm.exception))
 
     def test_the_tally_calls_a_zero_window_a_negative(self):
         out = verbprobe.align(
@@ -1354,7 +1399,7 @@ class VerbProbeLogGuardTest(unittest.TestCase):
 
     HEAD = ("Breakpoint 1 at 0x2d313\nBreakpoint 2 at 0x268cd\n"
             "Breakpoint 3 at 0x23eb3\n"
-            "READY base=224b0 retf=23eb3 readln=2d313\n")
+            "READY base=224b0 sheet=23eb3 readln=2d313\n")
 
     def parsed(self, body):
         return verbprobe.parse_probe_log(self.HEAD + body)
@@ -1397,7 +1442,7 @@ class VerbProbeLogGuardTest(unittest.TestCase):
 
     def test_missing_breakpoints_fail(self):
         p = verbprobe.parse_probe_log(
-            "Breakpoint 1 at 0x2d313\nREADY base=224b0 retf=23eb3 readln=2d313\nP\n")
+            "Breakpoint 1 at 0x2d313\nREADY base=224b0 sheet=23eb3 readln=2d313\nP\n")
         with self.assertRaises(verbprobe.ProbeError) as cm:
             verbprobe.check_log(p)
         self.assertIn("3 breakpoints", str(cm.exception))

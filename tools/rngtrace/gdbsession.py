@@ -329,7 +329,7 @@ break *{hex(readln)}
 break *{hex(croom)}
 break *{hex(sheet)}
 info breakpoints
-printf "READY base=%x retf=%x readln=%x\\n", {hex(image_base)}, {hex(sheet)}, {hex(readln)}
+printf "READY base=%x sheet=%x readln=%x\\n", {hex(image_base)}, {hex(sheet)}, {hex(readln)}
 while 1
   continue
   if $pc == {hex(OFF_MAIN_READLN)}
