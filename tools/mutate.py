@@ -71,10 +71,11 @@ Frozen oracles, whose digests are recomputed and printed on every run:
 ## What the gate covers, and what it does NOT
 
 Covered: the assertions that consume the three frozen oracles plus
-`data/combat_vectors.json`, one case per independently falsifiable channel --
-see `tools/mutations.json`, where each case names the claim it defends.  Twelve
-channels today, plus ten `expect_red: false` findings: columns those captures
-hold that the gate found NO assertion reads.
+`data/combat_vectors.json` and `data/rng_vectors.json`, one case per
+independently falsifiable channel -- see `tools/mutations.json`, where each
+case names the claim it defends.  Thirteen channels today, plus ten
+`expect_red: false` findings: columns those captures hold that the gate found
+NO assertion reads.
 
 NOT covered, and not claimed to be: every assertion in the project.  The gate
 says nothing about `tests/progression.rs`, `tests/save_roundtrip.rs`,

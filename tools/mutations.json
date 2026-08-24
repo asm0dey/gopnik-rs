@@ -1,5 +1,5 @@
 {
-  "note": "Mutation cases for tools/mutate.py -- read that file's docstring first. One case per independently falsifiable CHANNEL of the three frozen oracles plus data/combat_vectors.json: each perturbs the smallest thing that isolates one claim, and the named test must go red with `expect` in its output. Several mutations that all red the same assertion would be noise, so there is at most one per channel. A channel NOT listed here has not been shown to be falsifiable. Nothing here is ever applied to the real files: the runner works on a copy.",
+  "note": "Mutation cases for tools/mutate.py -- read that file's docstring first. One case per independently falsifiable CHANNEL of the three frozen oracles plus data/combat_vectors.json and data/rng_vectors.json: each perturbs the smallest thing that isolates one claim, and the named test must go red with `expect` in its output. Several mutations that all red the same assertion would be noise, so there is at most one per channel. A channel NOT listed here has not been shown to be falsifiable. Nothing here is ever applied to the real files: the runner works on a copy.",
   "manifest_lives_here_because": "This is configuration for a tool, not captured data. data/ is the read-only ground-truth tree the gate exists to protect, and a manifest living there would be copied -- and mutable -- inside the gate's own shadow of it.",
   "findings": "Cases carrying \"expect_red\": false are not coverage. Each is a column the captures hold that no assertion reads -- found by this gate on its first run, by mutating the column and watching the whole test binary stay green. They are kept here, and kept executable, so the record cannot rot: when an assertion finally reaches one, the gate fails on it and the case is promoted to a red one. SCOPE OF THE SILENCE: each of these runs ONE cargo test binary, so what it establishes is that no RUST test in that binary reads the column. That a Python test does not read it either was checked by hand (git grep, fix round 1) and is NOT what the gate watches; a Python-side assertion arriving on one of these columns would not fail the case. Registering a finding whose test is a Python command is allowed -- the manifest and the runner take any argv -- so a future finding on that side can be recorded the same way.",
   "cases": [
@@ -98,6 +98,14 @@
       "mutate": {"op": "json-set", "path": ["cases", 0, "expected_blows", 0, "damage"], "from": 19, "to": 18},
       "test": ["cargo", "test", "--test", "combat_vectors", "combat_matches_original"],
       "expect": "case 0 blow 0: damage"
+    },
+    {
+      "label": "rng-vectors-break-boundary",
+      "defends": "src/combat.rs's the_break_test_is_strict_at_1000_458f pins the 1000:458f break boundary on data/rng_vectors.json's seed-0 chain -- the chain tools/gen_rng_vectors.py produced by interpreting @Rand's own bytes out of orig/g.exe, so it is an oracle and not a restatement of Rng. Chain entry 59 is the one the 1000:4571 draw reads: moving it off 59-of-200 moves the boundary off luck 20 * 3.",
+      "artifact": "data/rng_vectors.json",
+      "mutate": {"op": "json-set", "path": ["seeds", 0, "next_u32", 59], "from": 1270000484, "to": 1288490189},
+      "test": ["cargo", "test", "--lib", "the_break_test_is_strict_at_1000_458f"],
+      "expect": "the 1000:4571 draw after the 1000:4576 inc"
     },
     {
       "label": "frozen-oracle-refusal",

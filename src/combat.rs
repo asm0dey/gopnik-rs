@@ -141,6 +141,16 @@ impl Swing {
 /// вместо #` (`1000:4013`) and its mirror (`1000:40b6`) report this
 /// reduction, printing `(budget - 1) div 18 + 1` either side of it
 /// (`1000:4018`).
+///
+/// **Neither boundary below is observable**, because `0x0a + 0x12 == 0x1c`:
+/// at `mine == 10` the guard's two senses agree, and at `mine == 28` one
+/// more turn round the loop lands exactly on the collapse. `> 10` and
+/// `>= 10`, and `< 28` and `<= 28`, are therefore the same program -- the
+/// two skips in `.cargo/mutants.toml` say so with their addresses, the
+/// argument is in `docs/re/combat.md`, and
+/// `the_blow_budget_boundaries_are_unobservable` reds if the identity
+/// breaks. This is the opposite of the `1000:4629` / `1000:48cd` asymmetry
+/// in the blow loops, where the two senses genuinely differ.
 pub fn blow_budget(attacker: &Fighter, defender: &Fighter) -> i16 {
     let mut mine = (attacker.agility as i16).wrapping_add(4);
     let mut theirs = (defender.agility as i16).wrapping_add(4);
@@ -333,7 +343,12 @@ pub fn resolve_blow_nth(
 
     // Armour is a byte in the record, zero-extended before the subtraction,
     // and the result is floored at 0 with a *signed* test
-    // (1000:4546..1000:4558 / 1000:4769..1000:477b).
+    // (1000:4546..1000:4558 / 1000:4769..1000:477b). The bound and the value
+    // stored are both 0, so `< 0` and `<= 0` are the same program -- the
+    // third skip in `.cargo/mutants.toml`. `== 0` is NOT: it would let a
+    // blow lighter than the armour wrap to 65482 and, at 1000:4560
+    // `sub [0x3962],ax`, heal the defender. That one is killed by
+    // `armour_heavier_than_the_blow_floors_the_damage_at_zero`.
     damage = damage.wrapping_sub((defender.armor & 0x00ff) as i16);
     if damage < 0 {
         damage = 0;
@@ -627,6 +642,125 @@ mod tests {
             random_of(st[8], 4) == 0,
             "guard arm differs"
         );
+    }
+
+    /// Both boundaries in [`blow_budget`] are UNOBSERVABLE, and this test
+    /// says why: the three constants are one arithmetic identity.
+    ///
+    /// `1000:3fbb` `cmp mine,0x0a` guards the loop, `1000:3fe2`
+    /// `mov mine,0x0a` is what the loop collapses to, and `1000:3fc9`
+    /// `cmp mine,0x1c` / `1000:3fd4` `sub ax,0x12` sit exactly one step
+    /// apart: `0x1c - 0x12 == 0x0a`. So `mine == 10` returns 10 whether or
+    /// not the guard lets it in, and `mine == 28` returns 10 whether it
+    /// collapses at once or subtracts 18 first. No test can distinguish
+    /// `> 10` from `>= 10` at `147:13`, or `< 28` from `<= 28` at
+    /// `149:21` -- see `docs/re/combat.md`. This test does not kill those
+    /// two mutants; it fails if the identity they rest on is ever broken.
+    #[test]
+    fn the_blow_budget_boundaries_are_unobservable() {
+        assert_eq!(
+            28 - PER_BLOW,
+            10,
+            "1000:3fc9's 0x1c less 1000:3fd4's 0x12 is 1000:3fe2's 0x0a"
+        );
+        for d in 0..=255u16 {
+            // mine == 10, the guard's own bound: entering the loop either
+            // leaves at once or collapses to the same 10.
+            assert_eq!(blow_budget(&f(6), &f(d)), 10, "agility 6 against {d}");
+            // mine == 28, the collapse bound: one subtraction lands ON the
+            // collapse value, so collapsing early changes nothing.
+            let want = if (d as i16 + 4) > PER_BLOW { 10 } else { 28 };
+            assert_eq!(blow_budget(&f(24), &f(d)), want, "agility 24 against {d}");
+        }
+    }
+
+    /// Armour heavier than the blow floors the damage at zero -- it does
+    /// not wrap, and it does not heal.
+    ///
+    /// `1000:454b` `sub [bp-0x10c],ax` takes the zero-extended armour byte
+    /// off the damage, `1000:454f` `cmp word [bp-0x10c],0x0` / `1000:4554`
+    /// `jnl 0x455c` skips the zeroing only when the result is NOT NEGATIVE,
+    /// and `1000:4556` `xor ax,ax` is the floor. The test is signed and
+    /// strict: `jnl` leaves an exact 0 alone, so the floor is reached only
+    /// from below. Without it `1000:4560` `sub [0x3962],ax` would subtract a
+    /// negative number from the defender's HP and heal them.
+    ///
+    /// Armour 60 is `Ректор НГУ`'s (`tests/data_load.rs`, `rektor_ngu_v0`),
+    /// so a starting brawler swinging into it is a reachable state, not a
+    /// contrived one.
+    #[test]
+    fn armour_heavier_than_the_blow_floors_the_damage_at_zero() {
+        let st = ground_truth_states();
+        // [`brawler`] rolls 2..=3 and adds dmg_max on the crit: 6 at most.
+        let a = brawler();
+        let d = Fighter {
+            agility: 0,
+            luck: 0,
+            armor: 60,
+            hp: 666,
+            hpmax: 666,
+            ..Default::default()
+        };
+        let mut rng = Rng::new(st[0]);
+        let o = resolve_blow_nth(&mut rng, &a, &d, 0, Swing::player());
+        assert!(o.hit && o.critical, "the swing lands and crits");
+        assert_eq!(
+            o.damage, 0,
+            "1000:4554 jnl floors the negative result; wrapping it would be 65482"
+        );
+    }
+
+    /// The break test is STRICT: `luck * 3` exactly equal to
+    /// `Random(defender.luck * 3 + 200) + 1` breaks nothing.
+    ///
+    /// `1000:4571` calls `Random`, `1000:4576` `inc ax` is the `+ 1`, and
+    /// the 32-bit compare that follows ends in `1000:458f` `jbe 0x45ea` --
+    /// equal takes the branch AWAY from the break. The enemy's copy is the
+    /// same shape with the sense flipped: `1000:47b5` `ja 0x47ba` reaches
+    /// the break only when strictly above.
+    ///
+    /// The numbers come from `data/rng_vectors.json`'s seed-0 chain, not
+    /// from this port: at chain index 55 the `1000:4571` draw is 59 of 200,
+    /// so the `inc` makes it 60, which is exactly `luck 20 * 3`.
+    #[test]
+    fn the_break_test_is_strict_at_1000_458f() {
+        let st = ground_truth_states();
+        const K: usize = 55;
+        let d = Fighter {
+            agility: 0,
+            luck: 0,
+            hp: 50,
+            hpmax: 50,
+            ..Default::default()
+        };
+        assert_eq!(
+            random_of(st[K + 4], 200) + 1,
+            60,
+            "the 1000:4571 draw after the 1000:4576 inc"
+        );
+
+        // luck * 3 == 60: not strictly above, so nothing breaks -- and the
+        // 1000:4595 limb draw is never spent, leaving five draws, not six.
+        let at_bound = Fighter {
+            luck: 20,
+            ..brawler()
+        };
+        let mut rng = Rng::new(st[K - 1]);
+        rng.start_log();
+        let o = resolve_blow_nth(&mut rng, &at_bound, &d, 0, Swing::player());
+        assert_eq!(o.broke, None, "60 > 60 is false at 1000:458f");
+        assert_eq!(draws(&mut rng), want(&PLAYER_SWING[..5], &st[K..]));
+
+        // One luck step above: 63 > 60 breaks, and spends the limb draw.
+        let above = Fighter {
+            luck: 21,
+            ..brawler()
+        };
+        let mut rng = Rng::new(st[K - 1]);
+        rng.start_log();
+        let o = resolve_blow_nth(&mut rng, &above, &d, 0, Swing::player());
+        assert!(o.broke.is_some(), "63 > 60 is true");
+        assert_eq!(draws(&mut rng), want(&PLAYER_SWING, &st[K..]));
     }
 
     #[test]
