@@ -110,6 +110,21 @@ Brief `.superpowers/sdd/task-13-brief.md`, report `.superpowers/sdd/task-13-repo
 
 ## Owner constraints in force
 
+- **Dependency constraints RELAXED 2026-08-24, replaced by a consultation rule.**
+  The owner's words: *"I don't care about dependency constraint as long as you
+  consult with me."* This supersedes the plan's "Python tooling uses the standard
+  library only" and the enumerated Rust dependency allowlist as *hard* limits. It
+  does not make dependencies free — **ask before adding one, every time**, and
+  record the answer here. The old constraints stay the default worth defending
+  (the shipped binary carries no JSON parser, and that is a property worth
+  keeping); what changed is that they are now a preference to argue with, not a
+  wall to route around. First use: `cargo-mutants` (below).
+- **`cargo-mutants` approved 2026-08-24** for the code-side mutation gap that
+  `tools/mutate.py` structurally cannot cover. It is `cargo install`ed dev
+  tooling, not a `Cargo.toml` entry, so it never enters the shipped binary's
+  dependency graph — same shape as the owner-installed `capstone`. Scope its runs
+  (`-f src/combat.rs`); every mutant re-runs a suite that replays 1387 wander and
+  1900 combat draws.
 - **One agent at a time, AMENDED 2026-08-23: genuinely small work may run in
   parallel.** The reason is unchanged — token spend rate, not wall-clock — so the
   test is **size, not independence**. A task that is merely independent of what is
