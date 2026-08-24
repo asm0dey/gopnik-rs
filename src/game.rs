@@ -1178,12 +1178,22 @@ impl Game {
     ///
     /// **Established from flow.** `v` is compared at exactly **one** site in
     /// the whole image, `1000:4caa`, and that site pushes the *fight*
-    /// prompt's buffer `20ae:3a72`. Scanning every `9a d8 0b 78 0f`
-    /// (`rtl_str_compare`) call in `orig/g.exe` and reading each one's token
-    /// out of its own `mov di,<token>` / `push cs` / `push di` setup returns
-    /// 75 sites and one `v` among them. `entry`'s chain --
-    /// `crate::commands`' module doc lists it in full -- never compares `v`
-    /// against `20ae:3972`.
+    /// prompt's buffer `20ae:3a72`. `entry`'s chain -- `crate::commands`'
+    /// module doc lists it in full -- never compares `v` against
+    /// `20ae:3972`.
+    ///
+    /// The scan behind that is a closure, not a list: every `9a d8 0b 78 0f`
+    /// (`rtl_str_compare`) call in `orig/g.exe` is **75** sites, and each
+    /// one's token is read out of its own `mov di,<token>` / `push cs` /
+    /// `push di` setup rather than inferred. Sixty-six match that shape and
+    /// exactly one of them carries `v`. The nine that do not were read
+    /// individually, because a completeness claim that skips what its pattern
+    /// missed is the failure `docs/re/METHODOLOGY.md` names: eight are
+    /// `FUN_1000_29c4`'s own `h`/`mh` compares (`1000:29f5`, `1000:2a07`,
+    /// `1000:2a6f`, `1000:2aa5`, `1000:2af7`, `1000:2b45`, `1000:2b8e`,
+    /// `1000:2bb5`), which push the stack local at `[bp-0x100]` instead of a
+    /// fixed buffer, and the ninth is `1000:75f6`, the `y` at CS `0x74a9` in
+    /// `FUN_1000_6a0d`. None of the nine is a `v`.
     ///
     /// This method used to print `^4Ни кто не хочет за тебя впрягаться.`
     /// (CS `0x35e9`). That line is real, but it belongs to the fight prompt's
@@ -2692,25 +2702,59 @@ impl Game {
     /// here rather than an oracle-capture inference. An earlier revision of
     /// this comment said the input loop "was not traced" and called `k` "this
     /// port's own choice"; both statements were false. `h`/`mh` are not among
-    /// the nine because they go through the subroutine call at `1000:4b00`.
+    /// the nine because they go through the subroutine call at `1000:4b00`,
+    /// which makes the in-combat verb set **ten**.
     ///
-    /// **What is not established** is what most of the arms *do*. Three were
-    /// followed into their bodies: `k` (`docs/re/combat.md` traces the blow
-    /// budget, accuracy and damage at `1000:445c`..`1000:4660`), `run`
-    /// (below) and `kos` ([`Joint`]). The other six -- `s`, `sv`, `e`, the
-    /// second `k`, `v` and `f` -- were not, and only the first instruction at
-    /// each jump target has been read. The `match` below registers `s`, `e`,
-    /// `v` and `f` by address instead of implementing them; `sv` is the one
-    /// place this port acts at a dispatch site whose arm it has not read, and
-    /// what it prints comes from `docs/re/tables.md`'s capture.
-    /// `docs/re/gaps.md`, "The in-combat verb set", carries the full write-up.
+    /// ## Nine independent `if`s, not an `if`/`else` chain
+    ///
+    /// **Established from flow**, and this is why the loop below is a
+    /// straight line rather than a `match`. One `Битва\` prompt runs the
+    /// whole chain top to bottom: `1000:583e jmp 0x40f2` is the function's
+    /// only back edge, so no arm returns to the prompt and every arm rejoins
+    /// the line with the buffer still holding what was typed. Two
+    /// consequences the port has to reproduce:
+    ///
+    /// * that is **why there are two `k` compares**. `1000:4445 jz 0x444a`
+    ///   enters the blow loop and its three exits (`1000:467c`, `1000:48cb`,
+    ///   `1000:48d2`) all land on `1000:48d7`, the `run` compare's setup --
+    ///   so `1000:4c75` gets a second go at the same line and gives the
+    ///   attack verb its second effect, the backup countdown.
+    /// * the backup block at `[1000:4d93, 1000:4e9e)` sits between the `v`
+    ///   arm and the `f` compare and belongs to neither, so it runs on
+    ///   **every** prompt -- including one whose line matched no compare at
+    ///   all.
+    ///
+    /// Every arm is now implemented. `docs/re/combat-dispatch.md` is the map
+    /// (Task 17) and [`crate::combat_dispatch`] the arithmetic; what each one
+    /// does, in chain order:
+    ///
+    /// | at | verb | here |
+    /// |---|---|---|
+    /// | `1000:444a` | `k` | [`Game::combat_round`], `docs/re/combat.md` |
+    /// | `1000:48eb` | `run` | [`Game::flee`] |
+    /// | `1000:4b00` | `h`/`mh` | [`Game::beer`] |
+    /// | `1000:4b17` | `kos` | [`Game::smoke`] |
+    /// | `1000:4c35` | `s` | [`Game::show_stats`] -- `call 0x1a03`, Task 16 |
+    /// | `1000:4c49` | `sv` | [`Game::print_enemy_block`] -- `call 0x1348`, the **enemy's** sheet |
+    /// | `1000:4c5d` | `e` | `xor ax,ax` / `call 0f78:0116` = `Halt(0)` |
+    /// | `1000:4c7c` | `k` (2nd) | [`crate::combat_dispatch::Backup::tick_on_attack`] |
+    /// | `1000:4cb4` | `v` | [`Game::backup_in_fight`] |
+    /// | `1000:4d93` | -- | [`Game::backup_attacks`], on every prompt |
+    /// | `1000:4eb2` | `f` | [`Game::shoot_in_fight`] |
+    ///
+    /// `sv` calling a *different* function from `s` is the correction Task 17
+    /// made to Task 16's hypothesis, and it is what makes
+    /// `print_enemy_block` -- not `show_stats` -- right here:
+    /// `FUN_1000_1348` references no address in `[20ae:3690, 20ae:3951]`,
+    /// the player's record, at all.
     ///
     /// Death and victory both come from `FUN_1000_3d11`'s own tail:
     ///
-    /// * `1000:4f82` `hp <= 0`. With the rector flag set, file `0x509C`;
-    ///   otherwise, if the den is known and money >= 10, the hospital rescue
-    ///   at `1000:4fce` (file `0x50DF`, `money -= 10`, hp restored) --
-    ///   neither modelled here. The plain case is `1000:5053`: file `0x5127`
+    /// * `1000:4f82` `hp <= 0`. With the rector flag set, file `0x509C` and
+    ///   no rescue behind it ([`Game::rector_showdown`]); otherwise, if the
+    ///   den is known and the street cred is at least 10, the hospital rescue
+    ///   at `1000:4fce` ([`Game::hospital_rescue`]). The plain case is
+    ///   `1000:5053`: file `0x5127`
     ///   (`^4Ты сдох.`) and then `FUN_1000_074b(0)`, the end screen. So death
     ///   **ends the game** -- established from flow, not from the RTL's
     ///   symbol layout: `FUN_1000_074b`'s last act is `1000:0abe`
@@ -2736,20 +2780,15 @@ impl Game {
     /// `crate::commands::parse` (where `w` and `run` fold into one verb) is
     /// bypassed for it here.
     ///
-    /// * `1000:48eb` `[0x3c83] == 1` -> file `0x4C8F`, stay in the fight.
-    ///   `[0x3c83]` is not modelled by this port (nothing here sets it), so
-    ///   that arm is unreachable rather than wrong.
-    /// * `1000:490e` a broken leg -> file `0x4CC6`, stay in the fight.
-    /// * `1000:4931` `[0x38a6] > 0` -> `1000:493b`..`1000:4adc`, which
-    ///   **reverses one level**: it reads the growth-log entry for the
-    ///   current level at `[0x38a6] * 3 + 0x38cf`, undoes the two stat
-    ///   grants it records, clears it, may set the den flag at `1000:4aa5`,
-    ///   then `dec word [0x38a6]` / `sub word [0x38d0],0xa` and clamps the
-    ///   XP. This port carries no growth log, so **the penalty is not
-    ///   applied** -- see `docs/re/gaps.md`. The control flow is: both this
-    ///   arm and the next reach `1000:4af7` `mov byte [bp-1],1` and leave
-    ///   the fight.
-    /// * `1000:4ade` otherwise (level 0) -> file `0x4D6F` and leave.
+    /// [`Game::flee`] is the arm, [`Game::flee_penalty`] the level it costs.
+    /// The `1000:48eb` refusal reads [`Game::rector_showdown`], which nothing
+    /// in this port sets, so that arm is reachable only from a test.
+    ///
+    /// Fleeing does **not** end the prompt: `1000:4af7 mov byte [bp-0x1],1`
+    /// only raises the exit flag, and `1000:5838` does not read it until the
+    /// rest of the chain, the death test and the victory test have all run.
+    /// So a `run` typed in the prompt where the gopota land the killing blow
+    /// is a victory, and the loop below reproduces that.
     ///
     /// No arm of the flee path draws: there is no `9a 4b 11 78 0f` anywhere
     /// in `1000:48eb`..`1000:4afb`. That is what makes run A turn 7 of

@@ -165,7 +165,7 @@ pub struct Progress {
     /// Index 0 exists to keep the original's 1-based indexing: `1000:258e`
     /// raises the level *before* `1000:2647` reads it, so nothing is ever
     /// appended at 0. There are `MAX_LEVEL + 1` slots and
-    /// [`append_growth_code`] drops anything past the last, where the
+    /// `append_growth_code` drops anything past the last, where the
     /// original would run off the end of its array — that overrun is
     /// reachable only through the two uncapped level-ups at `1000:5094` and
     /// `1000:5145` (opponent kind 3 and 4), which this port never triggers,

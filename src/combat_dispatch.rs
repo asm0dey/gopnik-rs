@@ -12,7 +12,7 @@
 //! address an instruction boundary?"). Every address below decodes to the
 //! instruction the comment quotes.
 //!
-//! ## The three variables
+//! ## The state, and where it lives
 //!
 //! | address | here | why it is not in [`crate::model::Fighter`] |
 //! |---|---|---|
