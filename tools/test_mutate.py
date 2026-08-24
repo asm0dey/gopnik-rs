@@ -54,6 +54,20 @@ DRAW_MUTATION = {"op": "json-set", "path": ["runs", 0, "draws", 100, "r"],
                  "from": 61, "to": 62}
 
 
+def is_filtered(cmd):
+    """Does this command run ONE test rather than a whole suite?
+
+    Both runners in use take the filter as a trailing bare argument:
+    `cargo test --test wander_sequence run_a_replays_exactly`, and
+    `python3 tools/test_rngtrace.py FightFoldTest.test_x`.  So: a trailing
+    argument that is neither a flag nor the thing being invoked.
+    """
+    if cmd[:2] == ["cargo", "test"]:
+        rest = [a for a in cmd[2:] if not a.startswith("-")]
+        return len(rest) > 1        # the --test VALUE, plus a filter
+    return len(cmd) > 2 and not cmd[-1].startswith("-")
+
+
 def manifest_file(td, cases):
     p = Path(td) / "mutations.json"
     p.write_text(json.dumps({"cases": cases}))
@@ -120,7 +134,8 @@ class VacuousCaseTest(unittest.TestCase):
                       "vacuous-wrong-test-for-the-artifact", report)
         # And the real oracle is untouched by a run that FAILED, which is the
         # path a safety bug would hide in.
-        self.assertIn("real file(s) under data/, orig/ unchanged", report)
+        self.assertIn("real file(s) under data/, orig/, tools/ unchanged",
+                      report)
 
     def test_an_assertion_that_cannot_fail_at_all_is_caught(self):
         """The smallest form: a throwaway assertion with no way to be false."""
@@ -333,8 +348,8 @@ class ContainmentTest(unittest.TestCase):
         """The single door to the repo goes through the same containment check.
 
         This says nothing about WRITES -- see
-        `test_a_full_run_works_with_the_frozen_oracles_read_only`, which is the
-        test that does.
+        `test_a_full_run_works_with_every_perturbed_artifact_read_only`, which
+        is the test that does.
         """
         data = mutate._read_real("data/rng_trace.json")
         self.assertEqual(hash_of(data),
@@ -381,9 +396,14 @@ class ShippedManifestTest(unittest.TestCase):
 
         Dropping it would leave the gate reporting only its successes, which
         is the failure mode the whole tool exists against.  Each finding must
-        say so in its own text, and must run a WHOLE test binary rather than
-        one filtered test -- "nothing noticed" is only a claim worth making
-        when everything had the chance to.
+        say so in its own text, and must run a WHOLE suite rather than one
+        filtered test -- "nothing noticed" is only a claim worth making when
+        everything had the chance to.
+
+        "Whole suite" is checked without pinning the command to `cargo`: an
+        earlier version required exactly `cargo test --test <name>`, which made
+        a Python-side unmutable column impossible to REGISTER at all, so the
+        gap it should have recorded would have gone unrecorded instead.
         """
         self.assertTrue(self.findings(), "no findings recorded at all")
         for c in self.findings():
@@ -391,13 +411,11 @@ class ShippedManifestTest(unittest.TestCase):
             self.assertNotIn("expect", c,
                              "%s: a finding has no expected failure message"
                              % c["label"])
-            self.assertEqual(len(c["test"]), 4,
-                             "%s: %s is a FILTERED run, so 'nothing asserts "
-                             "this column' is not established -- a finding "
-                             "must run the whole binary"
+            self.assertFalse(is_filtered(c["test"]),
+                             "%s: %s names a single test, so 'nothing asserts "
+                             "this column' is not established -- a finding must"
+                             " run the whole suite"
                              % (c["label"], " ".join(c["test"])))
-            self.assertEqual(c["test"][:3], ["cargo", "test", "--test"],
-                             c["label"])
 
     def test_all_three_frozen_oracles_are_covered(self):
         """A gate that skipped an oracle would still print `all cases ok`."""
@@ -514,16 +532,50 @@ class SafetyPropertyTest(unittest.TestCase):
         self.assertEqual(rc, 2, report)
         self.assertEqual(mutate.guarded_digests(), before)
 
-    def test_a_full_run_works_with_the_frozen_oracles_read_only(self):
+    def test_the_safety_block_is_printed_on_the_abort_path_too(self):
+        """The digest verdict must survive a `GateError`, not only a clean run.
+
+        This test computing the digests itself -- as
+        `test_a_run_that_crashes_mid_case_still_leaves_the_repo_alone` above
+        does -- checks the property while saying nothing about whether the GATE
+        checked it.  The operator of an aborted run sees only what the gate
+        prints, and "not on crash" is the case the brief singles out.  So this
+        asserts the REPORT, not the repo.
+        """
+        rc, report = gate([{
+            "label": "explodes",
+            "defends": "",
+            "artifact": "data/rng_trace.json",
+            "mutate": {"op": "json-set", "path": ["runs", 0, "nope"],
+                       "from": 1, "to": 2},
+            "test": HONEST_TEST,
+            "expect": "x",
+        }])
+        self.assertEqual(rc, 2, report)
+        for name in mutate.FROZEN:
+            self.assertIn(name, report)
+            self.assertIn(mutate.digest(REPO / name), report)
+        self.assertIn("real file(s) under", report)
+        self.assertIn("unchanged", report)
+
+    def test_a_full_run_works_with_every_perturbed_artifact_read_only(self):
         """Not "nothing changed" -- "nothing could have".
 
         The digest comparison proves no write LANDED.  It cannot distinguish
         that from a write that landed and was undone.  Stripping the write bit
-        off the three frozen oracles closes the difference: any `open(..., "w")`
-        on one of them raises `PermissionError`, so a gate that still exits 0
-        never attempted one.
+        closes the difference: any `open(..., "w")` on one of these raises
+        `PermissionError`, so a gate that still exits 0 never attempted one.
+
+        Every artifact the shipped manifest names, not only the three frozen
+        oracles -- otherwise the claim would skip `data/combat_vectors.json`
+        and `tools/rngtrace/combattrace.py`, and the second of those is the one
+        file a case actually PATCHES.
         """
-        targets = [REPO / n for n in mutate.FROZEN]
+        named = sorted({c["artifact"] for c in json.loads(
+            Path(mutate.MANIFEST).read_text())["cases"]})
+        self.assertEqual(set(mutate.FROZEN) - set(named), set(),
+                         "a frozen oracle is not named by any case")
+        targets = [REPO / n for n in named]
         modes = [p.stat().st_mode for p in targets]
         try:
             for p in targets:

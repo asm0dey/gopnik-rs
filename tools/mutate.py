@@ -44,8 +44,9 @@ reads, proved by mutating it and watching nothing happen.  Keeping those in the
 manifest rather than dropping them keeps the record executable: the day an
 assertion reaches one, the gate fails on it and the case is promoted.
 
-And once per run, around everything: every file under `data/` and `orig/` is
-digested before and after, and any change is a hard failure.
+And once per run, around everything: every file under `data/`, `orig/` and
+`tools/` is digested before and after, and any change is a hard failure.  That
+verdict is printed from a `finally`, so an ABORTED run reports it too.
 
 ## The safety property
 
@@ -115,9 +116,11 @@ SHADOW_TREE = ("Cargo.toml", "Cargo.lock", "build.rs",
                "src", "tests", "data", "orig", "tools")
 
 # Digested before and after every run.  Not just the three frozen oracles:
-# `orig/` is the binary and the save corpus, and the rest of `data/` is
-# extracted tables the port compiles against.
-GUARDED = ("data", "orig")
+# `orig/` is the binary and the save corpus, the rest of `data/` is extracted
+# tables the port compiles against, and `tools/` holds the one file a case
+# actually PATCHES (`rngtrace/combattrace.py`, the frozen-oracle refusal) --
+# the backstop has to cover that too.
+GUARDED = ("data", "orig", "tools")
 
 FROZEN = ("data/rng_trace.json", "data/state_trace.json",
           "data/combat_trace.json")
@@ -132,12 +135,17 @@ def digest(path):
 
 
 def guarded_digests(root=REPO):
-    """SHA-256 of every file under `GUARDED`, keyed by repo-relative path."""
+    """SHA-256 of every file under `GUARDED`, keyed by repo-relative path.
+
+    `__pycache__` is skipped: it is a build artifact the interpreter rewrites
+    on its own schedule, so including it would make the safety verdict noisy
+    about something that is not the gate's doing.
+    """
     out = {}
     for rel in GUARDED:
         base = Path(root) / rel
         for p in sorted(base.rglob("*")):
-            if p.is_file():
+            if p.is_file() and "__pycache__" not in p.parts:
                 out[str(p.relative_to(root))] = digest(p)
     return out
 
@@ -321,6 +329,22 @@ def _tail(log, n=14):
     return "\n".join("          | " + ln for ln in lines[-n:])
 
 
+def _report_safety(before, after, out):
+    """Print the digest verdict.  Returns the set of real files that changed."""
+    print("", file=out)
+    for name in FROZEN:
+        print("  %-24s %s" % (name, after[name]), file=out)
+    changed = {k for k in set(before) | set(after)
+               if before.get(k) != after.get(k)}
+    if changed:
+        print("\nSAFETY FAILURE: the gate changed %d real file(s): %s"
+              % (len(changed), ", ".join(sorted(changed))), file=out)
+    else:
+        print("  %d real file(s) under %s unchanged"
+              % (len(after), "/, ".join(GUARDED) + "/"), file=out)
+    return changed
+
+
 def run_manifest(manifest=MANIFEST, only=None, out=sys.stdout):
     """Run every case (or one).  Returns a process exit status."""
     spec = json.loads(Path(manifest).read_text())
@@ -352,20 +376,15 @@ def run_manifest(manifest=MANIFEST, only=None, out=sys.stdout):
             if not ok:
                 failed.append(case["label"])
     finally:
+        # In the `finally`, and not after it: a GateError propagating out of a
+        # case used to skip the whole verdict, so an operator whose run ABORTED
+        # saw no digests and no safety line at all.  "Not on crash" is the case
+        # the brief singles out, and the backstop has to speak on it.
         shutil.rmtree(shadow, ignore_errors=True)
-        after = guarded_digests()
+        changed = _report_safety(before, guarded_digests(), out)
 
-    print("", file=out)
-    for name in FROZEN:
-        print("  %-24s %s" % (name, after[name]), file=out)
-    changed = {k for k in set(before) | set(after)
-               if before.get(k) != after.get(k)}
     if changed:
-        print("\nSAFETY FAILURE: the gate changed %d real file(s): %s"
-              % (len(changed), ", ".join(sorted(changed))), file=out)
         return 2
-    print("  %d real file(s) under %s unchanged"
-          % (len(after), "/, ".join(GUARDED) + "/"), file=out)
 
     if failed:
         print("\nGATE FAILURE: %d of %d case(s) did not go red: %s"
