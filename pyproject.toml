@@ -1,0 +1,43 @@
+[tool.mutmut]
+# Mutation testing for the Python half of the project.
+#
+# The Rust port is checked AGAINST the oracles; the oracles are produced by the
+# code below, which is checked only against its own tests.  That makes this the
+# top of the evidence chain with the thinnest guard on it -- a fold bug in
+# tracelog.py or a vacuous comparison in difftest.py corrupts ground truth, and
+# every green Rust test then validates against the corruption.
+#
+# Run:  .venv/bin/mutmut run          then  .venv/bin/mutmut browse
+#
+# SCOPING IS A SAFETY PROPERTY HERE, NOT A SPEED ONE.
+#
+# tools/extract_strings.py and tools/extract_tables.py WRITE INTO data/ when
+# run, and tools/test_extract_strings.py, tools/test_extract_tables.py and
+# tools/test_string_tables.py drive them via subprocess.  A mutation run
+# executes the selected tests once PER MUTANT, so including any of those would
+# write mutant output into tracked data files hundreds of times.  The test
+# selection below excludes them by construction: it names only the three suites
+# that cover the mutated modules, and none of those three writes outside a
+# tempdir.
+#
+# tools/dis16.py is deliberately NOT mutated.  It is differentially validated
+# against ndisasm over 19,000+ instructions; an independent implementation is a
+# stronger check than mutation testing, so mutants there re-confirm at real cost.
+
+source_paths = ["tools"]
+
+only_mutate = [
+    "tools/rngtrace/tracelog.py",
+    "tools/rngtrace/fightrun.py",
+    "tools/rngtrace/combattrace.py",
+    "tools/difftest.py",
+    "tools/mutate.py",
+]
+
+# Only the suites covering the modules above.  Anything driving a generator
+# script is excluded -- see the note on data/ writes.
+pytest_add_cli_args_test_selection = [
+    "tools/test_rngtrace.py",
+    "tools/test_difftest.py",
+    "tools/test_mutate.py",
+]
