@@ -1420,15 +1420,57 @@ class FightRunFieldTest(unittest.TestCase):
                                         name)
                 self.assertIn(width, (1, 2, 4), name)
 
-    def test_the_enemy_record_offsets_match_the_documented_layout(self):
+    def test_the_enemy_field_names_carry_their_own_offsets(self):
+        """A typo guard, and NOTHING more.
+
+        It compares each name's embedded hex against its own value in the
+        same dict literal, so it cannot fail for any reason except a
+        mistyped name.  The check against the documented layout is the next
+        test; this one is kept only because a mistyped name would make that
+        one's failure harder to read.
+        """
         by_name = {n: o - loadbase.DATA_SEG_IMAGE_OFF
                    for n, o, _ in fightrun.enemy_fields()}
-        # docs/re/combat.md, "The fighter record": the enemy's copy starts at
-        # 20ae:3952 and the field name carries its own offset.
         for name, off in by_name.items():
             if name.startswith("e_randseed"):
                 continue
             self.assertEqual("%04x" % off, name.rsplit("_", 1)[1], name)
+
+    def test_the_enemy_record_offsets_match_the_documented_layout(self):
+        """`fightrun.ENEMY_WORDS`/`ENEMY_BYTES` against `docs/re/combat.md`.
+
+        The layout is PARSED out of the document -- the enemy column of "The
+        fighter record" table plus the `1000:523e` loot row of the victory
+        block's table -- so this fails if the tool and the document drift
+        apart in either direction: a field the sample carries and the tables
+        do not, or a documented enemy field the sample stopped reading.
+        """
+        doc = (REPO / "docs" / "re" / "combat.md").read_text(encoding="utf-8")
+
+        # | +0x00 | 0x200 | DS:389c | DS:3952 | rank/class name index ... |
+        row = re.compile(r"^\|\s*`\+0x[0-9a-f]{2}`\s*\|[^|]*\|[^|]*\|"
+                         r"\s*`DS:([0-9a-f]{4})`\s*\|([^|]*)\|", re.M)
+        documented = {}
+        for m in row.finditer(doc):
+            documented[m.group(1)] = 1 if "one byte" in m.group(2) else 2
+        self.assertEqual(len(documented), 13,
+                         "the enemy column of docs/re/combat.md's fighter-record "
+                         "table no longer has 13 rows: %r" % sorted(documented))
+
+        # | 1000:523e..1000:5251 | the loot: [0x38c3] += [0x396a], ... |
+        [loot] = re.findall(r"^\|\s*`1000:523e`[^|]*\|\s*the loot:([^|]*)\|",
+                            doc, re.M)
+        got = re.findall(r"\[0x(39[0-9a-f]{2})\]", loot)
+        self.assertEqual(len(got), 3, loot)
+        for off in got:
+            documented[off] = 2
+
+        # Keyed by the offset spelled the way both the document and the
+        # tool's own field names spell it, so a failure reads as an address.
+        sampled = {"%04x" % (o - loadbase.DATA_SEG_IMAGE_OFF): w
+                   for n, o, w in fightrun.enemy_fields()
+                   if not n.startswith("e_randseed")}
+        self.assertEqual(sampled, documented)
 
     def test_both_channels_carry_randseed(self):
         for key, fields in (("fight", fightrun.enemy_fields()),
