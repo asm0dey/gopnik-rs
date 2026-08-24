@@ -1,113 +1,435 @@
 {
  "size": 694,
+ "tier_note": "Every field carries its own `tier`. `flow` means the meaning is established from the instruction that reads or writes the byte; see `evidence` and docs/re/save-format.md.",
  "fields": [
   {
    "name": "magic",
    "off": 0,
    "kind": "pstring",
-   "len": 256
+   "len": 256,
+   "tier": "flow"
   },
   {
    "name": "name",
    "off": 256,
    "kind": "pstring",
-   "len": 256
+   "len": 256,
+   "tier": "flow"
   },
   {
    "name": "rank_index",
    "off": 512,
    "kind": "u16",
-   "len": 2
+   "len": 2,
+   "tier": "flow"
   },
   {
    "name": "strength",
    "off": 514,
    "kind": "u16",
-   "len": 2
+   "len": 2,
+   "tier": "flow"
   },
   {
    "name": "agility",
    "off": 516,
    "kind": "u16",
-   "len": 2
+   "len": 2,
+   "tier": "flow"
   },
   {
    "name": "vitality",
    "off": 518,
    "kind": "u16",
-   "len": 2
+   "len": 2,
+   "tier": "flow"
   },
   {
    "name": "luck",
    "off": 520,
    "kind": "u16",
-   "len": 2
+   "len": 2,
+   "tier": "flow"
   },
   {
    "name": "level",
    "off": 522,
    "kind": "u16",
-   "len": 2
+   "len": 2,
+   "tier": "flow"
   },
   {
    "name": "dmg_min",
    "off": 524,
    "kind": "u16",
-   "len": 2
+   "len": 2,
+   "tier": "flow"
   },
   {
    "name": "dmg_max",
    "off": 526,
    "kind": "u16",
-   "len": 2
+   "len": 2,
+   "tier": "flow"
   },
   {
    "name": "hp",
    "off": 528,
    "kind": "u16",
-   "len": 2
+   "len": 2,
+   "tier": "flow"
   },
   {
    "name": "hpmax",
    "off": 530,
    "kind": "u16",
-   "len": 2
+   "len": 2,
+   "tier": "flow"
   },
   {
-   "name": "unk_0214",
+   "name": "broken_jaw",
    "off": 532,
-   "kind": "bytes",
-   "len": 29
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38b0",
+   "evidence": "1000:2037",
+   "note": "^4\u0421\u043b\u043e\u043c\u0430\u043d\u0430 \u0447\u0435\u043b\u044e\u0441\u0442\u044c; set by a jaw break at 1000:47ee, cleared by the hospital rescue at 1000:5031. Fighter record +0x14.",
+   "tier": "flow"
+  },
+  {
+   "name": "broken_leg",
+   "off": 533,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38b1",
+   "evidence": "1000:2099",
+   "note": "^4\u0421\u043b\u043e\u043c\u0430\u043d\u0430 \u043d\u043e\u0433\u0430; set at 1000:4862, cleared at 1000:5036. Fighter record +0x15.",
+   "tier": "flow"
+  },
+  {
+   "name": "armour",
+   "off": 534,
+   "kind": "u8",
+   "len": 1,
+   "guest": "20ae:38b2",
+   "evidence": "1000:227b",
+   "note": "^2\u0411\u0440\u043e\u043d\u044f #; subtracted from damage at 1000:4769, raised by 1000:81e9/bfa7/c107/c1b1/c1b7/c2f8/c2ff/e8d6. Fighter record +0x16 (Task 11c).",
+   "tier": "flow"
+  },
+  {
+   "name": "dark_glasses",
+   "off": 535,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38b3",
+   "evidence": "1000:1cf8",
+   "note": "^1\u0423 \u0442\u0435\u0431\u044f \u0435\u0441\u0442\u044c \u0442\u0451\u043c\u043d\u044b\u0435 \u043e\u0447\u043a\u0438; stops the cop encounter at 1000:b7c6.",
+   "tier": "flow"
+  },
+  {
+   "name": "suit_abibas",
+   "off": 536,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38b4",
+   "evidence": "1000:22a1",
+   "note": "^1\u041a\u043e\u0441\u0442\u044e\u043c Abibas(+1); mar row 4, bought at 1000:bf80.",
+   "tier": "flow"
+  },
+  {
+   "name": "boots",
+   "off": 537,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38b5",
+   "evidence": "1000:1e81",
+   "note": "^1\u0411\u0443\u0442\u0441\u044b(+1); bought at 1000:c029.",
+   "tier": "flow"
+  },
+  {
+   "name": "jacket",
+   "off": 538,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38b6",
+   "evidence": "1000:2323",
+   "note": "^1\u041a\u043e\u0436\u0430\u043d\u043a\u0430(+2); mar row 6, bought at 1000:c0e0.",
+   "tier": "flow"
+  },
+  {
+   "name": "suit_adidas",
+   "off": 539,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38b7",
+   "evidence": "1000:22fc",
+   "note": "^1\u041a\u043e\u0441\u0442\u044e\u043c Adidas(+2); mar row 7, bought at 1000:c183.",
+   "tier": "flow"
+  },
+  {
+   "name": "boots_pontovye",
+   "off": 540,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38b8",
+   "evidence": "1000:1ecf",
+   "note": "^1\u041f\u043e\u043d\u0442\u043e\u0432\u044b\u0435 \u0431\u0443\u0442\u0441\u044b(\u0423\u0440\u043e\u043d+2); bought at 1000:c222.",
+   "tier": "flow"
+  },
+  {
+   "name": "jacket_krutaya",
+   "off": 541,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38b9",
+   "evidence": "1000:237e",
+   "note": "^1\u041a\u0440\u0443\u0442\u0430\u044f \u043a\u043e\u0436\u0430\u043d\u043a\u0430(+4); mar row 9, bought at 1000:c2ca.",
+   "tier": "flow"
+  },
+  {
+   "name": "kastet",
+   "off": 542,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38ba",
+   "evidence": "1000:1eef",
+   "note": "^1\u041a\u0430\u0441\u0442\u0435\u0442(+2); post-kill grant 1000:5541, shop 1000:cb9d.",
+   "tier": "flow"
+  },
+  {
+   "name": "mobile",
+   "off": 543,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38bb",
+   "evidence": "1000:1cd8",
+   "note": "^1\u0423 \u0442\u0435\u0431\u044f \u0435\u0441\u0442\u044c \u043c\u043e\u0431\u0438\u043b\u044c\u043d\u0438\u043a; gates wander draws 3 and 4 and the in-fight backup call at 1000:4cdb.",
+   "tier": "flow"
+  },
+  {
+   "name": "prison_tattoo",
+   "off": 544,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38bc",
+   "evidence": "1000:1d18",
+   "note": "^1\u041d\u0430 \u0442\u0435\u0431\u0435 \u0437\u043e\u043d\u043e\u0432\u0441\u043a\u0430\u044f \u043d\u0430\u043a\u043e\u043b\u043a\u0430; halves the encounter notice roll at 1000:b5da.",
+   "tier": "flow"
+  },
+  {
+   "name": "krestik",
+   "off": 545,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38bd",
+   "evidence": "1000:1be9",
+   "note": "^1\u041a\u0440\u0435\u0441\u0442\u0438\u043a(\u0423\u0434\u0430\u0447\u0430 +2); post-kill one-shot, gate 1000:548c, flag 1000:54b1, delta at 1000:5493 (data/xp.json luck_plus_2).",
+   "tier": "flow"
+  },
+  {
+   "name": "ring_gs",
+   "off": 546,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38be",
+   "evidence": "1000:1c09",
+   "note": "^1\u041a\u043e\u043b\u044c\u0446\u043e \"\u0413\u0441\"(\u0423\u0434\u0430\u0447\u0430 +1); gate 1000:54bd, flag 1000:54e1, delta 1000:54c4 (luck_plus_1).",
+   "tier": "flow"
+  },
+  {
+   "name": "ring_pg",
+   "off": 547,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38bf",
+   "evidence": "1000:1c69",
+   "note": "^1\u041a\u043e\u043b\u044c\u0446\u043e \"\u041f\u0433\"(\u0412\u0441\u0451 +1); flags at 1000:5362 and 1000:8134, delta 1000:532f (event_1).",
+   "tier": "flow"
+  },
+  {
+   "name": "mega_ring",
+   "off": 548,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38c0",
+   "evidence": "1000:1c89",
+   "note": "^1\u041c\u0435\u0433\u0430 \u041a\u043e\u043b\u044c\u0446\u043e(\u0412\u0441\u0451 +4); flags at 1000:53b2 and 1000:8184, delta 1000:538a (event_2).",
+   "tier": "flow"
+  },
+  {
+   "name": "ring_gp",
+   "off": 549,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38c1",
+   "evidence": "1000:1ca9",
+   "note": "^1\u041a\u043e\u043b\u044c\u0446\u043e \"\u0413\u043f\"(\u0421\u0430\u043c\u043e\u043b\u0435\u0447\u0435\u043d\u0438\u0435); flags at 1000:53f2 and 1000:81c4. The FIFTH post-kill one-shot: it grants no stat delta, which is why data/xp.json's post_kill_stat_events stops at 548 (0x224).",
+   "tier": "flow"
+  },
+  {
+   "name": "nozh",
+   "off": 550,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:38c2",
+   "evidence": "1000:1fb5",
+   "note": "^1\u041d\u043e\u0436(+6); post-kill grant 1000:5698.",
+   "tier": "flow"
+  },
+  {
+   "name": "beer_half_litres",
+   "off": 551,
+   "kind": "i16",
+   "len": 2,
+   "guest": "20ae:38c3",
+   "evidence": "1000:23d5",
+   "note": "\u041f\u0438\u0432\u043e #.#\u043b. -- stored in HALF-litres, printed as [0x38c3] div 2 with a `.5` for the odd half (1000:23e5..1000:2403). Loot add at 1000:5241.",
+   "tier": "flow"
+  },
+  {
+   "name": "joints",
+   "off": 553,
+   "kind": "i16",
+   "len": 2,
+   "guest": "20ae:38c5",
+   "evidence": "1000:23b4",
+   "note": "\u041a\u043e\u0441\u044f\u043a\u0438 #; spent at 1000:4b4e and 1000:e9b4, bought at 1000:c90e.",
+   "tier": "flow"
+  },
+  {
+   "name": "money",
+   "off": 555,
+   "kind": "i16",
+   "len": 2,
+   "guest": "20ae:38c7",
+   "evidence": "1000:242e",
+   "note": "\u0411\u0430\u0431\u043a\u0438 #; every shop row's affordability test is `cmp ax,[0x38c7]` and every purchase is `sub [0x38c7],ax`. 107 references image-wide.",
+   "tier": "flow"
+  },
+  {
+   "name": "junk",
+   "off": 557,
+   "kind": "i16",
+   "len": 2,
+   "guest": "20ae:38c9",
+   "evidence": "1000:246a",
+   "note": "\u0425\u043b\u0430\u043c #; sold to the dealers at 1000:ce87..1000:ce97, loot add at 1000:524f.",
+   "tier": "flow"
+  },
+  {
+   "name": "street_cred",
+   "off": 559,
+   "kind": "i16",
+   "len": 2,
+   "guest": "20ae:38cb",
+   "evidence": "1000:4e79",
+   "note": "\u043f\u043e\u043d\u0442\u043e\u0432\u043e\u0441\u0442\u044c \u043d\u0430 \u0443\u043b\u0438\u0446\u0435 -- NOT the level at 20ae:38a6. Gates the hospital rescue (1000:4fc4, >= 10) and wander draw 2's message (1000:afdc, >= 100).",
+   "tier": "flow"
   },
   {
    "name": "buff_countdown",
    "off": 561,
    "kind": "u8",
-   "len": 1
+   "len": 1,
+   "guest": "20ae:38cd",
+   "evidence": "1000:20ca",
+   "tier": "flow"
   },
   {
    "name": "xp",
    "off": 562,
    "kind": "u16",
-   "len": 2
+   "len": 2,
+   "guest": "20ae:38ce",
+   "tier": "flow"
   },
   {
    "name": "threshold",
    "off": 564,
    "kind": "u16",
-   "len": 2
+   "len": 2,
+   "guest": "20ae:38d0",
+   "tier": "flow"
   },
   {
    "name": "growth_log",
    "off": 566,
    "kind": "bytes",
-   "len": 120
+   "len": 120,
+   "guest": "20ae:38d2",
+   "evidence": "1000:2651",
+   "evidence_operand": "20ae:38cf",
+   "tier": "flow"
   },
   {
-   "name": "unk_02ae",
+   "name": "tooth_guard",
    "off": 686,
-   "kind": "bytes",
-   "len": 8
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:394a",
+   "evidence": "1000:2068",
+   "note": "^1\u0417\u0443\u0431\u043d\u0430\u044f \u0437\u0430\u0449\u0438\u0442\u0430; bought at 1000:e828. Splits a jaw break into the plain arm (1000:47ee) and a Random(4) at 1000:47fe -- a DRAW-COUNT difference, not flavour.",
+   "tier": "flow"
+  },
+  {
+   "name": "dubinka",
+   "off": 687,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:394b",
+   "evidence": "1000:1f59",
+   "note": "^1\u0414\u0443\u0431\u0438\u043d\u043a\u0430(+4); post-kill grant 1000:55a7, shop 1000:cc56.",
+   "tier": "flow"
+  },
+  {
+   "name": "tesak",
+   "off": 688,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:394c",
+   "evidence": "1000:2003",
+   "note": "^1\u0422\u0435\u0441\u0430\u043a(\u0423\u0440\u043e\u043d+9); post-kill grant 1000:573e.",
+   "tier": "flow"
+  },
+  {
+   "name": "pistol",
+   "off": 689,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:394d",
+   "evidence": "1000:1d38",
+   "note": "^1\u0423 \u0442\u0435\u0431\u044f \u0435\u0441\u0442\u044c \u043f\u0438\u0441\u0442\u043e\u043b\u0435\u0442; bmar row 7 hands it over at 1000:cd05. NOT `dealer_order_placed` -- see docs/re/combat-dispatch.md.",
+   "tier": "flow"
+  },
+  {
+   "name": "silencer",
+   "off": 690,
+   "kind": "bool",
+   "len": 1,
+   "guest": "20ae:394e",
+   "evidence": "1000:1d6a",
+   "note": "^1 \u0441 \u0433\u0443\u0448\u0438\u0442\u0435\u043b\u0435\u043c; bmar row 9, gated on the delivery counter 20ae:3e32 at 1000:ce00.",
+   "tier": "flow"
+  },
+  {
+   "name": "cartridges",
+   "off": 691,
+   "kind": "i16",
+   "len": 2,
+   "guest": "20ae:394f",
+   "evidence": "1000:1d8a",
+   "note": "^1! \u043f\u0430\u0442\u0440\u043e\u043d\u043e\u0432 - #. A WORD, not a byte: the sheet's guard is `cmp word [0x394f],0` and 20ae:3950 has no reference of its own image-wide. bmar row 7 adds 3 at 1000:cd0a.",
+   "tier": "flow"
+  },
+  {
+   "name": "church_stage",
+   "off": 693,
+   "kind": "u8",
+   "len": 1,
+   "guest": "20ae:3951",
+   "evidence": "1000:7c76",
+   "note": "The church's sermon stage, 0..2; raised at 1000:7dc7 and 1000:7f5b, read at 1000:7c76/7ceb/7dcb and at 1000:8247 for the parting line.",
+   "tier": "flow"
   }
  ]
 }

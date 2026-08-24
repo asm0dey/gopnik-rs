@@ -11,7 +11,7 @@ Every `.SAV` file is exactly 694 bytes.
 
 | offset | kind          | len | name         | status                          |
 |--------|---------------|-----|--------------|----------------------------------|
-| 0x000  | `pstring`     | 256 | `magic`      | confirmed — constant version banner |
+| 0x000  | `pstring`     | 256 | `magic`      | confirmed — the title string, **assigned at character creation** (`1000:6dcd`..`1000:6ddb`), not a format constant; see below |
 | 0x100  | `pstring`     | 256 | `name`       | confirmed — player name, colour-prefixed |
 | 0x200  | `u16`         | 2   | `rank_index` | confirmed (Task 9) — indexes the `DS:002e` name table **and** the `DS:0002` growth-weight table; the class-choice → value mapping was closed by Task 9b, see below |
 | 0x202  | `u16`         | 2   | `strength`   | confirmed (Task 9) |
@@ -25,27 +25,219 @@ Every `.SAV` file is exactly 694 bytes.
 | 0x212  | `u16`         | 2   | `hpmax`      | confirmed — maximum hit points |
 
 The remaining 162 bytes, `0x214`–`0x2b5` (`0x214 + 162 = 0x2b6 = 694`, so
-this run reaches end of file), used to be a single opaque `tail` entry.
-Task 9b fix wave 2 replaced that entry with a full partition of these
-bytes — the four regions fix wave 1 named, plus every still-unestablished
-span as its own `unk_<hex_offset>` entry per the project convention — so
-that `data/save_layout.json`'s `fields` array, sorted by offset, tiles the
-whole 694-byte record with no gaps and no overlaps
-(`tests/save_roundtrip.rs::save_layout_json_fields_tile_the_record`
-enforces this structurally):
+this run reaches end of file), used to be a single opaque `tail` entry. Task
+9b partitioned it into four named regions plus two `unk_` spans; **Task 19
+closed both spans**, so `data/save_layout.json` now names every byte of the
+record and carries no `unk_` entry at all. What made that possible is the
+next section.
 
-| offset | kind    | len | name             | status |
-|--------|---------|-----|------------------|--------|
-| 0x214  | `bytes` | 29  | `unk_0214`       | unestablished — includes the four one-shot post-kill event flags at `0x221`–`0x225` (Task 9b), which are documented in `data/xp.json`'s `post_kill_stat_events[*].flag_save_offset` instead of here, alongside the deltas each flag gates |
-| 0x231  | `u8`    | 1   | `buff_countdown` | confirmed (Task 9b) — countdown on the temporary +2 strength / +1 dmg_min / +2 dmg_max buff from a smoked joint; nonzero means the buff is live and `hpmax` does not reflect it |
-| 0x232  | `u16`   | 2   | `xp`             | confirmed (Task 9b) — XP not yet spent on a level |
-| 0x234  | `u16`   | 2   | `threshold`      | confirmed (Task 9b) — XP needed for the next level |
-| 0x236  | `bytes` | 120 | `growth_log`     | confirmed (Task 9b) — `array[1..40] of string[2]`, three bytes per level, the two stat codes `'1'`..`'4'` each level granted |
-| 0x2ae  | `bytes` | 8   | `unk_02ae`       | unestablished, runs to end of record |
+## The record IS guest memory — `.SAV` offset + `0x369c`
 
-`unk_0214` and `unk_02ae` are opaque and preserved verbatim for a byte-exact
-round trip, same as `tail` used to be — naming them only documents which
-spans remain unestablished, it does not claim to know their meaning.
+**Established from flow.** The 694 bytes are moved between the file and
+`DS:369c` by a single *untyped* block operation, in both directions, with no
+field-by-field marshalling anywhere:
+
+```text
+load, FUN_1000_6a0d:
+  6bc6  bf 84 3c        mov di,0x3c84        ; the file variable 20ae:3c84
+  6bcb  b8 b6 02        mov ax,0x2b6         ; RecSize = 694
+  6bcf  call 0f78:0769                       ; Reset(f, 694)
+  6c01  bf 9c 36        mov di,0x369c        ; the buffer
+  6c06  call 0f78:081e                       ; BlockRead  -> DS:369c
+  6c13  call 0f78:07ea                       ; Close
+
+district-advance autosave, entry:
+  acb5  b8 b6 02        mov ax,0x2b6
+  acb9  call 0f78:0772                       ; Rewrite(f, 694)
+  acc3  bf 9c 36        mov di,0x369c
+  acc8  call 0f78:0825                       ; BlockWrite <- DS:369c
+
+the mage's paid save, FUN_1000_7538:
+  764a  b8 b6 02 / 764e call 0f78:0772       ; Rewrite(f, 694)
+  7658  bf 9c 36 / 765d call 0f78:0825       ; BlockWrite <- DS:369c
+```
+
+So **byte `n` of a `.SAV` file is `20ae:(0x369c + n)`**, and every DGROUP
+address this project has already mapped inside `20ae:369c`..`20ae:3951`
+names a save offset for free. Two landmarks the delta has to reproduce, both
+established independently of it and long before this task:
+`0x200 + 0x369c = 0x389c`, the class word (`docs/re/progression.md`), and
+`0x2b1 + 0x369c = 0x394d`, the pistol byte Task 18 ported
+(`docs/re/combat-dispatch.md`). Both hold.
+
+`docs/re/wander.md` already stated the load half of this in passing ("the
+694-byte character-record `BlockRead` at `1000:6c01` … which is why the class
+is `.SAV` offset `0x200`"); what is new here is that the same delta resolves
+the whole record, and that `tools/test_decode_save.py` now re-derives it out
+of `orig/g.exe` instead of restating it.
+
+## `0x214`–`0x230` — `20ae:38b0`..`20ae:38cc` (Task 19)
+
+**Established from flow**, in one place: `FUN_1000_1a03`, the character
+sheet Task 16 mapped. Its flag lines are `cmp byte [ADDR],0` /
+`push <literal>` pairs where the guard's operand *is* the DGROUP address and
+the label sits inside the arm that guard selects — the attribution
+`docs/re/character-sheet.md` already checks mechanically. The `evidence`
+column below is that guard; `data/save_layout.json` carries the same address
+per field and `tools/test_decode_save.py` decodes each one out of
+`orig/g.exe` and requires it to reference exactly `0x369c + off`.
+
+| offset | guest | kind | name | evidence | what the sheet calls it |
+|--------|-------|------|------|----------|--------------------------|
+| 0x214 | `20ae:38b0` | `bool` | `broken_jaw` | `1000:2037` | `^4Сломана челюсть  ` |
+| 0x215 | `20ae:38b1` | `bool` | `broken_leg` | `1000:2099` | `^4Сломана нога  ` |
+| 0x216 | `20ae:38b2` | `u8` | `armour` | `1000:227b` | `^2Броня #    ` |
+| 0x217 | `20ae:38b3` | `bool` | `dark_glasses` | `1000:1cf8` | `^1У тебя есть тёмные очки` |
+| 0x218 | `20ae:38b4` | `bool` | `suit_abibas` | `1000:22a1` | `^1Костюм Abibas(+1) ` |
+| 0x219 | `20ae:38b5` | `bool` | `boots` | `1000:1e81` | `^1Бутсы(+1) ` |
+| 0x21a | `20ae:38b6` | `bool` | `jacket` | `1000:2323` | `^1Кожанка(+2) ` |
+| 0x21b | `20ae:38b7` | `bool` | `suit_adidas` | `1000:22fc` | `^1Костюм Adidas(+2) ` |
+| 0x21c | `20ae:38b8` | `bool` | `boots_pontovye` | `1000:1ecf` | `^1Понтовые бутсы(Урон+2) ` |
+| 0x21d | `20ae:38b9` | `bool` | `jacket_krutaya` | `1000:237e` | `^1Крутая кожанка(+4) ` |
+| 0x21e | `20ae:38ba` | `bool` | `kastet` | `1000:1eef` | `^1Кастет(+2) ` |
+| 0x21f | `20ae:38bb` | `bool` | `mobile` | `1000:1cd8` | `^1У тебя есть мобильник` |
+| 0x220 | `20ae:38bc` | `bool` | `prison_tattoo` | `1000:1d18` | `^1На тебе зоновская наколка` |
+| 0x221 | `20ae:38bd` | `bool` | `krestik` | `1000:1be9` | `^1Крестик(Удача +2) ` |
+| 0x222 | `20ae:38be` | `bool` | `ring_gs` | `1000:1c09` | `^1Кольцо "Гс"(Удача +1) ` |
+| 0x223 | `20ae:38bf` | `bool` | `ring_pg` | `1000:1c69` | `^1Кольцо "Пг"(Всё +1) ` |
+| 0x224 | `20ae:38c0` | `bool` | `mega_ring` | `1000:1c89` | `^1Мега Кольцо(Всё +4) ` |
+| 0x225 | `20ae:38c1` | `bool` | `ring_gp` | `1000:1ca9` | `^1Кольцо "Гп"(Самолечение) ` |
+| 0x226 | `20ae:38c2` | `bool` | `nozh` | `1000:1fb5` | `^1Нож(+6) ` |
+| 0x227 | `20ae:38c3` | `i16` | `beer_half_litres` | `1000:23d5` | `Пиво #.#л.` |
+| 0x229 | `20ae:38c5` | `i16` | `joints` | `1000:23b4` | `Косяки #` |
+| 0x22b | `20ae:38c7` | `i16` | `money` | `1000:242e` | `Бабки #` |
+| 0x22d | `20ae:38c9` | `i16` | `junk` | `1000:246a` | `Хлам #` |
+| 0x22f | `20ae:38cb` | `i16` | `street_cred` | `1000:4e79` | — (not on the sheet) |
+
+`street_cred` is the one field of the span the sheet does not print. It is
+`понтовость на улице`, **not** the level at `20ae:38a6`: `1000:4fc4`
+(`cmp word [0x38cb],0xa`) gates the hospital rescue on it, `1000:afdc`
+(`cmp word [0x38cb],0x64`) gates wander draw 2's message, and `1000:4e75`
+spends it. Twenty-three references image-wide.
+
+**Why the flags are `bool` and the five odd-offset fields are `i16`.** Both
+readings come from the code, not from the values in the five saves:
+
+* Every direct store to any of the 23 flag bytes, image-wide, is
+  `mov byte [X],0` or `mov byte [X],1`. There is no third value —
+  `python3 tools/re_query.py xrefs-to 20ae:38b0` and its 22 siblings, all
+  re-run by `tools/test_decode_save.py`. Pascal `Boolean`.
+* `20ae:38c4`, `38c6`, `38c8`, `38ca` and `38cc` have **no reference at
+  all** image-wide — they are high halves, not five more unread flags. Their
+  low halves are reached by `cmp word [X],…`, and every one of those
+  compares is followed by a **signed** conditional (`1000:23da jle`,
+  `1000:23b9 jle`, `1000:2433 jle`, `1000:246f jle`, `1000:4e7e jnle`).
+  Pascal `Integer`, i.e. signed 16-bit.
+
+**The `0x221`–`0x225` discrepancy, settled.** The previous revision of this
+document called `0x221`–`0x225` "the four one-shot post-kill event flags",
+while `data/xp.json` gives four flags at decimal 545–548 = `0x221`–`0x224`.
+Both halves were half right, and the count was the wrong half. There are
+**five** one-shot post-kill item flags, `0x221`–`0x225` — `1000:548c`,
+`1000:54bd`, `1000:52e1`, `1000:52e8`, `1000:52ef` are their gates and
+`1000:54b1`, `1000:54e1`, `1000:5362`, `1000:53b2`, `1000:53f2` set them.
+Exactly four of the five grant a **stat** delta, which is what
+`data/xp.json`'s `post_kill_stat_events` records and why it stops at
+`0x224`: the fifth, `ring_gp` at `0x225`, grants self-healing
+(`1000:81c4`'s `^1Восст. жизни - 3, 5% - самозарост переломов`, consumed by
+the walk preamble at `1000:b24a`) and no stat at all. `data/xp.json` is
+right; this document's sentence was wrong, and is corrected above.
+
+## `0x2ae`–`0x2b5` — `20ae:394a`..`20ae:3951` (Task 19)
+
+| offset | guest | kind | name | evidence | what the sheet calls it |
+|--------|-------|------|------|----------|--------------------------|
+| 0x2ae | `20ae:394a` | `bool` | `tooth_guard` | `1000:2068` | `^1Зубная защита  ` |
+| 0x2af | `20ae:394b` | `bool` | `dubinka` | `1000:1f59` | `^1Дубинка(+4)  ` |
+| 0x2b0 | `20ae:394c` | `bool` | `tesak` | `1000:2003` | `^1Тесак(Урон+9) ` |
+| 0x2b1 | `20ae:394d` | `bool` | `pistol` | `1000:1d38` | `^1У тебя есть пистолет` |
+| 0x2b2 | `20ae:394e` | `bool` | `silencer` | `1000:1d6a` | `^1 с гушителем` |
+| 0x2b3 | `20ae:394f` | `i16` | `cartridges` | `1000:1d8a` | `^1! патронов - #` |
+| 0x2b5 | `20ae:3951` | `u8` | `church_stage` | `1000:7c76` | — (not on the sheet) |
+
+**`cartridges` is a word, and that is a correction.** The obvious reading —
+one byte each for owned / silencer / cartridges, with `0x2b4` left over — is
+wrong: the sheet's guard is `1000:1d8a cmp word [0x394f],0x0`, `bmar` row 7
+adds three at `1000:cd0a` with `add word [0x394f],3`, and `20ae:3950` has no
+reference of its own anywhere in the image. `0x2b4` is the magazine count's
+high byte.
+
+`church_stage` is the church's sermon stage, 0..2 — raised at `1000:7dc7`
+and `1000:7f5b`, read at `1000:7c76`/`7ceb`/`7dcb` to pick the sermon and at
+`1000:8247` to pick the parting line.
+
+## The four regions Task 9b named
+
+| offset | guest | kind | len | name | status |
+|--------|-------|------|-----|------|--------|
+| 0x231 | `20ae:38cd` | `u8` | 1 | `buff_countdown` | confirmed (Task 9b) — countdown on the temporary +2 strength / +1 dmg_min / +2 dmg_max buff from a smoked joint (`1000:4b52` sets it to 3, `1000:e9b8` to 10, `1000:aeb3` clears it); nonzero means the buff is live and `hpmax` does not reflect it. The sheet prints it as `^6Обдолбаный  ` (guard `1000:20ca`). |
+| 0x232 | `20ae:38ce` | `u16` | 2 | `xp` | confirmed (Task 9b) — XP not yet spent on a level (`1000:2536`, `1000:254d`) |
+| 0x234 | `20ae:38d0` | `u16` | 2 | `threshold` | confirmed (Task 9b) — XP needed for the next level (`1000:2550`, `1000:6de0`) |
+| 0x236 | `20ae:38d2` | `bytes` | 120 | `growth_log` | confirmed (Task 9b) — `array[1..40] of string[2]`, three bytes per level (`1000:2641`..`1000:267a`) |
+
+**The growth log's length byte is not always 2.** The writer appends one
+code at a time (`1000:2657` assigns the current entry into a temp,
+`1000:2661` appends the code character, `1000:267a`
+`rtl_str_assign_max(entry, temp, 2)` writes it back), and the flee penalty
+clears **only** the length byte — `1000:497d mov byte [di+0x38cf],0` — and
+leaves the two payload bytes behind. So all three bytes of a slot have to be
+carried; the two codes alone do not determine the slot. Every reference to
+the log carries Borland's biased base `20ae:38cf`, three below the real base
+`20ae:38d2`, because `array[1..40]` is addressed as `base - 1*3 + n*3`.
+
+## Values of the two spans across the five reference saves
+
+State-tier corroboration only — it can refute a name, never establish one.
+
+| field | R0 | R2 | R3 | R4 | R5 |
+|---|---:|---:|---:|---:|---:|
+| `broken_jaw` | 0 | 0 | 0 | 0 | 0 |
+| `broken_leg` | 0 | 0 | 0 | 1 | 0 |
+| `armour` | 4 | 1 | 4 | 10 | 26 |
+| `dark_glasses` | 1 | 1 | 1 | 1 | 1 |
+| `suit_abibas` | 0 | 1 | 1 | 1 | 0 |
+| `boots` | 1 | 1 | 1 | 1 | 0 |
+| `jacket` | 1 | 0 | 1 | 1 | 0 |
+| `suit_adidas` | 1 | 0 | 1 | 1 | 1 |
+| `boots_pontovye` | 0 | 0 | 0 | 1 | 1 |
+| `jacket_krutaya` | 0 | 0 | 0 | 0 | 1 |
+| `kastet` | 0 | 1 | 1 | 1 | 0 |
+| `mobile` | 1 | 1 | 1 | 1 | 1 |
+| `prison_tattoo` | 1 | 1 | 1 | 1 | 1 |
+| `krestik` | 0 | 0 | 1 | 1 | 1 |
+| `ring_gs` | 1 | 0 | 0 | 0 | 1 |
+| `ring_pg` | 1 | 1 | 1 | 1 | 1 |
+| `mega_ring` | 1 | 1 | 1 | 1 | 1 |
+| `ring_gp` | 0 | 0 | 1 | 1 | 1 |
+| `nozh` | 0 | 0 | 0 | 0 | 1 |
+| `beer_half_litres` | 65 | 26 | 20 | 122 | 274 |
+| `joints` | 1 | 7 | 14 | 21 | 4 |
+| `money` | 10 | 442 | 578 | 952 | 29 |
+| `junk` | 12 | 22 | 65 | 71 | 0 |
+| `street_cred` | 188 | 225 | 515 | 964 | 1508 |
+| `tooth_guard` | 0 | 0 | 1 | 1 | 1 |
+| `dubinka` | 1 | 0 | 1 | 1 | 0 |
+| `tesak` | 0 | 0 | 1 | 1 | 0 |
+| `pistol` | 0 | 0 | 0 | 0 | 1 |
+| `silencer` | 0 | 0 | 0 | 0 | 1 |
+| `cartridges` | 0 | 0 | 0 | 0 | 8 |
+| `church_stage` | 2 | 0 | 0 | 0 | 1 |
+
+`SAVE_R5` is the only save whose owner bought a pistol, and it is the only
+one carrying the silencer and a nonzero magazine — consistent, and not
+evidence on its own. Two independent state cross-checks that *are* worth
+something because they close a numeric identity rather than matching a
+label: `SAVE_R3` holds 20 half-litres at `0x227` and 65 Хлам at `0x22d`,
+which is exactly what `docs/re/rng-trace.md` records for run E's guest; and
+`hpmax == 10 + 5*vitality + strength - 2*(buff_countdown != 0)` holds on all
+five, which needs `0x231`, `0x202` and `0x206` all to be right at once.
+
+**Six fields the five saves cannot corroborate at all**, because every save
+agrees: `broken_jaw` (clear in all five — nobody saved mid-fracture) and
+`dark_glasses`, `mobile`, `prison_tattoo`, `ring_pg`, `mega_ring` (set in
+all five). Those six rest on flow alone.
+`tools/test_decode_save.py::test_the_five_saves_disagree_on_every_field_this_task_named`
+asserts that list so the set cannot drift silently.
 
 `pstring` is a Borland Pascal shortstring: one length byte (`0..255`)
 followed by up to 255 payload bytes at a fixed 256-byte slot. Text is
@@ -73,8 +265,37 @@ purposes.
 | `SAVE_R5.SAV` | (same) | `^7 Mudila` | 5 | 90 | 120 | 45 | 49 | 40 | 57 | 102 | 325 | 325 |
 
 `magic` is byte-identical across all five saves:
-`^4Gopnik: ^7version 1.02 june,sept 2003` — a constant version banner, not
-per-save state.
+`^4Gopnik: ^7version 1.02 june,sept 2003`.
+
+**It is per-save state that every save happens to agree on, not a constant
+the format reserves** — and the earlier revision of this document said the
+opposite ("a constant version banner, not per-save state"), which Task 19
+refuted. **Established from flow:** the new-character block *writes* it,
+three instructions after `district := 1`:
+
+```text
+6dbe  c6 06 92 36 01  mov byte [0x3692],1     ; district := 1
+6dc3  c6 06 98 36 01  mov byte [0x3698],1     ; Vet    discovered
+6dc8  c6 06 94 36 01  mov byte [0x3694],1     ; Market discovered
+6dcd  bf 89 64        mov di,0x6489           ; CS 0x6489 = file 0x7D59,
+6dd0  0e / 57         push cs / push di       ;   '^4Gopnik: ^7version 1.02 june,sept 2003'
+6dd2  bf 9c 36        mov di,0x369c           ; DS:369c -- the `magic` slot
+6dd5  1e / 57         push ds / push di
+6dd7  b8 ff 00 / 50   mov ax,0xff / push ax
+6ddb  9a 01 0b 78 0f  call 0f78:0b01          ; rtl_str_assign_max(magic, lit, 255)
+6de0  c7 06 d0 38 0a 00   mov word [0x38d0],0xa   ; threshold := 10
+```
+
+Nothing else writes `20ae:369c` (`python3 tools/re_query.py xrefs-to
+20ae:369c` returns four references: this store and the three block
+operations). So the five saves agree because every one of them was written
+by a character created by this same block, which is a fact about the corpus
+rather than about the format. A save this port writes has to assign it too,
+and `src/save.rs`'s `MAGIC` is that literal.
+
+Corroborated by state: `data/probes/saveprobe-fresh-record.json` is a dump
+of `20ae:369c` taken after driving character creation in `orig/g.exe` under
+qemu, and it holds exactly this string with its padding zeroed.
 
 ## The eight stat words at 0x200–0x20f (Task 9)
 
@@ -124,32 +345,27 @@ weight row. All eleven names and weights are in `data/xp.json`; addresses in
 
 ## Unknown / not yet established
 
-- **`unk_0214` (0x214–0x230, 29 bytes) and `unk_02ae` (0x2ae–0x2b5, 8
-  bytes).** Carried as opaque `bytes` for an exact round trip. Task 9b
-  established the meaning of part of the old 162-byte tail in prose (the
-  four one-shot post-kill event flags at `0x221`–`0x225`, the
-  temporary-buff countdown at `0x231`, the XP total at `0x232`, the
-  next-level threshold at `0x234`, and the growth log at `0x236`–`0x2ad` — an
-  `array[1..40] of string[2]` holding the codes `'1'`..`'4'` for which two
-  stats each level granted, `1000:2641`..`1000:267a`) but that finding never
-  reached a machine-readable artifact; fix wave 1 closed that gap by naming
-  the buff countdown, the XP words and the growth log in
-  `data/save_layout.json` (see "Layout" above) and the flags in
-  `data/xp.json` — but left them as *additional* entries layered over a
-  still-present, now-overlapping opaque `tail` entry. Fix wave 2 replaced
-  `tail` with a true partition: the same four named regions at their real
-  offsets, plus every remaining unestablished byte split into its own
-  `unk_<hex_offset>` entry, so `data/save_layout.json`'s `fields` tile
-  `0x214`–`0x2b5` exactly. The growth log decodes cleanly in all five
-  saves: exactly `level` entries of exactly two codes, and nothing after
-  them. `unk_0214` includes the four post-kill event flags at
-  `0x221`–`0x225`, which stay documented only in `data/xp.json` and not
-  named a second time here.
+**Nothing in the 694-byte record.** Every byte is now a named field: the
+eight stat words and `hp`/`hpmax` (Task 9), the four regions of Task 9b, and
+the two former `unk_` spans closed above. `data/save_layout.json`'s `fields`
+array tiles `[0, 694)` exactly and contains no `unk_<hex_offset>` entry,
+which `tests/save_roundtrip.rs::save_layout_json_fields_tile_the_record`
+enforces structurally.
 
-Per project convention, a field whose meaning is not confirmed stays named
-`unk_<hex_offset>`; none of the eight stat words qualify for that any more,
-but `unk_0214` and `unk_02ae` do, and are not presented as a guessed
-layout.
+The one region that carries no meaning is the **shortstring padding** — the
+bytes past each `pstring`'s declared length inside its 256-byte slot. Those
+are leftover stack/heap garbage Borland never clears (see below); they are
+preserved verbatim for a byte-exact round trip and are the only bytes
+`src/save.rs` copies through from the source blob rather than rebuilding
+from a field.
+
+What is *outside* the record and therefore not in a `.SAV` at all: the seven
+discovery flags (`20ae:3694`..`369a`, written one byte at a time into
+`places.sav`), the district (`20ae:3692`), and the two ban countdowns
+(`20ae:3b76`/`3b77`). The district is not stored anywhere — the load path
+takes it from the save-slot digit the player pressed (`1000:6bf9`), except
+for slot `0`, where `1000:6d93`..`1000:6d9d` derives it as
+`level div 10 + 1`.
 
 ## Validation
 

@@ -1,13 +1,16 @@
-//! Entry point: character creation, then the main loop.
+//! Entry point: the save-slot menu, then character creation, then the main
+//! loop -- the order `FUN_1000_6a0d` runs them in.
 //!
-//! There is no `.SAV`/`PLACES.SAV` load path here -- verified empirically
-//! that `orig/g.exe` runs from itself alone, so "no save file" is the
-//! ordinary new-game case, not an error to handle. Loading an existing
-//! character is out of this task's scope; see `src/game.rs`'s module doc
-//! and `docs/re/gaps.md`.
+//! `orig/g.exe` scans the working directory for `save_r?.sav` before it asks
+//! anything (`1000:6a81`/`1000:6a8a`), and with none found jumps straight to
+//! the new-character block, printing nothing. So "no save file" is the
+//! ordinary new-game case rather than an error, and the menu below is silent
+//! for a clean checkout. `crate::persist` holds the whole path with its
+//! addresses.
 
 use gopnik::game::Game;
 use gopnik::model::Fighter;
+use gopnik::persist;
 use gopnik::progress::{self, Progress};
 use gopnik::term;
 use std::io::{self, BufRead, Write};
@@ -127,10 +130,33 @@ fn main() -> io::Result<()> {
     term::init();
     term::println("^4Gopnik: ^7version 1.02 june,sept 2003");
     let stdin = io::stdin();
-    let (player, progress) = {
+    let seed = clock_seed();
+    let here = std::env::current_dir()?;
+
+    // 1000:6a62..1000:6b81, then 1000:6b84..1000:6d9d. Both fall through to
+    // the new-character block (1000:6dbe) rather than failing: no save file
+    // at all, a key that is none of `0`/`2`..`5`, or a Reset whose IOResult
+    // is non-zero.
+    let loaded = {
         let mut locked = stdin.lock();
-        create_character(&mut locked)
+        let mut lines = (&mut locked).lines();
+        match persist::choose_slot(&here, &mut lines)? {
+            persist::SlotMenu::Load(slot) => persist::load_slot(&here, slot, seed)?,
+            persist::SlotMenu::NoSaves | persist::SlotMenu::NewCharacter => None,
+        }
     };
-    Game::new(player, progress, clock_seed()).run()?;
+
+    let mut game = match loaded {
+        Some(g) => g,
+        None => {
+            let (player, progress) = {
+                let mut locked = stdin.lock();
+                create_character(&mut locked)
+            };
+            Game::new(player, progress, seed)
+        }
+    };
+    game.save_dir = here;
+    game.run()?;
     io::stdout().flush()
 }

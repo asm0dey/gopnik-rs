@@ -49,21 +49,16 @@
 //! ## No typed save command
 //!
 //! `crate::commands` documents why `sv` is not save. Saving in the original
-//! is checkpoint-only: `docs/re/tables.md`'s "Other price sources" section
-//! names two save-triggering sites, `1000:761d` (a paid service,
-//! `district * 50` rubles) and a second path at `0x9bcd` -- both
-//! location-bound, neither a typed verb, and neither modelled by
-//! [`crate::locations::Location`] (extending it would need disassembling the
-//! paid-save screen itself, out of this task's scope). No command here
-//! triggers a save.
+//! is checkpoint-only, at exactly two sites -- the mage's paid save
+//! (`1000:761d`, `district * 50` rubles) and the district-advance autosave
+//! (`0x9bcd`'s prompt, `1000:acc8`'s write). Neither is a typed verb.
+//! `crate::persist` holds both, with the disassembly.
 //!
-//! [`Game::write_save`] still exists as infrastructure a future
-//! save-capable location could call. It always returns `Unsupported` today:
-//! nothing in this task populates `save_template_bytes` (loading an existing
-//! `.SAV` into a `Game` is out of scope here), and fabricating the unknown
-//! bytes at `.SAV` offsets `0x214`/`0x2ae` for a freshly created character is
-//! explicitly out of bounds per the task's own instruction. That is the
-//! reported blocker, scoped to this one method.
+//! [`Game::mage`] reaches the first of them. The second is **not wired up**:
+//! its `ReadLn` sits at the top of the original's main loop
+//! (`1000:ab75`..`1000:ad12`), while this port advances the district inside
+//! the post-fight block, which has no input iterator -- see
+//! `docs/re/gaps.md`.
 
 use crate::combat::{blows_per_round, resolve_blow_nth, Break, Swing};
 use crate::combat_dispatch::{self, Backup, Called, Shot, Status};
@@ -73,7 +68,6 @@ use crate::locations::{Location, Places};
 use crate::model::Fighter;
 use crate::progress::{self, Progress};
 use crate::rng::Rng;
-use crate::save::Save;
 use crate::term;
 use crate::text;
 use std::io::{self, BufRead};
@@ -424,6 +418,44 @@ pub struct Game {
     pub weapon_nozhik_38c2: bool,
     /// `20ae:394c` / `.SAV 0x2b0` -- тесак (`1000:5734` gate).
     pub weapon_tesak_394c: bool,
+    /// `20ae:38b4` / `.SAV 0x218` -- костюм Abibas, `mar` row 4
+    /// (`1000:bf80` sets it, `^1Костюм Abibas(+1) ` at `1000:22a1`).
+    ///
+    /// These six clothing flags are **carried, not acted on**. The port does
+    /// not implement `mar`'s purchase effects (`docs/re/gaps.md`), so
+    /// nothing here ever sets them -- but a loaded `.SAV` can, and dropping
+    /// them on the floor would make a load-then-save round trip lossy for
+    /// six real bytes. [`Game::imm_row_visible`]'s `abs` term still ignores
+    /// all four of the armour-bearing ones, which is the same divergence
+    /// `docs/re/gaps.md` already records and which this task deliberately
+    /// did not widen its scope to close.
+    pub wear_suit_abibas_38b4: bool,
+    /// `20ae:38b5` / `.SAV 0x219` -- Бутсы (`1000:c029`, `1000:1e81`).
+    pub wear_boots_38b5: bool,
+    /// `20ae:38b6` / `.SAV 0x21a` -- Кожанка, `mar` row 6 (`1000:c0e0`,
+    /// `1000:2323`).
+    pub wear_jacket_38b6: bool,
+    /// `20ae:38b7` / `.SAV 0x21b` -- костюм Adidas, `mar` row 7
+    /// (`1000:c183`, `1000:22fc`).
+    pub wear_suit_adidas_38b7: bool,
+    /// `20ae:38b8` / `.SAV 0x21c` -- Понтовые бутсы (`1000:c222`,
+    /// `1000:1ecf`).
+    pub wear_boots_pontovye_38b8: bool,
+    /// `20ae:38b9` / `.SAV 0x21d` -- Крутая кожанка, `mar` row 9
+    /// (`1000:c2ca`, `1000:237e`).
+    pub wear_jacket_krutaya_38b9: bool,
+    /// Where [`Game::mage_save`](crate::persist) and any other writer put
+    /// their files.
+    ///
+    /// The original writes into the process's current directory -- every
+    /// filename it builds is either bare (`save_r0.sav`, `places.sav`) or
+    /// prefixed with `GetDir(0)` plus a backslash (`1000:6a2d`..`1000:6a55`),
+    /// which is the same directory. `"."` is therefore the faithful default.
+    /// It is a field rather than a `current_dir()` call so a test can point a
+    /// save at a scratch directory instead of dropping `save_r0.sav` into the
+    /// working tree, which is what `cargo test` would otherwise do the first
+    /// time a test answers `y` to the mage.
+    pub save_dir: std::path::PathBuf,
     /// `20ae:3951` / `.SAV 0x2b5` -- the church's sermon stage, 0..2. Read
     /// at `1000:7c76`/`1000:7ceb`/`1000:7dcb` to pick which sermon runs and
     /// at `1000:8247` to pick the parting line.
@@ -434,10 +466,6 @@ pub struct Game {
     fight_log: Option<FightLog>,
     /// The most recently fought opponent, shown by `Command::Inspect` (`sv`).
     last_enemy: Option<Fighter>,
-    /// The original save this game was loaded from, kept only for its
-    /// unknown byte regions. Always `None` for a freshly created character;
-    /// [`Game::write_save`] is `Unsupported` until something populates this.
-    save_template_bytes: Option<Vec<u8>>,
     running: bool,
 }
 
@@ -529,9 +557,15 @@ impl Game {
             weapon_dubinka_394b: false,
             weapon_nozhik_38c2: false,
             weapon_tesak_394c: false,
+            wear_suit_abibas_38b4: false,
+            wear_boots_38b5: false,
+            wear_jacket_38b6: false,
+            wear_suit_adidas_38b7: false,
+            wear_boots_pontovye_38b8: false,
+            wear_jacket_krutaya_38b9: false,
+            save_dir: std::path::PathBuf::from("."),
             mode: Mode::Street,
             last_enemy: None,
-            save_template_bytes: None,
             running: true,
         };
         g.apply_class_bonus();
@@ -563,7 +597,7 @@ impl Game {
     /// jump straight to `1000:73e5`), and `1000:73e5` is unconditional.
     /// Class 4 (Отморозок) gets no flag here -- its bonus is the +1 HP per
     /// walk at `1000:b2d4`.
-    fn apply_class_bonus(&mut self) {
+    pub(crate) fn apply_class_bonus(&mut self) {
         match self.player.class {
             5 => self.places.mark_found(Location::Den),
             3 => {
@@ -978,13 +1012,36 @@ impl Game {
     /// 2") and `1000:c2ca` sets `[0x38b9]` (row 9, "Броня +4") -- the four
     /// subtrahends are those four rows' own advertised bonuses.
     ///
-    /// **The port owns none of those four flags** (buying a `mar` row
-    /// deducts the price and prints the text but applies no effect -- see
-    /// `docs/re/gaps.md`), so all four adjustments are inert here and `abs`
-    /// is exactly `armor`. That is faithful to the state this port models
-    /// and diverges from the original the moment equipment exists; the
-    /// divergence is recorded in `docs/re/gaps.md` and `docs/re/difftest.md`
-    /// rather than papered over.
+    /// **The port carries all four flags and this method still ignores
+    /// them**, so `abs` is exactly `armor` here, where the original computes
+    /// `armor` minus 1 for `[38b4]` without `[38b7]`, minus 2 for `[38b7]`,
+    /// minus 2 for `[38b6]` without `[38b9]`, and minus 4 for `[38b9]`.
+    /// Only one row reads `abs`: `("trn","5")`. It has **two** gates, and
+    /// only the second reads `abs` -- `1000:e576` `cmp byte [0x3692],0x2` /
+    /// `jbe` is `district > 2`, and `1000:e57d`..`1000:e58d` is
+    /// `abs < district * 2`. This method implements both; the prose used to
+    /// fold them into one. So the whole consequence is that this port can
+    /// HIDE a gym row the original shows.
+    ///
+    /// **This became live in Task 19 and is not fixed here.** Before it,
+    /// nothing in the port could set the four bytes (buying a `mar` row
+    /// deducts the price and prints the text but applies no effect), so the
+    /// divergence was theoretical. A loaded `.SAV` sets them, and it has a
+    /// concrete witness in the shipped corpus: **`SAVE_R4` at slot 4** holds
+    /// `38b4`/`38b6`/`38b7` set and `38b9` clear with `armour` 10, so the
+    /// original computes `abs = 10 - 2 - 2 = 6` against a threshold of 8 and
+    /// shows the row, while this port computes `abs = 10` and hides it.
+    /// (`SAVE_R3` and `SAVE_R5` agree either way; no shipped save carries
+    /// all four flags -- an earlier revision of this comment said `SAVE_R3`
+    /// and `SAVE_R4` did, and the frozen corpus refutes it: both carry
+    /// three.)
+    ///
+    /// Correcting it means deciding what a `mar` purchase does, which is the
+    /// unimplemented shop-effects gap and a different task's subject;
+    /// applying the subtraction here while purchases still grant nothing
+    /// would make the gym row depend on a flag the player cannot earn.
+    /// Registered in `docs/re/gaps.md`, "The four armour flags are carried
+    /// but the gym's `abs` ignores them".
     fn imm_row_visible(&self, row: &ImmRow) -> bool {
         let district = i32::from(self.district);
         let level = i32::from(self.player.level);
@@ -1881,13 +1938,25 @@ impl Game {
     /// CHECKS and CHARGES is `district * 50` (`1000:7605` and `1000:7618`,
     /// both `ba 32 00`, debit at `1000:761d`).
     ///
-    /// **Not reproduced:** the two file writes on the paid path -- the
-    /// 694-byte record into `save_r0.sav` (`1000:764e`/`1000:765d`) and the
-    /// seven discovery flags into `places.sav` (`1000:766f`..).
-    /// [`Game::write_save`] is `Unsupported` for every `Game` this port can
-    /// build, so the money leaves and no file appears; recorded in
-    /// `docs/re/gaps.md`.
-    fn mage(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
+    /// **The two file writes on the paid path are reproduced** (Task 19):
+    /// the 694-byte record into `save_r0.sav` (`1000:764e`/`1000:765d`), the
+    /// seven discovery flags into `places.sav` (`1000:766f`..`1000:7724`),
+    /// and `^0Сохранено! ^1Можешь беспредельничать дальше.` (`1000:7729`,
+    /// file `0x8D92`) -- see [`Game::mage_save`](crate::persist). They used
+    /// to be out of reach because `Save::parse` was the only constructor and
+    /// `.SAV` `0x214`/`0x2ae` were unknown; both spans are established now.
+    ///
+    /// A write that fails is reported and the turn continues. The original
+    /// has no failure message on this path at all: `1000:761d` debits before
+    /// the file is opened and nothing after it tests `IOResult`, so the
+    /// money leaves either way. Printing the host error is a PORT DECISION
+    /// -- silently swallowing an I/O failure would be worse than one line
+    /// the original never prints.
+    /// `pub` for the same reason [`Game::walk`] is: it is the only way a
+    /// test can reach this arm. Wander bucket 14 is what dispatches it in
+    /// play (`1000:b3b7`), and forcing that bucket needs a seed the binary
+    /// does not take.
+    pub fn mage(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
         term::println("Бродя по окрестностям с самыми грязными намериниями...");
         term::println("Ты встретил великого мага и экстрасенса - Рушеля Блаво.");
         term::println(&text::fill(
@@ -1912,6 +1981,11 @@ impl Game {
             return Ok(());
         }
         self.player.money -= price;
+        // 1000:7621..1000:773d. The debit above is 1000:761d, and it happens
+        // BEFORE the file is opened in the original too.
+        if let Err(e) = self.mage_save() {
+            term::println(&format!("^6{e}"));
+        }
         Ok(())
     }
 
@@ -2194,47 +2268,6 @@ impl Game {
             junk: junk as u16,
             ..Fighter::default()
         }
-    }
-
-    // There is deliberately no `save_game()` wrapper here. The original has
-    // no "saved OK" / "save failed" string anywhere, so a wrapper could only
-    // print composed text -- see [`Game::write_save`] and `docs/re/gaps.md`.
-
-    /// Writes a checkpoint save. See the module doc: `Unsupported` for
-    /// every `Game` this task can construct.
-    #[allow(dead_code)]
-    fn write_save(&self) -> io::Result<String> {
-        let Some(template) = &self.save_template_bytes else {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "cannot save a freshly created character: .SAV offsets 0x214 \
-                 (29 bytes) and 0x2ae (8 bytes) are unknown, and Save::parse \
-                 is the only constructor Task 9 provides -- reaching a \
-                 checkpoint in the original and capturing its output is the \
-                 sanctioned way to learn them",
-            ));
-        };
-        let mut save = Save::parse(template)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        save.name = self.player.name.clone();
-        save.stats = [
-            self.player.class,
-            self.player.strength,
-            self.player.agility,
-            self.player.vitality,
-            self.player.luck,
-            self.player.level,
-            self.player.dmg_min,
-            self.player.dmg_max,
-        ];
-        save.hp = self.player.hp;
-        save.hpmax = self.player.hpmax;
-        let bytes = save
-            .to_bytes()
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        let filename = format!("SAVE_R{}.SAV", self.district);
-        std::fs::write(&filename, bytes)?;
-        Ok(filename)
     }
 
     /// `name`, the handler `1000:ecf1`'s compare dispatches. **Established
@@ -4851,13 +4884,6 @@ mod tests {
         let mut g = game();
         g.dispatch(Command::Quit, &mut no_input()).unwrap();
         assert!(!g.running);
-    }
-
-    #[test]
-    fn write_save_is_blocked_for_a_fresh_character() {
-        let g = game();
-        let err = g.write_save().unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::Unsupported);
     }
 
     #[test]

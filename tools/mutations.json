@@ -1,880 +1,946 @@
 {
-  "note": "Mutation cases for tools/mutate.py -- read that file's docstring first. One case per independently falsifiable CHANNEL of the three frozen oracles plus data/combat_vectors.json and data/rng_vectors.json: each perturbs the smallest thing that isolates one claim, and the named test must go red with `expect` in its output. Several mutations that all red the same assertion would be noise, so there is at most one per channel. A channel NOT listed here has not been shown to be falsifiable. Nothing here is ever applied to the real files: the runner works on a copy.",
-  "manifest_lives_here_because": "This is configuration for a tool, not captured data. data/ is the read-only ground-truth tree the gate exists to protect, and a manifest living there would be copied -- and mutable -- inside the gate's own shadow of it.",
-  "findings": "Cases carrying \"expect_red\": false are not coverage. Each is a column the captures hold that no assertion reads -- found by this gate on its first run, by mutating the column and watching the whole test binary stay green. They are kept here, and kept executable, so the record cannot rot: when an assertion finally reaches one, the gate fails on it and the case is promoted to a red one. SCOPE OF THE SILENCE: each of these runs ONE cargo test binary, so what it establishes is that no RUST test in that binary reads the column. That a Python test does not read it either was checked by hand (git grep, fix round 1) and is NOT what the gate watches; a Python-side assertion arriving on one of these columns would not fail the case. Registering a finding whose test is a Python command is allowed -- the manifest and the runner take any argv -- so a future finding on that side can be recorded the same way.",
-  "cases": [
-    {
-      "label": "wander-draw-stream",
-      "defends": "tests/wander_sequence.rs compares the port's whole Random stream, draw for draw, against data/rng_trace.json -- site, n, r and the count.",
-      "artifact": "data/rng_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          0,
-          "draws",
-          100,
-          "r"
-        ],
-        "from": 61,
-        "to": 62
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "wander_sequence",
-        "run_a_replays_exactly"
-      ],
-      "expect": "draw sequence diverges from data/rng_trace.json at index 100"
-    },
-    {
-      "label": "wander-final-state",
-      "defends": "run_c_final_state_matches asserts the whole 29-variable end state, which the draw stream cannot see -- here 20ae:38a4, the luck the church's Random(5)==0 arm did NOT grant.",
-      "artifact": "data/rng_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          2,
-          "final_state",
-          "luck_38a4"
-        ],
-        "from": 3,
-        "to": 4
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "wander_sequence",
-        "run_c_final_state_matches"
-      ],
-      "expect": "C: 20ae:38a4"
-    },
-    {
-      "label": "wander-uncatalogued-sites",
-      "defends": "the_uncatalogued_sites_fire_as_often_as_the_capture_saw_them checks data/rng_trace.json's own aggregate against the per-run draw arrays -- 1000:0d91 is the thinnest entry, five stops in 1387 draws.",
-      "artifact": "data/rng_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "sites_not_in_catalogue",
-          "1000:0d91",
-          "count"
-        ],
-        "from": 5,
-        "to": 4
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "wander_sequence",
-        "the_uncatalogued_sites_fire_as_often_as_the_capture_saw_them"
-      ],
-      "expect": "1000:0d91: number of draws"
-    },
-    {
-      "label": "wander-per-turn-state",
-      "defends": "run_a_per_turn_state_matches walks data/state_trace.json turn by turn. A MID-run sample is mutated on purpose: the last one is also read by the_state_capture_ends_where_the_draw_capture_ended, and this case must isolate the per-turn channel.",
-      "artifact": "data/state_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          0,
-          "samples",
-          5,
-          "hp_38ac"
-        ],
-        "from": 28,
-        "to": 27
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "wander_sequence",
-        "run_a_per_turn_state_matches"
-      ],
-      "expect": "A turn 6: 20ae:38ac"
-    },
-    {
-      "label": "combat-draw-stream",
-      "defends": "tests/combat_sequence.rs channel 1 -- the whole draw stream of a FIGHT, which data/rng_trace.json cannot cover because none of its runs enters [0x3d11, 0x584c).",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          0,
-          "draws",
-          150,
-          "r"
-        ],
-        "from": 79,
-        "to": 80
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence",
-        "run_a_replays_exactly"
-      ],
-      "expect": "draw sequence diverges from data/combat_trace.json at index 150"
-    },
-    {
-      "label": "combat-input-lines",
-      "defends": "tests/combat_sequence.rs channel 2 -- the port consumed exactly as many recorded lines as the capture holds, so a port that stopped early cannot look like one that finished. APPENDING a line is the isolating perturbation: changing one would change what the port does and red the draw stream first.",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-append",
-        "path": [
-          "runs",
-          3,
-          "lines_the_game_read"
-        ],
-        "value": "run"
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence",
-        "run_d_replays_exactly"
-      ],
-      "expect": "the port consumed 13 of the 14 lines the capture recorded"
-    },
-    {
-      "label": "combat-enemy-record",
-      "defends": "tests/combat_sequence.rs channel 3 -- the enemy record at each 1000:3d11 stop. The port must ROLL the same fighter, not merely spend the same draws.",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          1,
-          "fights",
-          0,
-          "enemy",
-          "e_luck_395a"
-        ],
-        "from": 8,
-        "to": 9
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence",
-        "run_b_replays_exactly"
-      ],
-      "expect": "run B fight 1: 20ae:395a"
-    },
-    {
-      "label": "combat-break-flags",
-      "defends": "tests/combat_sequence.rs channel 4 -- both fighters' hp and all four break flags at each 1000:441d stop. Run A's prompt 13 is where the PLAYER's jaw breaks (20ae:38b0); before this oracle the break formulas were recovered, implemented and asserted by nothing.",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          0,
-          "combat_prompts",
-          12,
-          "p_broken_jaw_38b0"
-        ],
-        "from": 1,
-        "to": 0
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence",
-        "run_a_replays_exactly"
-      ],
-      "expect": "run A combat prompt 13: 20ae:38b0 broken jaw"
-    },
-    {
-      "label": "combat-summary-counts",
-      "defends": "the_capture_covers_the_blow_loop_the_crowd_and_the_victory_block cross-checks data/combat_trace.json's header totals against the runs' own arrays. A summary asserted against literals rather than against what it summarises was one of Task 13's four findings.",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "fights_total"
-        ],
-        "from": 15,
-        "to": 14
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence",
-        "the_capture_covers_the_blow_loop_the_crowd_and_the_victory_block"
-      ],
-      "expect": "fights_total says 14 but the runs hold 15"
-    },
-    {
-      "label": "combat-final-state",
-      "defends": "run_b_final_state_matches asserts the whole 35-variable end state after six won fights -- the loot award, the post-kill gifts and the level-up grants are all invisible to the draw stream.",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          1,
-          "final_state",
-          "xp_38ce"
-        ],
-        "from": 28,
-        "to": 29
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence",
-        "run_b_final_state_matches"
-      ],
-      "expect": "B: 20ae:38ce"
-    },
-    {
-      "label": "combat-final-state-d",
-      "defends": "run_d_final_state_matches asserts the same 35-variable channel on the opposite side of it: a FRESH character that fled every fight, so a purse, an XP total and a discovery-flag set no victory block ever touched. A separate case because it is a separate assertion -- and because this is the one Task 13's re-review had to add after it was left out once already.",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          3,
-          "final_state",
-          "xp_38ce"
-        ],
-        "from": 0,
-        "to": 1
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence",
-        "run_d_final_state_matches"
-      ],
-      "expect": "D: 20ae:38ce"
-    },
-    {
-      "label": "combat-vectors",
-      "defends": "tests/combat_vectors.rs replays 295 seed-pinned blows captured off the original's own screen, asserting hit and damage per blow.",
-      "artifact": "data/combat_vectors.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "cases",
-          0,
-          "expected_blows",
-          0,
-          "damage"
-        ],
-        "from": 19,
-        "to": 18
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_vectors",
-        "combat_matches_original"
-      ],
-      "expect": "case 0 blow 0: damage"
-    },
-    {
-      "label": "rng-vectors-break-boundary",
-      "defends": "src/combat.rs's the_break_test_is_strict_at_1000_458f pins the 1000:458f break boundary on data/rng_vectors.json's seed-0 chain -- the chain tools/gen_rng_vectors.py produced by interpreting @Rand's own bytes out of orig/g.exe, so it is an oracle and not a restatement of Rng. Chain entry 59 is the one the 1000:4571 draw reads: moving it off 59-of-200 moves the boundary off luck 20 * 3.",
-      "artifact": "data/rng_vectors.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "seeds",
-          0,
-          "next_u32",
-          59
-        ],
-        "from": 1270000484,
-        "to": 1288490189
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--lib",
-        "the_break_test_is_strict_at_1000_458f"
-      ],
-      "expect": "the 1000:4571 draw after the 1000:4576 inc"
-    },
-    {
-      "label": "frozen-oracle-refusal",
-      "defends": "tools/rngtrace/combattrace.py refuses `--out` naming a frozen oracle before it writes anything, and tools/test_rngtrace.py's test_the_fold_refuses_to_write_over_a_frozen_oracle proves it. This is the Python arm: the artifact perturbed is the GUARD, not an oracle.",
-      "artifact": "tools/rngtrace/combattrace.py",
-      "mutate": {
-        "op": "text-replace",
-        "from": "        if named is not None:\n            ap.error(\"--out %s names %s, a FROZEN oracle: it is read for its \"\n                     \"SHA-256 and never written.  Write the fight oracle to \"\n                     \"data/combat_trace.json instead.\" % (args.out, named))",
-        "to": "        if named is not None:\n            pass"
-      },
-      "test": [
-        "python3",
-        "tools/test_rngtrace.py",
-        "FightFoldTest.test_the_fold_refuses_to_write_over_a_frozen_oracle"
-      ],
-      "expect": "combattrace.main() accepted --out naming a FROZEN oracle"
-    },
-    {
-      "label": "character-sheet-guard-address",
-      "defends": "tools/test_character_sheet.py requires every address in data/character_sheet.json to be an instruction boundary an ALIGNED walk from the enclosing function's entry reaches -- the two-to-five-byte drift that is this project's standing RE defect.",
-      "artifact": "data/character_sheet.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "flag_lines",
-          0,
-          "guard",
-          "addr"
-        ],
-        "from": "1000:1be9",
-        "to": "1000:1bea"
-      },
-      "test": [
-        "python3",
-        "tools/test_character_sheet.py",
-        "SheetTest.test_the_flag_lines_print_inside_the_arm_their_guard_selects"
-      ],
-      "expect": "is not an instruction boundary reached by decoding"
-    },
-    {
-      "label": "character-sheet-literal-text",
-      "defends": "tools/test_character_sheet.py decodes every cited CS shortstring out of orig/g.exe and compares it with the text data/character_sheet.json records. The PROSE side is a separate check with its own case below (character-sheet-prose-address); this one speaks only for the artifact.",
-      "artifact": "data/character_sheet.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "flag_lines",
-          0,
-          "literal",
-          "text"
-        ],
-        "from": "^1Крестик(Удача +2) ",
-        "to": "^1Крестик(Удача +3) "
-      },
-      "test": [
-        "python3",
-        "tools/test_character_sheet.py",
-        "SheetTest.test_every_cs_literal_decodes_to_the_recorded_text"
-      ],
-      "expect": "the Pascal shortstring at CS"
-    },
-    {
-      "label": "character-sheet-call-sites",
-      "defends": "tools/test_character_sheet.py checks each recorded call site really is an `e8` near call whose 16-bit-wrapped target is 1000:1a03, AND that a byte scan of the whole image finds no fifth near call and no far call -- so `exactly these four callers` is a finding rather than a search that stopped early.",
-      "artifact": "data/character_sheet.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "call_sites",
-          0,
-          "addr"
-        ],
-        "from": "1000:ec89",
-        "to": "1000:ec8c"
-      },
-      "test": [
-        "python3",
-        "tools/test_character_sheet.py",
-        "SheetTest.test_the_call_sites_really_call_this_function"
-      ],
-      "expect": "is not a near call"
-    },
-    {
-      "label": "character-sheet-prose-address",
-      "defends": "tools/test_character_sheet.py's ProseTest resolves every 1000:xxxx in docs/re/character-sheet.md against an aligned decode from every segment-1000 function entry. Without it the doc's 27 prose-only citations have no net -- which is where the self-disclosed 1000:584a -> 1000:5849 drift lived, found by hand because nothing checked. The address perturbed here, 1000:5097, is one of those 27 -- it appears nowhere in data/character_sheet.json, so no artifact-side check can see it.",
-      "artifact": "docs/re/character-sheet.md",
-      "mutate": {
-        "op": "text-replace",
-        "from": "`1000:5097`",
-        "to": "`1000:5098`",
-        "count": 1
-      },
-      "test": [
-        "python3",
-        "tools/test_character_sheet.py",
-        "ProseTest.test_every_prose_address_is_an_instruction_boundary"
-      ],
-      "expect": "which an aligned decode from every segment-1000 function entry never reaches"
-    },
-    {
-      "label": "character-sheet-branch-partition",
-      "defends": "tools/test_character_sheet.py recomputes the cited/uncited split of FUN_1000_1a03's 83 branches from data/branches.json and from the artifact's own citations (excluding the partition node itself), so the `what is still open` list cannot drift from what the artifact actually covers.",
-      "artifact": "data/character_sheet.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "branch_partition",
-          "uncited",
-          0
-        ],
-        "from": "1000:1bc7",
-        "to": "1000:1bc8"
-      },
-      "test": [
-        "python3",
-        "tools/test_character_sheet.py",
-        "SheetTest.test_the_branch_partition_is_the_whole_branch_set"
-      ],
-      "expect": "the recorded uncited set is not what is actually left uncited"
-    },
-    {
-      "label": "combat-prompt-randseed",
-      "expect_red": false,
-      "defends": "FINDING: the capture reads RandSeed at every 1000:441d stop and PromptRow deserialises it under #[allow(dead_code)], but nothing compares it to the port's g.rng.state(). tests/wander_sequence.rs DOES assert randseed_367e per turn sample; the combat prompt channel does not.",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          0,
-          "combat_prompts",
-          0,
-          "r_randseed_367e"
-        ],
-        "from": 510377501,
-        "to": 510377502
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence"
-      ]
-    },
-    {
-      "label": "combat-enemy-randseed",
-      "expect_red": false,
-      "defends": "FINDING: same for the RandSeed read at each 1000:3d11 stop -- the seed the enemy record was rolled at is captured and read into EnemyRecord, and asserted by nothing.",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          0,
-          "fights",
-          0,
-          "enemy",
-          "e_randseed_367e"
-        ],
-        "from": 510377501,
-        "to": 510377502
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence"
-      ]
-    },
-    {
-      "label": "combat-frozen-oracle-digests",
-      "expect_red": false,
-      "defends": "FINDING: data/combat_trace.json publishes the SHA-256 of the two older oracles so a reader can check they were not touched. tools/test_rngtrace.py checks what a FRESH fold publishes; nothing checks the block in the shipped file against the files themselves, so the provenance claim is asserted by nothing.",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "frozen_oracles",
-          "data/rng_trace.json"
-        ],
-        "from": "148fe3c74ba7727754b9e14f7b24f25eac4cf1cc97ab6930bebc549625eb1025",
-        "to": "0000000000000000000000000000000000000000000000000000000000000000"
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence"
-      ]
-    },
-    {
-      "label": "combat-draw-turn",
-      "expect_red": false,
-      "defends": "FINDING: every draw carries the turn it fell in; the port's gopnik::rng::Draw has no turn field, so the column is never compared. Deliberate as far as the port goes -- the turn boundary is implied by the draw count -- but recorded, because 'deliberate' and 'checked' are not the same word.",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          0,
-          "draws",
-          10,
-          "turn"
-        ],
-        "from": 2,
-        "to": 7
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence"
-      ]
-    },
-    {
-      "label": "wander-draw-turn",
-      "expect_red": false,
-      "defends": "FINDING: the same column in the wander oracle, with the same reason and the same silence.",
-      "artifact": "data/rng_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          0,
-          "draws",
-          10,
-          "turn"
-        ],
-        "from": 2,
-        "to": 7
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "wander_sequence"
-      ]
-    },
-    {
-      "label": "combat-prompt-stops",
-      "expect_red": false,
-      "defends": "FINDING: the capture's own count of driver prompt stops, read by no test.",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          0,
-          "prompt_stops"
-        ],
-        "from": 2,
-        "to": 3
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence"
-      ]
-    },
-    {
-      "label": "wander-draws-observed-total",
-      "expect_red": false,
-      "defends": "FINDING: the header summary of data/rng_trace.json, never compared to the runs' own draw arrays. This is exactly the shape Task 13 fixed for combat_trace's fights_total/draws_total (see the combat-summary-counts case above) -- the fix did not reach the other two oracles.",
-      "artifact": "data/rng_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "draws_observed_total"
-        ],
-        "from": 1387,
-        "to": 1388
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "wander_sequence"
-      ]
-    },
-    {
-      "label": "combat-prompts-total",
-      "expect_red": false,
-      "defends": "FINDING: the third header total in combat_trace.json. fights_total and draws_total ARE cross-checked against the arrays; combat_prompts_total, in the same header, is not.",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "combat_prompts_total"
-        ],
-        "from": 74,
-        "to": 75
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence"
-      ]
-    },
-    {
-      "label": "state-samples-total",
-      "expect_red": false,
-      "defends": "FINDING: the header summary of data/state_trace.json, never compared to the runs' own sample arrays.",
-      "artifact": "data/state_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "samples_total"
-        ],
-        "from": 91,
-        "to": 92
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "wander_sequence"
-      ]
-    },
-    {
-      "label": "combat-draws-until-next-fight",
-      "expect_red": false,
-      "defends": "FINDING: the per-fight draw span in the SHIPPED file is compared to nothing. The fold's computation of it is asserted, on synthetic input, at tools/test_rngtrace.py:1529 and :1535 -- so the arithmetic is covered and the shipped value is not. Its sibling first_draw_index IS asserted against the port (see combat-enemy-record).",
-      "artifact": "data/combat_trace.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "runs",
-          0,
-          "fights",
-          0,
-          "draws_until_next_fight"
-        ],
-        "from": 163,
-        "to": 164
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "combat_sequence"
-      ]
-    },
-    {
-      "label": "combat-dispatch-guard-address",
-      "defends": "tools/test_combat_dispatch.py requires every address in data/combat_dispatch.json to be an instruction boundary an ALIGNED walk from the enclosing function's entry reaches -- the two-to-five-byte drift that is this project's standing RE defect.  The one-to-one twin of character-sheet-guard-address.",
-      "artifact": "data/combat_dispatch.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "verbs",
-          4,
-          "compare",
-          "addr"
-        ],
-        "from": "1000:4c42",
-        "to": "1000:4c43"
-      },
-      "test": [
-        "python3",
-        "tools/test_combat_dispatch.py",
-        "DispatchTest.test_each_compare_pushes_the_buffer_and_the_token_the_artifact_names"
-      ],
-      "expect": "is not an instruction boundary reached by decoding"
-    },
-    {
-      "label": "combat-dispatch-literal-text",
-      "defends": "tools/test_combat_dispatch.py decodes every cited CS shortstring out of orig/g.exe and compares it with the text data/combat_dispatch.json records.  The verb tokens are the load-bearing ones: `sv` here is the token whose arm the whole enemy-sheet finding hangs on.  The PROSE side is a separate case below.",
-      "artifact": "data/combat_dispatch.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "verbs",
-          4,
-          "literal",
-          "text"
-        ],
-        "from": "sv",
-        "to": "vs"
-      },
-      "test": [
-        "python3",
-        "tools/test_combat_dispatch.py",
-        "DispatchTest.test_every_cs_literal_decodes_to_the_recorded_text"
-      ],
-      "expect": "the Pascal shortstring at CS"
-    },
-    {
-      "label": "combat-dispatch-enemy-sheet-callers",
-      "defends": "tools/test_combat_dispatch.py checks the `sv` arm really is an `e8` near call to 1000:1348 AND that a byte scan of the whole image -- near, matched modulo 64 KiB, and far -- finds no other caller.  So `sv is its only caller` is a finding rather than a search that stopped early.  The twin of character-sheet-call-sites.",
-      "artifact": "data/combat_dispatch.json",
-      "mutate": {
-        "op": "json-append",
-        "path": [
-          "enemy_sheet",
-          "called_from"
-        ],
-        "value": "1000:4c35"
-      },
-      "test": [
-        "python3",
-        "tools/test_combat_dispatch.py",
-        "DispatchTest.test_sv_calls_the_enemy_sheet_and_it_is_the_only_caller"
-      ],
-      "expect": "the byte scan finds near calls to the enemy sheet"
-    },
-    {
-      "label": "combat-dispatch-prose-address",
-      "defends": "tools/test_combat_dispatch.py's ProseTest resolves every 1000:xxxx in docs/re/combat-dispatch.md against an aligned decode from every segment-1000 function entry.  26 of the document's citations appear in the prose ALONE -- they are in no artifact node, so no artifact-side check can see them.  1000:4a78, perturbed here, is one of those 26.  The twin of character-sheet-prose-address.",
-      "artifact": "docs/re/combat-dispatch.md",
-      "mutate": {
-        "op": "text-replace",
-        "from": "`1000:4a78`",
-        "to": "`1000:4a79`",
-        "count": 1
-      },
-      "test": [
-        "python3",
-        "tools/test_combat_dispatch.py",
-        "ProseTest.test_every_prose_address_is_an_instruction_boundary"
-      ],
-      "expect": "which an aligned decode from every segment-1000 function entry never reaches"
-    },
-    {
-      "label": "combat-dispatch-branch-partition",
-      "defends": "tools/test_combat_dispatch.py recomputes the cited/uncited split of the 100 branches in [1000:4400, 1000:5080) from data/branches.json and from the artifact's own citations (excluding the partition node itself), so the `what is still open` list cannot drift from what the artifact actually covers.",
-      "artifact": "data/combat_dispatch.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "branch_partition",
-          "uncited",
-          0
-        ],
-        "from": "1000:447a",
-        "to": "1000:447b"
-      },
-      "test": [
-        "python3",
-        "tools/test_combat_dispatch.py",
-        "DispatchTest.test_the_branch_partition_is_the_whole_range"
-      ],
-      "expect": "the recorded uncited set is not what is actually left uncited"
-    },
-    {
-      "label": "combat-dispatch-buffer-closure",
-      "defends": "THE claim of Task 17, and one Task 16's deliverable never made: the in-combat verb set is CLOSED because 20ae:3a72 has exactly twelve references inside FUN_1000_3d11 and every one is accounted for.  `any other line is silently ignored` rests on nothing else.  The appended site is a real instruction at a real boundary, so only the closure comparison can catch it.",
-      "artifact": "data/combat_dispatch.json",
-      "mutate": {
-        "op": "json-append",
-        "path": [
-          "buffer_references",
-          "sites"
-        ],
-        "value": {
-          "addr": "1000:4440",
-          "text": "call 0xf78:0xbd8",
-          "role": "compare_setup"
-        }
-      },
-      "test": [
-        "python3",
-        "tools/test_combat_dispatch.py",
-        "DispatchTest.test_the_buffer_reference_set_inside_the_function_is_closed"
-      ],
-      "expect": "the function reads 20ae:3a72 at addresses the artifact does not account for"
-    },
-    {
-      "label": "combat-dispatch-random-sites",
-      "defends": "the four Random sites the brief asked for are the ONLY ones in [0x4900, 0x5080) -- a byte scan for `9a 4b 11 78 0f`, not a list.  A whole-battle differential replay desynchronises on any draw site this misses.",
-      "artifact": "data/combat_dispatch.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "random_sites",
-          1,
-          "addr"
-        ],
-        "from": "1000:4e16",
-        "to": "1000:4e17"
-      },
-      "test": [
-        "python3",
-        "tools/test_combat_dispatch.py",
-        "DispatchTest.test_the_four_random_sites_are_the_only_ones_in_the_range"
-      ],
-      "expect": "the artifact lists"
-    },
-    {
-      "label": "combat-dispatch-unreachable-line",
-      "defends": "`1000:4e2a is dead code` rests on there being no jump into [1000:4e12, 1000:4e43), so fall-through is the only entry.  Widening the range to 1000:4dde puts a real branch target (1000:4deb, from 1000:4de3) inside it, which is what the scan has to notice -- otherwise `no second entry` is `I did not find one`.",
-      "artifact": "data/combat_dispatch.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "backup",
-          "unreachable",
-          "no_entry_range",
-          0
-        ],
-        "from": "1000:4e12",
-        "to": "1000:4dde"
-      },
-      "test": [
-        "python3",
-        "tools/test_combat_dispatch.py",
-        "DispatchTest.test_the_unreachable_line_has_no_second_entry"
-      ],
-      "expect": "something jumps into"
-    },
-    {
-      "label": "combat-dispatch-bill-mantissa-low",
-      "defends": "the hospital bill's `ratio 0.6 needs no exponent bias` reads each significand off its `di` word ALONE, which is only valid because 1000:4ff8 and 1000:5005 zero the low mantissa half.  Task 17's review found that premise stated with no address and checked by nothing.  The perturbation swaps in a DIFFERENT real instruction at a real boundary -- 1000:4ff5 `mov cx,0x83` -- so the identity check passes and only the `xor si,si` assertion can catch it.",
-      "artifact": "data/combat_dispatch.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "death_and_hospital",
-          "hospital",
-          "bill",
-          "divisor_mantissa_low"
-        ],
-        "from": {
-          "addr": "1000:4ff8",
-          "text": "xor si,si"
-        },
-        "to": {
-          "addr": "1000:4ff5",
-          "text": "mov cx,0x83"
-        }
-      },
-      "test": [
-        "python3",
-        "tools/test_combat_dispatch.py",
-        "DispatchTest.test_the_hospital_bill_ratio_needs_no_exponent_bias"
-      ],
-      "expect": "not the `xor si,si` that makes the low mantissa half zero"
-    },
-    {
-      "label": "save-layout-growth-log-offset",
-      "defends": "tests/progression.rs::the_shipped_saves_hold_one_growth_log_entry_per_level_reached reads the growth log out of all five shipped saves at the offset data/save_layout.json names, and requires exactly `level` two-code entries and nothing past them.  Task 18 made that offset load-bearing for the flee penalty: `20ae:38cf + level*3` is Borland's BIASED base for an array[1..40] of string[2] whose real base is `20ae:38d2`, so an off-by-three here reads the neighbouring entry and the de-level takes back the wrong two stats.  A +3 shift makes every entry read its successor's, so SAVE_R0's last real entry (15, its level) comes back empty.",
-      "artifact": "data/save_layout.json",
-      "mutate": {
-        "op": "json-set",
-        "path": [
-          "fields",
-          16,
-          "off"
-        ],
-        "from": 566,
-        "to": 569
-      },
-      "test": [
-        "cargo",
-        "test",
-        "--test",
-        "progression",
-        "the_shipped_saves_hold_one_growth_log_entry_per_level_reached"
-      ],
-      "expect": "SAVE_R0: entry 15 length"
+ "note": "Mutation cases for tools/mutate.py -- read that file's docstring first. One case per independently falsifiable CHANNEL of the three frozen oracles plus data/combat_vectors.json and data/rng_vectors.json: each perturbs the smallest thing that isolates one claim, and the named test must go red with `expect` in its output. Several mutations that all red the same assertion would be noise, so there is at most one per channel. A channel NOT listed here has not been shown to be falsifiable. Nothing here is ever applied to the real files: the runner works on a copy.",
+ "manifest_lives_here_because": "This is configuration for a tool, not captured data. data/ is the read-only ground-truth tree the gate exists to protect, and a manifest living there would be copied -- and mutable -- inside the gate's own shadow of it.",
+ "findings": "Cases carrying \"expect_red\": false are not coverage. Each is a column the captures hold that no assertion reads -- found by this gate on its first run, by mutating the column and watching the whole test binary stay green. They are kept here, and kept executable, so the record cannot rot: when an assertion finally reaches one, the gate fails on it and the case is promoted to a red one. SCOPE OF THE SILENCE: each of these runs ONE cargo test binary, so what it establishes is that no RUST test in that binary reads the column. That a Python test does not read it either was checked by hand (git grep, fix round 1) and is NOT what the gate watches; a Python-side assertion arriving on one of these columns would not fail the case. Registering a finding whose test is a Python command is allowed -- the manifest and the runner take any argv -- so a future finding on that side can be recorded the same way.",
+ "cases": [
+  {
+   "label": "wander-draw-stream",
+   "defends": "tests/wander_sequence.rs compares the port's whole Random stream, draw for draw, against data/rng_trace.json -- site, n, r and the count.",
+   "artifact": "data/rng_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     0,
+     "draws",
+     100,
+     "r"
+    ],
+    "from": 61,
+    "to": 62
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "wander_sequence",
+    "run_a_replays_exactly"
+   ],
+   "expect": "draw sequence diverges from data/rng_trace.json at index 100"
+  },
+  {
+   "label": "wander-final-state",
+   "defends": "run_c_final_state_matches asserts the whole 29-variable end state, which the draw stream cannot see -- here 20ae:38a4, the luck the church's Random(5)==0 arm did NOT grant.",
+   "artifact": "data/rng_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     2,
+     "final_state",
+     "luck_38a4"
+    ],
+    "from": 3,
+    "to": 4
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "wander_sequence",
+    "run_c_final_state_matches"
+   ],
+   "expect": "C: 20ae:38a4"
+  },
+  {
+   "label": "wander-uncatalogued-sites",
+   "defends": "the_uncatalogued_sites_fire_as_often_as_the_capture_saw_them checks data/rng_trace.json's own aggregate against the per-run draw arrays -- 1000:0d91 is the thinnest entry, five stops in 1387 draws.",
+   "artifact": "data/rng_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "sites_not_in_catalogue",
+     "1000:0d91",
+     "count"
+    ],
+    "from": 5,
+    "to": 4
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "wander_sequence",
+    "the_uncatalogued_sites_fire_as_often_as_the_capture_saw_them"
+   ],
+   "expect": "1000:0d91: number of draws"
+  },
+  {
+   "label": "wander-per-turn-state",
+   "defends": "run_a_per_turn_state_matches walks data/state_trace.json turn by turn. A MID-run sample is mutated on purpose: the last one is also read by the_state_capture_ends_where_the_draw_capture_ended, and this case must isolate the per-turn channel.",
+   "artifact": "data/state_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     0,
+     "samples",
+     5,
+     "hp_38ac"
+    ],
+    "from": 28,
+    "to": 27
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "wander_sequence",
+    "run_a_per_turn_state_matches"
+   ],
+   "expect": "A turn 6: 20ae:38ac"
+  },
+  {
+   "label": "combat-draw-stream",
+   "defends": "tests/combat_sequence.rs channel 1 -- the whole draw stream of a FIGHT, which data/rng_trace.json cannot cover because none of its runs enters [0x3d11, 0x584c).",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     0,
+     "draws",
+     150,
+     "r"
+    ],
+    "from": 79,
+    "to": 80
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence",
+    "run_a_replays_exactly"
+   ],
+   "expect": "draw sequence diverges from data/combat_trace.json at index 150"
+  },
+  {
+   "label": "combat-input-lines",
+   "defends": "tests/combat_sequence.rs channel 2 -- the port consumed exactly as many recorded lines as the capture holds, so a port that stopped early cannot look like one that finished. APPENDING a line is the isolating perturbation: changing one would change what the port does and red the draw stream first.",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-append",
+    "path": [
+     "runs",
+     3,
+     "lines_the_game_read"
+    ],
+    "value": "run"
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence",
+    "run_d_replays_exactly"
+   ],
+   "expect": "the port consumed 13 of the 14 lines the capture recorded"
+  },
+  {
+   "label": "combat-enemy-record",
+   "defends": "tests/combat_sequence.rs channel 3 -- the enemy record at each 1000:3d11 stop. The port must ROLL the same fighter, not merely spend the same draws.",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     1,
+     "fights",
+     0,
+     "enemy",
+     "e_luck_395a"
+    ],
+    "from": 8,
+    "to": 9
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence",
+    "run_b_replays_exactly"
+   ],
+   "expect": "run B fight 1: 20ae:395a"
+  },
+  {
+   "label": "combat-break-flags",
+   "defends": "tests/combat_sequence.rs channel 4 -- both fighters' hp and all four break flags at each 1000:441d stop. Run A's prompt 13 is where the PLAYER's jaw breaks (20ae:38b0); before this oracle the break formulas were recovered, implemented and asserted by nothing.",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     0,
+     "combat_prompts",
+     12,
+     "p_broken_jaw_38b0"
+    ],
+    "from": 1,
+    "to": 0
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence",
+    "run_a_replays_exactly"
+   ],
+   "expect": "run A combat prompt 13: 20ae:38b0 broken jaw"
+  },
+  {
+   "label": "combat-summary-counts",
+   "defends": "the_capture_covers_the_blow_loop_the_crowd_and_the_victory_block cross-checks data/combat_trace.json's header totals against the runs' own arrays. A summary asserted against literals rather than against what it summarises was one of Task 13's four findings.",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "fights_total"
+    ],
+    "from": 15,
+    "to": 14
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence",
+    "the_capture_covers_the_blow_loop_the_crowd_and_the_victory_block"
+   ],
+   "expect": "fights_total says 14 but the runs hold 15"
+  },
+  {
+   "label": "combat-final-state",
+   "defends": "run_b_final_state_matches asserts the whole 35-variable end state after six won fights -- the loot award, the post-kill gifts and the level-up grants are all invisible to the draw stream.",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     1,
+     "final_state",
+     "xp_38ce"
+    ],
+    "from": 28,
+    "to": 29
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence",
+    "run_b_final_state_matches"
+   ],
+   "expect": "B: 20ae:38ce"
+  },
+  {
+   "label": "combat-final-state-d",
+   "defends": "run_d_final_state_matches asserts the same 35-variable channel on the opposite side of it: a FRESH character that fled every fight, so a purse, an XP total and a discovery-flag set no victory block ever touched. A separate case because it is a separate assertion -- and because this is the one Task 13's re-review had to add after it was left out once already.",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     3,
+     "final_state",
+     "xp_38ce"
+    ],
+    "from": 0,
+    "to": 1
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence",
+    "run_d_final_state_matches"
+   ],
+   "expect": "D: 20ae:38ce"
+  },
+  {
+   "label": "combat-vectors",
+   "defends": "tests/combat_vectors.rs replays 295 seed-pinned blows captured off the original's own screen, asserting hit and damage per blow.",
+   "artifact": "data/combat_vectors.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "cases",
+     0,
+     "expected_blows",
+     0,
+     "damage"
+    ],
+    "from": 19,
+    "to": 18
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_vectors",
+    "combat_matches_original"
+   ],
+   "expect": "case 0 blow 0: damage"
+  },
+  {
+   "label": "rng-vectors-break-boundary",
+   "defends": "src/combat.rs's the_break_test_is_strict_at_1000_458f pins the 1000:458f break boundary on data/rng_vectors.json's seed-0 chain -- the chain tools/gen_rng_vectors.py produced by interpreting @Rand's own bytes out of orig/g.exe, so it is an oracle and not a restatement of Rng. Chain entry 59 is the one the 1000:4571 draw reads: moving it off 59-of-200 moves the boundary off luck 20 * 3.",
+   "artifact": "data/rng_vectors.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "seeds",
+     0,
+     "next_u32",
+     59
+    ],
+    "from": 1270000484,
+    "to": 1288490189
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--lib",
+    "the_break_test_is_strict_at_1000_458f"
+   ],
+   "expect": "the 1000:4571 draw after the 1000:4576 inc"
+  },
+  {
+   "label": "frozen-oracle-refusal",
+   "defends": "tools/rngtrace/combattrace.py refuses `--out` naming a frozen oracle before it writes anything, and tools/test_rngtrace.py's test_the_fold_refuses_to_write_over_a_frozen_oracle proves it. This is the Python arm: the artifact perturbed is the GUARD, not an oracle.",
+   "artifact": "tools/rngtrace/combattrace.py",
+   "mutate": {
+    "op": "text-replace",
+    "from": "        if named is not None:\n            ap.error(\"--out %s names %s, a FROZEN oracle: it is read for its \"\n                     \"SHA-256 and never written.  Write the fight oracle to \"\n                     \"data/combat_trace.json instead.\" % (args.out, named))",
+    "to": "        if named is not None:\n            pass"
+   },
+   "test": [
+    "python3",
+    "tools/test_rngtrace.py",
+    "FightFoldTest.test_the_fold_refuses_to_write_over_a_frozen_oracle"
+   ],
+   "expect": "combattrace.main() accepted --out naming a FROZEN oracle"
+  },
+  {
+   "label": "character-sheet-guard-address",
+   "defends": "tools/test_character_sheet.py requires every address in data/character_sheet.json to be an instruction boundary an ALIGNED walk from the enclosing function's entry reaches -- the two-to-five-byte drift that is this project's standing RE defect.",
+   "artifact": "data/character_sheet.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "flag_lines",
+     0,
+     "guard",
+     "addr"
+    ],
+    "from": "1000:1be9",
+    "to": "1000:1bea"
+   },
+   "test": [
+    "python3",
+    "tools/test_character_sheet.py",
+    "SheetTest.test_the_flag_lines_print_inside_the_arm_their_guard_selects"
+   ],
+   "expect": "is not an instruction boundary reached by decoding"
+  },
+  {
+   "label": "character-sheet-literal-text",
+   "defends": "tools/test_character_sheet.py decodes every cited CS shortstring out of orig/g.exe and compares it with the text data/character_sheet.json records. The PROSE side is a separate check with its own case below (character-sheet-prose-address); this one speaks only for the artifact.",
+   "artifact": "data/character_sheet.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "flag_lines",
+     0,
+     "literal",
+     "text"
+    ],
+    "from": "^1Крестик(Удача +2) ",
+    "to": "^1Крестик(Удача +3) "
+   },
+   "test": [
+    "python3",
+    "tools/test_character_sheet.py",
+    "SheetTest.test_every_cs_literal_decodes_to_the_recorded_text"
+   ],
+   "expect": "the Pascal shortstring at CS"
+  },
+  {
+   "label": "character-sheet-call-sites",
+   "defends": "tools/test_character_sheet.py checks each recorded call site really is an `e8` near call whose 16-bit-wrapped target is 1000:1a03, AND that a byte scan of the whole image finds no fifth near call and no far call -- so `exactly these four callers` is a finding rather than a search that stopped early.",
+   "artifact": "data/character_sheet.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "call_sites",
+     0,
+     "addr"
+    ],
+    "from": "1000:ec89",
+    "to": "1000:ec8c"
+   },
+   "test": [
+    "python3",
+    "tools/test_character_sheet.py",
+    "SheetTest.test_the_call_sites_really_call_this_function"
+   ],
+   "expect": "is not a near call"
+  },
+  {
+   "label": "character-sheet-prose-address",
+   "defends": "tools/test_character_sheet.py's ProseTest resolves every 1000:xxxx in docs/re/character-sheet.md against an aligned decode from every segment-1000 function entry. Without it the doc's 27 prose-only citations have no net -- which is where the self-disclosed 1000:584a -> 1000:5849 drift lived, found by hand because nothing checked. The address perturbed here, 1000:5097, is one of those 27 -- it appears nowhere in data/character_sheet.json, so no artifact-side check can see it.",
+   "artifact": "docs/re/character-sheet.md",
+   "mutate": {
+    "op": "text-replace",
+    "from": "`1000:5097`",
+    "to": "`1000:5098`",
+    "count": 1
+   },
+   "test": [
+    "python3",
+    "tools/test_character_sheet.py",
+    "ProseTest.test_every_prose_address_is_an_instruction_boundary"
+   ],
+   "expect": "which an aligned decode from every segment-1000 function entry never reaches"
+  },
+  {
+   "label": "character-sheet-branch-partition",
+   "defends": "tools/test_character_sheet.py recomputes the cited/uncited split of FUN_1000_1a03's 83 branches from data/branches.json and from the artifact's own citations (excluding the partition node itself), so the `what is still open` list cannot drift from what the artifact actually covers.",
+   "artifact": "data/character_sheet.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "branch_partition",
+     "uncited",
+     0
+    ],
+    "from": "1000:1bc7",
+    "to": "1000:1bc8"
+   },
+   "test": [
+    "python3",
+    "tools/test_character_sheet.py",
+    "SheetTest.test_the_branch_partition_is_the_whole_branch_set"
+   ],
+   "expect": "the recorded uncited set is not what is actually left uncited"
+  },
+  {
+   "label": "combat-prompt-randseed",
+   "expect_red": false,
+   "defends": "FINDING: the capture reads RandSeed at every 1000:441d stop and PromptRow deserialises it under #[allow(dead_code)], but nothing compares it to the port's g.rng.state(). tests/wander_sequence.rs DOES assert randseed_367e per turn sample; the combat prompt channel does not.",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     0,
+     "combat_prompts",
+     0,
+     "r_randseed_367e"
+    ],
+    "from": 510377501,
+    "to": 510377502
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence"
+   ]
+  },
+  {
+   "label": "combat-enemy-randseed",
+   "expect_red": false,
+   "defends": "FINDING: same for the RandSeed read at each 1000:3d11 stop -- the seed the enemy record was rolled at is captured and read into EnemyRecord, and asserted by nothing.",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     0,
+     "fights",
+     0,
+     "enemy",
+     "e_randseed_367e"
+    ],
+    "from": 510377501,
+    "to": 510377502
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence"
+   ]
+  },
+  {
+   "label": "combat-frozen-oracle-digests",
+   "expect_red": false,
+   "defends": "FINDING: data/combat_trace.json publishes the SHA-256 of the two older oracles so a reader can check they were not touched. tools/test_rngtrace.py checks what a FRESH fold publishes; nothing checks the block in the shipped file against the files themselves, so the provenance claim is asserted by nothing.",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "frozen_oracles",
+     "data/rng_trace.json"
+    ],
+    "from": "148fe3c74ba7727754b9e14f7b24f25eac4cf1cc97ab6930bebc549625eb1025",
+    "to": "0000000000000000000000000000000000000000000000000000000000000000"
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence"
+   ]
+  },
+  {
+   "label": "combat-draw-turn",
+   "expect_red": false,
+   "defends": "FINDING: every draw carries the turn it fell in; the port's gopnik::rng::Draw has no turn field, so the column is never compared. Deliberate as far as the port goes -- the turn boundary is implied by the draw count -- but recorded, because 'deliberate' and 'checked' are not the same word.",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     0,
+     "draws",
+     10,
+     "turn"
+    ],
+    "from": 2,
+    "to": 7
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence"
+   ]
+  },
+  {
+   "label": "wander-draw-turn",
+   "expect_red": false,
+   "defends": "FINDING: the same column in the wander oracle, with the same reason and the same silence.",
+   "artifact": "data/rng_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     0,
+     "draws",
+     10,
+     "turn"
+    ],
+    "from": 2,
+    "to": 7
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "wander_sequence"
+   ]
+  },
+  {
+   "label": "combat-prompt-stops",
+   "expect_red": false,
+   "defends": "FINDING: the capture's own count of driver prompt stops, read by no test.",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     0,
+     "prompt_stops"
+    ],
+    "from": 2,
+    "to": 3
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence"
+   ]
+  },
+  {
+   "label": "wander-draws-observed-total",
+   "expect_red": false,
+   "defends": "FINDING: the header summary of data/rng_trace.json, never compared to the runs' own draw arrays. This is exactly the shape Task 13 fixed for combat_trace's fights_total/draws_total (see the combat-summary-counts case above) -- the fix did not reach the other two oracles.",
+   "artifact": "data/rng_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "draws_observed_total"
+    ],
+    "from": 1387,
+    "to": 1388
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "wander_sequence"
+   ]
+  },
+  {
+   "label": "combat-prompts-total",
+   "expect_red": false,
+   "defends": "FINDING: the third header total in combat_trace.json. fights_total and draws_total ARE cross-checked against the arrays; combat_prompts_total, in the same header, is not.",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "combat_prompts_total"
+    ],
+    "from": 74,
+    "to": 75
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence"
+   ]
+  },
+  {
+   "label": "state-samples-total",
+   "expect_red": false,
+   "defends": "FINDING: the header summary of data/state_trace.json, never compared to the runs' own sample arrays.",
+   "artifact": "data/state_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "samples_total"
+    ],
+    "from": 91,
+    "to": 92
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "wander_sequence"
+   ]
+  },
+  {
+   "label": "combat-draws-until-next-fight",
+   "expect_red": false,
+   "defends": "FINDING: the per-fight draw span in the SHIPPED file is compared to nothing. The fold's computation of it is asserted, on synthetic input, at tools/test_rngtrace.py:1529 and :1535 -- so the arithmetic is covered and the shipped value is not. Its sibling first_draw_index IS asserted against the port (see combat-enemy-record).",
+   "artifact": "data/combat_trace.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "runs",
+     0,
+     "fights",
+     0,
+     "draws_until_next_fight"
+    ],
+    "from": 163,
+    "to": 164
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "combat_sequence"
+   ]
+  },
+  {
+   "label": "combat-dispatch-guard-address",
+   "defends": "tools/test_combat_dispatch.py requires every address in data/combat_dispatch.json to be an instruction boundary an ALIGNED walk from the enclosing function's entry reaches -- the two-to-five-byte drift that is this project's standing RE defect.  The one-to-one twin of character-sheet-guard-address.",
+   "artifact": "data/combat_dispatch.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "verbs",
+     4,
+     "compare",
+     "addr"
+    ],
+    "from": "1000:4c42",
+    "to": "1000:4c43"
+   },
+   "test": [
+    "python3",
+    "tools/test_combat_dispatch.py",
+    "DispatchTest.test_each_compare_pushes_the_buffer_and_the_token_the_artifact_names"
+   ],
+   "expect": "is not an instruction boundary reached by decoding"
+  },
+  {
+   "label": "combat-dispatch-literal-text",
+   "defends": "tools/test_combat_dispatch.py decodes every cited CS shortstring out of orig/g.exe and compares it with the text data/combat_dispatch.json records.  The verb tokens are the load-bearing ones: `sv` here is the token whose arm the whole enemy-sheet finding hangs on.  The PROSE side is a separate case below.",
+   "artifact": "data/combat_dispatch.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "verbs",
+     4,
+     "literal",
+     "text"
+    ],
+    "from": "sv",
+    "to": "vs"
+   },
+   "test": [
+    "python3",
+    "tools/test_combat_dispatch.py",
+    "DispatchTest.test_every_cs_literal_decodes_to_the_recorded_text"
+   ],
+   "expect": "the Pascal shortstring at CS"
+  },
+  {
+   "label": "combat-dispatch-enemy-sheet-callers",
+   "defends": "tools/test_combat_dispatch.py checks the `sv` arm really is an `e8` near call to 1000:1348 AND that a byte scan of the whole image -- near, matched modulo 64 KiB, and far -- finds no other caller.  So `sv is its only caller` is a finding rather than a search that stopped early.  The twin of character-sheet-call-sites.",
+   "artifact": "data/combat_dispatch.json",
+   "mutate": {
+    "op": "json-append",
+    "path": [
+     "enemy_sheet",
+     "called_from"
+    ],
+    "value": "1000:4c35"
+   },
+   "test": [
+    "python3",
+    "tools/test_combat_dispatch.py",
+    "DispatchTest.test_sv_calls_the_enemy_sheet_and_it_is_the_only_caller"
+   ],
+   "expect": "the byte scan finds near calls to the enemy sheet"
+  },
+  {
+   "label": "combat-dispatch-prose-address",
+   "defends": "tools/test_combat_dispatch.py's ProseTest resolves every 1000:xxxx in docs/re/combat-dispatch.md against an aligned decode from every segment-1000 function entry.  26 of the document's citations appear in the prose ALONE -- they are in no artifact node, so no artifact-side check can see them.  1000:4a78, perturbed here, is one of those 26.  The twin of character-sheet-prose-address.",
+   "artifact": "docs/re/combat-dispatch.md",
+   "mutate": {
+    "op": "text-replace",
+    "from": "`1000:4a78`",
+    "to": "`1000:4a79`",
+    "count": 1
+   },
+   "test": [
+    "python3",
+    "tools/test_combat_dispatch.py",
+    "ProseTest.test_every_prose_address_is_an_instruction_boundary"
+   ],
+   "expect": "which an aligned decode from every segment-1000 function entry never reaches"
+  },
+  {
+   "label": "combat-dispatch-branch-partition",
+   "defends": "tools/test_combat_dispatch.py recomputes the cited/uncited split of the 100 branches in [1000:4400, 1000:5080) from data/branches.json and from the artifact's own citations (excluding the partition node itself), so the `what is still open` list cannot drift from what the artifact actually covers.",
+   "artifact": "data/combat_dispatch.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "branch_partition",
+     "uncited",
+     0
+    ],
+    "from": "1000:447a",
+    "to": "1000:447b"
+   },
+   "test": [
+    "python3",
+    "tools/test_combat_dispatch.py",
+    "DispatchTest.test_the_branch_partition_is_the_whole_range"
+   ],
+   "expect": "the recorded uncited set is not what is actually left uncited"
+  },
+  {
+   "label": "combat-dispatch-buffer-closure",
+   "defends": "THE claim of Task 17, and one Task 16's deliverable never made: the in-combat verb set is CLOSED because 20ae:3a72 has exactly twelve references inside FUN_1000_3d11 and every one is accounted for.  `any other line is silently ignored` rests on nothing else.  The appended site is a real instruction at a real boundary, so only the closure comparison can catch it.",
+   "artifact": "data/combat_dispatch.json",
+   "mutate": {
+    "op": "json-append",
+    "path": [
+     "buffer_references",
+     "sites"
+    ],
+    "value": {
+     "addr": "1000:4440",
+     "text": "call 0xf78:0xbd8",
+     "role": "compare_setup"
     }
-  ]
+   },
+   "test": [
+    "python3",
+    "tools/test_combat_dispatch.py",
+    "DispatchTest.test_the_buffer_reference_set_inside_the_function_is_closed"
+   ],
+   "expect": "the function reads 20ae:3a72 at addresses the artifact does not account for"
+  },
+  {
+   "label": "combat-dispatch-random-sites",
+   "defends": "the four Random sites the brief asked for are the ONLY ones in [0x4900, 0x5080) -- a byte scan for `9a 4b 11 78 0f`, not a list.  A whole-battle differential replay desynchronises on any draw site this misses.",
+   "artifact": "data/combat_dispatch.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "random_sites",
+     1,
+     "addr"
+    ],
+    "from": "1000:4e16",
+    "to": "1000:4e17"
+   },
+   "test": [
+    "python3",
+    "tools/test_combat_dispatch.py",
+    "DispatchTest.test_the_four_random_sites_are_the_only_ones_in_the_range"
+   ],
+   "expect": "the artifact lists"
+  },
+  {
+   "label": "combat-dispatch-unreachable-line",
+   "defends": "`1000:4e2a is dead code` rests on there being no jump into [1000:4e12, 1000:4e43), so fall-through is the only entry.  Widening the range to 1000:4dde puts a real branch target (1000:4deb, from 1000:4de3) inside it, which is what the scan has to notice -- otherwise `no second entry` is `I did not find one`.",
+   "artifact": "data/combat_dispatch.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "backup",
+     "unreachable",
+     "no_entry_range",
+     0
+    ],
+    "from": "1000:4e12",
+    "to": "1000:4dde"
+   },
+   "test": [
+    "python3",
+    "tools/test_combat_dispatch.py",
+    "DispatchTest.test_the_unreachable_line_has_no_second_entry"
+   ],
+   "expect": "something jumps into"
+  },
+  {
+   "label": "combat-dispatch-bill-mantissa-low",
+   "defends": "the hospital bill's `ratio 0.6 needs no exponent bias` reads each significand off its `di` word ALONE, which is only valid because 1000:4ff8 and 1000:5005 zero the low mantissa half.  Task 17's review found that premise stated with no address and checked by nothing.  The perturbation swaps in a DIFFERENT real instruction at a real boundary -- 1000:4ff5 `mov cx,0x83` -- so the identity check passes and only the `xor si,si` assertion can catch it.",
+   "artifact": "data/combat_dispatch.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "death_and_hospital",
+     "hospital",
+     "bill",
+     "divisor_mantissa_low"
+    ],
+    "from": {
+     "addr": "1000:4ff8",
+     "text": "xor si,si"
+    },
+    "to": {
+     "addr": "1000:4ff5",
+     "text": "mov cx,0x83"
+    }
+   },
+   "test": [
+    "python3",
+    "tools/test_combat_dispatch.py",
+    "DispatchTest.test_the_hospital_bill_ratio_needs_no_exponent_bias"
+   ],
+   "expect": "not the `xor si,si` that makes the low mantissa half zero"
+  },
+  {
+   "label": "save-layout-growth-log-offset",
+   "defends": "tests/progression.rs::the_shipped_saves_hold_one_growth_log_entry_per_level_reached reads the growth log out of all five shipped saves at the offset data/save_layout.json names, and requires exactly `level` two-code entries and nothing past them.  Task 18 made that offset load-bearing for the flee penalty: `20ae:38cf + level*3` is Borland's BIASED base for an array[1..40] of string[2] whose real base is `20ae:38d2`, so an off-by-three here reads the neighbouring entry and the de-level takes back the wrong two stats.  A +3 shift makes every entry read its successor's, so SAVE_R0's last real entry (15, its level) comes back empty.  (Task 19 named every byte of the two former `unk_` spans, which moved this field's INDEX in the array from 16 to 39; the offset it carries is unchanged.)",
+   "artifact": "data/save_layout.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "fields",
+     39,
+     "off"
+    ],
+    "from": 566,
+    "to": 569
+   },
+   "test": [
+    "cargo",
+    "test",
+    "--test",
+    "progression",
+    "the_shipped_saves_hold_one_growth_log_entry_per_level_reached"
+   ],
+   "expect": "SAVE_R0: entry 15 length"
+  },
+  {
+   "label": "save-layout-record-base-delta",
+   "defends": "Task 19's whole per-byte table rests on one claim: `.SAV` offset + 0x369c IS the DGROUP address of the same byte, because the record is moved by an untyped BlockRead/BlockWrite against `DS:369c` (1000:6c01, 1000:acc3, 1000:7658).  Every `guest` address in data/save_layout.json is checked against that delta.  Shift one `guest` by a single byte -- to the DGROUP address of the NEXT field, which is a real address the image really references -- and only the delta check can catch it.",
+   "artifact": "data/save_layout.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "fields",
+     22,
+     "guest"
+    ],
+    "from": "20ae:38ba",
+    "to": "20ae:38bb"
+   },
+   "test": [
+    "python3",
+    "-m",
+    "unittest",
+    "tools.test_decode_save.TestEveryNamedFieldMatchesTheBinary.test_every_guest_address_is_the_record_base_plus_the_offset"
+   ],
+   "expect": "kastet claims 20ae:38bb for .SAV 0x21e"
+  },
+  {
+   "label": "save-layout-evidence-names-the-right-byte",
+   "defends": "each field's `evidence` is the instruction that reads or writes that byte, and the character sheet's flag lines are what attribute a label to an address.  Swapping two neighbouring sheet guards -- both real, both aligned, both inside FUN_1000_1a03 -- keeps every structural property of the artifact and changes only WHICH byte the label belongs to, which is the mistake docs/re/character-sheet.md says its own table exists to prevent.",
+   "artifact": "data/save_layout.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "fields",
+     41,
+     "evidence"
+    ],
+    "from": "1000:1f59",
+    "to": "1000:2003"
+   },
+   "test": [
+    "python3",
+    "-m",
+    "unittest",
+    "tools.test_decode_save.TestEveryNamedFieldMatchesTheBinary.test_every_evidence_address_really_references_that_byte"
+   ],
+   "expect": "dubinka: 1000:2003 decodes as"
+  },
+  {
+   "label": "save-layout-cartridges-is-a-word",
+   "defends": "`.SAV 0x2b3` (20ae:394f), the cartridge count, is a WORD and not a byte: the character sheet's guard at 1000:1d8a is `cmp word [0x394f],0` and 20ae:3950 has no reference of its own image-wide.  Task 19's brief carried it as a byte (`0x2b3` reading `0,0,0,0,8` across the saves).  Demoting it to a u8 leaves the field tiling intact only if the high half becomes a field too, so the check that catches it is the one that asserts the SIGNED WORD set, not the partition.  Its `expect` was `\"Ran\"` in the first revision, which appears in every unittest run green or red -- the gate's own rule 4 exists to stop exactly that, so the case was weakened to its red-exit check alone.  It now quotes the census assertion's message, which only this assertion emits.",
+   "artifact": "data/save_layout.json",
+   "mutate": {
+    "op": "json-set",
+    "path": [
+     "fields",
+     45,
+     "kind"
+    ],
+    "from": "i16",
+    "to": "u8"
+   },
+   "test": [
+    "python3",
+    "-m",
+    "unittest",
+    "tools.test_decode_save.TestEveryNamedFieldMatchesTheBinary.test_the_word_fields_are_signed_integers"
+   ],
+   "expect": "the signed-word census has moved"
+  }
+ ]
 }
