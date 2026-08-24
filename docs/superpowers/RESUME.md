@@ -1,9 +1,8 @@
 # Resume checkpoint — gopnik-rs port
 
-**Branch:** `port/gopnik-rust`. **Last checkpoint commit:** see `git log`; this file was last
-updated after **Task 13**. **A PR is open: https://github.com/asm0dey/gopnik-rs/pull/1**
-(`port/gopnik-rust` -> `main`), so the branch also exists on GitHub — this machine is no longer
-the only copy.
+**Branch: `main`.** Last updated after **Task 15**. The old feature branches
+(`port/gopnik-rust` @ `f2d4fce`, `fix/task-13-review`, `feat/mutation-gate`) are
+history now; `main` carries everything and PR #1 is merged.
 
 `.superpowers/sdd/progress.md` is the full ledger but is **git-ignored** — a
 `git clean -fdx` destroys it. This file is the committed backup. If they
@@ -11,102 +10,73 @@ disagree, trust `git log`.
 
 ---
 
-## READ THIS FIRST: everything is GREEN, and Task 13 is NOT YET REVIEWED
+## READ THIS FIRST
 
-`cargo test --no-fail-fast` → **160 passed, 0 failed, zero warnings**. Python tool
-tests → **255 OK**. `python3 tools/difftest.py` → exit 0, 126 records.
-`cargo clippy --all-targets` and `cargo fmt --check` are clean.
+Everything is green: **167 Rust**, **309 Python** (3 skipped, 668 subtests),
+`python3 tools/difftest.py` exit 0 / 126 records, `python3 tools/mutate.py`
+exit 0 with 14 red + 10 findings, `cargo clippy --all-targets` clean.
+`cargo fmt --check` shows exactly three PRE-EXISTING diffs in
+`tests/wander_sequence.rs` (lines 241, 973, 1100) — six reviewers have now
+confirmed they predate current work. Leave them; do not let them mask a new one.
 
-**First action on resume: review Task 13** (commit `521db0e`, base `5732643`).
-It is implemented and its own tests pass, but **no review has run on it** — the
-session stopped at the owner's request immediately after it landed. This is
-exactly the state the previous session handed over in (Task 11c), and reviewing
-first worked well: that review found four Important issues in work whose tests
-were already green.
+**The honest state of the project: the last session moved branch coverage by
+three.** See "How much is actually traced" below. Tasks 13-review, 14 and the
+mutation tooling are sound and found real defects in the *evidence*, but none of
+it was decompilation and none of it found a port bug. Task 16 is the return to
+the port.
 
-### Three oracles now, all ground truth, none to be regenerated
+### Four oracles now, all ground truth, none ever regenerated
 
-| file | what | never regenerate |
+| file | what | digest |
 |---|---|---|
 | `data/rng_trace.json` | 1387 wander draws, 5 runs, 29-var `final_state` each | `148fe3c7…1025` |
 | `data/state_trace.json` | 91 per-turn samples of 35 guest variables | `6f7ae78a…13c7` |
-| `data/combat_trace.json` | **15 whole fights across 4 runs, 1900 draws** | new in Task 13 |
+| `data/combat_trace.json` | 15 whole fights across 4 runs, 1900 draws | `8c4b80e6…180acb` |
+| `data/combat_vectors.json` | RNG vectors | `705415b2…f044` |
 
-`combat_trace.json` records the other two files' digests inside itself, and a test
-asserts the fold tool never names either as an output.
-
-Task 11c had deliberately left three tests red —
-`run_{a,b,e}_replays_exactly` in `tests/wander_sequence.rs` — with one
-enumerated cause: `FUN_1000_0d14` (`1000:0d14`..`1000:11bf`), the
-random-encounter opponent roll, plus the fight-flow draws around it. **Task 11f
-recovered all of it.** All five captured runs now replay their whole draw
-stream (1387 draws) *and* their whole 29-variable `final_state`; the
-`final_state` assertions for A, B and E were added in the same task, since the
-reason they had been withheld was exactly the divergence that is now closed.
-
-The assertions were not weakened to get there: `replay()` still compares site,
-`n` and `r` over the whole run including the draw count
-(`first_mismatch(.., usize::MAX)`). The constants `A_/B_/E_PREFIX` in
-`tests/wander_sequence.rs` are no longer divergence indices — they only bound
-the three preamble-prefix assertions, which are kept so a preamble regression
-is localised rather than only reported from wherever the whole-run comparison
-happens to break.
-
-What `docs/re/gaps.md` still lists open around this area costs **no draw**:
-the level>0 arm of combat's `run` (it needs the growth log, which this port
-does not carry), the `[0x3c83]` arm of the same, the loot award on victory,
-and the flavour text of wander buckets 1 and 4.
+`combat_trace.json` records the first two files' digests inside itself.
+`tools/mutate.py` now guards 91 files across `data/`, `orig/` and `tools/`, and
+`combattrace.main()` refuses an `--out` naming a frozen oracle.
 
 ---
 
 ## State
 
-Tasks 1–11 complete and reviewed (see git log). Since then:
+Tasks 1–15 complete and reviewed. Since the last checkpoint:
 
 | Task | What | Commits | Status |
 |---|---|---|---|
-| 11b | Wander `Random` catalogue (18 draws) | `61de765..f1602bd` | complete, reviewed |
-| 11d | Live `Random` tracer (qemu+gdb) | `587f9b1..e344c63` | complete, reviewed |
-| 11e | Ghidra branch enumeration | `e32aa71..f72c541` | complete, reviewed |
-| 11c | Wander sequence wired into `src/` | `f72c541..a31f4a8` | complete, reviewed (two fix rounds) |
-| 11f | `FUN_1000_0d14` + fight flow recovered; all five runs replay | `3fac24c` | complete, reviewed and approved; fix rounds 1 and 2 applied |
-| 11g | Address module (`tools/addr.py`), RE query CLI, deterministic exporter | `cfd7618..9051b47` | complete, reviewed (one fix round) |
-| 11h | Turbo Pascal runtime identified against a TP 7.0 `TURBO.TPL` | `fe4ecfd..e369084` | complete, reviewed (two fix rounds) |
-| 11i | Per-turn state capture (`data/state_trace.json`) | `e369084..39153e6` | complete, reviewed, **no fix round needed** |
-| 12 | Differential test of authored constants (126 records, 71 independent) | `39153e6..f40aabc` | complete, reviewed (one fix round) |
-| — | Final whole-branch review + its single fix wave | `e0801c5` | complete |
-| — | `rename` divergence: `.trim()` removed at both name-input sites | `5732643` | complete |
-| **13** | **Whole fights captured; port replays 15 of 15** | **`521db0e`** | **implemented, NOT REVIEWED** |
+| 13 | Whole fights captured; port replays 15 of 15 | `521db0e` | complete, reviewed (one fix round) |
+| — | Task 13's fix round: 3 Important + 6 promoted Minors | `5e9776f..035c367` | complete |
+| 14 | `tools/mutate.py` — the mutation gate for captured oracles | `035c367..57c29b8` | complete, reviewed (two fix rounds) |
+| — | Mutation tooling: `cargo-mutants`, mutmut + pytest, `.venv/` | `5af1673..1a9338a` | complete |
+| 15 | The eight missed `cargo-mutants` findings in `src/` | `c47abb9..f27b73c` | complete, **reviewed and approved, no fix round** |
+| — | Task 15's four deferred Minors, batched | `1a9338a..0a29594` | complete |
 
-**Next action: review Task 13.** Base for the review package is `5732643`.
-Brief `.superpowers/sdd/task-13-brief.md`, report `.superpowers/sdd/task-13-report.md`.
+**14 commits are unpushed on `main`.**
 
-### What Task 13 claims, for the reviewer to check rather than accept
+### What Task 14 built, and what it is for
 
-- **15 of 15 fights replay exactly** across 4 runs and 1900 draws — 8 won, 2 lost,
-  5 fled — each checked on four channels: the whole draw stream (site/`n`/`r`/count),
-  the exact input typed at the encounter prompts (`lines_the_game_read`, which
-  despite the name excludes the street `w` and the any-key Enter), the enemy
-  record at every `1000:3d11`, and both fighters' hp and all four break flags at
-  every `1000:441d`.
-- **The break channel found a real bug**: the port never set the *enemy's* break
-  flags at all. `Fighter`'s `enemy_broken_jaw`/`enemy_broken_leg` exist because of it.
-- A player jaw break (run A) and an enemy jaw break (two of run B's six fights) are
-  captured and asserted. **No leg break was reached** — all five limb picks returned
-  0 — registered rather than glossed.
-- Self-disclosed and worth checking: `Fighter::hp` is `u16` where the original's is
-  **signed**. The half that costs draws is fixed (the two blow loops exit on
-  *different* signed tests — `1000:4629 jg` vs `1000:48cd jl`, so a player at exactly
-  0 gets swung at again); the stored value still saturates, so a post-death
-  `final_state` is not comparable. The 35-variable assertion therefore runs on the
-  runs that ended at the turn marker — B and D — with a separate test refusing a
-  world where no run qualifies, and requiring that every run that does qualify is
-  asserted.
-- Four class-keyed item arms, the зубная защита's `Random(4)`, and the hospital
-  rescue are implemented but **never observed** — each registered with why it was
-  unreachable.
-- One citation correction (`1000:47fa` → `1000:47fe`) and one wrong address of the
-  implementer's own that its mechanical byte check caught.
+`tools/mutate.py` mutates a **captured ground-truth artifact** and requires a
+named test to go red. It is the executable form of a rule `METHODOLOGY.md` could
+not previously enforce: *an assertion over a captured oracle is not evidence
+until it has been observed failing.* 23 cases; 13 red channels; 10 registered as
+`expect_red: false` — columns the capture holds that **no assertion reads**,
+including `r_randseed_367e`/`e_randseed_367e`, which wander asserts per sample
+and combat does not.
+
+`cargo-mutants` covers the half that gate structurally cannot — mutating `src/`
+itself. `-f src/combat.rs -f src/rng.rs` is now **76 mutants, 0 missed**.
+Whole-crate, as a measurement only: **1175 mutants, 446 missed**, `game.rs` 416
+of 833. Nothing was fixed there.
+
+mutmut + pytest are installed in `.venv/` for the Python half, configured in
+`pyproject.toml`, and currently report **1439 mutants, 345 survived**. Read
+those survivors narrowly: the replay is already a strong independent check on
+anything *recorded*, so the ones that matter are in the guards that detect
+**absence** — `tracelog.check_fight_markers`,
+`tracelog.check_state_sample_shape`, `fightrun.verify_image_after_drive` — which
+is the one failure mode a replay cannot see.
 
 ## Owner constraints in force
 
@@ -168,8 +138,28 @@ Brief `.superpowers/sdd/task-13-brief.md`, report `.superpowers/sdd/task-13-repo
 
 ## How much is actually traced
 
-134 of 838 game branches (16.0%) have their branch address or guard cited
-anywhere in `docs/re/*.md`. Re-run it against the current tree with:
+**178 of 838 game branches (21.2%)** have their branch address or guard cited
+anywhere in `docs/re/*.md`, measured at `f27b73c` (Task 15).
+
+This file previously said `134 / 838` here and `157/838` further down, both
+stale, and both left standing through a whole session because the instruction
+to re-measure was not followed. Measured history, so a future session can see
+the rate rather than trust a number:
+
+| commit | | cited |
+|---|---|---|
+| `f2d4fce` | resume point, Task 13 landed | 175/838 |
+| `5e9776f` | merge to `main` | 175/838 |
+| `57c29b8` | Task 14 complete (mutation gate) | 175/838 |
+| `f27b73c` | Task 15 complete | **178/838** |
+
+The whole of Tasks 13-review and 14 moved it by **zero**; Task 15's +3 are the
+addresses its equivalence proofs had to cite. That is the cost of a session
+spent on the measuring apparatus rather than the thing measured — worth
+knowing before the next one starts. Task 11f, for contrast, added 13 in one
+task.
+
+Re-run it against the current tree with:
 
 ```
 python3 - <<'EOF'
@@ -183,8 +173,7 @@ print(sum(map(hit, B)), '/', len(B))
 EOF
 ```
 
-It printed `134 / 838`, exit 0, run against the tree at the Task 11f fix-round-2
-commit. The `bool(...)` is load-bearing, not tidying: without it `hit` returns
+It printed `178 / 838`, exit 0, run against the tree at `f27b73c` (Task 15). The `bool(...)` is load-bearing, not tidying: without it `hit` returns
 `None` — not `False` — for a branch that is uncited and has no guard, because
 `x and y` yields `x` when `x` is falsy, and `sum()` then raises
 `TypeError: unsupported operand type(s) for +: 'int' and 'NoneType'`. An
