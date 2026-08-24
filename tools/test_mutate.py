@@ -329,8 +329,13 @@ class ContainmentTest(unittest.TestCase):
         with self.assertRaises(mutate.GateError):
             mutate.build_shadow(REPO / "build" / "mutate-shadow")
 
-    def test_the_real_repo_is_only_ever_opened_for_reading(self):
-        """`_read_real` is the single door to the repo, and it reads bytes."""
+    def test_read_real_returns_the_real_bytes_and_refuses_a_path_outside(self):
+        """The single door to the repo goes through the same containment check.
+
+        This says nothing about WRITES -- see
+        `test_a_full_run_works_with_the_frozen_oracles_read_only`, which is the
+        test that does.
+        """
         data = mutate._read_real("data/rng_trace.json")
         self.assertEqual(hash_of(data),
                          mutate.digest(REPO / "data" / "rng_trace.json"))
@@ -508,6 +513,26 @@ class SafetyPropertyTest(unittest.TestCase):
         }])
         self.assertEqual(rc, 2, report)
         self.assertEqual(mutate.guarded_digests(), before)
+
+    def test_a_full_run_works_with_the_frozen_oracles_read_only(self):
+        """Not "nothing changed" -- "nothing could have".
+
+        The digest comparison proves no write LANDED.  It cannot distinguish
+        that from a write that landed and was undone.  Stripping the write bit
+        off the three frozen oracles closes the difference: any `open(..., "w")`
+        on one of them raises `PermissionError`, so a gate that still exits 0
+        never attempted one.
+        """
+        targets = [REPO / n for n in mutate.FROZEN]
+        modes = [p.stat().st_mode for p in targets]
+        try:
+            for p in targets:
+                os.chmod(p, 0o444)
+            self.assertEqual(mutate.main([]), 0)
+        finally:
+            for p, m in zip(targets, modes):
+                os.chmod(p, m)
+        self.assertEqual([p.stat().st_mode for p in targets], modes)
 
     def test_the_shadow_tree_is_deleted_afterwards(self):
         import io

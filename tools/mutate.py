@@ -174,7 +174,12 @@ def build_shadow(dst):
     for rel in SHADOW_TREE:
         src = REPO / rel
         if src.is_dir():
-            shutil.copytree(src, dst / rel, ignore=ignore, symlinks=False)
+            # `copyfile`, not the default `copy2`: contents only, no mode.  A
+            # source file the owner has made read-only -- which is one way to
+            # ensure this tool cannot write to it -- must still produce a
+            # WRITABLE copy, or the gate cannot perturb its own shadow.
+            shutil.copytree(src, dst / rel, ignore=ignore, symlinks=False,
+                            copy_function=shutil.copyfile)
         else:
             shutil.copyfile(src, dst / rel)
     return dst
