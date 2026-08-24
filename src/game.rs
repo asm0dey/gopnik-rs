@@ -2890,7 +2890,17 @@ impl Game {
             // `mov ah,0x4c` / `int 0x21`. So `e` at the fight prompt does not
             // leave the fight -- it leaves the GAME, without writing a save
             // and without the end screen `FUN_1000_074b` draws on death.
-            if cmd == Command::Quit {
+            //
+            // Matched on the LITERAL, not on `Command::Quit`, for the same
+            // reason the `run` arm above is: `parse` folds `e` and `exit`
+            // into one verb because `entry` dispatches both (`1000:edfa` and
+            // `1000:ede9`), and the fight prompt compares only `e`. The
+            // shortstring `exit` exists at exactly one image offset,
+            // CS `0xab1e`, and `1000:ede9` is its only reference -- it is
+            // never materialised inside `FUN_1000_3d11`, so `exit` typed
+            // here falls through the whole chain and prints nothing, like
+            // any other unmatched line.
+            if line.trim().eq_ignore_ascii_case("e") {
                 self.last_enemy = Some(enemy);
                 self.running = false;
                 return Ok(());
@@ -2928,11 +2938,16 @@ impl Game {
             enemy.hp = ehp.max(0) as u16;
 
             // Everything else really is not compared here. The ten verbs are
-            // the whole in-combat table (`docs/re/combat-dispatch.md` closes
-            // the buffer's reference set at twelve, of which nine are the
-            // compares and one is the `h`/`mh` subroutine), so a street verb
-            // typed at `^0Битва\` reaches no handler at all -- which is what
-            // the live capture saw for `mar` and `i`.
+            // the whole in-combat table: `20ae:3a72` has 102 references
+            // image-wide, and `docs/re/combat-dispatch.md` closes the twelve
+            // that are INSIDE `FUN_1000_3d11` -- the ReadLn destination, the
+            // case fold, the nine compares' setups and the `h`/`mh`
+            // subroutine call. The scope is load-bearing: the buffer is
+            // shared with every sub-prompt in `entry`, which is why `x` and
+            // `wes` are compared against it too, at `1000:ce80` and
+            // `1000:ced8`, in the dealers' menu (see `crate::commands`).
+            // So a street verb typed at `^0Битва\` reaches no handler at all
+            // -- which is what the live capture saw for `mar` and `i`.
 
             // 1000:5838 `cmp byte [bp-0x1],0` is the loop's exit test, and it
             // is read AFTER the death test at 1000:4f82 and the victory test
@@ -2941,6 +2956,16 @@ impl Game {
             // same prompt where the backup landed the killing blow: there
             // `1000:507b`'s `jle 0x5085` takes the victory arm and the flee
             // flag never gets read.
+            //
+            // The PLAYER cannot be newly dead here, so `1000:4f82` needs no
+            // counterpart in this condition: `run` parses to `Command::Walk`,
+            // so `combat_round` did not fire in this prompt, and the only
+            // other thing that touches the player's hp on a flee is
+            // `flee_penalty`'s `hp := hpmax` clamp, which would need `hpmax`
+            // to have reached 0 -- impossible at the level >= 1 that
+            // `1000:4931` requires before the penalty runs at all. A
+            // `player.hp > 0` clause would therefore be a condition that
+            // cannot be false, which is this project's signature defect.
             if fled && enemy.hp > 0 {
                 self.last_enemy = Some(enemy);
                 return Ok(());
@@ -3056,13 +3081,27 @@ impl Game {
     /// 503b  money < 0 -> `[0x38cb] += [0x38c7]`, `[0x38c7] := 0`
     /// ```
     ///
-    /// The two six-byte reals are decoded, not guessed: Borland's Real is
-    /// `[exp][m0..m4]` with an implicit leading one, so `exp 0x83` with the
-    /// top mantissa byte `0x20` is `1.25 * 2^(0x83-129) = 5.0`, and `exp
-    /// 0x82` with `0x40` is `1.5 * 2^(0x82-129) = 3.0`. `0f78:1117` is the
-    /// divide and `0f78:1111` the multiply (`docs/re/gaps.md`, "The
-    /// random-encounter opponent"), so the bill is `Round(hpmax / 5 * 3)`.
+    /// **The bill is `Round(hpmax * 3 / 5)`, and that needs no exponent
+    /// bias.** `0f78:1117` is the divide and `0f78:1111` the multiply, and
+    /// each constant's significand is fixed by its `di` word alone because
+    /// `1000:4ff8` and `1000:5005` zero the low mantissa half -- so the two
+    /// exponent bytes differ by exactly one step whatever the bias is, the
+    /// ratio is `(1.5 / 1.25) * 2^-1 = 0.6`, and the bias cancels.
+    /// `docs/re/combat-dispatch.md`, "The bill does not need the exponent
+    /// bias", is the argument in full.
+    ///
+    /// An earlier revision of this comment read the two constants as `5.0`
+    /// and `3.0` and called them "decoded, not guessed". Those decimals
+    /// assume a bias of 129, which `docs/re/rtl.md` records as **not
+    /// established** and which `docs/re/combat.md` was corrected in this
+    /// branch to say so; they are one consistent pair, not the only one. The
+    /// computed bill is identical either way -- what was wrong was the tier,
+    /// and a `src/` doc comment is read as a citation
+    /// (`docs/re/METHODOLOGY.md`).
+    ///
     /// `Round` is Borland's, half away from zero -- [`Self::round_half`].
+    /// Rounding is unambiguous here: `3h/5` is never exactly a half-integer,
+    /// since `6h = 10k + 5` has no solution.
     ///
     /// **No draw**: there is no `9a 4b 11 78 0f` anywhere in
     /// `1000:4f82`..`1000:5077`.
@@ -4488,14 +4527,50 @@ mod tests {
     /// `1000:4c5d` `xor ax,ax` / `call 0f78:0116` is `Halt(0)`: `e` at the
     /// fight prompt leaves the whole game, not the fight, and reads no
     /// further line.
+    ///
+    /// **`exit` must NOT.** `crate::commands::parse` folds `e` and `exit`
+    /// into one `Command::Quit` because `entry` dispatches both
+    /// (`1000:edfa`, `1000:ede9`), and `FUN_1000_3d11` compares only `e`
+    /// (CS `0x35a4` at `1000:4c56`). The shortstring `exit` sits at exactly
+    /// one image offset, CS `0xab1e`, referenced only by `1000:ede9`, so it
+    /// is never materialised inside the fight function and falls through the
+    /// chain like any other unmatched line. Typing only `e` cannot catch a
+    /// regression here, which is why both spellings are scripted.
     #[test]
-    fn e_at_the_fight_prompt_halts_the_game() {
+    fn e_at_the_fight_prompt_halts_the_game_and_exit_does_not() {
         let mut g = game();
         let mut lines = input(&["e", "k", "k"]);
         g.run_combat(punchbag(), &mut lines).unwrap();
         assert!(!g.running, "1000:4c5f ends the process");
         assert_eq!(lines.count(), 2, "nothing after `e` is read");
         assert!(g.last_enemy.is_some(), "the fight still recorded its enemy");
+
+        // Case folding: 1000:4431 `call 0eed:0x216` runs on the buffer before
+        // any compare, so `E` is the same verb.
+        let mut g = game();
+        let mut lines = input(&["E", "k", "k"]);
+        g.run_combat(punchbag(), &mut lines).unwrap();
+        assert!(!g.running);
+        assert_eq!(lines.count(), 2);
+
+        // `exit` reaches no handler at all. The closing `run` (level 0, so
+        // no penalty) is what ends the fight, and it is the discriminator:
+        // if `exit` still halted, the game would be stopped and the `run`
+        // never read.
+        let mut g = game();
+        let mut lines = input(&["exit", "exit", "run"]);
+        g.rng.start_log();
+        g.run_combat(punchbag(), &mut lines).unwrap();
+        assert!(
+            g.running,
+            "`exit` is not compared at 1000:4c56 and must not Halt the game"
+        );
+        assert_eq!(lines.count(), 0, "both `exit`s and the `run` were read");
+        assert!(g.last_enemy.is_some(), "the fight ended by fleeing");
+        assert!(
+            g.rng.take_log().is_empty(),
+            "and `exit` reached no arm that draws either"
+        );
     }
 
     /// The property the captured oracles rest on: a fight that types only

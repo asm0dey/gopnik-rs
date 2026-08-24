@@ -710,7 +710,11 @@ fn the_captured_level_ups_undo_back_to_the_record_before_the_kill() {
         );
         checked += 1;
     }
-    assert!(checked >= 6, "only {checked} captured level-ups to undo");
+    // Exact, not a floor: `data/xp.json` is a committed artifact that cannot
+    // shrink silently, and it holds 30 `level_up_cases` of which exactly 9
+    // announce any gain. A floor a third below the real number would not
+    // notice losing a third of the corpus.
+    assert_eq!(checked, 9, "captured level-ups with gains to undo");
 }
 
 /// The same round trip driven by `apply_levels` itself rather than by the

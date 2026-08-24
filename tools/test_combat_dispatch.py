@@ -648,7 +648,12 @@ class DispatchTest(unittest.TestCase):
             self.assertEqual(v["reaches"], v["entries"] > 0)
         self.assertEqual(probe["marker_stream"].count("T"),
                          sum(v["entries"] for v in probe["per_verb"]))
-        self.assertTrue(probe["runs_agree"])
+        # `runs_agree` is NOT asserted.  It is the artifact reporting a fact
+        # about its own capture -- that two runs of the probe produced the
+        # same marker stream -- and asserting it here would be this file
+        # checking the artifact against itself, which is the shape every test
+        # above exists to refuse.  Recorded as provenance, checked by the
+        # probe run that wrote it.
 
     def test_the_branch_partition_is_the_whole_range(self):
         part = self.art["branch_partition"]

@@ -416,6 +416,13 @@ pub fn apply_levels(
 ///   the level, so the entry is always re-earned first.
 /// * the stat decrements use `wrapping_sub`, matching [`grant`]'s
 ///   `wrapping_add`, rather than the original's signed word arithmetic.
+/// * the parity test is `!strength.is_multiple_of(2)` on a `u16`, where
+///   `1000:49b7`..`1000:49c4` is `cwd` / `idiv cx` with `cx = 2` and then
+///   `cmp ax,1` on the remainder -- a SIGNED division, whose remainder for a
+///   negative strength is `-1` and never equal to 1. The two agree for every
+///   strength below 0x8000; a strength with bit 15 set is unreachable here
+///   for the same reason the `wrapping_sub` divergence is. [`grant`]'s
+///   `is_multiple_of(2)` at `1000:2683` carries the identical caveat.
 ///
 /// Returns the codes it acted on, in order, so the caller can write the four
 /// `^4… -1 ` lines the original writes between the decrements. Nothing else is
