@@ -261,6 +261,11 @@ fn writing_then_loading_a_fresh_character_reproduces_it() {
     let path = g.write_save_as(&dir, "save_r0.sav").unwrap();
     assert!(path.is_file());
     assert_eq!(std::fs::read(&path).unwrap().len(), SIZE);
+    // `write_save_as` writes the RECORD only -- the district autosave
+    // (1000:acc8 -> 1000:acd5) writes nothing else, and only the mage's arm
+    // goes on to the flags.
+    assert!(!dir.join("places.sav").exists());
+    g.write_places(&dir).unwrap();
     assert!(dir.join("places.sav").is_file());
 
     let back = persist::load_slot(&dir, '0', 1).unwrap().expect("loads");
@@ -285,7 +290,10 @@ fn the_slot_menu_reports_what_the_directory_holds() {
     // No save at all: the original prints nothing and falls through.
     assert!(persist::present_slots(&dir).is_empty());
     let mut none = std::iter::empty();
-    assert!(persist::choose_slot(&dir, &mut none).unwrap().is_none());
+    assert_eq!(
+        persist::choose_slot(&dir, &mut none).unwrap(),
+        persist::SlotMenu::NoSaves
+    );
 
     // The shipped corpus is UPPERCASE; the game writes lowercase. Both are
     // the same file on DOS, and `present_slots` has to see either.
@@ -297,17 +305,18 @@ fn the_slot_menu_reports_what_the_directory_holds() {
     // key the prompt tells the player to press for a new character, and it
     // is the clearest case of a key that must NOT be a slot.
     for (typed, want) in [
-        ("3", Some('3')),
-        ("0", Some('0')),
-        ("1", None),
-        ("q", None),
-        ("", None),
+        ("3", persist::SlotMenu::Load('3')),
+        ("0", persist::SlotMenu::Load('0')),
+        ("1", persist::SlotMenu::NewCharacter),
+        ("q", persist::SlotMenu::NewCharacter),
+        ("", persist::SlotMenu::NewCharacter),
     ] {
         let mut lines = std::iter::once(Ok(typed.to_string()));
-        let choice = persist::choose_slot(&dir, &mut lines)
-            .unwrap()
-            .expect("a menu");
-        assert_eq!(choice.slot, want, "typed {typed:?}");
+        assert_eq!(
+            persist::choose_slot(&dir, &mut lines).unwrap(),
+            want,
+            "typed {typed:?}"
+        );
     }
 }
 
@@ -582,9 +591,271 @@ fn nothing_here_writes_into_the_frozen_corpus() {
     let mut g = fresh_game();
     g.save_dir = dir.clone();
     g.write_save_as(&dir, "save_r0.sav").unwrap();
+    g.write_places(&dir).unwrap();
     g.mage_save().unwrap();
     for (name, bytes) in before {
         assert_eq!(orig(&name), bytes, "{name} changed");
     }
     assert!(Path::new(&dir).join("save_r0.sav").is_file());
+}
+
+/// Every `20ae:` address `src/game.rs`'s field docs name that lies **inside**
+/// the 694-byte record (`20ae:369c`..`20ae:3951`) must be cited in
+/// `src/persist.rs`, i.e. be a byte `to_save` actually writes.
+///
+/// This is the guard against the one failure this conversion can have
+/// silently: a `Game` field for a record byte that nobody remembered to
+/// persist. It re-derives both sets from the sources rather than restating a
+/// list, so adding such a field fails here instead of quietly losing the byte
+/// on every save.
+///
+/// Addresses OUTSIDE the record are ignored on purpose and enumerated in
+/// `Game::to_save`'s doc: the original does not save them either.
+#[test]
+fn every_in_record_address_named_in_game_rs_is_persisted() {
+    let game_rs = std::fs::read_to_string(root().join("src").join("game.rs")).unwrap();
+    // Scoped to `to_save`'s BODY, not to the whole of persist.rs. Two
+    // reasons, both of which make the check unfalsifiable if ignored:
+    // `src/save.rs` names every record address in its own field docs, and
+    // persist.rs's module doc names the record's two BOUNDARY addresses in
+    // prose. Either would let a byte `to_save` silently drops still pass.
+    let persist_rs = std::fs::read_to_string(root().join("src").join("persist.rs")).unwrap();
+    let from = persist_rs.find("pub fn to_save").expect("to_save");
+    let to = persist_rs.find("pub fn from_save").expect("from_save");
+    assert!(from < to);
+    let to_save_body = &persist_rs[from..to];
+
+    let lo = gopnik::save::RECORD_BASE;
+    let hi = lo + SIZE;
+    let mut in_record: Vec<usize> = Vec::new();
+    let mut i = 0;
+    let bytes = game_rs.as_bytes();
+    while let Some(k) = game_rs[i..].find("20ae:") {
+        let at = i + k + 5;
+        i = at;
+        if at + 4 > bytes.len() {
+            break;
+        }
+        let hex = &game_rs[at..at + 4];
+        let Ok(off) = usize::from_str_radix(hex, 16) else {
+            continue;
+        };
+        if (lo..hi).contains(&off) && !in_record.contains(&off) {
+            in_record.push(off);
+        }
+    }
+    in_record.sort_unstable();
+    // A count floor set at today's value could not fail downwards, so the
+    // scan is sanity-checked by a positive AND a negative control instead:
+    // an address it must find, and one it must not.
+    assert!(
+        in_record.contains(&0x394d),
+        "the scan missed 20ae:394d, the pistol byte src/game.rs certainly names"
+    );
+    assert!(
+        !in_record.contains(&0x3c83),
+        "20ae:3c83 (the rector flag) is ABOVE the record and must be excluded"
+    );
+
+    for off in in_record {
+        let cite = format!("20ae:{off:04x}");
+        assert!(
+            to_save_body.contains(&cite),
+            "src/game.rs names {cite} (.SAV 0x{:03x}), which is inside the record, \
+             but `Game::to_save` never mentions it -- so nothing carries that byte \
+             into a save",
+            off - lo
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The load path's DECISIONS, as opposed to its data transformations.
+//
+// `cargo mutants -f src/persist.rs` found ten survivors, all of them here:
+// which file gets opened, which slot line gets printed, which arm runs when
+// something is missing or malformed, and what district a level maps to. The
+// round trip covers the bytes; these cover the branches.
+// ---------------------------------------------------------------------------
+
+/// The case fallback is what makes the SHIPPED corpus loadable at all: DOS
+/// wrote uppercase names (`SAVE_R3.SAV`) and the game writes lowercase
+/// (`save_r3.sav`), which are the same file on FAT and two files here.
+#[test]
+fn a_slot_loads_under_either_case_and_reports_absence_as_absence() {
+    // lowercase only -- the name the game itself writes.
+    let dir = scratch("case-lower");
+    std::fs::write(dir.join("save_r3.sav"), orig("SAVE_R3.SAV")).unwrap();
+    assert_eq!(persist::present_slots(&dir), vec!['3']);
+    assert_eq!(
+        persist::load_slot(&dir, '3', 1)
+            .unwrap()
+            .unwrap()
+            .player
+            .level,
+        20
+    );
+
+    // uppercase only -- the name the shipped corpus carries.
+    let dir = scratch("case-upper");
+    std::fs::write(dir.join("SAVE_R3.SAV"), orig("SAVE_R3.SAV")).unwrap();
+    assert_eq!(persist::present_slots(&dir), vec!['3']);
+    assert_eq!(
+        persist::load_slot(&dir, '3', 1)
+            .unwrap()
+            .unwrap()
+            .player
+            .level,
+        20
+    );
+
+    // Neither: not a slot, and loading it falls through rather than erroring.
+    let dir = scratch("case-neither");
+    assert!(persist::present_slots(&dir).is_empty());
+    assert!(persist::load_slot(&dir, '3', 1).unwrap().is_none());
+
+    // The fallback is on ANY failure of the first name, not only NotFound:
+    // a DIRECTORY called `save_r3.sav` shadows the lowercase name with a
+    // different error, and the uppercase file must still be found. This is
+    // what pins the missing case-guard `cargo mutants` reported.
+    let dir = scratch("case-shadowed");
+    std::fs::create_dir(dir.join("save_r3.sav")).unwrap();
+    std::fs::write(dir.join("SAVE_R3.SAV"), orig("SAVE_R3.SAV")).unwrap();
+    assert_eq!(
+        persist::load_slot(&dir, '3', 1)
+            .unwrap()
+            .expect("the uppercase file is still readable")
+            .player
+            .level,
+        20
+    );
+}
+
+/// The menu's text and the separator's placement, `1000:6a99`..`1000:6b0d`.
+///
+/// `^1или` goes BETWEEN entries -- the original tests a counter of slots
+/// printed so far, so it never leads and never trails.
+#[test]
+fn the_menu_lines_are_the_originals_and_the_separator_goes_between() {
+    assert_eq!(persist::slot_menu_lines(&[]), Vec::<String>::new());
+
+    // One slot: no separator at all.
+    assert_eq!(
+        persist::slot_menu_lines(&['3']),
+        vec!["^1Можно начать с 3 района"]
+    );
+
+    // Slot 0 gets its own line, and it is not the district one.
+    assert_eq!(
+        persist::slot_menu_lines(&['0']),
+        vec!["^1Можно начать с того места где ты сохранился"]
+    );
+
+    // Several slots: exactly one separator between each adjacent pair, and
+    // none before the first or after the last.
+    assert_eq!(
+        persist::slot_menu_lines(&['2', '3', '0']),
+        vec![
+            "^1Можно начать с 2 района",
+            "^1или",
+            "^1Можно начать с 3 района",
+            "^1или",
+            "^1Можно начать с того места где ты сохранился",
+        ]
+    );
+    let four = persist::slot_menu_lines(&['2', '3', '4', '5']);
+    assert_eq!(four.len(), 7, "4 entries + 3 separators");
+    assert_eq!(four.iter().filter(|l| *l == "^1или").count(), 3);
+    assert_ne!(four[0], "^1или", "the separator never leads");
+    assert_ne!(four[6], "^1или", "and never trails");
+
+    assert_eq!(
+        persist::SLOT_PROMPT,
+        "^0Нажми цифру с какого района начать. 1-начать сначала"
+    );
+}
+
+/// Slot 0's `places.sav`, `1000:6c5a`..`1000:6d73`. Seven one-byte reads, so
+/// a file with fewer than seven bytes takes the FAILURE arm (`1000:6d3b`),
+/// which clears the flags with three class-keyed exceptions -- and must not
+/// panic.
+#[test]
+fn a_short_places_sav_takes_the_failure_arm_instead_of_panicking() {
+    // SAVE_R0 is a class-4 Отморозок, whose 1000:73bb bonus is nothing at
+    // all, so the failure arm leaves every flag clear and the success arm
+    // with an all-ones file leaves every flag set. The two are
+    // distinguishable, which is what makes this a test.
+    for (tag, bytes, want_found) in [
+        ("empty", vec![], false),
+        ("six", vec![1u8; 6], false),
+        ("seven", vec![1u8; 7], true),
+        ("eight", vec![1u8; 8], true),
+    ] {
+        let dir = scratch(&format!("places-{tag}"));
+        std::fs::write(dir.join("save_r0.sav"), orig("SAVE_R0.SAV")).unwrap();
+        if !bytes.is_empty() || tag == "empty" {
+            std::fs::write(dir.join("places.sav"), &bytes).unwrap();
+        }
+        let g = persist::load_slot(&dir, '0', 1).unwrap().expect("loads");
+        assert_eq!(
+            g.places.is_found(Location::Gym),
+            want_found,
+            "{tag}: {} bytes of places.sav",
+            bytes.len()
+        );
+    }
+
+    // No places.sav at all is the same failure arm.
+    let dir = scratch("places-missing");
+    std::fs::write(dir.join("save_r0.sav"), orig("SAVE_R0.SAV")).unwrap();
+    let g = persist::load_slot(&dir, '0', 1).unwrap().expect("loads");
+    assert!(!g.places.is_found(Location::Gym));
+}
+
+/// Slot 0's district is `level div 10 + 1` (`1000:6d93`..`1000:6d9d`:
+/// `mov ax,[0x38a6]` / `cwd` / `idiv 10` / `inc ax`). Boundaries, not a
+/// midpoint: `%` and `*` both survive a single interior sample.
+#[test]
+fn slot_zero_derives_its_district_from_the_level() {
+    let dir = scratch("district-from-level");
+    for (level, want) in [
+        (0u16, 1u8),
+        (9, 1),
+        (10, 2),
+        (19, 2),
+        (20, 3),
+        (29, 3),
+        (30, 4),
+        (39, 4),
+        (40, 5),
+    ] {
+        let mut save = Save::parse(&orig("SAVE_R0.SAV")).unwrap();
+        save.stats[5] = level;
+        std::fs::write(dir.join("save_r0.sav"), save.to_bytes().unwrap()).unwrap();
+        let g = persist::load_slot(&dir, '0', 1).unwrap().expect("loads");
+        assert_eq!(g.district, want, "level {level}");
+    }
+}
+
+/// ...and a district slot takes the digit itself, for every digit the
+/// original accepts. A key it does NOT accept never reaches the open
+/// (`1000:6b81`) and must not be defaulted into a district.
+#[test]
+fn a_district_slot_takes_the_digit_and_a_rejected_key_loads_nothing() {
+    let dir = scratch("slot-digits");
+    for d in ['2', '3', '4', '5'] {
+        std::fs::write(dir.join(persist::slot_filename(d)), orig("SAVE_R4.SAV")).unwrap();
+        let g = persist::load_slot(&dir, d, 1).unwrap().expect("loads");
+        assert_eq!(g.district, d.to_digit(10).unwrap() as u8, "slot {d}");
+    }
+    // `1` is the key the prompt itself suggests, and it is not a slot; `q`
+    // is not even a digit. Neither may produce a game, and in particular
+    // neither may be silently defaulted to district 1.
+    for bad in ['1', '6', 'q'] {
+        std::fs::write(dir.join(format!("save_r{bad}.sav")), orig("SAVE_R4.SAV")).unwrap();
+        assert!(
+            persist::load_slot(&dir, bad, 1).unwrap().is_none(),
+            "slot {bad:?} must be refused even with a readable file present"
+        );
+    }
 }

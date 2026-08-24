@@ -241,3 +241,75 @@ fn save_layout_json_fields_tile_the_record() {
     let total: usize = spans.iter().map(|&(_, len, _)| len).sum();
     assert_eq!(total, size, "sum(len for fields) must equal size exactly");
 }
+
+/// The shortstring cap is a boundary and both sides of it have to be pinned.
+///
+/// A Pascal `string[255]`'s length byte holds `0..=255`, so **255 payload
+/// bytes is the longest legal string** and 256 is the first illegal one. A
+/// test that only checked the failure would leave `put_pstring`'s `>` free
+/// to become `>=` (which `cargo mutants` reported as a live survivor); a
+/// test that only checked the success would leave `>` free to become `>=`
+/// the other way. Both assertions together are what pins it.
+///
+/// It matters more now than it did: until Task 19, `Save::parse` was the
+/// only constructor, so `put_pstring` only ever re-serialised strings that
+/// had come out of a real save and were legal by construction. A `Save` the
+/// port builds carries a player-typed name.
+#[test]
+fn the_shortstring_cap_admits_255_bytes_and_refuses_256() {
+    let mut save = Save::parse(&load("SAVE_R0.SAV")).unwrap();
+
+    // 255 CP866 bytes: the longest name the format can hold. It must be
+    // accepted AND survive the round trip, length byte included.
+    save.name = "x".repeat(255);
+    let bytes = save
+        .to_bytes()
+        .expect("255 CP866 bytes is the longest LEGAL shortstring");
+    assert_eq!(bytes[save::OFF_NAME], 255, "the length byte");
+    assert_eq!(
+        &bytes[save::OFF_NAME + 1..save::OFF_NAME + 256],
+        &[b'x'; 255]
+    );
+    let reread = Save::parse(&bytes).unwrap();
+    assert_eq!(reread.name, save.name, "a 255-byte name round-trips");
+    assert_eq!(reread.to_bytes().unwrap(), bytes);
+
+    // 256 is the first length the format cannot express.
+    save.name = "x".repeat(256);
+    let err = save.to_bytes().expect_err("256 bytes must be refused");
+    assert!(matches!(err, save::SaveError::TooLong(256)), "{err:?}");
+}
+
+/// Every `SaveError`'s message names the value that distinguishes it.
+///
+/// These strings are load-bearing documentation, not decoration:
+/// `NotBoolean`'s explains that the original cannot produce a non-0/1 byte,
+/// so a hand-edited file is refused rather than mangled, and it is the only
+/// place the offending offset and its DGROUP address reach the operator.
+/// Nothing else in the suite reads any of them, so `cargo mutants` could
+/// replace the whole `Display` impl with `Ok(())` and no test noticed.
+#[test]
+fn every_save_error_message_names_its_own_value() {
+    let cases: [(save::SaveError, &[&str]); 5] = [
+        (save::SaveError::BadSize(10), &["694", "10"]),
+        (save::SaveError::BadCp866Bytes, &["CP866"]),
+        (save::SaveError::Unmappable('漢'), &["漢"]),
+        (save::SaveError::TooLong(300), &["300", "255"]),
+        (
+            save::SaveError::NotBoolean {
+                off: 0x2ae,
+                value: 7,
+            },
+            &["0x2ae", "20ae:394a", "7"],
+        ),
+    ];
+    for (err, wants) in cases {
+        let text = err.to_string();
+        for want in wants {
+            assert!(
+                text.contains(want),
+                "{err:?} renders as {text:?}, which does not mention {want:?}"
+            );
+        }
+    }
+}

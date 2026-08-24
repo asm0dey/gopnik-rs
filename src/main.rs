@@ -141,11 +141,8 @@ fn main() -> io::Result<()> {
         let mut locked = stdin.lock();
         let mut lines = (&mut locked).lines();
         match persist::choose_slot(&here, &mut lines)? {
-            Some(choice) => match choice.slot {
-                Some(slot) => persist::load_slot(&here, slot, seed)?,
-                None => None,
-            },
-            None => None,
+            persist::SlotMenu::Load(slot) => persist::load_slot(&here, slot, seed)?,
+            persist::SlotMenu::NoSaves | persist::SlotMenu::NewCharacter => None,
         }
     };
 

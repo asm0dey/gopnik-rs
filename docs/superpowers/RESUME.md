@@ -17,7 +17,7 @@ disagree, trust `git log`.
 
 ## READ THIS FIRST
 
-Everything is green: **220 Rust** (204 after Task 18), and for Python
+Everything is green: **228 Rust** (204 after Task 18), and for Python
 **390 by `unittest`** (366 after Task 18; Task 19 added 15 in
 `tools/test_decode_save.py` and 9 in the new `tools/test_savegen.py`) —
 

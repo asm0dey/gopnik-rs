@@ -334,11 +334,38 @@ fn boolean(b: &[u8], off: usize) -> Result<bool, SaveError> {
     }
 }
 
+/// Read a shortstring: `n` payload bytes after the length byte.
+///
+/// **Deliberately unchecked, unlike [`SaveError::NotBoolean`].** `n` comes
+/// from a single byte so it is at most 255, and both slots are 256 wide at
+/// `0x000` and `0x100`, so the read ends at `0x100` or `0x200` at the
+/// widest -- inside any input [`Save::parse`] accepts, since `parse` rejects
+/// anything that is not exactly `SIZE` bytes before reaching here. There is
+/// no malformed-input case to refuse: every 694-byte blob has a valid
+/// shortstring in both slots by construction. `NotBoolean` exists because a
+/// flag byte genuinely can hold a value the format cannot represent; a
+/// length byte cannot.
 fn get_pstring(b: &[u8], off: usize) -> Result<String, SaveError> {
     let n = b[off] as usize;
     cp866_decode(&b[off + 1..off + 1 + n])
 }
 
+/// Write a shortstring: the length byte, then the payload.
+///
+/// The cap is `>`, not `>=`: a Pascal `string[255]`'s length byte holds
+/// `0..=255`, so **255 payload bytes is legal** -- it is the longest string
+/// the format can express, and rejecting it would refuse a name the original
+/// accepts. Both sides of that boundary are pinned by
+/// `tests/save_roundtrip.rs::the_shortstring_cap_admits_255_bytes_and_refuses_256`;
+/// `cargo mutants` reported the `>` -> `>=` mutant as a survivor before that
+/// test existed.
+///
+/// **No slot can overflow.** The two `pstring` slots are 256 bytes each at
+/// `OFF_MAGIC` = `0x000` and `OFF_NAME` = `0x100`, so the widest possible
+/// write -- one length byte plus 255 payload bytes -- ends at `0x100` and
+/// `0x200` respectively, both inside the 694-byte record. That is a property
+/// of the layout, not of the caller, which is why there is no bound check
+/// here: one could never fire.
 fn put_pstring(buf: &mut [u8], off: usize, s: &str) -> Result<(), SaveError> {
     let raw = cp866_encode(s)?;
     if raw.len() > PSTRING_CAP {
