@@ -23,8 +23,13 @@
 //!
 //! * `draws` -- site, `n`, `r`, in order, for the whole run. Compared exactly,
 //!   including the count, by [`replay`].
-//! * `lines_the_game_read` -- the ordered input the guest's own `ReadLn`s
-//!   consumed. `tests/wander_sequence.rs` can feed one constant string because
+//! * `lines_the_game_read` -- the ordered input typed at the ENCOUNTER
+//!   prompts. Despite the name (a key in the frozen oracle, so it cannot be
+//!   corrected) it is NOT every line the guest's own `ReadLn`s consumed: the
+//!   street `w` that `1000:ae63` reads is excluded, because `Game::walk` IS
+//!   the turn here and reads no verb. `tools/rngtrace/driver.py` documents
+//!   both exclusions where the list is built.
+//!   `tests/wander_sequence.rs` can feed one constant string because
 //!   `run` answers every prompt in a declining run the way the capture driver
 //!   did; a FIGHT capture needs `y` at a question and `k` at `Битва\`, so this
 //!   port is fed the recorded list instead. The capture cross-checks that list

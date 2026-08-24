@@ -224,10 +224,25 @@ class FightLog(dict):
 #
 # Two answers means the port replaying this run cannot feed one constant
 # string the way `tests/wander_sequence.rs` does.  So the drive records the
-# ordered list of lines it typed at the prompts the game READS A LINE at --
-# every question and every `Битва\\` prompt -- and the port is fed exactly
-# that.  Enter typed at an any-key page is NOT in the list: no `ReadLn` of the
-# game's own consumes it.
+# ordered list of lines it typed at the ENCOUNTER prompts -- every question
+# and every `Битва\\` prompt -- and the port is fed exactly that.
+#
+# `lines_the_game_read` is therefore NOT every line the guest's own `ReadLn`s
+# consumed, despite the name, and the name cannot be changed: it is a key in
+# the frozen `data/combat_trace.json`, which is never regenerated.  Two
+# exclusions, both deliberate:
+#
+#   * the `w` typed at the street prompt IS read, by the top-level `ReadLn`
+#     at `1000:ae63` (`call far 0f78:06c6`, `docs/re/command-dispatch.md`).
+#     It is left out because the port's `Game::walk` IS the turn -- it never
+#     reads a verb -- so feeding `w` to it would be handing the next fight's
+#     answer to nobody.  The turn count, not this list, is what drives the
+#     replay's walks.
+#   * Enter typed at an any-key page is left out because no `ReadLn` of the
+#     game's own consumes it at all.
+#
+# So the `1000:441d` cross-check below validates the COMBAT subset of the
+# input, which is the subset the port is fed.
 #
 # That list is only usable if the driver's screen classification agreed with
 # what the guest actually did, so it is cross-checked rather than trusted: the
@@ -278,11 +293,13 @@ def fight(vm, turns: int, combat_answer: str = "k", timeout=60,
     """Walk `turns` times, accepting every encounter and answering the
     `Битва\\` prompt with `combat_answer`.
 
-    Returns a record with the action log, the ordered list of lines the game's
-    own `ReadLn`s consumed, how many turns actually completed, whether the
-    guest left the game, and the last screen -- all of which the capture
-    publishes, because "the drive stopped early" must be a stated fact and not
-    something inferred from a short trace.
+    Returns a record with the action log, the ordered list of lines typed at
+    the ENCOUNTER prompts (`lines_the_game_read` -- see the comment above
+    this function for the two things it deliberately excludes, including the
+    street `w` that `1000:ae63`'s `ReadLn` does consume), how many turns
+    actually completed, whether the guest left the game, and the last screen
+    -- all of which the capture publishes, because "the drive stopped early"
+    must be a stated fact and not something inferred from a short trace.
     """
     if combat_answer not in ("k", "run"):
         raise DriveError("combat_answer must be `k` or `run`, not %r: those are "

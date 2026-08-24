@@ -15,12 +15,16 @@ What a run contributes:
 
   * `draws` -- `{i, turn, site, n, r}` in execution order, the same compact
     shape `data/rng_trace.json` uses, so one replay harness reads both.
-  * `lines_the_game_read` -- the ordered input the guest's own `ReadLn`s
-    consumed.  A fight capture needs two different answers (`y` at a question,
+  * `lines_the_game_read` -- the ordered input typed at the ENCOUNTER
+    prompts.  A fight capture needs two different answers (`y` at a question,
     `k` or `run` at `Битва\\`), so the port cannot feed one constant string the
     way `tests/wander_sequence.rs` does; it is fed this instead.  The list is
     cross-checked against the guest's 1000:441d stops before it is published
-    (`fightrun.py`).
+    (`fightrun.py`).  It is NOT every line the guest's own `ReadLn`s consumed
+    -- the street `w` that `1000:ae63` reads is excluded, because the port's
+    `Game::walk` is the turn and reads no verb; `driver.py` documents both
+    exclusions where the list is built.  The name is a key in the frozen
+    oracle and so cannot be corrected.
   * `fights` -- one record per `1000:3d11` stop, with the whole enemy record
     the fight was entered with.  That is a second channel on
     `FUN_1000_0d14`: the port must roll the same fighter, not merely spend the
@@ -141,6 +145,10 @@ def build(traces, labels, paths):
             "written or touched to produce this file; their SHA-256 digests "
             "are recorded below so that is checkable rather than asserted."),
         "frozen_oracles": {p: digest(REPO / p) for p in FROZEN},
+        # NOTE: `input_policy`'s "the ordered list of lines the game's own
+        # ReadLns consumed" is the wording shipped in data/combat_trace.json,
+        # which is frozen; it overstates what the list holds.  The exclusions
+        # are documented on `lines_the_game_read` above and in driver.py.
         "input_policy": (
             "A question is answered `y` -- the ACCEPT arm of the literal-`y` "
             "compare at 1000:b548 / 1000:b696 / 1000:b718 (file 0x9BF3).  The "
