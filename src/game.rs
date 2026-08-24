@@ -4205,42 +4205,52 @@ mod tests {
     /// `1000:507b` `cmp word [0x3962],0` / `jle 0x5085` is read AFTER the
     /// whole chain and BEFORE `1000:5838`'s test of the flee flag, so a `run`
     /// in the prompt where the gopota landed the killing blow is a VICTORY,
-    /// not an escape.
+    /// not an escape. `run` is compared at `1000:48e1` and the backup block
+    /// starts at `1000:4d93`, so both really do happen in the one prompt.
     ///
     /// Marked by the victory block's own `Random(30)` at `1000:52d5`, which
     /// no other path in the function reaches.
     #[test]
     fn fleeing_in_the_prompt_the_gopota_win_is_still_a_victory() {
-        // Just enough hp that one district-1 backup blow (3..=6) cannot miss
-        // killing it.
         // `strength` is there only so `1000:51b9`'s award (the sum of the
         // enemy's four stats) is non-zero and the kill is visible in the XP.
-        let dying = || Fighter {
-            hp: 3,
-            hpmax: 50,
-            strength: 4,
-            ..punchbag()
+        let scenario = |seed: u32, hp: u16| {
+            let mut g = game_with_gopota();
+            g.rng = Rng::new(seed);
+            g.has_mobile = true;
+            g.rng.start_log();
+            let enemy = Fighter {
+                hp,
+                hpmax: 50,
+                strength: 4,
+                ..punchbag()
+            };
+            g.run_combat(enemy, &mut input(&["v", "run"])).unwrap();
+            let log = g.rng.take_log();
+            let swings = log.iter().filter(|d| d.site == "1000:4db7").count();
+            let victory = log.iter().any(|d| d.site == "1000:52d5");
+            (swings, victory, g.progress.xp)
         };
 
-        let mut g = game_with_gopota();
-        g.has_mobile = true;
-        g.rng.start_log();
-        g.run_combat(dying(), &mut input(&["v"])).unwrap();
-        assert_eq!(draws_at(&mut g, "1000:4db7"), 1, "the gopota swung once");
+        // District 1's backup blow is `3 + Random(4)`, so 3..=6. At 11 hp the
+        // enemy always survives the first swing and some seeds kill it with
+        // the second -- which is the prompt `run` is typed in.
+        let seed = (0..2000u32)
+            .find(|&s| scenario(s, 11) == (2, true, 4))
+            .expect("some seed kills the enemy on the second backup swing");
 
-        let mut g = game_with_gopota();
-        g.has_mobile = true;
-        g.rng.start_log();
-        // Second prompt: the gopota kill it, and the `run` is typed in the
-        // same prompt.
-        g.run_combat(dying(), &mut input(&["v", "run"])).unwrap();
-        let log = g.rng.take_log();
-        assert!(
-            log.iter().any(|d| d.site == "1000:52d5"),
-            "the victory block must run: {:?}",
-            log.iter().map(|d| d.site).collect::<Vec<_>>()
-        );
-        assert!(g.progress.xp > 0, "the kill was awarded");
+        let (swings, victory, xp) = scenario(seed, 11);
+        assert_eq!(swings, 2, "one swing per prompt, and the second killed");
+        assert!(victory, "1000:507b is read before 1000:5838");
+        assert_eq!(xp, 4, "the enemy's four stats were awarded");
+
+        // Control, same seed: an enemy the gopota cannot kill in two swings
+        // leaves by `1000:4af7` and never reaches the victory block, so the
+        // difference above is the enemy's hp and nothing else.
+        let (swings, victory, xp) = scenario(seed, 500);
+        assert_eq!(swings, 2);
+        assert!(!victory, "the enemy is still up, so the flee flag wins");
+        assert_eq!(xp, 0);
     }
 
     /// `1000:4e79` -- the gopota bill `district * 5` of street cred per
