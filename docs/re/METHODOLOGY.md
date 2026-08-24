@@ -206,6 +206,36 @@ $ python3 tools/re_query.py xrefs-to 20ae:3b74 --json | python3 -c "import json,
 
 Tests: `python3 tools/test_addr.py` and `python3 tools/test_re_query.py`.
 
+## An assertion is not evidence until it has been seen failing
+
+A passing test over a captured oracle proves the assertion ran.  It does not
+prove the assertion can fail, and this project has shipped the difference more
+than once -- a tautological comparison, a summary checked against its own
+literals, a guard that read the wrong half of the file it was guarding.  Every
+review here has found one.
+
+So the rule: **an assertion over a captured oracle is not evidence until it has
+been observed FAILING**, by breaking what it claims to check.  That observation
+is not a memory or a paragraph in a report; it lives in `tools/mutate.py`, the
+executable form of this rule as `tools/addr.py` is of the address convention.
+
+```
+$ python3 tools/mutate.py                 # every case
+$ python3 tools/mutate.py --case combat-break-flags
+```
+
+Each case in `tools/mutations.json` names the claim it defends, perturbs the
+smallest thing that isolates it in a COPY of the tree (never in `data/`, whose
+digests are recomputed around every run), and requires the named test to be
+green before and red after -- red with the message that names the claim, so a
+file merely made unreadable does not count.  A case whose test still passes is
+reported as a failure of the gate, by name.
+
+A channel with no case has not been shown to be falsifiable; the manifest also
+carries the columns the gate found asserted by nothing, as `expect_red: false`
+cases, so that finding is executable rather than remembered.  Adding a case is
+data, not code.
+
 ## Worked example: where do discovery probabilities live?
 
 "What is the chance of finding the club, or the gym?" cannot be answered by
