@@ -535,12 +535,15 @@ fn save_r0_rebuilds_from_its_growth_log() {
     // The growth log: .SAV 0x236 (data/save_layout.json's `growth_log`),
     // three bytes per level (a length byte and two stat codes), indexed
     // from 1.
-    let log_at = save_layout_off("growth_log") - gopnik::save::OFF_TAIL;
+    // Indexed into the FILE, at the offset `data/save_layout.json` gives the
+    // field -- not through `Save`'s own typed `growth_log`, which would make
+    // this a check of the parser against itself.
+    let log_at = save_layout_off("growth_log");
     let mut grants = 0;
     for lvl in 1..=level as usize {
         let at = log_at + (lvl - 1) * 3;
-        assert_eq!(save.tail[at], 2, "growth log entry {lvl} is not two codes");
-        for code in &save.tail[at + 1..at + 3] {
+        assert_eq!(blob[at], 2, "growth log entry {lvl} is not two codes");
+        for code in &blob[at + 1..at + 3] {
             let stat = Stat::from_code(*code)
                 .unwrap_or_else(|| panic!("growth log entry {lvl} holds byte {code:#04x}"));
             grant(&mut f, stat);

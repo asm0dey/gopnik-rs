@@ -5,6 +5,7 @@ pub mod data;
 pub mod game;
 pub mod locations;
 pub mod model;
+pub mod persist;
 pub mod progress;
 pub mod rng;
 pub mod save;

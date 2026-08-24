@@ -168,12 +168,12 @@ and `1000:7f5b`, read at `1000:7c76`/`7ceb`/`7dcb` to pick the sermon and at
 
 ## The four regions Task 9b named
 
-| offset | kind | len | name | status |
-|--------|------|-----|------|--------|
-| 0x231 | `u8` | 1 | `buff_countdown` | confirmed (Task 9b) — countdown on the temporary +2 strength / +1 dmg_min / +2 dmg_max buff from a smoked joint; nonzero means the buff is live and `hpmax` does not reflect it. The sheet prints it as `^6Обдолбаный  ` (guard `1000:20ca`). |
-| 0x232 | `u16` | 2 | `xp` | confirmed (Task 9b) — XP not yet spent on a level |
-| 0x234 | `u16` | 2 | `threshold` | confirmed (Task 9b) — XP needed for the next level |
-| 0x236 | `bytes` | 120 | `growth_log` | confirmed (Task 9b) — `array[1..40] of string[2]`, three bytes per level |
+| offset | guest | kind | len | name | status |
+|--------|-------|------|-----|------|--------|
+| 0x231 | `20ae:38cd` | `u8` | 1 | `buff_countdown` | confirmed (Task 9b) — countdown on the temporary +2 strength / +1 dmg_min / +2 dmg_max buff from a smoked joint (`1000:4b52` sets it to 3, `1000:e9b8` to 10, `1000:aeb3` clears it); nonzero means the buff is live and `hpmax` does not reflect it. The sheet prints it as `^6Обдолбаный  ` (guard `1000:20ca`). |
+| 0x232 | `20ae:38ce` | `u16` | 2 | `xp` | confirmed (Task 9b) — XP not yet spent on a level (`1000:2536`, `1000:254d`) |
+| 0x234 | `20ae:38d0` | `u16` | 2 | `threshold` | confirmed (Task 9b) — XP needed for the next level (`1000:2550`, `1000:6de0`) |
+| 0x236 | `20ae:38d2` | `bytes` | 120 | `growth_log` | confirmed (Task 9b) — `array[1..40] of string[2]`, three bytes per level (`1000:2641`..`1000:267a`) |
 
 **The growth log's length byte is not always 2.** The writer appends one
 code at a time (`1000:2657` assigns the current entry into a temp,
