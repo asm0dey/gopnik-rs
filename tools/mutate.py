@@ -45,8 +45,12 @@ manifest rather than dropping them keeps the record executable: the day an
 assertion reaches one, the gate fails on it and the case is promoted.
 
 And once per run, around everything: every file under `data/`, `orig/` and
-`tools/` is digested before and after, and any change is a hard failure.  That
-verdict is printed from a `finally`, so an ABORTED run reports it too.
+`tools/` is digested before and after, and any change is a hard failure.  The
+verdict is printed from a `finally`, so a run that ABORTS once the shadow tree
+exists reports it too.  A manifest that fails validation -- an unknown
+`--case`, duplicate labels, unparseable JSON -- aborts before the snapshot and
+prints no verdict: nothing has been copied or run at that point, so nothing is
+at risk.
 
 ## The safety property
 
@@ -330,12 +334,20 @@ def _tail(log, n=14):
 
 
 def _report_safety(before, after, out):
-    """Print the digest verdict.  Returns the set of real files that changed."""
-    print("", file=out)
-    for name in FROZEN:
-        print("  %-24s %s" % (name, after[name]), file=out)
+    """Print the digest verdict.  Returns the set of real files that changed.
+
+    Computes the verdict FIRST and subscripts nothing: a `FROZEN` oracle
+    missing from the after-snapshot -- a file under `data/` having disappeared,
+    which is the case this whole function exists for -- used to raise a
+    `KeyError` out of the digest loop before `changed` was ever computed.  From
+    inside the `finally` that raise would also replace an in-flight
+    `GateError`, turning a caught exit 2 into an uncaught traceback.
+    """
     changed = {k for k in set(before) | set(after)
                if before.get(k) != after.get(k)}
+    print("", file=out)
+    for name in FROZEN:
+        print("  %-24s %s" % (name, after.get(name, "MISSING")), file=out)
     if changed:
         print("\nSAFETY FAILURE: the gate changed %d real file(s): %s"
               % (len(changed), ", ".join(sorted(changed))), file=out)
