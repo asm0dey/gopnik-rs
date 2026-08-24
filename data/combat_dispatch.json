@@ -1,0 +1,2010 @@
+{
+  "schema_version": 1,
+  "note": "The in-combat command dispatcher inside FUN_1000_3d11 and the handlers it reaches.  Every record here is an address plus what the instruction at it says, so tools/test_combat_dispatch.py can re-derive the claim from orig/g.exe instead of trusting this file.  Prose twin: docs/re/combat-dispatch.md.",
+  "program": "orig/g.exe",
+  "address_convention": "Ghidra form A (SEG >= 0x1000); tools/addr.py is the executable authority.  CS literal offsets are image offsets inside the game's code segment; 20ae: offsets are DGROUP.",
+  "function": {
+    "name": "FUN_1000_3d11",
+    "entry": "1000:3d11",
+    "size_bytes": 6971,
+    "dispatcher_range": [
+      "1000:4400",
+      "1000:5080"
+    ],
+    "loop_top": "1000:40f2",
+    "back_edge": {
+      "addr": "1000:583e",
+      "text": "jmp 0x40f2"
+    },
+    "exit_flag_ds": "[bp-0x1]",
+    "exit_flag_writes": [
+      {
+        "addr": "1000:3d20",
+        "text": "mov byte [bp-0x1],0x0",
+        "what": "cleared once per call"
+      },
+      {
+        "addr": "1000:4af7",
+        "text": "mov byte [bp-0x1],0x1",
+        "what": "the flee arm"
+      },
+      {
+        "addr": "1000:5077",
+        "text": "mov byte [bp-0x1],0x1",
+        "what": "death, or the hospital rescue"
+      },
+      {
+        "addr": "1000:51a2",
+        "text": "mov byte [bp-0x1],0x1",
+        "what": "the victory block"
+      }
+    ],
+    "exit_test": {
+      "addr": "1000:5838",
+      "text": "cmp byte [bp-0x1],0x0"
+    }
+  },
+  "prompt": {
+    "buffer_ds": "20ae:3a72",
+    "prompt_literal": {
+      "cs_offset": "0x3179",
+      "text": "^0Битва\\"
+    },
+    "prompt_push": {
+      "addr": "1000:43f6",
+      "text": "mov di,0x3179"
+    },
+    "text_file": {
+      "addr": "1000:440f",
+      "text": "mov di,0x3ecc"
+    },
+    "buffer_push": {
+      "addr": "1000:4414",
+      "text": "mov di,0x3a72"
+    },
+    "readln": {
+      "addr": "1000:441d",
+      "text": "call 0xf78:0x6c6",
+      "rtl": "0f78:06c6 rtl_text_read_string"
+    },
+    "readln_skip": {
+      "addr": "1000:4422",
+      "text": "call 0xf78:0x59d"
+    },
+    "io_check": {
+      "addr": "1000:4427",
+      "text": "call 0xf78:0x291"
+    },
+    "case_fold_push": {
+      "addr": "1000:442c",
+      "text": "mov di,0x3a72"
+    },
+    "case_fold": {
+      "addr": "1000:4431",
+      "text": "call 0xeed:0x216",
+      "what": "the game's case fold; every verb below is case-insensitive"
+    }
+  },
+  "buffer_references": {
+    "what": "every reference to 20ae:3a72 inside FUN_1000_3d11, which is what makes the verb set closed.  `python3 tools/re_query.py xrefs-to 20ae:3a72` accepts 102 image-wide and exactly these twelve are in this function.",
+    "sites": [
+      {
+        "addr": "1000:4414",
+        "text": "mov di,0x3a72",
+        "role": "readln_destination"
+      },
+      {
+        "addr": "1000:442c",
+        "text": "mov di,0x3a72",
+        "role": "case_fold"
+      },
+      {
+        "addr": "1000:4436",
+        "text": "mov di,0x3a72",
+        "role": "compare_setup"
+      },
+      {
+        "addr": "1000:48d7",
+        "text": "mov di,0x3a72",
+        "role": "compare_setup"
+      },
+      {
+        "addr": "1000:4afb",
+        "text": "mov di,0x3a72",
+        "role": "subroutine_call"
+      },
+      {
+        "addr": "1000:4b03",
+        "text": "mov di,0x3a72",
+        "role": "compare_setup"
+      },
+      {
+        "addr": "1000:4c24",
+        "text": "mov di,0x3a72",
+        "role": "compare_setup"
+      },
+      {
+        "addr": "1000:4c38",
+        "text": "mov di,0x3a72",
+        "role": "compare_setup"
+      },
+      {
+        "addr": "1000:4c4c",
+        "text": "mov di,0x3a72",
+        "role": "compare_setup"
+      },
+      {
+        "addr": "1000:4c6b",
+        "text": "mov di,0x3a72",
+        "role": "compare_setup"
+      },
+      {
+        "addr": "1000:4ca0",
+        "text": "mov di,0x3a72",
+        "role": "compare_setup"
+      },
+      {
+        "addr": "1000:4e9e",
+        "text": "mov di,0x3a72",
+        "role": "compare_setup"
+      }
+    ]
+  },
+  "verbs": [
+    {
+      "token": "k",
+      "literal": {
+        "cs_offset": "0x3182",
+        "text": "k"
+      },
+      "literal_push": {
+        "addr": "1000:443b",
+        "text": "mov di,0x3182"
+      },
+      "compare": {
+        "addr": "1000:4440",
+        "text": "call 0xf78:0xbd8"
+      },
+      "branch": {
+        "addr": "1000:4445",
+        "text": "jz 0x444a",
+        "arm": "target"
+      },
+      "arm": [
+        "1000:444a",
+        "1000:48d7"
+      ],
+      "handler": "the blow exchange; docs/re/combat.md",
+      "first_instruction": {
+        "addr": "1000:444a",
+        "text": "mov ax,[0x38a0]"
+      }
+    },
+    {
+      "token": "run",
+      "literal": {
+        "cs_offset": "0x33bb",
+        "text": "run"
+      },
+      "literal_push": {
+        "addr": "1000:48dc",
+        "text": "mov di,0x33bb"
+      },
+      "compare": {
+        "addr": "1000:48e1",
+        "text": "call 0xf78:0xbd8"
+      },
+      "branch": {
+        "addr": "1000:48e6",
+        "text": "jz 0x48eb",
+        "arm": "target"
+      },
+      "arm": [
+        "1000:48eb",
+        "1000:4afb"
+      ],
+      "handler": "flee",
+      "first_instruction": {
+        "addr": "1000:48eb",
+        "text": "cmp byte [0x3c83],0x1"
+      }
+    },
+    {
+      "token": "kos",
+      "literal": {
+        "cs_offset": "0x34b1",
+        "text": "kos"
+      },
+      "literal_push": {
+        "addr": "1000:4b08",
+        "text": "mov di,0x34b1"
+      },
+      "compare": {
+        "addr": "1000:4b0d",
+        "text": "call 0xf78:0xbd8"
+      },
+      "branch": {
+        "addr": "1000:4b12",
+        "text": "jz 0x4b17",
+        "arm": "target"
+      },
+      "arm": [
+        "1000:4b17",
+        "1000:4c24"
+      ],
+      "handler": "smoke a joint; traced in full in docs/re/gaps.md",
+      "first_instruction": {
+        "addr": "1000:4b17",
+        "text": "cmp byte [0x38b0],0x1"
+      }
+    },
+    {
+      "token": "s",
+      "literal": {
+        "cs_offset": "0x359f",
+        "text": "s"
+      },
+      "literal_push": {
+        "addr": "1000:4c29",
+        "text": "mov di,0x359f"
+      },
+      "compare": {
+        "addr": "1000:4c2e",
+        "text": "call 0xf78:0xbd8"
+      },
+      "branch": {
+        "addr": "1000:4c33",
+        "text": "jnz 0x4c38",
+        "arm": "fallthrough"
+      },
+      "arm": [
+        "1000:4c35",
+        "1000:4c38"
+      ],
+      "handler": "the player's character sheet; docs/re/character-sheet.md",
+      "first_instruction": {
+        "addr": "1000:4c35",
+        "text": "call 0x1a03"
+      },
+      "calls": "1000:1a03"
+    },
+    {
+      "token": "sv",
+      "literal": {
+        "cs_offset": "0x35a1",
+        "text": "sv"
+      },
+      "literal_push": {
+        "addr": "1000:4c3d",
+        "text": "mov di,0x35a1"
+      },
+      "compare": {
+        "addr": "1000:4c42",
+        "text": "call 0xf78:0xbd8"
+      },
+      "branch": {
+        "addr": "1000:4c47",
+        "text": "jnz 0x4c4c",
+        "arm": "fallthrough"
+      },
+      "arm": [
+        "1000:4c49",
+        "1000:4c4c"
+      ],
+      "handler": "the ENEMY's sheet",
+      "first_instruction": {
+        "addr": "1000:4c49",
+        "text": "call 0x1348"
+      },
+      "calls": "1000:1348"
+    },
+    {
+      "token": "e",
+      "literal": {
+        "cs_offset": "0x35a4",
+        "text": "e"
+      },
+      "literal_push": {
+        "addr": "1000:4c51",
+        "text": "mov di,0x35a4"
+      },
+      "compare": {
+        "addr": "1000:4c56",
+        "text": "call 0xf78:0xbd8"
+      },
+      "branch": {
+        "addr": "1000:4c5b",
+        "text": "jnz 0x4c64",
+        "arm": "fallthrough"
+      },
+      "arm": [
+        "1000:4c5d",
+        "1000:4c64"
+      ],
+      "handler": "Halt(0) -- 0f78:0116 is rtl_halt (docs/re/rtl.md)",
+      "first_instruction": {
+        "addr": "1000:4c5d",
+        "text": "xor ax,ax"
+      },
+      "halt": {
+        "addr": "1000:4c5f",
+        "text": "call 0xf78:0x116"
+      }
+    },
+    {
+      "token": "k",
+      "second_compare": true,
+      "literal": {
+        "cs_offset": "0x3182",
+        "text": "k"
+      },
+      "literal_push": {
+        "addr": "1000:4c70",
+        "text": "mov di,0x3182"
+      },
+      "guard": {
+        "addr": "1000:4c64",
+        "text": "cmp word [0x3c80],0x1"
+      },
+      "guard_branch": {
+        "addr": "1000:4c69",
+        "text": "jl 0x4ca0"
+      },
+      "compare": {
+        "addr": "1000:4c75",
+        "text": "call 0xf78:0xbd8"
+      },
+      "branch": {
+        "addr": "1000:4c7a",
+        "text": "jnz 0x4ca0",
+        "arm": "fallthrough"
+      },
+      "arm": [
+        "1000:4c7c",
+        "1000:4ca0"
+      ],
+      "handler": "the backup countdown -- reachable because the `k` handler falls into this chain",
+      "first_instruction": {
+        "addr": "1000:4c7c",
+        "text": "inc [0x3c80]"
+      }
+    },
+    {
+      "token": "v",
+      "literal": {
+        "cs_offset": "0x35c6",
+        "text": "v"
+      },
+      "literal_push": {
+        "addr": "1000:4ca5",
+        "text": "mov di,0x35c6"
+      },
+      "compare": {
+        "addr": "1000:4caa",
+        "text": "call 0xf78:0xbd8"
+      },
+      "branch": {
+        "addr": "1000:4caf",
+        "text": "jz 0x4cb4",
+        "arm": "target"
+      },
+      "arm": [
+        "1000:4cb4",
+        "1000:4d93"
+      ],
+      "handler": "call the local gopota for backup",
+      "first_instruction": {
+        "addr": "1000:4cb4",
+        "text": "cmp byte [0x3696],0x1"
+      }
+    },
+    {
+      "token": "f",
+      "literal": {
+        "cs_offset": "0x3714",
+        "text": "f"
+      },
+      "literal_push": {
+        "addr": "1000:4ea3",
+        "text": "mov di,0x3714"
+      },
+      "compare": {
+        "addr": "1000:4ea8",
+        "text": "call 0xf78:0xbd8"
+      },
+      "branch": {
+        "addr": "1000:4ead",
+        "text": "jz 0x4eb2",
+        "arm": "target"
+      },
+      "arm": [
+        "1000:4eb2",
+        "1000:4f82"
+      ],
+      "handler": "fire the pistol",
+      "first_instruction": {
+        "addr": "1000:4eb2",
+        "text": "cmp byte [0x394d],0x0"
+      }
+    }
+  ],
+  "chain_reentry": {
+    "what": "the arms are independent `if`s: the `k` handler runs the blow exchange and then falls into the `run` compare's setup with the buffer unchanged, which is why a SECOND `k` compare at 1000:4c75 is reachable.",
+    "targets_of_1000_48d7": [
+      {
+        "addr": "1000:4447",
+        "text": "jmp 0x48d7",
+        "what": "the `k` compare missed"
+      },
+      {
+        "addr": "1000:467c",
+        "text": "jmp 0x48d7",
+        "what": "a blow-loop exit"
+      },
+      {
+        "addr": "1000:48cb",
+        "text": "jle 0x48d7",
+        "what": "a blow-loop exit"
+      },
+      {
+        "addr": "1000:48d2",
+        "text": "jl 0x48d7",
+        "what": "a blow-loop exit"
+      }
+    ]
+  },
+  "subroutine_verbs": {
+    "what": "`h` and `mh` are dispatched from FUN_1000_29c4, which FUN_1000_3d11 hands the buffer at 1000:4b00.  That call is the ONLY near call in FUN_1000_3d11 that receives the buffer.",
+    "call": {
+      "addr": "1000:4b00",
+      "text": "call 0x29c4"
+    },
+    "buffer_push": {
+      "addr": "1000:4afb",
+      "text": "mov di,0x3a72"
+    },
+    "literals": [
+      {
+        "cs_offset": "0x28c7",
+        "text": "h"
+      },
+      {
+        "cs_offset": "0x28c9",
+        "text": "mh"
+      }
+    ],
+    "compare_sites": [
+      "1000:29f5",
+      "1000:2a07",
+      "1000:2a6f",
+      "1000:2aa5",
+      "1000:2af7",
+      "1000:2b45",
+      "1000:2b8e",
+      "1000:2bb5"
+    ]
+  },
+  "not_in_combat": {
+    "what": "verbs the fight prompt does NOT compare.  `x` and `wes` are entry's, and no compare site in FUN_1000_3d11 pushes either literal.",
+    "verbs": [
+      {
+        "token": "x",
+        "literal": {
+          "cs_offset": "0x96ce",
+          "text": "x"
+        },
+        "compared_at": "1000:ce80",
+        "in_function": "entry"
+      },
+      {
+        "token": "wes",
+        "literal": {
+          "cs_offset": "0x970a",
+          "text": "wes"
+        },
+        "compared_at": "1000:ced8",
+        "in_function": "entry"
+      }
+    ]
+  },
+  "enemy_sheet": {
+    "name": "FUN_1000_1348",
+    "entry": "1000:1348",
+    "size_bytes": 791,
+    "epilogue": [
+      {
+        "addr": "1000:165b",
+        "text": "mov sp,bp"
+      },
+      {
+        "addr": "1000:165d",
+        "text": "pop bp"
+      },
+      {
+        "addr": "1000:165e",
+        "text": "ret"
+      }
+    ],
+    "parameter_bytes": 0,
+    "called_from": [
+      "1000:4c49"
+    ],
+    "reads": [
+      {
+        "addr": "1000:135c",
+        "text": "cmp word [0x395c],0x28",
+        "ds": "20ae:395c",
+        "what": "enemy level, above 40 has no ladder entry"
+      },
+      {
+        "addr": "1000:1363",
+        "text": "mov di,[0x395c]",
+        "ds": "20ae:395c",
+        "what": "krutizna[level], base 20ae:0b42, stride 256"
+      },
+      {
+        "addr": "1000:136b",
+        "text": "add di,0xb42",
+        "ds": "20ae:0b42",
+        "what": "the ladder table base"
+      },
+      {
+        "addr": "1000:13c0",
+        "text": "cmp word [0x3952],0x8",
+        "ds": "20ae:3952",
+        "what": "enemy class"
+      },
+      {
+        "addr": "1000:13dc",
+        "text": "mov di,[0x3952]",
+        "ds": "20ae:3952",
+        "what": "ranks[class], base 20ae:002e, stride 256"
+      },
+      {
+        "addr": "1000:13e4",
+        "text": "add di,0x2e",
+        "ds": "20ae:002e",
+        "what": "the rank table base"
+      },
+      {
+        "addr": "1000:141e",
+        "text": "push [0x3954]",
+        "ds": "20ae:3954",
+        "what": "enemy strength"
+      },
+      {
+        "addr": "1000:1422",
+        "text": "push [0x3956]",
+        "ds": "20ae:3956",
+        "what": "enemy agility"
+      },
+      {
+        "addr": "1000:1426",
+        "text": "push [0x3958]",
+        "ds": "20ae:3958",
+        "what": "enemy vitality"
+      },
+      {
+        "addr": "1000:142a",
+        "text": "push [0x395a]",
+        "ds": "20ae:395a",
+        "what": "enemy luck"
+      },
+      {
+        "addr": "1000:143b",
+        "text": "push [0x395e]",
+        "ds": "20ae:395e",
+        "what": "enemy dmg min"
+      },
+      {
+        "addr": "1000:143f",
+        "text": "push [0x3960]",
+        "ds": "20ae:3960",
+        "what": "enemy dmg max"
+      },
+      {
+        "addr": "1000:1456",
+        "text": "cmp byte [0x3966],0x1",
+        "ds": "20ae:3966",
+        "what": "enemy broken jaw"
+      },
+      {
+        "addr": "1000:1487",
+        "text": "cmp byte [0x3967],0x1",
+        "ds": "20ae:3967",
+        "what": "enemy broken leg"
+      },
+      {
+        "addr": "1000:1557",
+        "text": "push [0x3962]",
+        "ds": "20ae:3962",
+        "what": "enemy hp"
+      },
+      {
+        "addr": "1000:155b",
+        "text": "push [0x3964]",
+        "ds": "20ae:3964",
+        "what": "enemy hp max"
+      },
+      {
+        "addr": "1000:156d",
+        "text": "mov ax,[0x3956]",
+        "ds": "20ae:3956",
+        "what": "enemy agility, the accuracy block"
+      },
+      {
+        "addr": "1000:1638",
+        "text": "cmp byte [0x3968],0x0",
+        "ds": "20ae:3968",
+        "what": "enemy armour"
+      }
+    ],
+    "literals": [
+      {
+        "cs_offset": "0x1274",
+        "text": "Не в этой жизни."
+      },
+      {
+        "cs_offset": "0x1285",
+        "text": " - "
+      },
+      {
+        "cs_offset": "0x1289",
+        "text": "^2Это "
+      },
+      {
+        "cs_offset": "0x1290",
+        "text": " # уровня"
+      },
+      {
+        "cs_offset": "0x129a",
+        "text": "Сл:# Лв:# Жв:# Уд:#"
+      },
+      {
+        "cs_offset": "0x12ae",
+        "text": "Урон #-#"
+      },
+      {
+        "cs_offset": "0x12b7",
+        "text": "^4Сломана челюсть  "
+      },
+      {
+        "cs_offset": "0x12cb",
+        "text": "^4Сломана нога  "
+      },
+      {
+        "cs_offset": "0x12de",
+        "text": "Здоровье #/#  "
+      },
+      {
+        "cs_offset": "0x12ed",
+        "text": "Точность #%"
+      },
+      {
+        "cs_offset": "0x12f9",
+        "text": "Точность 90% "
+      },
+      {
+        "cs_offset": "0x1307",
+        "text": "   Второй удар #%"
+      },
+      {
+        "cs_offset": "0x1319",
+        "text": "- # ударов,  Точность # удара #%"
+      },
+      {
+        "cs_offset": "0x133a",
+        "text": "^2Броня #    "
+      }
+    ],
+    "accuracy_block": {
+      "range": [
+        "1000:156d",
+        "1000:1638"
+      ],
+      "load": {
+        "addr": "1000:156d",
+        "text": "mov ax,[0x3956]"
+      },
+      "guard": {
+        "addr": "1000:1574",
+        "text": "cmp word [bp-0x204],0xe"
+      },
+      "second_blow": {
+        "addr": "1000:15bd",
+        "text": "mov ax,[bp-0x204]"
+      },
+      "multi_blow": {
+        "addr": "1000:1611",
+        "text": "mov di,0x1319"
+      },
+      "corrects": "docs/re/combat.md mapped 1000:15bd..1000:1611 as `Second blow and multi-blow display` without saying whose: it is the ENEMY's agility, inside the sv sheet.  The player's copy of the same formula is at 1000:21b0 in FUN_1000_1a03."
+    }
+  },
+  "flee": {
+    "refusals": [
+      {
+        "guard": {
+          "addr": "1000:48eb",
+          "text": "cmp byte [0x3c83],0x1"
+        },
+        "branch": {
+          "addr": "1000:48f0",
+          "text": "jnz 0x490e"
+        },
+        "ds": "20ae:3c83",
+        "literal": {
+          "cs_offset": "0x33bf",
+          "text": "^4Ректор: Кудa? Стоять! Бейся до конца трусливый урод!"
+        },
+        "literal_push": {
+          "addr": "1000:48f2",
+          "text": "mov di,0x33bf"
+        },
+        "resume": {
+          "addr": "1000:490b",
+          "text": "jmp 0x4afb"
+        }
+      },
+      {
+        "guard": {
+          "addr": "1000:490e",
+          "text": "cmp byte [0x38b1],0x1"
+        },
+        "branch": {
+          "addr": "1000:4913",
+          "text": "jnz 0x4931"
+        },
+        "ds": "20ae:38b1",
+        "literal": {
+          "cs_offset": "0x33f6",
+          "text": "^4Ты не можешь убежать на сломаной ноге."
+        },
+        "literal_push": {
+          "addr": "1000:4915",
+          "text": "mov di,0x33f6"
+        },
+        "resume": {
+          "addr": "1000:492e",
+          "text": "jmp 0x4afb"
+        }
+      }
+    ],
+    "level_gate": {
+      "addr": "1000:4931",
+      "text": "cmp word [0x38a6],0x0",
+      "branch": {
+        "addr": "1000:4936",
+        "text": "jnle 0x493b"
+      },
+      "zero_arm": {
+        "addr": "1000:4938",
+        "text": "jmp 0x4ade"
+      },
+      "zero_literal": {
+        "cs_offset": "0x349f",
+        "text": "^4Враг: Засранец!"
+      }
+    },
+    "penalty": {
+      "opening_literal": {
+        "cs_offset": "0x341f",
+        "text": "^4Враг: Трусливый засранец! "
+      },
+      "growth_log_base": "20ae:38cf",
+      "growth_log_note": "Borland's biased base for `array[1..40] of string[2]` at .SAV 0x236 (20ae:38d2); the writer at 1000:2647 uses the same expression.",
+      "index": {
+        "addr": "1000:4954",
+        "text": "mov di,[0x38a6]"
+      },
+      "base_add": {
+        "addr": "1000:495e",
+        "text": "add di,0x38cf"
+      },
+      "copy": {
+        "addr": "1000:496e",
+        "text": "call 0xf78:0xb01"
+      },
+      "clear_source": {
+        "addr": "1000:497d",
+        "text": "mov byte [di+0x38cf],0x0"
+      },
+      "loop_init": {
+        "addr": "1000:4982",
+        "text": "mov word [bp-0x6],0x1"
+      },
+      "loop_step": {
+        "addr": "1000:4989",
+        "text": "inc [bp-0x6]"
+      },
+      "loop_guard": {
+        "addr": "1000:4a6f",
+        "text": "cmp word [bp-0x6],0x2"
+      },
+      "loop_exit": {
+        "addr": "1000:4a73",
+        "text": "jz 0x4a78"
+      },
+      "direction": "forward, i := 1 then 2; `in reverse` in docs/re/combat.md means the codes are inverted, not that the array is walked backwards.",
+      "codes": [
+        {
+          "code": "1",
+          "compare": {
+            "addr": "1000:498f",
+            "text": "cmp byte [bp+di-0x10a],0x31"
+          },
+          "branch": {
+            "addr": "1000:4994",
+            "text": "jnz 0x49e0"
+          },
+          "stat_ds": "20ae:389e",
+          "decrement": {
+            "addr": "1000:4996",
+            "text": "dec [0x389e]"
+          },
+          "literal": {
+            "cs_offset": "0x343c",
+            "text": "^4Сила -1 "
+          },
+          "extra": [
+            {
+              "addr": "1000:49b3",
+              "text": "dec [0x38aa]",
+              "what": "damage max"
+            },
+            {
+              "addr": "1000:49c1",
+              "text": "cmp ax,0x1",
+              "what": "strength odd?"
+            },
+            {
+              "addr": "1000:49c6",
+              "text": "dec [0x38a8]",
+              "what": "damage min, only when odd"
+            },
+            {
+              "addr": "1000:49ca",
+              "text": "dec [0x38ae]",
+              "what": "hp max"
+            }
+          ]
+        },
+        {
+          "code": "2",
+          "compare": {
+            "addr": "1000:49e3",
+            "text": "cmp byte [bp+di-0x10a],0x32"
+          },
+          "branch": {
+            "addr": "1000:49e8",
+            "text": "jnz 0x4a09"
+          },
+          "stat_ds": "20ae:38a0",
+          "decrement": {
+            "addr": "1000:49ea",
+            "text": "dec [0x38a0]"
+          },
+          "literal": {
+            "cs_offset": "0x3447",
+            "text": "^4Ловкость -1 "
+          },
+          "extra": []
+        },
+        {
+          "code": "3",
+          "compare": {
+            "addr": "1000:4a0c",
+            "text": "cmp byte [bp+di-0x10a],0x33"
+          },
+          "branch": {
+            "addr": "1000:4a11",
+            "text": "jnz 0x4a46"
+          },
+          "stat_ds": "20ae:38a2",
+          "decrement": {
+            "addr": "1000:4a13",
+            "text": "dec [0x38a2]"
+          },
+          "literal": {
+            "cs_offset": "0x3456",
+            "text": "^4Живучесть -1 "
+          },
+          "extra": [
+            {
+              "addr": "1000:4a30",
+              "text": "sub word [0x38ae],0x5",
+              "what": "hp max"
+            }
+          ]
+        },
+        {
+          "code": "4",
+          "compare": {
+            "addr": "1000:4a49",
+            "text": "cmp byte [bp+di-0x10a],0x34"
+          },
+          "branch": {
+            "addr": "1000:4a4e",
+            "text": "jnz 0x4a6f"
+          },
+          "stat_ds": "20ae:38a4",
+          "decrement": {
+            "addr": "1000:4a50",
+            "text": "dec [0x38a4]"
+          },
+          "literal": {
+            "cs_offset": "0x3466",
+            "text": "^4Удача -1 "
+          },
+          "extra": []
+        }
+      ]
+    },
+    "den_grant": {
+      "class_skip": {
+        "addr": "1000:4a87",
+        "text": "cmp word [0x389c],0x5",
+        "branch": {
+          "addr": "1000:4a8c",
+          "text": "jz 0x4ac3"
+        }
+      },
+      "district": {
+        "addr": "1000:4a8e",
+        "text": "mov al,[0x3692]"
+      },
+      "test": {
+        "addr": "1000:4aa0",
+        "text": "cmp ax,0x3"
+      },
+      "branch": {
+        "addr": "1000:4aa3",
+        "text": "jnz 0x4ac3"
+      },
+      "store": {
+        "addr": "1000:4aa5",
+        "text": "mov byte [0x3696],0x1"
+      },
+      "literal": {
+        "cs_offset": "0x3472",
+        "text": "^4Такого конявого непустят в местный притон!"
+      },
+      "finding": "the message announces the den is now closed to the player; the store OPENS it (20ae:3696 == 1 is the gate at 1000:d80c).  Original behaviour, not a decode error.",
+      "post_kill_twin": {
+        "addr": "1000:52ae",
+        "text": "cmp ax,0x3",
+        "branch": {
+          "addr": "1000:52b1",
+          "text": "jl 0x52d1"
+        },
+        "store": {
+          "addr": "1000:52b3",
+          "text": "mov byte [0x3696],0x1"
+        }
+      }
+    },
+    "level_cost": [
+      {
+        "addr": "1000:4ac3",
+        "text": "dec [0x38a6]",
+        "what": "level"
+      },
+      {
+        "addr": "1000:4ac7",
+        "text": "sub word [0x38d0],0xa",
+        "what": "next-level threshold"
+      },
+      {
+        "addr": "1000:4acf",
+        "text": "cmp ax,[0x38d0]",
+        "what": "xp clamped below the new threshold"
+      },
+      {
+        "addr": "1000:4ad9",
+        "text": "mov [0x38ce],ax",
+        "what": "xp := threshold - 1"
+      }
+    ],
+    "draws": []
+  },
+  "backup": {
+    "counter_ds": "20ae:3c80",
+    "counter_note": "17 references image-wide (`python3 tools/re_query.py xrefs-to 20ae:3c80`), every one inside FUN_1000_3d11.",
+    "reset_on_return": [
+      {
+        "addr": "1000:5841",
+        "text": "xor ax,ax"
+      },
+      {
+        "addr": "1000:5843",
+        "text": "mov [0x3c80],ax"
+      }
+    ],
+    "call": {
+      "den_gate": {
+        "addr": "1000:4cb4",
+        "text": "cmp byte [0x3696],0x1",
+        "branch": {
+          "addr": "1000:4cb9",
+          "text": "jnz 0x4d03"
+        }
+      },
+      "cred_expr": [
+        {
+          "addr": "1000:4cbb",
+          "text": "mov al,[0x3692]"
+        },
+        {
+          "addr": "1000:4cc0",
+          "text": "mov dx,0xa"
+        },
+        {
+          "addr": "1000:4cc5",
+          "text": "add ax,0xa"
+        }
+      ],
+      "cred_gate": {
+        "addr": "1000:4cc8",
+        "text": "cmp ax,[0x38cb]",
+        "branch": {
+          "addr": "1000:4ccc",
+          "text": "jnle 0x4d03"
+        },
+        "what": "needs [0x38cb] >= district*10 + 10"
+      },
+      "first_call": {
+        "addr": "1000:4cce",
+        "text": "cmp word [0x3c80],0x0",
+        "branch": {
+          "addr": "1000:4cd3",
+          "text": "jnz 0x4cdb"
+        },
+        "store": {
+          "addr": "1000:4cd5",
+          "text": "mov word [0x3c80],0x1"
+        }
+      },
+      "mobile": {
+        "addr": "1000:4cdb",
+        "text": "cmp byte [0x38bb],0x1",
+        "branch": {
+          "addr": "1000:4ce0",
+          "text": "jnz 0x4d01"
+        },
+        "store": {
+          "addr": "1000:4ce2",
+          "text": "mov word [0x3c80],0x3"
+        },
+        "literal": {
+          "cs_offset": "0x35c8",
+          "text": "^2Подошли пацаны - Ща начнется!."
+        }
+      },
+      "refusals": [
+        {
+          "guard": {
+            "addr": "1000:4d03",
+            "text": "cmp byte [0x3696],0x0"
+          },
+          "branch": {
+            "addr": "1000:4d08",
+            "text": "jz 0x4d25"
+          },
+          "cred_too_low": {
+            "literal": {
+              "cs_offset": "0x35e9",
+              "text": "^4Ни кто не хочет за тебя впрягаться."
+            },
+            "literal_push": {
+              "addr": "1000:4d0a",
+              "text": "mov di,0x35e9"
+            }
+          },
+          "no_den_flag": {
+            "literal": {
+              "cs_offset": "0x360f",
+              "text": "^6Сначала надо скорешиться с местной гопотой."
+            },
+            "literal_push": {
+              "addr": "1000:4d25",
+              "text": "mov di,0x360f"
+            }
+          }
+        }
+      ],
+      "status": [
+        {
+          "guard": {
+            "addr": "1000:4d3e",
+            "text": "cmp word [0x3c80],0x0"
+          },
+          "branch": {
+            "addr": "1000:4d43",
+            "text": "jle 0x4d93"
+          },
+          "what": "no call made, nothing printed"
+        },
+        {
+          "guard": {
+            "addr": "1000:4d45",
+            "text": "cmp word [0x3c80],0x3"
+          },
+          "branch": {
+            "addr": "1000:4d4a",
+            "text": "jnl 0x4d6c"
+          },
+          "literal": {
+            "cs_offset": "0x363d",
+            "text": "^6Тебе надо продержатся до подхода братвы # пинка."
+          },
+          "argument": [
+            {
+              "addr": "1000:4d51",
+              "text": "mov ax,0x3"
+            },
+            {
+              "addr": "1000:4d54",
+              "text": "sub ax,[0x3c80]"
+            }
+          ]
+        },
+        {
+          "guard": {
+            "addr": "1000:4d6c",
+            "text": "cmp word [0x3c80],0x3"
+          },
+          "branch": {
+            "addr": "1000:4d71",
+            "text": "jnz 0x4d7a"
+          },
+          "phone_suppress": {
+            "addr": "1000:4d73",
+            "text": "cmp byte [0x38bb],0x0",
+            "branch": {
+              "addr": "1000:4d78",
+              "text": "jnz 0x4d93"
+            }
+          },
+          "literal": {
+            "cs_offset": "0x3670",
+            "text": "^2Они уже здесь."
+          },
+          "literal_push": {
+            "addr": "1000:4d7a",
+            "text": "mov di,0x3670"
+          }
+        }
+      ]
+    },
+    "countdown_on_attack": {
+      "inc": {
+        "addr": "1000:4c7c",
+        "text": "inc [0x3c80]"
+      },
+      "arrival_test": {
+        "addr": "1000:4c80",
+        "text": "cmp word [0x3c80],0x3"
+      },
+      "branch": {
+        "addr": "1000:4c85",
+        "text": "jnz 0x4ca0"
+      },
+      "literal": {
+        "cs_offset": "0x35a6",
+        "text": "^2Подошли пацаны - Ща начнется!"
+      },
+      "literal_push": {
+        "addr": "1000:4c87",
+        "text": "mov di,0x35a6"
+      }
+    },
+    "assist": {
+      "alive_gate": {
+        "addr": "1000:4d93",
+        "text": "cmp word [0x3962],0x0",
+        "branch": {
+          "addr": "1000:4d98",
+          "text": "jnle 0x4d9d"
+        }
+      },
+      "present_gate": {
+        "addr": "1000:4d9d",
+        "text": "cmp word [0x3c80],0x3",
+        "branch": {
+          "addr": "1000:4da2",
+          "text": "jnl 0x4da7"
+        }
+      },
+      "damage": [
+        {
+          "addr": "1000:4dad",
+          "text": "mov al,[0x3692]",
+          "what": "district"
+        },
+        {
+          "addr": "1000:4db2",
+          "text": "shl ax,1",
+          "what": "*2"
+        },
+        {
+          "addr": "1000:4db4",
+          "text": "shl ax,1",
+          "what": "*4 -- the Random argument"
+        },
+        {
+          "addr": "1000:4db6",
+          "text": "push ax",
+          "what": "the pushed n"
+        },
+        {
+          "addr": "1000:4dc9",
+          "text": "add ax,dx",
+          "what": "district*3 + r"
+        },
+        {
+          "addr": "1000:4dcf",
+          "text": "mov al,[0x3968]",
+          "what": "enemy armour"
+        },
+        {
+          "addr": "1000:4dd5",
+          "text": "mov cx,0x3",
+          "what": "armour div 3"
+        },
+        {
+          "addr": "1000:4dda",
+          "text": "sub [bp-0x10c],ax",
+          "what": "damage -= armour div 3"
+        },
+        {
+          "addr": "1000:4dde",
+          "text": "cmp word [bp-0x10c],0x0"
+        },
+        {
+          "addr": "1000:4de3",
+          "text": "jnl 0x4deb"
+        },
+        {
+          "addr": "1000:4de5",
+          "text": "xor ax,ax",
+          "what": "clamped to zero, not to the armour term"
+        },
+        {
+          "addr": "1000:4def",
+          "text": "sub [0x3962],ax",
+          "what": "enemy hp"
+        }
+      ],
+      "damage_literal": {
+        "cs_offset": "0x3681",
+        "text": "^2Врага отпинали на #з. У него осталось #"
+      },
+      "attrition": {
+        "argument": {
+          "addr": "1000:4e12",
+          "text": "mov ax,0x2"
+        },
+        "test": {
+          "addr": "1000:4e1b",
+          "text": "or ax,ax"
+        },
+        "branch": {
+          "addr": "1000:4e1d",
+          "text": "jnz 0x4e43"
+        },
+        "inc": {
+          "addr": "1000:4e1f",
+          "text": "inc [0x3c80]"
+        }
+      },
+      "beaten": {
+        "test": {
+          "addr": "1000:4e43",
+          "text": "cmp word [0x3c80],0x7"
+        },
+        "branch": {
+          "addr": "1000:4e48",
+          "text": "jnz 0x4e68"
+        },
+        "reset": [
+          {
+            "addr": "1000:4e4a",
+            "text": "xor ax,ax"
+          },
+          {
+            "addr": "1000:4e4c",
+            "text": "mov [0x3c80],ax"
+          }
+        ],
+        "literal": {
+          "cs_offset": "0x36bd",
+          "text": "^2Твою подмогу отпинали."
+        }
+      },
+      "cred_cost": {
+        "expr": [
+          {
+            "addr": "1000:4e68",
+            "text": "mov al,[0x3692]"
+          },
+          {
+            "addr": "1000:4e6f",
+            "text": "shl ax,1"
+          },
+          {
+            "addr": "1000:4e73",
+            "text": "add ax,si"
+          }
+        ],
+        "sub": {
+          "addr": "1000:4e75",
+          "text": "sub [0x38cb],ax",
+          "what": "district*5 per prompt"
+        },
+        "test": {
+          "addr": "1000:4e79",
+          "text": "cmp word [0x38cb],0x0"
+        },
+        "branch": {
+          "addr": "1000:4e7e",
+          "text": "jnle 0x4e9e"
+        },
+        "reset": [
+          {
+            "addr": "1000:4e80",
+            "text": "xor ax,ax"
+          },
+          {
+            "addr": "1000:4e82",
+            "text": "mov [0x3c80],ax"
+          }
+        ],
+        "literal": {
+          "cs_offset": "0x36d6",
+          "text": "^4Подмоге надоело столько парится из-за мало понтового мудака"
+        }
+      }
+    },
+    "unreachable": {
+      "literal": {
+        "cs_offset": "0x36ab",
+        "text": "^2Подошли пацаны."
+      },
+      "literal_push": {
+        "addr": "1000:4e2a",
+        "text": "mov di,0x36ab"
+      },
+      "why": "the block is entered only when [0x3c80] >= 3 (1000:4d9d / 1000:4da2), 1000:4e1f raises it to 4 or more, and 1000:4e23 then tests for exactly 3.",
+      "dominating_guard": {
+        "addr": "1000:4d9d",
+        "text": "cmp word [0x3c80],0x3"
+      },
+      "dominating_branch": {
+        "addr": "1000:4da2",
+        "text": "jnl 0x4da7"
+      },
+      "test": {
+        "addr": "1000:4e23",
+        "text": "cmp word [0x3c80],0x3"
+      },
+      "branch": {
+        "addr": "1000:4e28",
+        "text": "jnz 0x4e43"
+      },
+      "no_entry_range": [
+        "1000:4e12",
+        "1000:4e43"
+      ]
+    }
+  },
+  "pistol": {
+    "no_pistol": {
+      "guard": {
+        "addr": "1000:4eb2",
+        "text": "cmp byte [0x394d],0x0"
+      },
+      "branch": {
+        "addr": "1000:4eb7",
+        "text": "jnz 0x4ebc"
+      },
+      "skip": {
+        "addr": "1000:4eb9",
+        "text": "jmp 0x4f82"
+      },
+      "what": "no message at all"
+    },
+    "allowed_here": {
+      "guard": {
+        "addr": "1000:4ebc",
+        "text": "cmp byte [0x3693],0x0"
+      },
+      "branch": {
+        "addr": "1000:4ec1",
+        "text": "jnz 0x4ee6"
+      }
+    },
+    "silencer": {
+      "guard": {
+        "addr": "1000:4ec3",
+        "text": "cmp byte [0x394e],0x0"
+      },
+      "branch": {
+        "addr": "1000:4ec8",
+        "text": "jnz 0x4ee6"
+      },
+      "literal": {
+        "cs_offset": "0x3716",
+        "text": "^6Тельзя тут стрелять! Менты накроют!"
+      }
+    },
+    "ammo": {
+      "guard": {
+        "addr": "1000:4ee6",
+        "text": "cmp word [0x394f],0x0"
+      },
+      "branch": {
+        "addr": "1000:4eeb",
+        "text": "jle 0x4f69"
+      },
+      "spend": {
+        "addr": "1000:4eed",
+        "text": "dec [0x394f]"
+      },
+      "empty_literal": {
+        "cs_offset": "0x37a5",
+        "text": "^6Чё за батва? Блин патроны кончились!"
+      }
+    },
+    "hit_test": {
+      "argument": {
+        "addr": "1000:4ef1",
+        "text": "mov ax,0x32"
+      },
+      "roll_zero_extend": {
+        "addr": "1000:4efa",
+        "text": "xor dx,dx"
+      },
+      "agility": {
+        "addr": "1000:4f00",
+        "text": "mov ax,[0x38a0]"
+      },
+      "agility_sign_extend": {
+        "addr": "1000:4f03",
+        "text": "cwd"
+      },
+      "compare": [
+        {
+          "addr": "1000:4f04",
+          "text": "cmp dx,bx"
+        },
+        {
+          "addr": "1000:4f06",
+          "text": "jnle 0x4f0e"
+        },
+        {
+          "addr": "1000:4f08",
+          "text": "jl 0x4f4e"
+        },
+        {
+          "addr": "1000:4f0a",
+          "text": "cmp ax,cx"
+        },
+        {
+          "addr": "1000:4f0c",
+          "text": "jbe 0x4f4e"
+        }
+      ],
+      "rule": "hit iff [0x38a0] > Random(50)",
+      "miss_literal": {
+        "cs_offset": "0x3789",
+        "text": "^2Это был хреновый выстрел."
+      }
+    },
+    "damage": {
+      "argument": {
+        "addr": "1000:4f14",
+        "text": "mov ax,0xa"
+      },
+      "offset": {
+        "addr": "1000:4f1d",
+        "text": "add ax,0x14"
+      },
+      "apply": {
+        "addr": "1000:4f28",
+        "text": "sub [0x3962],ax"
+      },
+      "no_armour_term": true,
+      "literal": {
+        "cs_offset": "0x373c",
+        "text": "^2Ты выстрелил и ранил врага на #з. У него осталось #з., осталось патронов #"
+      }
+    }
+  },
+  "death_and_hospital": {
+    "range": [
+      "1000:4f82",
+      "1000:507b"
+    ],
+    "test": {
+      "addr": "1000:4f82",
+      "text": "cmp word [0x38ac],0x0"
+    },
+    "branch": {
+      "addr": "1000:4f87",
+      "text": "jle 0x4f8c"
+    },
+    "runs_before_victory": {
+      "addr": "1000:507b",
+      "text": "cmp word [0x3962],0x0"
+    },
+    "draws": [],
+    "rector": {
+      "guard": {
+        "addr": "1000:4f8c",
+        "text": "cmp byte [0x3c83],0x1"
+      },
+      "branch": {
+        "addr": "1000:4f91",
+        "text": "jnz 0x4fba"
+      },
+      "literal": {
+        "cs_offset": "0x37cc",
+        "text": "^4Ты сдох. Ректор тебя замочил. Ты так и не доказал свою крутизну."
+      },
+      "readkey": {
+        "addr": "1000:4fac",
+        "text": "call 0xf16:0x31a"
+      },
+      "call": {
+        "addr": "1000:4fb4",
+        "text": "call 0x74b"
+      }
+    },
+    "hospital": {
+      "den_gate": {
+        "addr": "1000:4fba",
+        "text": "cmp byte [0x3696],0x1",
+        "branch": {
+          "addr": "1000:4fbf",
+          "text": "jz 0x4fc4"
+        }
+      },
+      "cred_gate": {
+        "addr": "1000:4fc4",
+        "text": "cmp word [0x38cb],0xa",
+        "branch": {
+          "addr": "1000:4fc9",
+          "text": "jnl 0x4fce"
+        }
+      },
+      "literal": {
+        "cs_offset": "0x380f",
+        "text": "^1Тебе повезло знакомые пацаны отвезли тебя в больницу а то бы ты сдох."
+      },
+      "cred_cost": {
+        "addr": "1000:4fe7",
+        "text": "sub word [0x38cb],0xa"
+      },
+      "bill": {
+        "to_real": {
+          "addr": "1000:4ff0",
+          "text": "call 0xf78:0x1125"
+        },
+        "divisor_exponent": {
+          "addr": "1000:4ff5",
+          "text": "mov cx,0x83"
+        },
+        "divisor_mantissa": {
+          "addr": "1000:4ffa",
+          "text": "mov di,0x2000"
+        },
+        "divide": {
+          "addr": "1000:4ffd",
+          "text": "call 0xf78:0x1117"
+        },
+        "multiplier_exponent": {
+          "addr": "1000:5002",
+          "text": "mov cx,0x82"
+        },
+        "multiplier_mantissa": {
+          "addr": "1000:5007",
+          "text": "mov di,0x4000"
+        },
+        "multiply": {
+          "addr": "1000:500a",
+          "text": "call 0xf78:0x1111"
+        },
+        "round": {
+          "addr": "1000:500f",
+          "text": "call 0xf78:0x1131"
+        },
+        "debit": {
+          "addr": "1000:5014",
+          "text": "sub [0x38c7],ax"
+        },
+        "ratio": "0.6",
+        "ratio_is_bias_free": true,
+        "ratio_note": "the exponents differ by exactly one step, so 2^(e2-e1) = 1/2 whatever the bias; under the mantissa layout docs/re/rtl.md already uses the significands are 1.25 and 1.5, so K2/K1 = 0.6 for every bias.  The DECIMAL value of either constant alone still needs the bias and is not established.",
+        "decimal_value_of_either_constant": null
+      },
+      "heal": [
+        {
+          "addr": "1000:5018",
+          "text": "mov ax,[0x38ae]"
+        },
+        {
+          "addr": "1000:501b",
+          "text": "mov [0x38ac],ax"
+        }
+      ],
+      "limbs": {
+        "jaw": {
+          "addr": "1000:501e",
+          "text": "cmp byte [0x38b0],0x1",
+          "branch": {
+            "addr": "1000:5023",
+            "text": "jz 0x502c"
+          }
+        },
+        "leg": {
+          "addr": "1000:5025",
+          "text": "cmp byte [0x38b1],0x1",
+          "branch": {
+            "addr": "1000:502a",
+            "text": "jnz 0x503b"
+          }
+        },
+        "surcharge": {
+          "addr": "1000:502c",
+          "text": "sub word [0x38c7],0x7"
+        },
+        "clear": [
+          {
+            "addr": "1000:5031",
+            "text": "mov byte [0x38b0],0x0"
+          },
+          {
+            "addr": "1000:5036",
+            "text": "mov byte [0x38b1],0x0"
+          }
+        ]
+      },
+      "negative_purse": {
+        "test": {
+          "addr": "1000:503b",
+          "text": "cmp word [0x38c7],0x0"
+        },
+        "branch": {
+          "addr": "1000:5040",
+          "text": "jnl 0x5051"
+        },
+        "steps": [
+          {
+            "addr": "1000:5042",
+            "text": "mov ax,[0x38cb]"
+          },
+          {
+            "addr": "1000:5045",
+            "text": "add ax,[0x38c7]"
+          },
+          {
+            "addr": "1000:5049",
+            "text": "mov [0x38cb],ax"
+          },
+          {
+            "addr": "1000:504c",
+            "text": "xor ax,ax"
+          },
+          {
+            "addr": "1000:504e",
+            "text": "mov [0x38c7],ax"
+          }
+        ],
+        "finding": "cred := cred + purse, then purse := 0.  The `xor ax,ax` at 1000:504c is what makes the second store a zero rather than a second copy of the cred; a listing that elides it invents a windfall."
+      }
+    },
+    "plain_death": {
+      "literal": {
+        "cs_offset": "0x3857",
+        "text": "^4Ты сдох."
+      },
+      "literal_push": {
+        "addr": "1000:5053",
+        "text": "mov di,0x3857"
+      },
+      "readkey": {
+        "addr": "1000:506c",
+        "text": "call 0xf16:0x31a"
+      },
+      "call": {
+        "addr": "1000:5074",
+        "text": "call 0x74b"
+      }
+    },
+    "converge": {
+      "addr": "1000:5077",
+      "text": "mov byte [bp-0x1],0x1"
+    }
+  },
+  "random_sites": [
+    {
+      "addr": "1000:4db7",
+      "text": "call 0xf78:0x114b",
+      "n": "district * 4",
+      "n_from": "20ae:3692",
+      "n_push": {
+        "addr": "1000:4db6",
+        "text": "push ax"
+      },
+      "controls": "the backup's damage roll, district*3 + r"
+    },
+    {
+      "addr": "1000:4e16",
+      "text": "call 0xf78:0x114b",
+      "n": "2",
+      "n_push": {
+        "addr": "1000:4e15",
+        "text": "push ax"
+      },
+      "controls": "the backup's attrition tick; 0 advances 20ae:3c80"
+    },
+    {
+      "addr": "1000:4ef5",
+      "text": "call 0xf78:0x114b",
+      "n": "0x32",
+      "n_push": {
+        "addr": "1000:4ef4",
+        "text": "push ax"
+      },
+      "controls": "the pistol's hit test, agility > r"
+    },
+    {
+      "addr": "1000:4f18",
+      "text": "call 0xf78:0x114b",
+      "n": "0xa",
+      "n_push": {
+        "addr": "1000:4f17",
+        "text": "push ax"
+      },
+      "controls": "the pistol's damage, r + 0x14"
+    }
+  ],
+  "ds_flags": {
+    "20ae:3c83": {
+      "name": "rector showdown armed",
+      "confirmed": true,
+      "reference_count": 6,
+      "writes": [
+        {
+          "addr": "1000:7364",
+          "text": "mov byte [0x3c83],0x1",
+          "in_function": "FUN_1000_6a0d",
+          "literal": {
+            "cs_offset": "0x6925",
+            "text": "^1Пора наконец отомстить ректору..."
+          }
+        },
+        {
+          "addr": "1000:ae13",
+          "text": "mov byte [0x3c83],0x1",
+          "in_function": "entry",
+          "literal": {
+            "cs_offset": "0x847e",
+            "text": "^1А вот и он..."
+          }
+        }
+      ],
+      "reads": [
+        {
+          "addr": "1000:ae18",
+          "text": "cmp byte [0x3c83],0x1",
+          "what": "tests the value stored eight bytes earlier, so 1000:ae1d is never taken"
+        },
+        {
+          "addr": "1000:411d",
+          "text": "cmp byte [0x3c83],0x0",
+          "what": "the spectator taunts run only while it is clear"
+        },
+        {
+          "addr": "1000:48eb",
+          "text": "cmp byte [0x3c83],0x1",
+          "what": "the flee refusal"
+        },
+        {
+          "addr": "1000:4f8c",
+          "text": "cmp byte [0x3c83],0x1",
+          "what": "the rector death message"
+        }
+      ],
+      "rector_fight": [
+        {
+          "addr": "1000:ae2d",
+          "text": "call 0x3d11",
+          "opponent_kind": 3
+        },
+        {
+          "addr": "1000:ae39",
+          "text": "call 0x3d11",
+          "opponent_kind": 4
+        }
+      ],
+      "kind_4_is_the_rector": {
+        "addr": "1000:5085",
+        "text": "cmp byte [bp+0x4],0x4"
+      },
+      "never_cleared": true
+    }
+  },
+  "live_probe": {
+    "harness": "tools/rngtrace/verbprobe.py",
+    "target": "1000:1348",
+    "seed_hex": "0x12345678",
+    "class": 3,
+    "district": "1",
+    "marker_stream": "PPPCTCCTCCCP",
+    "runs": 2,
+    "runs_agree": true,
+    "per_verb": [
+      {
+        "prompt": "combat",
+        "line": "sv",
+        "prompts": 2,
+        "entries": 2,
+        "reaches": true
+      },
+      {
+        "prompt": "combat",
+        "line": "s",
+        "prompts": 1,
+        "entries": 0,
+        "reaches": false
+      },
+      {
+        "prompt": "combat",
+        "line": "kos",
+        "prompts": 1,
+        "entries": 0,
+        "reaches": false
+      },
+      {
+        "prompt": "combat",
+        "line": "k",
+        "prompts": 1,
+        "entries": 0,
+        "reaches": false
+      },
+      {
+        "prompt": "combat",
+        "line": "run",
+        "prompts": 1,
+        "entries": 0,
+        "reaches": false
+      },
+      {
+        "prompt": "street",
+        "line": "s",
+        "prompts": 1,
+        "entries": 0,
+        "reaches": false
+      },
+      {
+        "prompt": "street",
+        "line": "w",
+        "prompts": 2,
+        "entries": 0,
+        "reaches": false
+      }
+    ]
+  },
+  "branch_partition": {
+    "range": [
+      "1000:4400",
+      "1000:5080"
+    ],
+    "total": 100,
+    "cited": [
+      "1000:4445",
+      "1000:48cb",
+      "1000:48d2",
+      "1000:48e6",
+      "1000:48f0",
+      "1000:4913",
+      "1000:4936",
+      "1000:4994",
+      "1000:49c4",
+      "1000:49e8",
+      "1000:4a11",
+      "1000:4a4e",
+      "1000:4a73",
+      "1000:4a8c",
+      "1000:4aa3",
+      "1000:4ad3",
+      "1000:4b12",
+      "1000:4b1c",
+      "1000:4c33",
+      "1000:4c47",
+      "1000:4c5b",
+      "1000:4c69",
+      "1000:4c7a",
+      "1000:4c85",
+      "1000:4caf",
+      "1000:4cb9",
+      "1000:4ccc",
+      "1000:4cd3",
+      "1000:4ce0",
+      "1000:4d08",
+      "1000:4d43",
+      "1000:4d4a",
+      "1000:4d71",
+      "1000:4d78",
+      "1000:4d98",
+      "1000:4da2",
+      "1000:4de3",
+      "1000:4e1d",
+      "1000:4e28",
+      "1000:4e48",
+      "1000:4e7e",
+      "1000:4ead",
+      "1000:4eb7",
+      "1000:4ec1",
+      "1000:4ec8",
+      "1000:4eeb",
+      "1000:4f06",
+      "1000:4f08",
+      "1000:4f0c",
+      "1000:4f87",
+      "1000:4f91",
+      "1000:4fbf",
+      "1000:4fc9",
+      "1000:5023",
+      "1000:502a",
+      "1000:5040"
+    ],
+    "uncited": [
+      "1000:447a",
+      "1000:4484",
+      "1000:44d0",
+      "1000:44d2",
+      "1000:44d6",
+      "1000:44eb",
+      "1000:450b",
+      "1000:452b",
+      "1000:4554",
+      "1000:4589",
+      "1000:458b",
+      "1000:458f",
+      "1000:459c",
+      "1000:45a3",
+      "1000:45ca",
+      "1000:462e",
+      "1000:4637",
+      "1000:4657",
+      "1000:465e",
+      "1000:467a",
+      "1000:469d",
+      "1000:46a7",
+      "1000:46f3",
+      "1000:46f5",
+      "1000:46f9",
+      "1000:470e",
+      "1000:472e",
+      "1000:474e",
+      "1000:4777",
+      "1000:47ac",
+      "1000:47ae",
+      "1000:47b5",
+      "1000:47c5",
+      "1000:47cc",
+      "1000:47d3",
+      "1000:47f8",
+      "1000:4805",
+      "1000:4847",
+      "1000:48ab",
+      "1000:49d5",
+      "1000:4a3c",
+      "1000:4b3f",
+      "1000:4b49",
+      "1000:4b6f"
+    ]
+  }
+}
