@@ -21,9 +21,16 @@ The seven discovery flags are seven contiguous bytes at `20ae:3694..369a`
 `c6 06 [94-9a] 36 imm8` (`mov byte [0x36??],imm8`) yields **31** stores:
 **14 clears** and **17 set-to-1**. The clears are the two block resets —
 `1000:6d3b`..`1000:6d6e` (the `places.sav` load-failure arm) and
-`1000:ab96`..`1000:abc9` (`reset_for_new_district`). All seventeen setters are
+`1000:ab96`..`1000:abc9` (`reset_for_new_district`). All seventeen
+**immediate** setters (`mov byte [0x36??],1`, this exact encoding) are
 below; **established from flow** (the scan is byte-exact and the encoding is
-fixed-length, so it cannot miss a store of this form).
+fixed-length, so it cannot miss a store of this form). A separate, non-scanned
+form also sets all seven flags: the `places.sav` reader at
+`1000:6ca2`..`1000:6d0e`, seven `call 0f78:081e` (`rtl_file_read`, INT 21h
+AH=3Fh per `docs/re/rtl.md:545`) with `DS:0x369X` pushed, one per flag,
+restoring them from the save file. It is inventoried below, in
+"`PLACES.SAV`'s byte order — settled" (`gaps.md:465`), not in this scan —
+`rtl_file_read` writes through a pointer, not an immediate.
 
 An earlier revision of this section claimed the same scan "finds every store to
 them", then listed twelve of the seventeen and said "**Two** further stores"
@@ -77,19 +84,23 @@ comment in `src/game.rs` for why, and "The district-advance autosave is
 mapped but not wired" below for the architectural reason neither this arm
 nor its calls can run "every turn" the way the original does.
 
-**All seventeen setters are now in the port.** Market and Vet from character
-creation and from the wander preamble's draws 6 and 5; Club from `girl`, from
-the class-3 bonus and from draw 7; Gym from draw 8 and from the den's `a`
-reveal; Girl from the wander bucket and the class-3 bonus; Den from the
-class-5 bonus, the flee penalty, the post-kill block and the chapter-5
+**All seventeen immediate setters are now in the port.** Market and Vet from
+character creation and from the wander preamble's draws 6 and 5; Club from
+`girl`, from the class-3 bonus and from draw 7; Gym from draw 8 and from the
+den's `a` reveal; Girl from the wander bucket and the class-3 bonus; Den from
+the class-5 bonus, the flee penalty, the post-kill block and the chapter-5
 endgame arm; Dealers from the class-6 bonus and from the den's `a` reveal.
-**Zero** of the seventeen setters remain unimplemented: the table has no `no`
-rows left. 17 `yes` + 0 `no` = 17. (An earlier revision said "Five" while
-naming the same five addresses this correction closes; before that, an
-earlier one still said "Six" naming the same five; before that, the earliest
-recorded revision — the intro paragraph above — said "Two" while itself
-naming five. The count and the inventory are stated together each time
-specifically so the next reader does not have to trust either alone.)
+**Zero** of the seventeen immediate setters remain unimplemented: the table
+has no `no` rows left. 17 `yes` + 0 `no` = 17. (An earlier revision said
+"Five" while naming the same five addresses this correction closes; before
+that, an earlier one still said "Six" naming the same five; before that, the
+earliest recorded revision — the intro paragraph above — said "Two" while
+itself naming five. The count and the inventory are stated together each
+time specifically so the next reader does not have to trust either alone.)
+This does not cover the `places.sav` reader's seven `rtl_file_read` restores
+(above) — a separate, already-ported path, inventoried in "`PLACES.SAV`'s
+byte order — settled" (`gaps.md:465`), not a store this table's scan could
+see.
 
 ### Character creation grants Vet and Market — `1000:6dbe`
 
@@ -528,7 +539,10 @@ save-slot menu, the district-advance check and the whole main loop inside one
 procedure, so its `ReadKey` at `1000:6b56` and its `ReadLn` at `1000:ac31`
 are both available where they are needed. This port's menu reads a **line**
 and takes its first character, because nothing in it does raw-key input at
-all — a port decision, recorded in `crate::persist::choose_slot`.
+all — a port decision, recorded in `crate::persist::choose_slot`. A second
+site substitutes the same way: `Game::enter_district_5`'s `1000:addc` call
+to `0f16:031a` (`ReadKey`) is ported as a discarded line read, matching this
+one's "one keystroke, value unused" shape.
 
 ## ~~No typed save verb, and no "saved" message~~ — half closed, half REFUTED
 
