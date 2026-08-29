@@ -588,11 +588,7 @@ fn assert_final_state(label: &str, run: &Run, g: &Game) {
         f.flag_market_3694,
         "{label}: 20ae:3694"
     );
-    assert_eq!(
-        found(Location::Dealers),
-        f.flag_3695,
-        "{label}: 20ae:3695"
-    );
+    assert_eq!(found(Location::Dealers), f.flag_3695, "{label}: 20ae:3695");
     assert_eq!(found(Location::Den), f.flag_den_3696, "{label}: 20ae:3696");
     assert_eq!(
         found(Location::Girl),

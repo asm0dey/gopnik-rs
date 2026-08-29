@@ -242,8 +242,8 @@ fn game_for(run: &Run) -> Game {
         // beer and 65 Хлам while this reconstruction started it at zero. Same
         // record arithmetic as the money above (`.SAV off = 0x200 + (addr -
         // 0x389c)`), on addresses `docs/re/gaps.md:283` already names.
-        beer_dl: u16at(0x227),  // 20ae:38c3
-        junk: u16at(0x22d),     // 20ae:38c9
+        beer_dl: u16at(0x227), // 20ae:38c3
+        junk: u16at(0x22d),    // 20ae:38c9
         ..Fighter::default()
     };
     // `array[1..40] of string[2]` at `.SAV 0x236` (`20ae:38d2`, reached
@@ -484,11 +484,7 @@ fn assert_final_state(label: &str, run: &Run, g: &Game) {
         f.flag_market_3694,
         "{label}: 20ae:3694"
     );
-    assert_eq!(
-        found(Location::Dealers),
-        f.flag_3695,
-        "{label}: 20ae:3695"
-    );
+    assert_eq!(found(Location::Dealers), f.flag_3695, "{label}: 20ae:3695");
     assert_eq!(found(Location::Den), f.flag_den_3696, "{label}: 20ae:3696");
     assert_eq!(
         found(Location::Girl),
@@ -938,12 +934,7 @@ fn assert_state_sample(label: &str, s: &StateSample, g: &Game) {
         "{}",
         at("20ae:3694")
     );
-    assert_eq!(
-        found(Location::Dealers),
-        s.flag_3695,
-        "{}",
-        at("20ae:3695")
-    );
+    assert_eq!(found(Location::Dealers), s.flag_3695, "{}", at("20ae:3695"));
     assert_eq!(found(Location::Den), s.flag_den_3696, "{}", at("20ae:3696"));
     assert_eq!(
         found(Location::Girl),
@@ -993,7 +984,12 @@ fn assert_state_sample(label: &str, s: &StateSample, g: &Game) {
         "{}",
         at("20ae:38c9 (Хлам)")
     );
-    assert_eq!(g.rng.state(), s.randseed_367e, "{}", at("20ae:367e RandSeed"));
+    assert_eq!(
+        g.rng.state(),
+        s.randseed_367e,
+        "{}",
+        at("20ae:367e RandSeed")
+    );
 }
 
 /// Drive one run turn by turn, asserting the capture's sample after each.
@@ -1120,7 +1116,11 @@ fn run_e_per_turn_state_matches() {
 #[test]
 fn the_per_turn_samples_are_not_all_the_same_state() {
     let t = state_trace();
-    assert_eq!(t.runs.len(), 5, "data/state_trace.json must hold all five runs");
+    assert_eq!(
+        t.runs.len(),
+        5,
+        "data/state_trace.json must hold all five runs"
+    );
     let mut money_moved_in = Vec::new();
     for r in &t.runs {
         assert!(
