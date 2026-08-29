@@ -18,6 +18,18 @@ __pycache__/
 # Agent tool state, per-machine. The tessl manifest, AGENTS.md and the vendored
 # .tessl/ tree ARE tracked -- CLAUDE.md's `@AGENTS.md` include chains through
 # them, so a clone that lacked them would silently load nothing.
-/.claude/
+#
+# .claude/ is *mostly* per-machine, but CLAUDE.md's `# Tools` section MUST-uses
+# the context-explorer agent and context-search skill as the first
+# code-discovery step -- those have to be tracked or a fresh clone has an
+# instruction file in force that points at nothing. settings.json registers
+# the jbcontext index hooks that section depends on, so it is tracked too.
+# Only settings.local.json (machine-local permissions) stays ignored.
+# Un-ignoring a path under an ignored directory requires re-including every
+# ancestor directory explicitly -- a bare `!` on the leaf is silently a no-op.
+/.claude/*
+!/.claude/agents/
+!/.claude/skills/
+!/.claude/settings.json
 /.agents/
 /.mcp.json
