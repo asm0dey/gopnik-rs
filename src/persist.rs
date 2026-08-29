@@ -28,18 +28,20 @@
 //!   -- the district *after* the increment, which is why the shipped corpus
 //!   is `SAVE_R2`..`SAVE_R5` and has no `SAVE_R1` -- then prints
 //!   `^1Сохранено в save_r` + the digit + `.sav` (files `0x9C01`, `0x9BFC`).
-//!   **Not wired up in this port**: its `ReadLn` sits at the top of the main
-//!   loop in the original, while this port advances the district inside the
-//!   post-fight block, which has no input iterator. Recorded in
-//!   `docs/re/gaps.md`.
+//!   **Wired up by Task 21**, as `Game::district_advance`, called at the top
+//!   of `Game::run`'s loop where the original's own `1000:ab75` sits: the
+//!   `1000:ee01 jmp 0xab75` back edge closes each turn ahead of the street
+//!   prompt at `1000:ae3c`/`1000:ae55`, so the block runs before the turn's
+//!   input, which is where the port now runs it too.
 //!
-//!   That leaves the port **coherent, not half-implemented**: the increment
-//!   and the discovery-flag reset are faithful (`Game::run_combat` gets
-//!   both gates right), and the two effects that are missing are inert today
-//!   -- the prompt has nothing to prompt for, and the ban countdowns it
-//!   clears are never set. The practical consequence is that **this port can
-//!   only ever produce slot 0**, the mage's. Slots 2..5 exist for the shipped
-//!   corpus and for records `tools/savegen.py` writes.
+//!   `write_save_as` is the whole of the write: `1000:ab75`..`1000:ad12`
+//!   contains exactly one `Rewrite` (`1000:acb9`, record size `0x2b6` = 694),
+//!   one `BlockWrite` (`1000:acc8`, from `DS:369c`) and one `Close`
+//!   (`1000:acd5`) -- no `places.sav` pass, unlike the mage's
+//!   `1000:766f`..`1000:7724`. **So this port now produces slots 2..5 in
+//!   ordinary play**, not only slot 0; the earlier note that it "can only
+//!   ever produce slot 0" is no longer true. `tools/savegen.py` still writes
+//!   arbitrary records for tests.
 //!
 //! `docs/re/gaps.md` used to say "there is no 'saved OK' / 'save failed'
 //! string anywhere in `data/strings.json`, so a wrapper could only print

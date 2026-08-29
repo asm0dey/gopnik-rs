@@ -343,10 +343,18 @@ round trip is an offset check rather than a copy — verified by breaking one
 offset and watching it fail. The port's fresh 694-byte record is
 byte-identical to the original's own.
 
-**Still open, and it is one thing:** the district-advance autosave
-(`1000:ab75`..`1000:ad12`) is mapped but not wired, because this port
-advances the district inside the post-fight block rather than at the top of
-the main loop, and its prompt needs a `ReadLn` there. See `docs/re/gaps.md`.
+**Closed by Task 21:** the district-advance autosave
+(`1000:ab75`..`1000:ad12`) is wired. `Game::district_advance` runs at the top
+of `Game::run`'s loop — the original's own position, ahead of the street
+prompt at `1000:ae3c`/`1000:ae55` and reached by the `1000:ee01` back edge —
+with both gates, the increment, the flag resets, both ban-countdown clears,
+the two lines, the `\` prompt, the `y` compare and the 694-byte write into
+`save_r<district>.sav`. It also fixed a divergence the old placement hid: the
+post-fight `while` loop promoted several districts inside one fight, where
+`1000:ab75`..`1000:ad12` has no back edge and gains at most one per turn. See
+`docs/re/gaps.md`, "The district-advance autosave — wired (Task 21)", for
+what is still open there (the class-conditional flag resets, `1000:ad12`'s
+announcement text, and the chapter-5 arm's per-turn repeat).
 
 ### What Task 14 built, and what it is for
 

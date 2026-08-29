@@ -425,6 +425,104 @@ fn the_mage_writes_both_files_when_paid() {
     );
 }
 
+/// The district-advance autosave, `1000:ac5e`..`1000:ad12`, driven through
+/// `Game::district_advance` -- the port's copy of the whole `1000:ab75` block.
+///
+/// **The filename digit is the district AFTER `1000:ab92`'s increment**, which
+/// is why the shipped corpus is `SAVE_R2`..`SAVE_R5` with no `SAVE_R1`. The
+/// check below is not "some file appeared": it names the file the pre-increment
+/// district would have produced and requires it to be absent, so an off-by-one
+/// in either direction is red.
+#[test]
+fn the_district_autosave_writes_the_slot_of_the_district_it_just_reached() {
+    for (from, to) in [(1u8, 2u8), (2, 3), (3, 4)] {
+        let dir = scratch(&format!("district-autosave-{from}"));
+        let mut g = fresh_game();
+        g.save_dir = dir.clone();
+        g.district = from;
+        g.player.level = 40; // clears 1000:ab7f for every district here
+        g.district_advance(&mut ["y".to_string()].into_iter().map(Ok))
+            .unwrap();
+        assert_eq!(g.district, to, "1000:ab92");
+
+        let written = dir.join(persist::slot_filename(
+            char::from_digit(u32::from(to), 10).unwrap(),
+        ));
+        assert_eq!(
+            std::fs::read(&written).unwrap().len(),
+            SIZE,
+            "1000:acb9 Rewrite(f, 694) into {}",
+            written.display()
+        );
+        let stale = dir.join(persist::slot_filename(
+            char::from_digit(u32::from(from), 10).unwrap(),
+        ));
+        assert!(
+            !stale.exists(),
+            "the digit is Str([0x3692]) read AFTER 1000:ab92, not before"
+        );
+        // 1000:acc8's BlockWrite is followed by 1000:acd5 Close and nothing
+        // else: the mage's places.sav pass (1000:766f..1000:7724) is not in
+        // this block.
+        assert!(
+            !dir.join(persist::PLACES_SAVE).exists(),
+            "1000:ab75..1000:ad12 has exactly one Rewrite and one BlockWrite"
+        );
+    }
+}
+
+/// `1000:ac59`'s `jz` is the only way to the writer: any other answer jumps
+/// to `1000:ad12` and the district still advances.
+#[test]
+fn the_district_autosave_writes_nothing_when_the_answer_is_not_y() {
+    for answer in ["n", "", "yes", "да"] {
+        let dir = scratch(&format!("district-autosave-decline-{}", answer.len()));
+        let mut g = fresh_game();
+        g.save_dir = dir.clone();
+        g.district = 2;
+        g.player.level = 40;
+        g.district_advance(&mut [answer.to_string()].into_iter().map(Ok))
+            .unwrap();
+        assert_eq!(g.district, 3, "the increment is upstream of the prompt");
+        assert!(
+            persist::present_slots(&dir).is_empty(),
+            "answer {answer:?} must not reach 1000:acb9"
+        );
+    }
+    // ...and the compare itself is case-folded at 1000:ac45, so `Y` writes.
+    let dir = scratch("district-autosave-uppercase-y");
+    let mut g = fresh_game();
+    g.save_dir = dir.clone();
+    g.district = 2;
+    g.player.level = 40;
+    g.district_advance(&mut ["Y".to_string()].into_iter().map(Ok))
+        .unwrap();
+    assert_eq!(persist::present_slots(&dir), vec!['3'], "0eed:0216");
+}
+
+/// The record the autosave writes is the same record the loader reads back,
+/// and the district it lands in comes from the DIGIT (`1000:6bf9`), not from
+/// anything inside the 694 bytes.
+#[test]
+fn a_district_autosave_reloads_as_the_district_it_was_named_for() {
+    let dir = scratch("district-autosave-reload");
+    let mut g = fresh_game();
+    g.save_dir = dir.clone();
+    g.district = 3;
+    g.player.level = 40;
+    g.player.money = 1234;
+    g.district_advance(&mut ["y".to_string()].into_iter().map(Ok))
+        .unwrap();
+    assert_eq!(g.district, 4);
+
+    let back = persist::load_slot(&dir, '4', 1).unwrap().expect("loads");
+    assert_eq!(back.player.money, 1234);
+    assert_eq!(
+        back.district, 4,
+        "1000:6bf9 takes the district from the key"
+    );
+}
+
 /// ...and the unpaid arms write nothing at all.
 #[test]
 fn the_mage_writes_nothing_when_declined_or_broke() {

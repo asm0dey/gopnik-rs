@@ -54,11 +54,12 @@
 //! (`0x9bcd`'s prompt, `1000:acc8`'s write). Neither is a typed verb.
 //! `crate::persist` holds both, with the disassembly.
 //!
-//! [`Game::mage`] reaches the first of them. The second is **not wired up**:
-//! its `ReadLn` sits at the top of the original's main loop
-//! (`1000:ab75`..`1000:ad12`), while this port advances the district inside
-//! the post-fight block, which has no input iterator -- see
-//! `docs/re/gaps.md`.
+//! [`Game::mage`] reaches the first of them and
+//! [`Game::district_advance`] the second: its `ReadLn` sits at the top of
+//! the original's main loop (`1000:ab75`..`1000:ad12`), which is where
+//! [`Game::run`] runs it too. Task 21 moved the promotion there out of the
+//! post-fight block; see `docs/re/gaps.md`, "The district-advance autosave
+//! — wired (Task 21)".
 
 use crate::combat::{blows_per_round, resolve_blow_nth, Break, Swing};
 use crate::combat_dispatch::{self, Backup, Called, Shot, Status};
@@ -383,8 +384,9 @@ pub struct Game {
     /// **Both writers are DIFFERENT original addresses, not the same store
     /// reached twice.** `1000:ae13` is the per-turn one, inside the chapter-5
     /// endgame arm at the top of the main loop -- ported as
-    /// [`Game::enter_district_5`], reached the turn `self.district` first
-    /// becomes 5 during play. `1000:7364` is the entry-time one, inside
+    /// [`Game::enter_district_5`], called from [`Game::district_advance`] on
+    /// the turn `self.district` first becomes 5 during play.
+    /// `1000:7364` is the entry-time one, inside
     /// `FUN_1000_6a0d` (the character-setup procedure, called exactly once,
     /// at `1000:ab72`, before the main loop's first iteration) -- it reads
     /// `[0x3692]`, the DISTRICT, at `1000:7262`/`1000:7347`, **not**
@@ -633,7 +635,7 @@ impl Game {
     /// prints the line, exactly once (the arm falls straight through to
     /// `1000:7369`, never looping). This is the "settling address" for the
     /// loaded-save divergence `docs/re/gaps.md`'s "The district-advance
-    /// autosave is mapped but not wired" records: not a main-loop rewrite,
+    /// autosave — wired (Task 21)" records: not a main-loop rewrite,
     /// because `apply_class_bonus` is already the port's home for
     /// everything else `FUN_1000_6a0d` re-applies on load
     /// (`src/persist.rs`'s `from_save` calls it for exactly that reason),
@@ -646,8 +648,8 @@ impl Game {
     /// itself, this port reproduces both sites rather than reusing one
     /// string constant for two different original addresses. The two never
     /// fire for the same game: this one only at entry when district is
-    /// ALREADY 5 (so [`Game::enter_district_5`]'s own per-turn promotion
-    /// hook, gated on `district < 5`, cannot also have fired for that game),
+    /// ALREADY 5 (so [`Game::district_advance`], gated on `district < 5` at
+    /// `1000:ab88`, cannot also have fired for that game),
     /// and [`Game::enter_district_5`] only at the turn district first
     /// BECOMES 5 during play (so this arm, which only runs once at entry,
     /// already ran before that point and found district `< 5`).
@@ -676,10 +678,36 @@ impl Game {
     /// The banner is printed once by `main.rs` before character creation,
     /// matching a DOS splash-then-prompt startup; `run()` itself does not
     /// print it again (only `Command::Version` calls [`Game::banner`]).
+    ///
+    /// **The loop starts with [`Game::district_advance`], not with the
+    /// prompt.** That is `1000:ab75` in the original, and it is upstream of
+    /// the street prompt within one turn: `1000:ae3c` writes the bare `\`
+    /// (file `0x9BF1`) and `1000:ae55`..`1000:ae63` is the top-level `ReadLn`
+    /// into `DS:3972`, both after the whole `ab75`..`ae18` region. The back
+    /// edge that closes the turn is `1000:ee01 e9 71 bd` `jmp 0xab75`, so
+    /// the advance is the FIRST thing every turn does; `1000:ab72
+    /// e8 98 be` `call 0x6a0d` is a three-byte near call whose next
+    /// instruction is `1000:ab75` itself, so the very first pass is reached
+    /// by fall-through out of character setup -- which is where `main.rs`
+    /// hands control to this method.
+    ///
+    /// **Only `Mode::Street` turns pass through it**, established from flow:
+    /// each shop handler writes its own prompt and `ReadLn`s into `DS:3a72`
+    /// inside its own loop (`1000:bd08`/`1000:bd21` for `mar`,
+    /// `docs/re/command-dispatch.md`, "Shop modality"), and never reaches
+    /// `1000:ee01`. `Mode::Shop` is this port's line-at-a-time stand-in for
+    /// that inner loop, so running the advance on those iterations would
+    /// promote the player on turns the original does not.
     pub fn run(&mut self) -> io::Result<()> {
         let stdin = io::stdin();
         let mut lines = stdin.lock().lines();
         while self.running {
+            if matches!(self.mode, Mode::Street) {
+                self.district_advance(&mut lines)?;
+                if !self.running {
+                    break;
+                }
+            }
             self.prompt();
             let Some(line) = lines.next() else { break };
             let line = line?;
@@ -690,6 +718,166 @@ impl Game {
                 }
                 Mode::Shop(loc) => self.shop_turn(loc, &line),
             }
+        }
+        Ok(())
+    }
+
+    /// `1000:ab75`..`1000:ad12` -- the district-advance preamble, and the
+    /// autosave prompt hanging off it. Runs at the top of every street turn
+    /// (see [`Game::run`] for why that placement is the original's).
+    ///
+    /// **Established from flow**, re-disassembled for this task with
+    /// `python3 tools/re_query.py resolve 1000:ab75 -n 420 -i 200`:
+    ///
+    /// ```text
+    /// ab75  a0 92 36 / 30 e4 / ba 0a 00 / f7 e2   ax := district * 10
+    /// ab7f  3b 06 a6 38 / 7e 03   cmp ax,[0x38a6] / jle 0xab88   ; level
+    /// ab85  e9 90 02              jmp 0xae18   -- gate 1 failed
+    /// ab88  80 3e 92 36 05 / 72 03  cmp byte [0x3692],5 / jb 0xab92
+    /// ab8f  e9 86 02              jmp 0xae18   -- gate 2 failed
+    /// ab92  fe 06 92 36           inc [0x3692]
+    /// ab96..abc9                  the discovery-flag resets
+    /// abce  c6 06 76 3b 00        [0x3b76] := 0   ; market ban countdown
+    /// abd3  c6 06 77 3b 00        [0x3b77] := 0   ; club ban countdown
+    /// abec  WriteLn cs:0x82b3     ; file 0x9B83 = decimal 39811
+    /// ac05  WriteLn cs:0x82fd     ; file 0x9BCD = decimal 39885
+    /// ac1e  Write   cs:0x8321     ; file 0x9BF1, the bare `\` -- no newline
+    /// ac31  ReadLn  -> DS:3a72    ; 0f78:06c6 / 0f78:059d / 0f78:0291
+    /// ac45  call 0eed:0216        ; the case-fold
+    /// ac54  0f78:0bd8 vs cs:0x8323 ; file 0x9BF3 = the single character `y`
+    /// ac59  74 03 / e9 b4 00      jz 0xac5e, else jmp 0xad12
+    /// ac73  Str([0x3692]) -> DS:3b7c, width 0
+    /// ac88  DS:3d32 (the directory) -> tmp, then `save_r`, the digit, `.sav`
+    /// acab  0f78:072e  Assign
+    /// acb9  0f78:0772  Rewrite(f, 0x2b6)   ; 694
+    /// acc8  0f78:0825  BlockWrite from DS:369c
+    /// acd5  0f78:07ea  Close
+    /// ad0d  WriteLn `^1Сохранено в save_r` (cs:0x8331, file 0x9C01 = 39937)
+    ///       then the digit,
+    ///       then the suffix `.sav` at cs:0x832c (file 0x9BFC = 39932)
+    /// ```
+    ///
+    /// The two announcement lines, taken verbatim from `data/strings.json`'s
+    /// `text` field rather than retyped:
+    ///
+    /// `^1Ты доказал, что ты самый крутой в этом районе - отправляйся в следующий`
+    /// -- file 0x9B83, decimal 39811.
+    /// `^0Хочешь сохранить свои достижения?`
+    /// -- file 0x9BCD, decimal 39885.
+    ///
+    /// **The block cannot loop, so at most ONE district is gained per
+    /// turn.** Every branch inside `ab75`..`ad12` is forward -- `ab83`,
+    /// `ab85`, `ab8d`, `ab8f`, `aba5`, `abb6`, `abc7`, `ac59`, `ac5b` -- and
+    /// the only branch instruction in the whole image whose target is
+    /// `0xab75` is `1000:ee01`, at the very END of the turn. A raw byte scan
+    /// for every `jmp`/`Jcc`/`call`/`loop` encoding of that target returns
+    /// **two** hits; the other, `1000:ab00` `72 73`, is the `rs` of
+    /// `^4Gopnik: ^7version 1.02 june,` inside the CS literal pool
+    /// (`0x82b3`..`0xab59`, the gap between `FUN_1000_7c67` and `entry` in
+    /// `data/functions.json`), and it passes the 64-way alignment sweep
+    /// 63/64 -- the exact `1000:d83b` failure `docs/re/METHODOLOGY.md`
+    /// warns about, reproduced here on a different address.
+    ///
+    /// **This is where the port used to diverge.** The promotion lived in
+    /// [`Game::run_combat`]'s post-fight block as a `while` loop, which
+    /// promoted a level-40 district-1 character four districts inside one
+    /// fight; the original needs four turns, and awards the first of them on
+    /// the turn AFTER the fight that raised the level -- the level moves
+    /// inside `FUN_1000_3d11` (`1000:51ed`..`1000:5238`, reached from the
+    /// wander at `1000:aea1`), which is downstream of `ab75` in the same
+    /// turn. `1000:ab92` is the only in-play write to `[0x3692]`: the other
+    /// three (`1000:6bf9`, `1000:6d9d`, `1000:6dbe`) are all inside
+    /// `FUN_1000_6a0d`, the one-time setup
+    /// (`python3 tools/re_query.py xrefs-to 20ae:3692` -- 97 accepted
+    /// references, 0 discarded).
+    ///
+    /// **Two port decisions, neither a property of the original.**
+    ///
+    /// * A failed write is reported and the turn continues, the same shape
+    ///   [`Game::mage`] already uses and for the same reason: nothing between
+    ///   `1000:acb9` and `1000:acd5` tests `IOResult`, so the original has no
+    ///   failure message here at all, and swallowing a host I/O error
+    ///   silently would be worse than one line the original never prints.
+    /// * EOF on the prompt ends the run rather than being read as "not `y`".
+    ///   The original blocks in `ReadLn`; a line-based port has no such
+    ///   state, and every other `lines.next()` in this file treats `None`
+    ///   the same way.
+    ///
+    /// **What is still NOT reproduced here**, and why it is not this
+    /// method's job:
+    ///
+    /// * The discovery-flag resets are `Places::reset_for_new_district`,
+    ///   which clears all seven unconditionally while `1000:aba0`,
+    ///   `1000:abb1` and `1000:abc2` spare Club and Girl for class 3 and the
+    ///   Den for class 5. That divergence predates this task and is recorded
+    ///   in `src/locations.rs`'s module doc and `docs/re/gaps.md`.
+    /// * `1000:ad12`'s district-keyed announcement arms (`cmp al,2` and the
+    ///   chain after it) are unported text.
+    /// * The chapter-5 arm at `1000:adbf`..`1000:ae18` still fires exactly
+    ///   once, from inside the `district == 5` branch below, rather than on
+    ///   every turn as `1000:adbf`'s bare `cmp al,5` does. Moving this hook
+    ///   did NOT close that: the arm's own body ends in two forced fights
+    ///   (`1000:ae2d` `FUN_1000_3d11(3)` and `1000:ae39` `FUN_1000_3d11(4)`)
+    ///   whose `param_1` handling [`Game::run_combat`] does not model, so
+    ///   repeating the arm per turn would repeat three prints and a consumed
+    ///   keystroke while still skipping the fights they announce. See
+    ///   [`Game::enter_district_5`].
+    ///
+    /// `pub` for the same reason [`Game::walk`] and [`Game::mage`] are: it is
+    /// the only way a test can reach this arm. [`Game::run`] reads from
+    /// `io::stdin()` directly, so nothing in-process can drive the hook
+    /// through its real call site.
+    pub fn district_advance(
+        &mut self,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<()> {
+        // 1000:ab7f -- `district * 10 <= level`. The original's `jle` is the
+        // signed form and `20ae:38a6` is a Pascal Integer; `player.level` is
+        // never negative here, so the unsigned compare agrees.
+        if u16::from(self.district) * 10 > self.player.level {
+            return Ok(());
+        }
+        // 1000:ab88 -- `district < 5`, unsigned (`72` / `jb`).
+        if self.district >= 5 {
+            return Ok(());
+        }
+        self.district += 1; // 1000:ab92
+        self.places.reset_for_new_district(); // 1000:ab96..1000:abc9
+        self.market_ban_countdown = 0; // 1000:abce
+        self.club_ban_countdown = 0; // 1000:abd3
+        term::println("^1Ты доказал, что ты самый крутой в этом районе - отправляйся в следующий");
+        term::println("^0Хочешь сохранить свои достижения?");
+        // 1000:ac1e is `0eed:0000`, the no-newline Write -- the same call and
+        // the same string (`cs:0x8321`) the street prompt at 1000:ae3c uses.
+        term::print("\\");
+        let Some(line) = lines.next() else {
+            self.running = false;
+            return Ok(());
+        };
+        let answer = line?;
+        // 1000:ac45's case-fold, then 1000:ac54's compare against `y`.
+        if answer.trim().eq_ignore_ascii_case("y") {
+            // 1000:ac5e..1000:ac73 `Str([0x3692])` -- the district AFTER the
+            // increment above, which is why the shipped corpus is
+            // `SAVE_R2`..`SAVE_R5` and has no `SAVE_R1`. Both gates bound it
+            // to 2..=5, so it is always one digit.
+            let digit = char::from(b'0' + self.district);
+            let name = crate::persist::slot_filename(digit);
+            let dir = self.save_dir.clone();
+            // 1000:acb9/1000:acc8 write the 694-byte RECORD and nothing else:
+            // the only `Rewrite` in `ab75`..`ad12` is at `acb9`, the only
+            // `BlockWrite` at `acc8`, and `1000:acd5 Close` follows it
+            // directly. The mage's `places.sav` pass (1000:766f..1000:7724)
+            // has no counterpart here.
+            match self.write_save_as(&dir, &name) {
+                Ok(_) => term::println(&format!("^1Сохранено в save_r{digit}.sav")),
+                Err(e) => term::println(&format!("^6{e}")),
+            }
+        }
+        // 1000:adbf, reached by fall-through from 1000:ad12 whichever way the
+        // compare above went.
+        if self.district == 5 {
+            self.enter_district_5(lines);
         }
         Ok(())
     }
@@ -1158,8 +1346,9 @@ impl Game {
             // No `else`: `1000:d82f`, `1000:d859`, `1000:d879` and
             // `1000:d899` are four independent `cmp byte [0x3692],N`
             // blocks, the last of which falls through to `1000:d8b9`. A
-            // district outside 1..=4 -- reachable, since `run_combat`'s
-            // promotion loop runs `while self.district < 5` -- writes the
+            // district outside 1..=4 -- reachable, since
+            // [`Game::district_advance`] promotes while `district < 5`
+            // (`1000:ab88`) and so can leave it at 5 -- writes the
             // prefix and nothing more: no suffix, and no newline either,
             // because the prefix went out through `0eed:0000` (`Write`)
             // and no `WriteLn` follows.
@@ -3206,25 +3395,28 @@ impl Game {
         }
         self.claim_spoils(&enemy);
 
-        while self.district < 5 && self.player.level >= u16::from(self.district) * 10 {
-            self.district += 1;
-            self.places.reset_for_new_district();
-            if self.district == 5 {
-                self.enter_district_5(lines);
-            }
-        }
+        // No promotion here. `1000:3d11` ends at its own `ret`; the district
+        // gate is `1000:ab75`, at the TOP of the next turn, and Task 21 moved
+        // this port's copy of it there ([`Game::district_advance`]). A level
+        // won in this fight therefore promotes on the following turn, not
+        // inside the post-fight block -- and one district per turn, because
+        // `ab75`..`ad12` has no back edge.
         Ok(())
     }
 
     /// `1000:adbf`..`1000:ae1f` -- the chapter-5 endgame arm's flag stores
-    /// and its three announcement lines. Called from the promotion loop
-    /// just above rather than from anywhere resembling the original's own
-    /// site, for the reason `docs/re/gaps.md` ("The district-advance
-    /// autosave is mapped but not wired") already records: the original's
-    /// per-turn preamble `1000:ab75`..`1000:ad12` is not wired into this
-    /// port at all, and this arm is its direct continuation -- the same
-    /// `1000:ab75`..`1000:ae18` region `docs/re/wander.md` calls "the
-    /// genuine district-transition block".
+    /// and its three announcement lines. Called from
+    /// [`Game::district_advance`], which since Task 21 IS the port of the
+    /// original's per-turn preamble `1000:ab75`..`1000:ad12` and sits at the
+    /// top of [`Game::run`]'s loop -- so the call site is now the original's
+    /// own position in the turn (this arm is the direct continuation of that
+    /// preamble; `docs/re/wander.md` calls `1000:ab75`..`1000:ae18` "the
+    /// genuine district-transition block"). What is still not the original's
+    /// is the FREQUENCY: `1000:adbf`'s `cmp al,5` is unconditional, so the
+    /// original runs this every turn once district 5 is reached, while
+    /// `district_advance` reaches it only inside the branch that just
+    /// incremented. See that method's doc for why widening it would need
+    /// `FUN_1000_3d11`'s `param_1` first.
     ///
     /// This is the **per-turn** trigger, reached only while the game is
     /// already running: it fires the turn `self.district` first becomes 5.
@@ -3305,29 +3497,40 @@ impl Game {
     /// two forced fights -- repeats on every turn once district 5 is
     /// reached, because nothing ever clears `[0x3c83]` and `1000:ae18`'s
     /// test is always taken (`docs/re/wander.md`, "The three Den setters").
-    /// That every-turn repetition is itself re-derived here, not inherited:
-    /// `1000:ee01 jmp 0xab75` is the ONLY branch instruction anywhere in the
-    /// code segment whose target is `0xab75` (a byte-scan for every `e9`/
-    /// `eb`/near-`Jcc`/short-`Jcc` form confirms it), and `1000:ab72 call
-    /// 0x6a0d` / `1000:ab75 ...` shows `ab75` is reached BOTH by that back
-    /// edge and by straight-line fall-through from the one-time startup
-    /// call into `FUN_1000_6a0d` -- so `ab75`, and everything after it
-    /// including this arm, genuinely runs every turn.
+    /// That every-turn repetition is itself re-derived here, not inherited.
+    /// `1000:ee01 e9 71 bd` `jmp 0xab75` is the only branch INSTRUCTION
+    /// anywhere in the image whose target is `0xab75`, and `1000:ab72
+    /// e8 98 be` `call 0x6a0d` is a three-byte near call whose next
+    /// instruction is `ab75` -- so `ab75`, and everything after it including
+    /// this arm, is reached both by that back edge and by straight-line
+    /// fall-through out of the one-time startup call into `FUN_1000_6a0d`.
     ///
-    /// This port has no per-turn hook to repeat it from, so this method is
-    /// called from the `while self.district < 5` loop above, whose own
-    /// guard clause (`district < 5`) makes it unreachable once `district`
-    /// is already 5 -- this fires on exactly the turn district becomes 5,
-    /// and never again. That is a structural consequence of where the only
-    /// available hook lives, not a guard this task added to suppress the
-    /// original's repetition. The two stores are booleans, so idempotent
-    /// either way; the three prints (and the keypress between the first two)
-    /// are the one place a player of the original would see more than this
-    /// port ever shows -- every turn, forever, once district 5 is reached,
-    /// against this port's exactly once. Recorded in `docs/re/gaps.md`,
-    /// "What the port REFUSES that the original accepts" (cross-referenced
-    /// from "The district-advance autosave is mapped but not wired", where
-    /// the detail lives).
+    /// **A raw byte scan alone gets this wrong, and Task 21 caught how.**
+    /// Scanning every `jmp`/`Jcc`/`call`/`loop` encoding of the target
+    /// returns TWO hits, and the second, `1000:ab00` `72 73`, scores 63 of
+    /// 64 votes in the alignment sweep -- yet it is the `rs` of
+    /// `^4Gopnik: ^7version 1.02 june,` inside the CS literal pool, the
+    /// `0x82b3`..`0xab59` gap `data/functions.json` leaves between
+    /// `FUN_1000_7c67` and `entry`. This is `docs/re/METHODOLOGY.md`'s
+    /// `1000:d83b` lesson on a second address: alignment never answers yes.
+    ///
+    /// **Task 21 moved the hook; the frequency divergence survived it, and
+    /// the reason changed.** This method is now called from
+    /// [`Game::district_advance`], which really does run at the top of every
+    /// street turn -- so the "no per-turn hook exists" reason this comment
+    /// used to give is gone. What remains is the arm's own body: it ends in
+    /// `1000:ae2d` `FUN_1000_3d11(3)` and `1000:ae39` `FUN_1000_3d11(4)`,
+    /// whose `param_1` handling [`Game::run_combat`] does not model (below),
+    /// so making the three prints and the keystroke repeat per turn would
+    /// nag the player every turn with an announcement of two fights the port
+    /// then does not run. So the call stays inside the branch that just
+    /// incremented, firing on exactly the turn district becomes 5 and never
+    /// again. The two stores are booleans, so idempotent either way; the
+    /// three prints (and the keypress between the first two) are the one
+    /// place a player of the original would see more than this port ever
+    /// shows -- every turn, forever, once district 5 is reached, against
+    /// this port's exactly once. Recorded in `docs/re/gaps.md`, "The
+    /// district-advance autosave -- wired (Task 21)".
     fn enter_district_5(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) {
         term::println("^1Пора наконец отомстить ректору...");
         // 1000:addc -- ReadKey, blocking for one keystroke whose value is
@@ -6028,15 +6231,24 @@ mod tests {
     /// `1000:ae13`/`1000:ae1f` via [`Game::enter_district_5`] -- reaching
     /// district 5 sets `rector_showdown`, and the flee refusal at
     /// `1000:48eb` ([`Game::flee`]) is the reader this test drives live.
+    ///
+    /// **Task 21 changed which method this test drives, and that is the
+    /// point.** It used to call `run_combat` and assert the promotion
+    /// happened inside the post-fight block; the original promotes at
+    /// `1000:ab92`, in the top-of-turn block `1000:ee01` jumps back to, and
+    /// `FUN_1000_3d11` has no district write at all
+    /// (`tools/re_query.py xrefs-to 20ae:3692`: the only in-play write is
+    /// `1000:ab92`). So the old call site was the wrong one and the test
+    /// encoded it. The keystroke consumed here is `1000:ac31`'s `ReadLn`,
+    /// answered `n` so the save arm is not taken; `1000:addc`'s `ReadKey`
+    /// inside `enter_district_5` takes the second.
     #[test]
     fn reaching_district_5_arms_the_rector_showdown_and_flee_refuses() {
         let mut g = game();
         g.district = 4;
         g.player.level = 40; // `player.level >= district * 10`: promotes to 5
         assert!(!g.rector_showdown);
-        let mut dead_enemy = punchbag();
-        dead_enemy.hp = 0; // already dead: the win branch runs with no draw
-        g.run_combat(dead_enemy, &mut no_input()).unwrap();
+        g.district_advance(&mut input(&["n", ""])).unwrap();
         assert_eq!(g.district, 5);
         assert!(
             g.rector_showdown,
@@ -6055,5 +6267,83 @@ mod tests {
         // field directly in a test.
         let fled = g.flee();
         assert!(!fled, "1000:48eb refuses every flee once the flag is set");
+    }
+
+    /// A won fight no longer promotes: `FUN_1000_3d11` writes no district
+    /// byte, and `1000:ab75` runs at the top of the NEXT turn.
+    #[test]
+    fn a_won_fight_does_not_advance_the_district_by_itself() {
+        let mut g = game();
+        g.district = 1;
+        g.player.level = 40;
+        let mut dead_enemy = punchbag();
+        dead_enemy.hp = 0; // already dead: the win branch runs with no draw
+        g.run_combat(dead_enemy, &mut no_input()).unwrap();
+        assert_eq!(
+            g.district, 1,
+            "1000:3d11 has no write to [0x3692]; only 1000:ab92 does"
+        );
+        // ...and the very next turn's hook is what collects it.
+        g.district_advance(&mut input(&["n"])).unwrap();
+        assert_eq!(g.district, 2);
+    }
+
+    /// **One district per turn, never four.** `1000:ab75`..`1000:ad12`
+    /// contains no backward branch (`ab83`, `ab85`, `ab8d`, `ab8f`, `aba5`,
+    /// `abb6`, `abc7`, `ac59` and `ac5b` are all forward), and the only
+    /// branch in the image targeting `0xab75` is `1000:ee01`, at the end of
+    /// the turn. The port used to run the gate in a `while` loop, which
+    /// collapsed all four promotions into the fight that earned them.
+    #[test]
+    fn the_advance_gains_at_most_one_district_per_turn() {
+        let mut g = game();
+        g.district = 1;
+        g.player.level = 40; // clears every gate up to district 5 at once
+        for want in [2u8, 3, 4] {
+            g.district_advance(&mut input(&["n"])).unwrap();
+            assert_eq!(g.district, want, "one 1000:ab92 per pass, not a loop");
+        }
+        // The fourth pass reaches 5 and takes the chapter-5 arm, which eats a
+        // second line at 1000:addc.
+        g.district_advance(&mut input(&["n", ""])).unwrap();
+        assert_eq!(g.district, 5);
+        // 1000:ab88's `jb` refuses a sixth.
+        g.district_advance(&mut input(&["n"])).unwrap();
+        assert_eq!(g.district, 5, "1000:ab8f jumps past the increment");
+    }
+
+    /// Both gates refuse before anything is read: a failed gate jumps to
+    /// `1000:ae18` at `1000:ab85`/`1000:ab8f`, ahead of `1000:ac31`'s
+    /// `ReadLn`, so the line the street prompt is about to read must still be
+    /// there.
+    #[test]
+    fn a_refused_advance_prints_nothing_and_consumes_no_line() {
+        let mut g = game();
+        g.district = 2;
+        g.player.level = 19; // 2 * 10 > 19 -- 1000:ab83's `jle` is not taken
+        let mut lines = input(&["w"]);
+        g.district_advance(&mut lines).unwrap();
+        assert_eq!(g.district, 2);
+        assert_eq!(
+            lines.next().unwrap().unwrap(),
+            "w",
+            "1000:ab85 jumps past 1000:ac31's ReadLn"
+        );
+    }
+
+    /// `1000:abce`/`1000:abd3` clear both ban countdowns, and they are
+    /// cleared on the advance itself -- not by the save arm, which the `n`
+    /// here declines.
+    #[test]
+    fn the_advance_clears_both_ban_countdowns() {
+        let mut g = game();
+        g.district = 1;
+        g.player.level = 10;
+        g.market_ban_countdown = 4;
+        g.club_ban_countdown = 3;
+        g.district_advance(&mut input(&["n"])).unwrap();
+        assert_eq!(g.district, 2);
+        assert_eq!(g.market_ban_countdown, 0, "1000:abce");
+        assert_eq!(g.club_ban_countdown, 0, "1000:abd3");
     }
 }

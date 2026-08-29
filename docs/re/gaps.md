@@ -80,9 +80,12 @@ Task 20 closed the two rows that were genuinely open: the `a` token
 becomes 5). The four calls that same endgame arm makes afterward
 (`FUN_1000_11c2` twice, `FUN_1000_3d11` twice, for the rector and final-boss
 fights) are deliberately NOT ported — see `Game::enter_district_5`'s doc
-comment in `src/game.rs` for why, and "The district-advance autosave is
-mapped but not wired" below for the architectural reason neither this arm
-nor its calls can run "every turn" the way the original does.
+comment in `src/game.rs` for why, and "The district-advance autosave —
+wired (Task 21)" below for why neither this arm nor its calls run "every
+turn" the way the original does. Task 21 replaced the *architectural*
+reason (there was no per-turn hook) with a narrower one: there is a per-turn
+hook now, and what still blocks the repeat is `FUN_1000_3d11`'s untraced
+`param_1`.
 
 **All seventeen immediate setters are now in the port.** Market and Vet from
 character creation and from the wander preamble's draws 6 and 5; Club from
@@ -630,8 +633,8 @@ save. `Save` -> bytes -> `Save` **is** exact, and that is the round trip
 one:** the port cannot repeat the chapter-5 endgame arm's three lines and two
 forced fights every turn the way the original does once district 5 is
 reached — only once, at the turn district first reaches 5 (or at load, for a
-save already there). Detail, and why, is in "The district-advance autosave
-is mapped but not wired", below.
+save already there). Detail, and why, is in "The district-advance autosave —
+wired (Task 21)", below.
 
 ## The four armour flags are carried but the gym's `abs` ignores them
 
@@ -695,88 +698,129 @@ Fixing it properly needs `mar`'s purchase effects, which are the larger
 unimplemented gap below; applying the subtraction on its own would gate a gym
 row on a flag the player has no way to earn.
 
-## The district-advance autosave is mapped but not wired
+## The district-advance autosave — wired (Task 21)
 
-*Cited from `src/persist.rs`'s module doc and `src/game.rs`'s `run_combat`.*
+*Cited from `src/game.rs`'s `Game::run` and `Game::district_advance`, and
+`src/persist.rs`'s module doc.*
 
-**Established from flow**, `1000:ab75`..`1000:ad12`. At the top of every main
-loop iteration: `1000:ab7f` (`district * 10 <= level`) and `1000:ab88`
-(`district < 5`) gate `1000:ab92 inc [0x3692]`, then the discovery-flag
-resets and both ban countdowns are cleared (`1000:abce`/`1000:abd3`), then
+**Established from flow**, `1000:ab75`..`1000:ad12`, re-disassembled for
+Task 21 with `python3 tools/re_query.py resolve 1000:ab75 -n 420 -i 200`. At
+the top of every main-loop iteration: `1000:ab7f` (`cmp ax,[0x38a6]` with
+`ax = district * 10`, i.e. `district * 10 <= level`) and `1000:ab88`
+(`cmp byte [0x3692],5` / `jb`, i.e. `district < 5`) gate
+`1000:ab92 inc [0x3692]`, then the discovery-flag resets
+(`1000:ab96`..`1000:abc9`) and both ban countdowns are cleared
+(`1000:abce`/`1000:abd3`), then
 `^1Ты доказал, что ты самый крутой в этом районе - отправляйся в следующий`
-(file `0x9B83`), `^0Хочешь сохранить свои достижения?` (file `0x9BCD`), a
-bare `\` (file `0x9BF1`), `ReadLn` into `DS:3a72` (`1000:ac31`), and
-`1000:ac54`'s compare against `y` (file `0x9BF3`). On a match it builds
-`save_r` + `Str([0x3692])` + `.sav` — **the district AFTER the increment**,
-which is exactly why the shipped corpus is `SAVE_R2`..`SAVE_R5` with no
-`SAVE_R1` — `Rewrite(f, 694)` at `1000:acb9`, `BlockWrite` from `DS:369c` at
-`1000:acc8`, and the `^1Сохранено в save_r…` line at `1000:ad0d`.
+(file `0x9B83`, decimal 39811), `^0Хочешь сохранить свои достижения?`
+(file `0x9BCD`, 39885), a bare `\` written with `0eed:0000` — `Write`, no
+newline — (file `0x9BF1`), `ReadLn` into `DS:3a72` (`1000:ac31`), the
+case-fold at `1000:ac45` (`0eed:0216`), and `1000:ac54`'s compare against `y`
+(file `0x9BF3`). On a match it builds `DS:3d32` (the directory) + `save_r` +
+`Str([0x3692])` + `.sav` — **the district AFTER the increment**, which is
+exactly why the shipped corpus is `SAVE_R2`..`SAVE_R5` with no `SAVE_R1` —
+`Assign` at `1000:acab`, `Rewrite(f, 0x2b6)` = 694 at `1000:acb9`,
+`BlockWrite` from `DS:369c` at `1000:acc8`, `Close` at `1000:acd5`, and the
+`^1Сохранено в save_r` + digit + `.sav` line at `1000:ad0d` (files `0x9C01`
+= 39937 and `0x9BFC` = 39932).
 
-**The port advances the district in the wrong place**, and that is what
-blocks the rest. `Game::run_combat`'s `while self.district < 5 && …` loop
-reproduces both gates correctly but sits in the post-fight block, which has
-no input iterator, so there is nowhere to put the prompt's `ReadLn`. Moving
-the advance to the top of `Game::run` is the fix, and it is a change to the
-main loop's shape rather than to this task's subject. The two lines, the
-prompt, the `y` compare and the ban-countdown clears are all unreproduced
-with it.
+**All of that is now in the port**, as `Game::district_advance`, called from
+the top of `Game::run`'s `while self.running` loop. Three things had to be
+established before the placement was safe, and all three are flow:
 
-**The same gap blocks the chapter-5 endgame arm that immediately follows
-this one in the original**, `1000:adbf`..`1000:ae1f` (`docs/re/wander.md`,
-"The three Den setters" calls `1000:ab75`..`1000:ae18` together "the genuine
-district-transition block"). Task 20 ported that arm's flag store
-(`1000:ae13`, `rector_showdown`) and Den grant (`1000:ae1f`) into the same
-relocated hook this section already describes -- `Game::run_combat`'s
-promotion loop -- as `Game::enter_district_5`, called from inside the `while
-self.district < 5` loop where its own guard clause (`district < 5`) makes it
-fire on exactly the turn `district` becomes 5, and structurally cannot fire
-again. That is not a guard invented to suppress the original's "every turn"
-repetition -- it is the one hook this port's architecture has, and it has no
-mechanism for repeating anything every turn at all, this arm included.
-`1000:ae18` sitting at the top of every turn is re-derived here, not
-inherited: `1000:ee01 jmp 0xab75` is the only branch instruction anywhere in
-the code segment whose target is `0xab75` (checked for every `e9`/`eb`/near-
-and short-`Jcc` encoding), and `1000:ab72 call 0x6a0d` falling straight
-through into `1000:ab75` shows the same address is also reached by
-straight-line fall-through the first time, so `ab75` onward genuinely runs
-every turn, both ways in.
+* **The block is upstream of the turn's own prompt.** `1000:ae3c` writes the
+  same bare `\` (`cs:0x8321`, file `0x9BF1`) through `0eed:0000` and
+  `1000:ae55`..`1000:ae63` is the top-level `ReadLn` into `DS:3972` — both
+  *after* the whole `ab75`..`ae18` region. So the advance prints, prompts and
+  possibly saves before the player is asked what to do that turn.
+* **The block cannot loop, so at most ONE district is gained per turn.**
+  Every branch inside `ab75`..`ad12` is forward (`ab83`, `ab85`, `ab8d`,
+  `ab8f`, `aba5`, `abb6`, `abc7`, `ac59`, `ac5b`), and the only branch
+  instruction in the image targeting `0xab75` is `1000:ee01 e9 71 bd`
+  `jmp 0xab75`, at the END of the turn; `1000:ab72 e8 98 be` `call 0x6a0d`
+  is a three-byte near call whose next instruction is `ab75`, which is the
+  fall-through entry the first time. **The port used to get this wrong**:
+  `Game::run_combat` ran the gate as `while self.district < 5 && …`, so a
+  level-40 district-1 character gained four districts inside one fight where
+  the original needs four turns.
+* **Only street turns pass through it.** Each shop handler writes its own
+  prompt and `ReadLn`s into `DS:3a72` inside its own loop (`1000:bd08` /
+  `1000:bd21` for `mar` — "Shop modality" in
+  `docs/re/command-dispatch.md`), never reaching `1000:ee01`. `Game::run`
+  therefore gates the call on `Mode::Street`; `Mode::Shop` is this port's
+  line-at-a-time stand-in for that inner loop and must not promote.
 
-**What the port refuses that the original accepts, after Task 20's review
-fix:** only the "runs every turn, forever" repetition itself. A *loaded*
-save already at district 5 is now handled -- a review round found the first
-cut of this paragraph wrong about where to settle it, naming a false
-"class-5 character creation arm" (`1000:7364`) as unrelated and unmodelled,
-when it is in fact `FUN_1000_6a0d`'s OWN district-5 check (reads `[0x3692]`,
-not the class byte `[0x389c]`), inside the function the port already
-re-applies on every load (`Game::apply_class_bonus`, called from
-`src/persist.rs`'s `from_save`). `1000:7364` is now ported there, so a
-loaded save at district 5 arms `rector_showdown` on entry, matching the
-original. What remains unreproduced is only the per-turn REPEAT: the
-original re-prints the three lines and re-sets both (idempotent) flags every
-single turn once district 5 is reached, and re-enters the two forced fights
-every turn too. This port's hook fires the flags and prints exactly once --
-at the turn `district` first becomes 5 during play, or at entry for an
-already-district-5 load -- and never again, because there is nowhere else in
-this port's architecture to hang a per-turn check. Settling this for real
-needs a genuine per-turn hook re-reading `1000:ab75`..`1000:ad12` alongside
-`1000:adbf`..`1000:ae18`, the same fix the autosave above needs, and is out
-of scope for a flag-setter task.
+**A byte scan alone gets the back-edge claim wrong, and this is worth
+recording.** Scanning every `jmp`/`Jcc`/`call`/`loop` encoding whose target
+is `0xab75` returns **two** raw hits. The second, `1000:ab00` `72 73`
+(`jb 0xab75`), passes the 64-way alignment sweep **63/64** — and is the `rs`
+of `^4Gopnik: ^7version 1.02 june,`, sitting in the CS literal pool, the
+`0x82b3`..`0xab59` gap `data/functions.json` leaves between `FUN_1000_7c67`
+and `entry`. (`0x82b3` is not a coincidence: it is the `mov di,0x82b3` at
+`1000:abd8`, this block's own first string.) That is
+`docs/re/METHODOLOGY.md`'s `1000:d83b` lesson reproduced on a second
+address: alignment never answers yes. Earlier revisions of this section
+asserted "the only branch instruction … whose target is `0xab75`" without
+saying that a naive re-derivation finds two and that the sweep endorses the
+wrong one.
 
-`Game::enter_district_5`'s own doc comment in `src/game.rs` additionally
-records why the arm's four calls (`FUN_1000_11c2` x2, `FUN_1000_3d11` x2, the
-rector and final-boss fights) are not ported here: `FUN_1000_3d11`'s
-`param_1` argument -- the XP-award skip at `1000:51b9`..`1000:51e9` and the
-`param_1 == 4` victory ending at `1000:5085` -- is not modelled by
-`Game::run_combat` at all, and the ending has never been traced
-(`docs/re/wander.md`: "Whether `FUN_1000_3d11(4)` returns is not traced
-here"). Full detail on `FUN_1000_11c2` itself, which this task DID fully
-trace, is in "`FUN_1000_11c2` -- traced (Task 20), not ported", below.
+**`1000:ab92` is the only in-play district write.**
+`python3 tools/re_query.py xrefs-to 20ae:3692` accepts 97 references and
+discards 0; exactly four of them write, and the other three (`1000:6bf9`,
+`1000:6d9d`, `1000:6dbe`) are all inside `FUN_1000_6a0d`, the one-time
+setup. `FUN_1000_3d11` has none — which is why the promotion belonged at the
+top of the loop and not in the post-fight block, and why a level won in a
+fight now promotes on the following turn.
+
+**What is still NOT reproduced, and why:**
+
+* **The discovery-flag resets are unconditional in the port.** `1000:aba0`,
+  `1000:abb1` and `1000:abc2` each compare `[0x389c]` (the class) and skip
+  exactly one clear — Club (`1000:aba7`) and Girl (`1000:abb8`) are spared
+  for class 3, the Den (`1000:abc9`) for class 5; Gym (`1000:abac`) and
+  Dealers (`1000:abbd`) are always cleared, being the second store in each
+  pair, past the skip. `Places::reset_for_new_district` clears all seven.
+  This divergence predates Task 21 and Task 21 did not spend the opening it
+  created: the class is now in scope at the one call site, so passing it in
+  is a local change, but it alters which locations a player keeps across a
+  promotion and wants its own test. `src/locations.rs`'s module doc records
+  the same.
+* **The district-keyed announcement arms at `1000:ad12`..`1000:adbf`**
+  (`cmp al,2` at `1000:ad15` and the chain after it) are unported text.
+* **The chapter-5 endgame arm's per-turn REPEAT**, `1000:adbf`..`1000:ae1f`
+  (`docs/re/wander.md`, "The three Den setters", calls
+  `1000:ab75`..`1000:ae18` together "the genuine district-transition
+  block"). `1000:adbf`'s `cmp al,5` is unconditional, so the original
+  re-prints the three lines, re-takes the `1000:addc` keystroke, re-sets both
+  (idempotent) flags and re-enters both forced fights every single turn once
+  district 5 is reached. `Game::enter_district_5` fires once, from inside
+  `district_advance`'s just-incremented branch.
+
+  **Moving the hook did NOT close that, and the reason is no longer "there
+  is no per-turn hook".** There is one now. What blocks it is the arm's own
+  body: it ends in `1000:ae2d` `FUN_1000_3d11(3)` (the rector) and
+  `1000:ae39` `FUN_1000_3d11(4)` (the ending), whose `param_1` handling
+  `Game::run_combat` does not model — the XP-award skip at
+  `1000:51b9`..`1000:51e9` and the `param_1 == 4` victory ending at
+  `1000:5085`, which has never been traced (`docs/re/wander.md`: "Whether
+  `FUN_1000_3d11(4)` returns is not traced here"). Repeating the arm per
+  turn would announce two fights every turn that the port then does not run,
+  which is a worse divergence than announcing them once. Closing it is a
+  combat-dispatch task: trace `FUN_1000_3d11`'s `param_1` first, then make
+  the call unconditional on `district == 5`. Full detail on `FUN_1000_11c2`,
+  the arm's other callee, which Task 20 DID fully trace, is in
+  "`FUN_1000_11c2` -- traced (Task 20), not ported", below.
+
+A *loaded* save already at district 5 is handled separately and was already
+right: `1000:7364`, inside `FUN_1000_6a0d`, reads `[0x3692]` (the district,
+not the class byte `[0x389c]`) and arms `rector_showdown` at entry. It is
+ported in `Game::apply_class_bonus`, called from `src/persist.rs`'s
+`from_save`.
 
 Also cross-referenced from "What the port REFUSES that the original
-accepts", above (§`557`), which is the section this task's own brief named
-for this write-up; the detail lives here because it is scoped to save-load
-refusals specifically and this divergence is not one -- it belongs to the
-main loop's shape, same as the autosave.
+accepts", above (§`557`); the detail lives here because that section is
+scoped to save-load refusals specifically and this divergence is not one —
+it belongs to the main loop's shape.
 
 ## `FUN_1000_11c2` -- traced (Task 20), not ported
 
@@ -1134,6 +1178,12 @@ re-derived from `orig/g.exe` for this entry.
 | `kl`'s gate on it | `1000:df1a` | `80 3e 77 3b 00` + `jbe 0xdf3d` | **no** |
 | `girl` clears the market ban | `1000:d793` | `c6 06 76 3b 00` | **no** |
 | both tick down, once per walk | `1000:b173` / `1000:b17e` | `fe 0e 76 3b` / `fe 0e 77 3b` | yes |
+| the district advance clears both | `1000:abce` / `1000:abd3` | `c6 06 76 3b 00` / `c6 06 77 3b 00` | yes (Task 21) |
+
+The last row is new and does **not** change the verdict: clearing a byte that
+nothing ever sets is still inert. It is listed because the two clears are
+now genuinely executed by `Game::district_advance`, so when the setters do
+land they will already be reset on every promotion.
 
 The gates are what the countdowns are *for*, and each has its own refusal
 line. `1000:b95e` runs immediately after `mar`'s discovery-flag check at

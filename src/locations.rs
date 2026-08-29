@@ -21,9 +21,17 @@
 //! `[0x389c]` is no longer the blocker this comment used to name: Task 11b
 //! established it as the character class, and Task 11c reads it in
 //! `Game::apply_class_bonus` (`1000:73bb`). What is still missing is that
-//! `Places` has no class to consult -- the fix is to pass one in, which
-//! belongs with the district-transition block (`1000:ab75`..`1000:ae18`)
-//! rather than with the wander turn. See `docs/re/gaps.md`.
+//! `Places` has no class to consult -- the fix is to pass one in.
+//!
+//! **Task 21 removed the second half of that blocker and did not spend it.**
+//! The one caller is now `Game::district_advance`, the port of the
+//! district-transition block itself (`1000:ab75`..`1000:ad12`, at the top of
+//! `Game::run`'s loop), where `self.player.class` IS in scope -- so passing
+//! it in is a local change now rather than a restructuring. It was left out
+//! deliberately: Task 21's brief scoped the resets to this function as it
+//! stands, and sparing a flag for a class changes which locations a player
+//! keeps across a promotion, which wants its own test. Still open in
+//! `docs/re/gaps.md`.
 
 /// `Dealers` is `20ae:3695`, the `bmar` verb -- the original calls the place
 /// **Барыги**, not a market. Named from its own handler's strings: entry text
