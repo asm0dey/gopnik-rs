@@ -206,6 +206,29 @@ $ python3 tools/re_query.py xrefs-to 20ae:3b74 --json | python3 -c "import json,
 
 Tests: `python3 tools/test_addr.py` and `python3 tools/test_re_query.py`.
 
+## A port citation cites the command, not the line it printed
+
+`orig/g.exe` is frozen, so `1000:b353` is a constant you can paste and it stays
+true forever — that is why this project cites thousands of them. `src/` is not
+frozen: a `file:line` reference, a pasted `grep` block, or a test tally is
+stale-by-construction, because the next commit anywhere above it in the file
+shifts every line below. A claim about the **port** cites the command that
+recomputes the fact, never the line number the command happened to print.
+
+Task 21 shipped this exact defect twice in one round. A
+`grep -rn '\.trim()' src/*.rs` block was pasted with its output into
+`docs/re/gaps.md`; every `src/game.rs` line in it was already one lower than
+the committed tree because a comment inserted a line above the first hit
+(caught in review as I4). The fix — re-running the grep — went stale again
+inside the very next round: a three-line comment added above `src/game.rs:810`
+shifted the same nine sites by three more, caught only because that round
+re-ran the command instead of hand-editing the numbers. The already-shipped
+case neither round touched: `docs/re/difftest.md:489` still cites
+`src/game.rs:1421-1422` for the gym's discovery-flag setter; reading
+`src/game.rs` directly shows it at `src/game.rs:2042-2043`
+(`self.rng.below_at("1000:b21c", 100)` / `mark_found(Location::Gym); //
+1000:b22c`, verified against the current tree while writing this rule).
+
 ## An assertion is not evidence until it has been seen failing
 
 A passing test over a captured oracle proves the assertion ran.  It does not
