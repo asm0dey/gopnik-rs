@@ -648,6 +648,40 @@ local `Vec<u8>` is enough), have the tests install one, and the assertions and
 the quiet become available together. Nothing else in the deferred list has
 that leverage.
 
+### Deferred cleanup: the address suffixes on the flag names
+
+`Game` carries ~14 fields whose names end in a DGROUP address --
+`weapon_nozhik_38c2`, `charm_krestik_38bd`, `wear_jacket_krutaya_38b9` and the
+rest. The suffix is **scaffolding against one specific failure**: a name that
+describes the wrong byte, with nothing in it that can be checked. That is not
+hypothetical here. `20ae:394d` was `dealer_order_placed`, documented as "a
+150-rouble order placed with the dealers" -- right address, wrong reading, and
+it outlived its own correction by several tasks because no grep could catch
+it. `1000:cd05` is `bmar` row 7 and it hands over the **pistol**
+(`mov byte [0x394d],1`, then `1000:cd0a add word [0x394f],3`).
+
+**They come off eventually, in one mechanical pass, at the end.** Two
+conditions, both checkable before the pass runs:
+
+1. **The address is already in the field's doc comment.** It is, in every case
+   -- `weapon_nozhik_38c2` carries `20ae:38c2` / `.SAV 0x226` / `1000:1fb5`
+   above it. So `git grep 38c2` still finds every site after the rename; it
+   hits the comment instead of the identifier. The decode checks
+   (`tools/test_string_citations.py`, `tools/test_character_sheet_port.py`)
+   bind those comment addresses against `orig/g.exe`, so they cannot rot
+   silently the way a bare identifier can.
+2. **Anything whose reading is still unsettled keeps its suffix.** The six
+   clothing flags are carried-not-acted-on (`src/game.rs:441`) and no play
+   path has exercised them.
+
+**Piecemeal is the trap.** A tree where half the flags carry addresses and
+half do not cannot distinguish "settled, suffix dropped" from "never had one".
+One pass, one commit, no behaviour change, `cargo test` as the check.
+
+Not scheduled: it is zero branches of coverage across ~20 files, which is the
+shape `CLAUDE.md`'s Priority section calls yak shaving. Recorded here so the
+next session does not re-argue it from scratch.
+
 ### Deferred from the Task 19 review, recorded so they are not lost
 
 None is a defect the review asked to be fixed; each is a judgement call a
