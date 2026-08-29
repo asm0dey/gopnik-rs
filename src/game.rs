@@ -711,8 +711,11 @@ impl Game {
     /// (`src/progress.rs` has none: `grep -c '#[cfg(test)]'
     /// src/progress.rs` prints `0`). `progress::demote` is the only other
     /// writer of the field and it decrements. `apply_levels` has three
-    /// callers -- `grep -n 'progress::apply_levels(' src/game.rs` -- of
-    /// which the last is below this file's own `#[cfg(test)]`, leaving two:
+    /// callers -- `grep -n 'progress::apply_levels(' src/game.rs | grep -v
+    /// '///'` (the `grep -v` drops this very comment, which the plain
+    /// command matches: a citation that quotes its own search string is a
+    /// fourth hit) -- of which the last is below this file's own
+    /// `#[cfg(test)]`, leaving two:
     ///
     /// * [`Game::run_combat`]'s post-fight award, entered from
     ///   [`Game::walk`], which is `Command::Walk` and so a Street turn;
