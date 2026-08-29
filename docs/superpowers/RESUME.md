@@ -93,7 +93,9 @@ DCO, AI-disclosure) are inert with no target repo to apply them to, and
 about a PR diff to a *different* project, not this repo's own tracked
 `.claude/` files (see I1's fix, above and in `.gitignore`); the two do not
 conflict. If the chain is ever judged not worth the session-start cost, drop
-it by editing `AGENTS.md`'s include, not by re-touching `.gitignore`. Tasks 13-review and 14 moved branch
+it by editing `AGENTS.md`'s include, not by re-touching `.gitignore`.
+
+**The honest state of the project.** Tasks 13-review and 14 moved branch
 coverage by zero — sound work on the measuring apparatus that found real
 defects in the *evidence* and none in the port. Tasks 16–19 are the return to
 the thing measured: +118 branches and, in 18 and 19, real behaviour. Task 19
