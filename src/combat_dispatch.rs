@@ -29,8 +29,14 @@ use crate::rng::Rng;
 /// The player's pistol -- `20ae:394d`, `20ae:394e` and `20ae:394f`.
 ///
 /// The three bytes are adjacent in DGROUP and are written by three adjacent
-/// arms of the dealers' menu (`1000:ccd8`, `1000:cd76`, `1000:cdf9`), which is
-/// what identifies them:
+/// arms of the dealers' menu, which is what identifies them. Those arms are
+/// selected by the key compares `1000:ccce`, `1000:cd6f` and `1000:cdef` --
+/// each a `call 0xf78:0xbd8` against the literals CS `0x9023`, CS `0x9055`
+/// and CS `0x906a`. An earlier revision of this comment named `1000:ccd8`,
+/// `1000:cd76` and `1000:cdf9` instead; all three of those decode to
+/// `cmp byte [0x394d],0x0`, the arms' own pistol gate, not the key compare
+/// (`python3 tools/re_query.py resolve 1000:ccd8`). `docs/re/gaps.md` records
+/// the correction.
 ///
 /// * `20ae:394d` -- the pistol itself. `1000:cd05` `c6 06 4d 39 01` sets it in
 ///   the `bmar` row-7 arm, alongside `1000:cd0a` `83 06 4f 39 03`

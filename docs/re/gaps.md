@@ -1505,15 +1505,15 @@ points at this entry.
   materialises either literal. What their arms do is still open.
 * **The quit message** (files `0xC3F3`, `0xC41A`, written at `1000:ee04`) and
   the university backstory (`0x7D81`..`0x7F1F`) — real strings, not wired up.
-* **Shop purchase effects — open for every row except three, and now MAPPED
-  for six more.**
-  `data/shops.json` rows deduct `price` and print their menu text, but never
-  change `strength` / `armor` / etc.: most rows have no representable target
-  on `Fighter`. Two further divergences on that generic path, both
-  pre-existing and both still open in `src/`: it echoes the **menu line**
-  where the original prints each arm's own confirmation, and it refuses a
-  district-gated row, where the original's *buy* compares carry no district
-  test at all.
+* **Shop purchase effects — closed for all nine `bmar` rows (Task 24), still
+  open for all nine `mar` rows.**
+  `mar`'s rows deduct `price` and echo their menu text, applying no effect:
+  `Game::shop_action`'s generic path still prints the **menu line** where the
+  original prints each arm's own confirmation. Task 24 ported the whole
+  dealers' side into `Game::buy_dealer_row` (`grep -n 'fn buy_dealer_row'
+  src/game.rs`), so that generic path is now reached only from `mar`, and
+  every `bmar` row has its own gates, its own refusal lines, its own
+  confirmation and its own effect.
 
   **Task 23 closed the RE half for `bmar` rows 1–6** —
   `docs/re/shop-arms.md`, `data/shop_arms.json`,
@@ -1526,11 +1526,26 @@ points at this entry.
     `0x3692`, and the byte pair `92 36` does not occur in it at all. **Nor do
     rows 7–9**: `1000:ccc4`..`1000:ce80` measures the same two ways. So the
     dealers' whole **buy path** carries no district test, and the port's
-    refusal of `bmar` rows 5, 6, 7, 8 and 9 below their districts is a
-    five-row divergence — `Game::shop_action` calls `gate_open(row.gate)`
-    before delegating to `Game::buy_pistol_row`, so the pistol rows are
-    refused too. Fixing it means separating the menu gate from the buy gate,
-    not deleting the gate: the handler has **five** district gates and all
+    refusal of `bmar` rows 5, 6, 7, 8 and 9 below their districts was a
+    five-row divergence — `Game::shop_action` called `gate_open(row.gate)`
+    before delegating to `Game::buy_pistol_row`, so the pistol rows were
+    refused too.
+
+    **Task 24 closed it, by separating the two uses of the district rather
+    than deleting the gate.** `Game::print_priced_rows` still calls
+    `gate_open`, so at district 1 the dealers' menu lists rows 1–4 and no
+    more; `Game::shop_action` now delegates to `Game::buy_dealer_row` *before*
+    it consults `gate_open`, and consults it afterwards only for `mar`
+    (`grep -n 'gate_open' src/game.rs` finds both sites). Typing `5` at
+    district 1 buys the Кастет off a menu that never listed it, exactly as
+    the original does. The Rust test
+    `a_gated_dealers_row_is_bought_below_its_district` asserts both halves —
+    the four-row listing and all five gated rows selling at district 1 — and
+    was observed red against a tree with the `gate_open` call restored ahead
+    of the delegation. **This is a claim about `bmar` and nothing else:**
+    `mar`'s arms were not decoded and its buy path keeps its gate untouched,
+    which is Task 25's question. The reason the gate cannot simply be
+    deleted: the handler has **five** district gates and all
     five skip a **menu line** — `1000:c68d` (row 5), `1000:c6f1` (row 6),
     `1000:c755` (row 7), `1000:c7ba` (row 8), `1000:c81d` (row 9), the last
     three being the `district>3` entries `docs/re/tables.md` §2 already
@@ -1548,37 +1563,45 @@ points at this entry.
     of those globals is read elsewhere in the original, so none is a
     write-only flag.
 
-  **Two more original bugs to reproduce, not fix.** `1000:cc69 jz 0xcc75`
-  skips **both** of the club's damage adds when the knuckles are not owned, so
-  buying the Дубинка first grants no damage at all despite the menu's
-  `урон+4`; the combat loot arm granting the same item has the missing branch
-  (`1000:55d8 jz 0x55e6` → `add word [0x38a8],0x4`). And the shop's
-  better-weapon refusal for rows 5 and 6 is a conjunction (`1000:cb5b`,
-  `1000:cb62`, `1000:cb69`; `1000:cc18`, `1000:cc1f`) where the loot arms'
-  is a disjunction (`1000:555f`, `1000:5566`, `1000:556d`; `1000:55c5`,
-  `1000:55cc`).
+  **Two more original bugs, reproduced by Task 24, not fixed.**
+  `1000:cc69 jz 0xcc75` skips **both** of the club's damage adds when the
+  knuckles are not owned, so buying the Дубинка first grants no damage at all
+  despite the menu's `урон+4`; the combat loot arm granting the same item has
+  the missing branch (`1000:55d8 jz 0x55e6` → `add word [0x38a8],0x4`). And
+  the shop's better-weapon refusal for rows 5 and 6 is a conjunction
+  (`1000:cb5b`, `1000:cb62`, `1000:cb69`; `1000:cc18`, `1000:cc1f`) where the
+  loot arms' is a disjunction (`1000:555f`, `1000:5566`, `1000:556d`;
+  `1000:55c5`, `1000:55cc`) — so a player holding a knife can buy the
+  knuckles at the dealers but cannot loot them. Both are in
+  `Game::buy_dealer_row`'s rows 5 and 6, each with the citation and a `#[test]`
+  asserting the changed damage NUMBER
+  (`the_dealers_club_adds_no_damage_at_all_without_the_knuckles`,
+  `the_dealers_sell_the_knuckles_and_the_damage_moves_by_two`); the first was
+  observed red against a tree whose guard was replaced with `true`.
 
-  **A label correction Task 24 has to carry.** `1000:ccd8` is **not** row 7's
+  **The label correction, carried by Task 24.** `1000:ccd8` is **not** row 7's
   key compare, though the Task 18 brief, `src/game.rs`'s `buy_pistol_row` doc
-  comment and `src/combat_dispatch.rs` all call it that
-  (`grep -rn '1000:ccd8' src/`). It decodes to `cmp byte [0x394d],0x0` — row
-  7's *already-own* gate. The key compare is `1000:ccce`
-  (`call 0xf78:0xbd8` against the literal `7` at CS `0x9023`), and `1000:ccd3`
-  is the `jz 0xccd8` in front of it. Row 8's and row 9's labels have the same
-  shape: `1000:cd76` and `1000:cdf9` are already-own / prerequisite gates, and
-  their key compares are `1000:cd6f` and `1000:cdef`. Task 23 did not edit
-  `src/`; Task 24 should fix the three doc comments with these citations.
+  comment and `src/combat_dispatch.rs` all called it that. It decodes to
+  `cmp byte [0x394d],0x0` — row 7's *already-own* gate. The key compare is
+  `1000:ccce` (`call 0xf78:0xbd8` against the literal `7` at CS `0x9023`), and
+  `1000:ccd3` is the `jz 0xccd8` in front of it. Row 8's and row 9's labels
+  have the same shape: `1000:cd76` and `1000:cdf9` are already-own /
+  prerequisite gates, and their key compares are `1000:cd6f` (literal
+  CS `0x9055`) and `1000:cdef` (literal CS `0x906a`). Both `src/` sites now
+  carry the corrected addresses; `grep -rn '1000:ccce' src/` finds them.
+  Task 24 also corrected two debit addresses it had first written from the
+  price *load* rather than the `sub`: rows 7 and 8 debit at `1000:cd14` and
+  `1000:cdad`, not `1000:cd0f` / `1000:cda8`.
 
-  **Still open after Task 23:** all nine `mar` arms, `bmar`'s `x`/`wes`
-  arms, and the porting work itself — `src/game.rs` is untouched by Task 23,
-  which is Task 24's job.
+  **Still open after Task 24:** all nine `mar` arms and `bmar`'s `x`/`wes`
+  arms.
 
-  **`bmar` rows 7, 8 and 9 are done** (Task 18, `Game::buy_pistol_row`),
-  because they are what makes `20ae:394d` reachable and therefore what makes
-  `f` at either prompt do anything: `1000:ccd8` the pistol
-  (`mov byte [0x394d],1` and `add word [0x394f],3`), `1000:cd76` the
-  cartridges (`add word [0x394f],5`), `1000:cdf9` the silencer
-  (`mov byte [0x394e],1`, gated on the pistol AND on
+  **`bmar` rows 7, 8 and 9 were done first** (Task 18; they now live in
+  `Game::buy_dealer_row` alongside rows 1–6), because they are what makes
+  `20ae:394d` reachable and therefore what makes `f` at either prompt do
+  anything: `1000:cd05` the pistol (`mov byte [0x394d],1` and
+  `add word [0x394f],3`), `1000:cda3` the cartridges (`add word [0x394f],5`),
+  `1000:ce34` the silencer (`mov byte [0x394e],1`, gated on the pistol AND on
   `1000:ce00 cmp byte [0x3e32],0x19`). Each arm's own gates and refusal lines
   are reproduced.
 

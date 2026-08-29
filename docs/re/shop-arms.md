@@ -364,10 +364,12 @@ on. See "The district question" above.
 
 ## What the port must change
 
-Read with `Game::shop_action` and `Game::buy_pistol_row` in `src/game.rs`
-(`grep -n 'buy_pistol_row' src/game.rs` finds both). The generic path today
-debits the price, echoes the *menu* line, and refuses a district-gated row.
-For `bmar` 1..6 that is wrong in five ways:
+Read with `Game::shop_action` and `Game::buy_dealer_row` in `src/game.rs`
+(`grep -n 'buy_dealer_row' src/game.rs` finds both). **Task 24 did all five
+of the following**; the list is kept as the record of what it changed, and
+`Game::buy_pistol_row` is the name that function carried before it grew rows
+1–6. The generic path used to debit the price, echo the *menu* line, and
+refuse a district-gated row. For `bmar` 1..6 that was wrong in five ways:
 
 1. **Stop refusing on district anywhere on the dealers' BUY path — all five
    gated rows, not two.** `Game::shop_action` calls `gate_open(row.gate)`
