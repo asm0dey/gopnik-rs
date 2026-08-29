@@ -14,6 +14,11 @@ read the Borland shortstring at that offset out of `orig/g.exe` and require
 the literal to be a prefix of it. `unchecked` counts the citations with no
 adjacent literal to compare against -- those are addresses, not strings, and
 the count is asserted so the population cannot quietly shrink to zero.
+`unchecked` is NOT a clean "unverified string citations" tally: a `file`
+citation for an *instruction* address (e.g. `src/locations.rs`'s
+`file 0xC462` / `1000:ab92`) matches `CITE` and has no nearby literal to
+compare, so it lands in `unchecked` too, indistinguishable from a citation
+this scanner simply cannot reach. Do not read `unchecked` as a defect count.
 
 `tools/re_derive.py` does the same job for `docs/re/*.md`'s `1000:xxxx`
 instruction citations; this is its counterpart for string offsets in `src/`.
@@ -178,6 +183,12 @@ class StringCitationTest(unittest.TestCase):
         for off, want in ((0x7CC2, "places.sav"),
                           (0x7D21, "^6\u0427\u0451-\u0442\u043e ")):
             got = shortstring(self.img, addrmod.image_off_of_file_off(off))
+            if got is None:
+                # `shortstring` returns `None` on a cp866 decode failure
+                # (`scan()` treats that as a BAD citation, not a skip -- see
+                # its `here is not None` guard). Match that convention here:
+                # report it as a real failure, not an unguarded crash.
+                self.fail("%s: shortstring failed to decode (cp866)" % hex(off))
             self.assertTrue(got.startswith(want), (hex(off), got[:40]))
 
 
