@@ -478,26 +478,36 @@ their examples. The brief asked for a file usable without reading this prose,
 and `uncited_spans` is the most tempting thing in it to mistake for a to-do
 list, so the warning travels with the data rather than only here.
 
-**Totals.** 838 game branches; **84 touched (10.0%)**; 754 with no citation at
-the branch or its guard. `docs/re/*.md` was deliberately excluded from the scan:
-documented is not ported.
+**Totals — and the one warning that matters about them.** Every number in this
+section counts citations in `src/`, so **every number here is revision-bound and
+goes stale on the next commit that adds one.** `data/branches.json` froze its
+own columns when Ghidra last ran (`82a08d8`); the table below is recomputed from
+the shipped tree, and the block under *Recomputation* prints it. Quote the
+command, not the cell.
+
+At `e657bbe`: 838 game branches; **305 touched (36.4%)**; 533 with no citation
+at the branch or its guard. At `3981f74`, the commit before Task 22: 280 (33.4%)
+— the port of `FUN_1000_1a03` is the whole of the +25. The frozen columns inside
+`data/branches.json` still say 84 (10.0%), which was true at `82a08d8` and is
+what this paragraph printed, unrecomputed, for four tasks. `docs/re/*.md` is
+deliberately excluded from the scan: documented is not ported.
 
 | entry | bytes | branches | touched | citations | note |
 |-------|------:|---------:|--------:|----------:|------|
-| `1000:ab59` `entry` | 17143 | 406 | 45 | 229 | the top-level body; most of the game |
-| `1000:3d11` | 6971 | 224 | 21 | 67 | combat (identified in `docs/re/combat.md`) |
-| `1000:1a03` | 2700 | **83** | **0** | **0** | — |
-| `1000:6a0d` | 2527 | 33 | 6 | 71 | |
-| `1000:29c4` | 666 | 19 | 2 | 23 | |
-| `1000:0d14` | 1196 | 17 | 0 | 1 | rolls the enemy (`src/game.rs`) |
-| `1000:2526` | 929 | 17 | 9 | 31 | |
-| `1000:7c67` | 1612 | **16** | **0** | **0** | the church (`docs/re/wander.md:162`, `docs/re/gaps.md:201`) |
-| `1000:1348` | 791 | 11 | 1 | 15 | |
-| `1000:0aec` | 552 | 5 | 0 | 0 | |
+| `1000:ab59` `entry` | 17143 | 406 | 107 | 626 | the top-level body; most of the game |
+| `1000:3d11` | 6971 | 224 | 94 | 611 | combat (identified in `docs/re/combat.md`) |
+| `1000:1a03` | 2700 | 83 | 54 | 170 | the character sheet — ported in Task 22, `src/character_sheet.rs` |
+| `1000:6a0d` | 2527 | 33 | 15 | 158 | |
+| `1000:29c4` | 666 | 19 | 2 | 26 | |
+| `1000:0d14` | 1196 | 17 | 11 | 53 | rolls the enemy (`src/game.rs`) |
+| `1000:2526` | 929 | 17 | 9 | 51 | |
+| `1000:7c67` | 1612 | 16 | 12 | 39 | the church (`docs/re/wander.md:162`, `docs/re/gaps.md:201`) |
+| `1000:1348` | 791 | 11 | 1 | 18 | |
+| `1000:0aec` | 552 | 5 | **0** | **0** | |
 | `1000:074b` | 896 | 2 | 0 | 4 | |
-| `1000:11c2` | 178 | 2 | 0 | 0 | |
-| `1000:7538` | 580 | 2 | 0 | 1 | the mage's paid save (`docs/re/wander.md:287`) |
-| `1000:5f55` | 1000 | 1 | 0 | 3 | |
+| `1000:11c2` | 178 | 2 | 0 | 1 | |
+| `1000:7538` | 580 | 2 | 0 | 29 | the mage's paid save (`docs/re/wander.md:287`) |
+| `1000:5f55` | 1000 | 1 | 0 | 4 | |
 | `1000:02c2` | 508 | 0 | 0 | 0 | the title banner — **inference from string pointers**, see below |
 | `1000:0acc` | 15 | 0 | 0 | 0 | |
 
@@ -517,40 +527,219 @@ the caller, so it stays an inference.
 
 ### The ranking: largest uncited spans by branch count
 
-191 spans hold 822 of the 838 game branches. The top 12, with what each span
-*loads string pointers to* — established from flow (`mov di,imm`; file offset =
-`imm + 0x18d0`, cross-referenced against `data/strings.json`). The span
-boundaries are mechanical; the labels are an **inference from those string
-pointers**, not a traced dispatch.
+**Revision-bound, exactly like the totals above.** A span is cut by every port
+citation that lands in it, so porting a function does not remove one span — it
+shatters it into many small ones. At `e657bbe`, 416 spans hold 767 of the 838
+game branches (at `82a08d8`, when `data/branches.json` was generated, 191 spans
+held 822; the `uncited_spans` array in that file still says so). The top 12
+below is recomputed from the shipped tree by the block under *Recomputation*.
+
+The `strings loaded inside` column is recomputed the same way, and by the method
+the previous revision claimed and did not ship: decode the enclosing function
+linearly from its entry with `tools/dis16.py`, keep each `mov di,imm16` whose
+`imm + 0x18d0` is the `off` of a `data/strings.json` entry. That reimplementation
+reproduces all seven of the counts the previous table printed (62 / 83 / 49 / 35
+/ 26 / 28 / 42, for the old spans at `1a03`, `c53b`, `bd22`, `e39b`, `d8c9`,
+`df11`, `7c67`), which is why the new counts are quotable. The span boundaries
+are mechanical; the labels remain an **inference from those string pointers**,
+not a traced dispatch.
 
 | rank | span | function | bytes | branches | strings loaded inside suggest |
 |-----:|------|----------|------:|---------:|-------------------------------|
-| 1 | `1000:1a03`..`1000:248e` | `FUN_1000_1a03` | 2700 | 83 | the status screen — `Ты # уровня`, `Сл:`, `Феньки:`, `Крестик(Удача +2)` (62 string loads) |
-| 2 | `1000:c53b`..`1000:d382` | `entry` | 3656 | 79 | the dealers' shop — `# руб. Косяк`, `# руб. Краденый мобильник(Подмога быстрее приходит)` (83 string loads) |
-| 3 | `1000:52b4`..`1000:584b` | `FUN_1000_3d11` | 1432 | 65 | tail of the combat routine |
-| 4 | `1000:bd22`..`1000:c49a` | `entry` | 1913 | 46 | eating — `Ты сожрал хот-дог`, `Ты не можешь хавать из-за сломаной челюсти.` (49 string loads) |
-| 5 | `1000:e39b`..`1000:e947` | `entry` | 1453 | 37 | the gym — `Ты пришел в качалку`, `качаться гателями и шгангой(Сила +1)` (35) |
-| 6 | `1000:4b01`..`1000:4f81` | `FUN_1000_3d11` | 1153 | 36 | middle of the combat routine |
-| 7 | `1000:af05`..`1000:b195` | `entry` | 657 | 28 | the wander preamble — already a known gap |
-| 8 | `1000:d8c9`..`1000:dce4` | `entry` | 1052 | 27 | the den — `Пацаны хотят тебе кое-чё сказать`, `p чтобы угостить пацанов пивом` (26) |
-| 9 | `1000:40b7`..`1000:445b` | `FUN_1000_3d11` | 933 | 24 | combat |
-| 10 | `1000:df11`..`1000:e36c` | `entry` | 1116 | 19 | the club — `Ты пришел в клуб`, `Здесь можно сыграть в карты`, `потусоваться на дискотеке(Ловкость +1)` (28) |
-| 11 | `1000:0d15`..`1000:11bf` | `FUN_1000_0d14` | 1195 | 17 | enemy generation; loads no strings |
-| 12 | `1000:7c67`..`1000:82b2` | `FUN_1000_7c67` | 1612 | 16 | the church — `Ты наткнулся на храм Божий.`, `Бог: "А ты опять."` (42) |
+| 1 | `1000:c53b`..`1000:cb04` | `entry` | 1482 | 30 | the dealers' shop menu — `#^7 руб. Косяк`, `#^7 руб. Краденый мобильник(Подмога быстрее приходит)` (34 string loads) |
+| 2 | `1000:ced9`..`1000:d382` | `entry` | 1194 | 24 | selling back to the dealers — `^2У тебя есть ненужный костюм хочешь продать?`, `^2Ты продал костюм за #.` (20) |
+| 3 | `1000:d8c9`..`1000:dc0d` | `entry` | 837 | 22 | the den — `^6Пацаны хотят тебе кое-чё сказать`, `^6Ты пацан нормальный. Есть дело.` (21) |
+| 4 | `1000:e590`..`1000:e947` | `entry` | 952 | 21 | the gym — `^0Качалка\`, `20^7  прокачать пресс(Броня +1)` (26) |
+| 5 | `1000:4169`..`1000:43f5` | `FUN_1000_3d11` | 653 | 17 | combat, the crowd lines — `Зрители:^6Врежь ему!` (20) |
+| 6 | `1000:bd22`..`1000:bf7f` | `entry` | 606 | 17 | eating — `^4Ты не можешь хавать из-за сломаной челюсти.`, `^4Чёрт, бабок даже на жратву не хватает.` (16) |
+| 7 | `1000:cb06`..`1000:ccd7` | `entry` | 466 | 13 | more of the dealers' body — `^2Чистый зек.`, `^6Сделать, конечно, можно но толку не будет.` (13) |
+| 8 | `1000:3d12`..`1000:3dc6` | `FUN_1000_3d11` | 181 | 10 | the combat opening — `Слышь Вась..`, `^4Пацан ты из какого района?` (4) |
+| 9 | `1000:dd33`..`1000:ddf5` | `entry` | 195 | 9 | stealing — `^2Ты пришел воровать деньги`, `^0Давай быстрее..` (4) |
+| 10 | `1000:dfcc`..`1000:e180` | `entry` | 437 | 9 | the club — `^0Клуб\`, `22^7  разузнать приемы мухлёжников(Удача +1)` (9) |
+| 11 | `1000:ea95`..`1000:ec81` | `entry` | 493 | 8 | the help text — `Напиши: ^6mar^7  чтобы идти на рынок` (18) |
+| 12 | `1000:1e07`..`1000:1e34` | `FUN_1000_1a03` | 46 | 6 | inside the weapon line's seven-way disjunction; loads no strings |
 
-Next after those: `1000:d479`..`1000:d6c9` (15, the vet — `7 рублей починят
-переломы`), `1000:3d12`..`1000:3dc6` (10), `1000:dcfc`..`1000:dee2` (10,
-stealing — `Ты пришел воровать деньги`, `Шухер менты!`), `1000:ea95`..`1000:ec81`
-(8, the help text).
+Next after those: `1000:e23f`..`1000:e36c` (6, the club's price check — `^6Не
+хватает денег - надо #.`), `1000:0aec`..`1000:0d13` (5, loads only the six
+two- and three-character fragments `Ы ^`, `С^`, `У^`, `П^`, `Е^`, `Р ^`),
+`1000:2bc0`..`1000:2c52` (5, beer — `^4Кончилось пиво`),
+`1000:3dc8`..`1000:3fa6` (5, combat — `^4Я МАНЬЯК!!!`).
 
-Defensible order of work, from this table alone: the status screen
-(`FUN_1000_1a03`, 83 branches, not one citation anywhere in the port), then the
-dealers' shop body, then the two large uncited stretches of the combat routine,
-then eating / gym / den / club as a block of location menus.
+Defensible order of work, from this table alone: the **dealers' shop body**
+(`1000:c53b`..`1000:cb04`, 30 branches), then its sell path
+(`1000:ced9`..`1000:d382`, 24), then den / gym / eating as a block of location
+menus. The status screen, which headed this list for four tasks, is off it:
+`FUN_1000_1a03` is ported (`src/character_sheet.rs`, Task 22), 54 of its 83
+branches touched across 170 citation sites, and its largest remaining uncited
+span is rank 12 at six branches.
 
-## Recomputation: every number above, from the shipped artifacts
+## Recomputation, from the shipped artifacts
 
 Standard library only, run from the repo root. Nothing here needs Ghidra.
+
+**What these blocks do and do not cover.** They recompute every *derived* number
+in this document — the coverage totals, the per-entry columns, the span ranking,
+the string-load counts, guard mnemonics, the undefined-run tiling, string
+attribution, and the byte / fallthrough / rel8 encoding checks. They do **not**
+re-derive the byte tallies in the `limits` table at the top of this document
+(`bytes_in_identified_functions`, `bytes_in_code_blocks`, and the 64.2% that
+divides them); those are read out of `data/branches.json` and can only be
+re-derived by re-running Ghidra. The one cross-check available without it —
+43,890 two ways, `sum(size)` against the per-block walk — is the last block
+here. An earlier revision of this header said "every number above" while
+recomputing no coverage figure at all; that is the defect
+`docs/re/METHODOLOGY.md` calls a check that cannot fail, and it is what let the
+totals rot by 3.6x.
+
+### Coverage: the totals, the per-entry columns and the span ranking
+
+This block existed for four revisions without recomputing a single coverage
+figure — the two blocks that came closest read `port_touched` and
+`uncited_spans` straight out of `data/branches.json` and compared them with
+themselves, which is a check that cannot fail. That is why the numbers above
+rotted from 84 to 305 unnoticed. This is the check that can fail.
+
+It reimplements `tools/ghidra/EnumerateBranches.java`'s rule rather than reading
+its answer: the `CITATION` pattern (`\b hex{4} : hex{1,4} \b`, ASCII word
+boundaries, as Java's default `\b` is), the `seg < 0x1000 ? seg + 0x1000 : seg`
+normalisation, the flat-address comparison, the citation source globs read from
+the artifact's own `port_citation_sources`, and `port_touched` = the branch's
+own address **or its guard's**.
+
+**Validated against the artifact it must reproduce.** Run at `82a08d8` — the
+revision whose `src/` generated `data/branches.json` — it prints
+`838 | touched 84 (10.0%) | uncited 754`, every per-entry `touched`/`citations`
+column equal to that function's recorded `branches_touched_by_port` /
+`port_citation_count`, and `191 spans hold 822 of the 838`. A companion check
+over the raw records reported **0 mismatches on `cited_in_port`,
+`guard_cited_in_port` and `port_touched` across all 1119 branch records**, 0
+column mismatches across all 123 functions, and a symmetric difference of 0
+between its 191 spans and the artifact's `uncited_spans`. Reproduce that before
+trusting any figure this block prints at a later revision:
+
+```bash
+git worktree add /tmp/wt82 82a08d8 && cd /tmp/wt82   # then run the block below
+```
+
+```bash
+python3 - <<'EOF'
+import json, glob, re, collections
+d = json.load(open('data/branches.json'))
+CITE = re.compile(r'\b([0-9a-fA-F]{4}):([0-9a-fA-F]{1,4})\b', re.ASCII)
+flat = lambda a: int(a[:4], 16) * 16 + int(a[5:], 16)
+cite = collections.defaultdict(set)
+for pat in d['port_citation_sources']:                 # ["src/**/*.rs", "data/command_dispatch.json"]
+    for p in sorted(glob.glob(pat, recursive=True)):
+        for i, ln in enumerate(open(p, encoding='utf-8').read().splitlines(), 1):
+            for s, o in CITE.findall(ln):
+                s = int(s, 16)                         # normalise a runtime segment to Ghidra's
+                cite[(s + 0x1000 if s < 0x1000 else s) * 16 + int(o, 16)].add('%s:%d' % (p, i))
+B = [b for b in d['branches'] if b['class'] == 'game']
+hit = lambda b: flat(b['addr']) in cite or bool(b['guard']) and flat(b['guard']['addr']) in cite
+t = sum(map(hit, B))
+print('game branches %d | touched %d (%.1f%%) | uncited %d' % (len(B), t, 100*t/len(B), len(B)-t))
+spans = []
+for f in sorted((f for f in d['functions'] if f['class'] == 'game'), key=lambda f: -f['branch_count']):
+    lo, hi = flat(f['entry']), flat(f['entry']) + f['size']
+    br = sorted(flat(b['addr']) for b in B if b['func_entry'] == f['entry'])
+    cits = set().union(*[cite[a] for a in cite if lo <= a < hi] or [set()])
+    print('%-12s bytes %5d branches %3d touched %3d citations %3d' % (
+        f['entry'], f['size'], len(br),
+        sum(1 for b in B if b['func_entry'] == f['entry'] and hit(b)), len(cits)))
+    lo2 = lo
+    for cut in sorted(a for a in cite if lo <= a < hi) + [hi]:
+        n = [b for b in br if lo2 <= b < cut]
+        if n:
+            spans.append((len(n), '1000:%04x..1000:%04x' % (lo2 - 0x10000, cut - 1 - 0x10000),
+                          f['entry'], cut - lo2))
+        lo2 = cut + 1
+spans.sort(key=lambda s: (-s[0], s[1]))
+print('%d spans hold %d of the %d' % (len(spans), sum(s[0] for s in spans), len(B)))
+for s in spans[:12]:
+    print('  %3d  %-24s %-14s %5d bytes' % (s[0], s[1], s[2], s[3]))
+EOF
+```
+
+At `e657bbe` — and unchanged by the fix wave that followed it, which added no
+`SEG:OFF` citation to `src/` — that prints, verbatim:
+
+```
+game branches 838 | touched 305 (36.4%) | uncited 533
+1000:ab59    bytes 17143 branches 406 touched 107 citations 626
+1000:3d11    bytes  6971 branches 224 touched  94 citations 611
+1000:1a03    bytes  2700 branches  83 touched  54 citations 170
+1000:6a0d    bytes  2527 branches  33 touched  15 citations 158
+1000:29c4    bytes   666 branches  19 touched   2 citations  26
+1000:0d14    bytes  1196 branches  17 touched  11 citations  53
+1000:2526    bytes   929 branches  17 touched   9 citations  51
+1000:7c67    bytes  1612 branches  16 touched  12 citations  39
+1000:1348    bytes   791 branches  11 touched   1 citations  18
+1000:0aec    bytes   552 branches   5 touched   0 citations   0
+1000:074b    bytes   896 branches   2 touched   0 citations   4
+1000:11c2    bytes   178 branches   2 touched   0 citations   1
+1000:7538    bytes   580 branches   2 touched   0 citations  29
+1000:5f55    bytes  1000 branches   1 touched   0 citations   4
+1000:02c2    bytes   508 branches   0 touched   0 citations   0
+1000:0acc    bytes    15 branches   0 touched   0 citations   0
+416 spans hold 767 of the 838
+   30  1000:c53b..1000:cb04     1000:ab59       1482 bytes
+   24  1000:ced9..1000:d382     1000:ab59       1194 bytes
+   22  1000:d8c9..1000:dc0d     1000:ab59        837 bytes
+   21  1000:e590..1000:e947     1000:ab59        952 bytes
+   17  1000:4169..1000:43f5     1000:3d11        653 bytes
+   17  1000:bd22..1000:bf7f     1000:ab59        606 bytes
+   13  1000:cb06..1000:ccd7     1000:ab59        466 bytes
+   10  1000:3d12..1000:3dc6     1000:3d11        181 bytes
+    9  1000:dd33..1000:ddf5     1000:ab59        195 bytes
+    9  1000:dfcc..1000:e180     1000:ab59        437 bytes
+    8  1000:ea95..1000:ec81     1000:ab59        493 bytes
+    6  1000:1e07..1000:1e34     1000:1a03         46 bytes
+```
+
+At `3981f74` the first line is `touched 280 (33.4%) | uncited 558` and
+`1000:1a03` reads `touched 29 citations 39`, which is where the +25 comes from.
+
+### The `strings loaded inside` column of the span ranking
+
+```bash
+python3 - <<'EOF'
+import json, sys, re
+sys.path.insert(0, 'tools')
+import dis16
+img = open('orig/g.exe', 'rb').read()
+d = json.load(open('data/branches.json'))
+byoff = {e['off']: e for e in json.load(open('data/strings.json'))}
+funcs = {f['entry']: f for f in d['functions']}
+MOVDI = re.compile(r'^mov di,0x([0-9a-f]+)$')
+def loads(start, end, entry):
+    f = funcs[entry]
+    out = []
+    for i in dis16.decode_run(img, f['entry_file_off'], f['entry_file_off'] + f['size']):
+        m = MOVDI.match(i.text) if 0x18d0 + start <= i.off <= 0x18d0 + end else None
+        if m:
+            e = byoff.get(int(m.group(1), 16) + 0x18d0)
+            if e:
+                out.append(e['text'])
+    return out
+# the seven spans the PREVIOUS revision of the table labelled -- the control
+for s, e, fe, want in [(0x1a03,0x248e,'1000:1a03',62), (0xc53b,0xd382,'1000:ab59',83),
+                       (0xbd22,0xc49a,'1000:ab59',49), (0xe39b,0xe947,'1000:ab59',35),
+                       (0xd8c9,0xdce4,'1000:ab59',26), (0xdf11,0xe36c,'1000:ab59',28),
+                       (0x7c67,0x82b2,'1000:7c67',42)]:
+    n = len(loads(s, e, fe))
+    print('%04x..%04x got %2d want %2d %s' % (s, e, n, want, 'OK' if n == want else 'MISMATCH'))
+for s, e, fe in [(0xc53b,0xcb04,'1000:ab59'), (0xced9,0xd382,'1000:ab59'), (0xd8c9,0xdc0d,'1000:ab59'),
+                 (0xe590,0xe947,'1000:ab59'), (0x4169,0x43f5,'1000:3d11'), (0xbd22,0xbf7f,'1000:ab59'),
+                 (0xcb06,0xccd7,'1000:ab59'), (0x3d12,0x3dc6,'1000:3d11'), (0xdd33,0xddf5,'1000:ab59'),
+                 (0xdfcc,0xe180,'1000:ab59'), (0xea95,0xec81,'1000:ab59'), (0x1e07,0x1e34,'1000:1a03')]:
+    L = loads(s, e, fe)
+    print('%04x..%04x %2d  %s' % (s, e, len(L), ' | '.join(L[:2])))
+EOF
+```
+
+All seven controls print `OK`.
+
+### The rest: guards, tiling, attribution, encoding
 
 ```bash
 python3 - <<'EOF'
@@ -683,15 +872,22 @@ print('per-block walk     ', sum(b['bytes_in_functions'] for b in d['memory_bloc
 ndisasm -b16 -o 0x1117 -e 74087 orig/g.exe | head -8   # 1f78:1117 is non-contiguous
 ```
 
-## For `docs/re/gaps.md` — fold in later
+## For `docs/re/gaps.md` — item 1 is discharged
 
-`docs/re/gaps.md` belongs to another task in flight, so nothing here was written
-into it. Two items belong there:
+`docs/re/gaps.md` belonged to another task in flight when this document was
+written, so nothing here was written into it. Two items were listed:
 
-1. **`FUN_1000_1a03` (2700 bytes, 83 branches) has no citation anywhere in the
-   port.** The string pointers it loads are the status-screen texts. It is the
-   single largest uncited branch cluster in the binary.
-2. **The uncited-span ranking above is the gap list's missing spine.** Whatever
-   `gaps.md` lists, its coverage can now be checked against
-   `data/branches.json`: any span in the top 12 with no corresponding gaps.md
-   entry is a gap in the gap list.
+1. ~~**`FUN_1000_1a03` (2700 bytes, 83 branches) has no citation anywhere in the
+   port.** … the single largest uncited branch cluster in the binary.~~
+   **Discharged, and both clauses are now false.** Task 22 ported it into
+   `src/character_sheet.rs`; the coverage block above prints
+   `1000:1a03 … touched 54 citations 170`, and its largest remaining uncited
+   span is 6 branches, rank 12. `docs/re/gaps.md` carries the Task 22 section
+   (`grep -n 'FUN_1000_1a03' docs/re/gaps.md`). The largest uncited cluster in
+   the binary is now the dealers' shop body, `1000:c53b`..`1000:cb04`, at 30.
+2. **The uncited-span ranking above is the gap list's missing spine.** Still
+   open. Whatever `gaps.md` lists, its coverage can be checked against the
+   recomputed ranking: any span in the top 12 with no corresponding gaps.md
+   entry is a gap in the gap list. Check it against the recomputation block, not
+   against `data/branches.json`'s frozen `uncited_spans` — that array is a
+   snapshot of `82a08d8` and its top entry has been ported since.

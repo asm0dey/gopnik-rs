@@ -123,7 +123,7 @@ and
 
 ## State
 
-Tasks 1–17 complete and reviewed. Since the last checkpoint:
+Tasks 1–22 complete and reviewed. Since the last checkpoint:
 
 | Task | What | Commits | Status |
 |---|---|---|---|
@@ -136,7 +136,10 @@ Tasks 1–17 complete and reviewed. Since the last checkpoint:
 | 16 | `FUN_1000_1a03` mapped — **it is the character sheet** | `a293f51..e3e3963` | complete, reviewed (one fix round) |
 | 17 | The in-combat dispatcher mapped — `docs/re/combat-dispatch.md` | `54dd7b7..8632db5` | complete, reviewed (one fix round) |
 | 18 | The dispatcher arms **ported into `src/`** | `fc1d23d..c0e7dd7` | complete, reviewed (one fix round), **merge with fixes** |
-| 19 | The 33 unknown save bytes, and the save/load path they blocked | `a5a6e67..` | complete |
+| 19 | The 33 unknown save bytes, and the save/load path they blocked | `a5a6e67..9837b74` | complete |
+| 20 | The den's reveal, the chapter-5 flag stores, the inventory that miscounted them | `9837b74..bb68d35` | complete, reviewed (one fix round + a re-review) |
+| 21 | The district-advance autosave wired at the top of the main loop | `bb68d35..3981f74` | complete, reviewed (three fix rounds + a final wave) |
+| 22 | `FUN_1000_1a03` **ported** — `src/character_sheet.rs` | `3935728..` (through the whole-branch review's fix wave) | complete, reviewed (one fix round + a whole-branch review + its fix wave) |
 
 ### Task 16, and why it is the shape to copy
 
@@ -469,6 +472,22 @@ the rate rather than trust a number:
 | Task 17 complete (the in-combat dispatcher mapped) | | **281/838** |
 | Task 18 complete (the dispatcher arms ported into `src/`) | | **285/838** |
 | Task 19 complete (the save bytes, and the save/load path) | | **296/838** |
+| `9837b74` | Task 19 merged to `main` | 298/838 |
+| `bb68d35` | Task 20 complete (the den's reveal, the chapter-5 stores) | 298/838 |
+| `3981f74` | Task 21 complete (the district-advance autosave) | 301/838 |
+| `e657bbe` | Task 22 ported (`FUN_1000_1a03`) | 302/838 |
+| — | after Task 22's whole-branch fix wave | 302/838 |
+
+**Two cautions on the four rows above.** First, the `296/838` row does not
+reproduce: the snippet below prints `298` at `9837b74` and at every Task-19
+endpoint tried (`a59ad67`, `f6a4c29`, `90e2d28`). Two branches are
+unaccounted for and the discrepancy is recorded rather than silently
+overwritten. Second, and more important, **this metric is not progress.** It
+globs `docs/re/*.md` and nothing else, so it rises when a document is written
+and barely moves when the port advances — Task 22 ported a 2700-byte function
+and moved it by **one**. The metric that tracks the port is
+`data/branches.json`'s `port_touched` over `src/`, which went 280 → 305 across
+the same range; see `docs/re/branches.md` under *Recomputation → Coverage*.
 
 The whole of Tasks 13-review and 14 moved it by **zero**; Task 15's +3 are the
 addresses its equivalence proofs had to cite. That is the cost of a session
@@ -542,11 +561,31 @@ The metric undercounts (a function can be understood without every `jz` being
 cited) and a citation is not comprehension. Re-run the query above to track
 it.
 
-### `FUN_1000_1a03` — settled in Task 16, and how the hypothesis fared
+### `FUN_1000_1a03` — mapped in Task 16, PORTED in Task 22
+
+**It is no longer mapped-but-unported.** Task 22 (from `3935728`) ported it
+into `src/character_sheet.rs`; `Game::show_stats` calls
+`character_sheet::lines()` and prints what it returns, and `docs/re/gaps.md`
+carries the "Opened and closed by Task 22" section
+(`grep -n 'closed by Task 22' docs/re/gaps.md`). Everything below still stands
+as the map of what the original does — read it as background to the port, not
+as a to-do.
+
+**The coverage delta, with its method.** Not the `docs/re/*.md` metric this
+file tracks elsewhere; this is `data/branches.json`'s `port_touched` — a branch
+counts when its own address **or its guard's** appears as a `SEG:OFF` citation
+in `src/**/*.rs` or `data/command_dispatch.json`, and nothing in `docs/` counts.
+By that measure the whole port went **280/838 (33.4%) → 305/838 (36.4%)** across
+this branch, and `FUN_1000_1a03` alone **29/83 → 54/83** with citation sites
+39 → 170. All of the +25 is this function. The command that recomputes it is in
+`docs/re/branches.md` under *Recomputation → Coverage*, together with the
+reproduction of `data/branches.json`'s own recorded 84/838 at `82a08d8` that
+validates it.
 
 `docs/re/character-sheet.md` is the map; `data/character_sheet.json` the
 machine-readable twin; `tools/test_character_sheet.py` re-derives every claim
-from `orig/g.exe`.
+from `orig/g.exe`; `tools/test_character_sheet_port.py` decodes every game
+string the port ships back out of the image.
 
 The hypothesis this file used to carry — "the body behind `stats` from the main
 loop and `sv` from combat" — was **half refuted**, and the half that mattered
@@ -623,12 +662,15 @@ question.
    fixes*, and this file is one of the fixes. Next step is
    `superpowers:finishing-a-development-branch`.
 
-## The highest-value cleanup left, and why it is one job not two
+## The `term` sink, and why it is no longer one job that blocks two things
 
 **Add a `term` sink.** `crate::term` writes straight to this process's stdout,
-and nothing in the crate can capture it. That single missing seam is what
-blocks two separate things, which is why it is worth doing as one refactor
-rather than being rediscovered twice:
+and nothing in the crate can capture it. Two things want that seam, and the
+bullets below are both still true. The first one was re-checked by running the
+mutation it describes -- replacing the combat arm
+(`git grep -n 'Command::Stats =>' src/game.rs`, the site inside the fight loop)
+with `self.print_enemy_block(&enemy)` -- and `cargo test` stayed green at 269
+passed across all 15 blocks, exit 0, tree restored.
 
 * **The combat `s` and `sv` arms have no executable assertion.** Both are
   print-only calls (`1000:4c35 call 0x1a03` → `Game::show_stats`,
@@ -643,14 +685,27 @@ rather than being rediscovered twice:
   output, because every fight a test runs writes to the real stdout. It makes
   a failure genuinely hard to read.
 
-The same sink fixes both: give `term` an installable destination (a thread-
-local `Vec<u8>` is enough), have the tests install one, and the assertions and
-the quiet become available together. Nothing else in the deferred list has
-that leverage.
+**It is no longer one job that blocks two things, and Task 22 is why.** Half
+the `s` seam already exists without any sink: `character_sheet::lines()`
+returns `Vec<String>` and is asserted line by line, and `Game::sheet_kit`'s
+wiring is asserted flag by flag
+(`git grep -n 'fn sheet_kit_wires' src/game.rs`). So the `s` arm's **content**
+is assertable today; only its **dispatch** is not. The remaining print-only
+half is `Game::print_enemy_block`
+(`git grep -n 'fn print_enemy_block' src/game.rs`), and giving it the same
+builds-then-prints split the sheet got would close the `s` / `sv` confusion
+**without a term sink at all**.
+
+The sink still fixes both at once -- give `term` an installable destination (a
+thread-local `Vec<u8>` is enough), have the tests install one, and the
+assertions and the quiet arrive together. But the leverage claim this section
+used to make is gone: with the `print_enemy_block` split available as a
+cheaper route to the first bullet, the sink is justified by the second bullet
+alone. Weigh the split first.
 
 ### Deferred cleanup: the address suffixes on the flag names
 
-`Game` carries ~14 fields whose names end in a DGROUP address --
+`Game` carries 13 fields whose names end in a DGROUP address --
 `weapon_nozhik_38c2`, `charm_krestik_38bd`, `wear_jacket_krutaya_38b9` and the
 rest. The suffix is **scaffolding against one specific failure**: a name that
 describes the wrong byte, with nothing in it that can be checked. That is not
@@ -661,18 +716,79 @@ it. `1000:cd05` is `bmar` row 7 and it hands over the **pistol**
 (`mov byte [0x394d],1`, then `1000:cd0a add word [0x394f],3`).
 
 **They come off eventually, in one mechanical pass, at the end.** Two
-conditions, both checkable before the pass runs:
+conditions. An earlier revision of this section stated the first one as three
+claims, and a whole-branch review found all three wrong -- in a passage whose
+subject is how addresses keep names honest. Both the corrected version and what
+it replaced are below, because the corrections change the conclusion.
 
-1. **The address is already in the field's doc comment.** It is, in every case
-   -- `weapon_nozhik_38c2` carries `20ae:38c2` / `.SAV 0x226` / `1000:1fb5`
-   above it. So `git grep 38c2` still finds every site after the rename; it
-   hits the comment instead of the identifier. The decode checks
-   (`tools/test_string_citations.py`, `tools/test_character_sheet_port.py`)
-   bind those comment addresses against `orig/g.exe`, so they cannot rot
-   silently the way a bare identifier can.
-2. **Anything whose reading is still unsettled keeps its suffix.** The six
-   clothing flags are carried-not-acted-on (`src/game.rs:441`) and no play
-   path has exercised them.
+**Condition 1 -- the address survives in the DECLARATION's doc comment, and
+only there.** It does, in every case: 13 of 13 suffixed `Game` fields carry
+their own `20ae:XXXX` somewhere in the doc-comment block directly above the
+declaration.
+
+```bash
+python3 - <<'EOF'
+import re
+L = open('src/game.rs', encoding='utf-8').read().splitlines()
+F = re.compile(r'^\s*pub ([a-z0-9_]+_([0-9a-f]{4})): ')
+tot = ok = 0
+for i, l in enumerate(L):
+    m = F.match(l)
+    if not m:
+        continue
+    j, doc = i - 1, []
+    while j >= 0 and L[j].strip().startswith('///'):
+        doc.append(L[j]); j -= 1
+    tot += 1
+    ok += any('20ae:%s' % m.group(2) in d for d in doc)
+print('suffixed fields %d | address in its own doc comment %d' % (tot, ok))
+EOF
+```
+
+prints `suffixed fields 13 | address in its own doc comment 13`. Three
+corrections to what this condition used to claim:
+
+* **The worked example named the wrong address.** It said
+  `weapon_nozhik_38c2` carries "`20ae:38c2` / `.SAV 0x226` / `1000:1fb5`".
+  The field's doc comment reads ``20ae:38c2` / `.SAV 0x226` -- ножик
+  (`1000:568e` gate)` -- the gate is **`1000:568e`**. `1000:1fb5` is a
+  different site, the sheet's `cmp byte [0x38c2],0x0` inside
+  `FUN_1000_1a03`, and it is documented on two OTHER fields:
+  `git grep -n '1000:1fb5' src` returns `src/character_sheet.rs`'s
+  `nozh_38c2`, one comment inside that file's weapon-line arms, and
+  `src/save.rs`'s `.SAV 0x226` -- never `src/game.rs`.
+* **"`git grep 38c2` still finds every site after the rename" is false.**
+  `git grep -c 38c2 -- src` totals **27 lines**; only **5** carry `38c2`
+  outside an identifier and would survive the suffix drop --
+  `git grep -nE '(^|[^_[:alnum:]])38c2' -- src` returns one line each in
+  `src/character_sheet.rs`, `src/persist.rs` and `src/save.rs`, and two in
+  `src/game.rs`. The other 22, including every `bmar` use site, spell the
+  address only inside the identifier and vanish from the grep. What survives
+  is *the declaration and its documented anchors*, not every site.
+* **Nothing binds those anchors to the image.** It claimed the decode checks
+  (`tools/test_string_citations.py`, `tools/test_character_sheet_port.py`)
+  "bind those comment addresses against `orig/g.exe`". They do not. Their
+  citation patterns are ``\b(file|image|CS)\s+`?0x([0-9A-Fa-f]{4,5})`?`` and
+  ``\bCS\s+`0x([0-9A-Fa-f]{4})```, and neither matches `20ae:38c2`,
+  `.SAV 0x226` or `1000:568e`; `test_string_citations.py`'s `NOT_A_LITERAL`
+  goes further and lists `20ae:.*` among the spans it explicitly discards.
+  Those two are also the only tools that scan `src/` for citations at all
+  (`grep -n 'SOURCES = \|^PORT = ' tools/*.py`). The DGROUP suffixes are
+  bound by **nothing**.
+
+All three point the same way, and it is the opposite of what the old paragraph
+concluded: in 22 of those 27 lines the suffix is the ONLY thing naming the
+byte, and no check anywhere would go red if a doc comment drifted off its
+address. **So the pass needs its check written BEFORE it runs, not after** --
+a scanner that resolves every `20ae:XXXX` in `src/` against `orig/g.exe`, with
+a `tools/mutations.json` case that has been observed going red on a
+deliberately wrong address. That is the real precondition, and it strengthens
+the case for keeping the suffixes until it exists.
+
+**Condition 2 -- anything whose reading is still unsettled keeps its suffix.**
+The six clothing flags are carried-not-acted-on
+(`git grep -n 'carried, not acted on' src/game.rs`) and no play path has
+exercised them.
 
 **Piecemeal is the trap.** A tree where half the flags carry addresses and
 half do not cannot distinguish "settled, suffix dropped" from "never had one".

@@ -18,10 +18,27 @@
 //!
 //! And the strings this module SHIPS -- not the ones its comments quote --
 //! are decoded out of `orig/g.exe` by
-//! `python3 tools/test_character_sheet_port.py`, which also pins every
-//! `CS 0x....` below to the literal beside it. Two cases in
+//! `python3 tools/test_character_sheet_port.py`, which also pins each `CS`
+//! citation below to the literal beside it. Three cases in
 //! `tools/mutations.json` (`character-sheet-port-literal`,
-//! `character-sheet-port-citation`) show both checks going red.
+//! `character-sheet-port-citation`, `character-sheet-port-citation-order`)
+//! show both checks going red, the last of them on a citation that is at the
+//! right offset in the wrong place.
+//!
+//! **The exact scope of "pins".** Of the 59 `CS` citations below, 57 are
+//! pinned to one specific fragment: the citations naming a `format!`
+//! template must match its `{...}`-separated fragments as a strictly
+//! increasing subsequence, so the header pair and the stat line's five
+//! cannot be permuted among themselves. (They could until this was fixed --
+//! the scanner compared against a SET, and swapping the stat line's first
+//! and fourth citations stayed green.) The remaining 2 -- the damage line's
+//! and the health line's, each one citation against a two-fragment template
+//! -- are pinned to the GROUP, not the fragment, because a subsequence is
+//! allowed to skip. `tools/test_character_sheet_port.py`'s module docstring
+//! carries the same scope statement with the offsets spelled out; they are
+//! deliberately NOT spelled out here, because prose naming a citation is
+//! itself matched by `tools/test_string_citations.py`'s looser pattern and
+//! would inflate that scanner's population by talking about it.
 //!
 //! ## The split, and why it is this one
 //!
@@ -199,7 +216,18 @@ impl Out {
     /// `Бабки #` or `^4Нету бабок` -- so the money line always closes, and
     /// the only thing that can follow it is the `Хлам #` `WriteLn` at
     /// `1000:2471`.
+    ///
+    /// That argument is from flow and is sound, but it was only prose: the
+    /// method dropped `self.open` on the floor and no test could have seen a
+    /// stray unterminated append. The `debug_assert!` makes it executable, so
+    /// a future edit that opens a line and forgets to close it fails the
+    /// debug-profile test run instead of silently losing the text.
     fn finish(self) -> Vec<String> {
+        debug_assert!(
+            self.open.is_empty(),
+            "Out::finish dropped an unterminated line: {:?}",
+            self.open
+        );
         self.lines
     }
 }

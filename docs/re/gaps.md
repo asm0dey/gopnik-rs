@@ -2009,3 +2009,29 @@ decided rather than established.
   way a surplus `#` can reach the formatter is through the name at
   `DS:379c`, appended at `1000:1a90`. Not modelled; what would settle it is
   a breakpoint on `0eed:0000` with a `#` in the name.
+* **Four of the sheet's quantity gates are SIGNED in the original and
+  unsigned in the port.** Established from flow — the guard, its branch and
+  the branch's opcode byte, all from `data/branches.json`:
+
+  | guard | branch | reads | .SAV | port |
+  |---|---|---|---|---|
+  | `1000:23b4` `833ec53800` `cmp word [0x38c5],0x0` | `1000:23b9` `7e1a` **JLE** | косяки | `0x229` | `p.joints > 0`, `u16` |
+  | `1000:23d5` `833ec33800` `cmp word [0x38c3],0x0` | `1000:23da` `7e39` **JLE** | пиво | `0x227` | `p.beer_dl > 0`, `u16` |
+  | `1000:246a` `833ec93800` `cmp word [0x38c9],0x0` | `1000:246f` `7e1a` **JLE** | хлам | `0x22d` | `p.junk > 0`, `u16` |
+  | `1000:1aa9` `833ea63827` `cmp word [0x38a6],0x27` | `1000:1aae` `7f1b` **JG** | level | `0x20a` | `p.level <= 0x27`, `u16` |
+
+  `0x7e`/`0x7f` are the SIGNED pair (`jle`/`jg`); the unsigned pair is
+  `0x76`/`0x77`. The port's fields are `u16`
+  (`git grep -n 'pub joints\|pub beer_dl\|pub junk\|pub level' src/model.rs`),
+  so a word holding `>= 0x8000` reads as negative to the original and as a
+  large positive to the port, and the two take opposite arms: the original
+  suppresses the `Косяки #` / `Пиво #.#л.` / `Хлам #` line and keeps the
+  `<= 39` experience arm, the port prints the line and takes the `> 39` arm.
+  **Unreachable from play** — nothing in the port or the original raises any
+  of the four past a few hundred — so this is a hand-edited-`.SAV` divergence
+  of the same class as the three above it (out-of-range class or level,
+  `hpmax == 0`, a `#` in the name), registered rather than fixed. What would
+  settle whether it matters is a `.SAV` written with `0x8000` in any of the
+  four bytes, run under both. `money` needs no entry: it is `i32` in
+  `src/model.rs` and the original's money gate (`1000:242e` / `1000:2433`
+  `7e1c` JLE) is signed too, so the two already agree in sign.

@@ -961,7 +961,7 @@
   },
   {
     "label": "character-sheet-port-citation",
-    "defends": "tools/test_character_sheet_port.py pins every `CS 0x....` citation in src/character_sheet.rs to the literal beside it, splitting a format! template on its {...} placeholders first.  0x196e and 0x1983 are the two suit labels 21 bytes apart, both real, and both cited CORRECTLY elsewhere in the same file -- the Task 19 defect class, which only decoding the bytes tells apart.",
+    "defends": "tools/test_character_sheet_port.py pins each CS citation in src/character_sheet.rs to the literal beside it, splitting a format! template on its {...} placeholders first.  0x196e and 0x1983 are the two suit labels 21 bytes apart, both real, and both cited CORRECTLY elsewhere in the same file -- the Task 19 defect class, which only decoding the bytes tells apart.",
     "artifact": "src/character_sheet.rs",
     "mutate": {
       "op": "text-replace",
@@ -974,7 +974,24 @@
       "tools/test_character_sheet_port.py",
       "CharacterSheetPortTest.test_every_cs_citation_holds_the_literal_beside_it"
     ],
-    "expect": "but the literal there is"
+    "expect": "which is not a fragment of"
+  },
+  {
+    "label": "character-sheet-port-citation-order",
+    "defends": "The citations naming ONE format! template are pinned to its fragments IN ORDER, not to the fragment SET.  Until the Task 22 final review this check tested set membership, so the stat line's five citations (0x16b7, 0x16bc, 0x16c5, 0x16ce, 0x16d7) could be permuted among themselves and stay green -- 7 of the file's 59 citations were pinned to the group rather than to the fragment.  The perturbation renames the FIRST citation to the FOURTH's offset, so the group's first decoded fragment is the one that belongs fourth.  Both offsets are real, both still occur in the file, and nothing but the order is wrong -- which is exactly what set membership could not see.",
+    "artifact": "src/character_sheet.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "// CS `0x16b7` is `Сл:^`,",
+      "to": "// CS `0x16ce` is `Сл:^`,",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_character_sheet_port.py",
+      "CharacterSheetPortTest.test_every_cs_citation_holds_the_literal_beside_it"
+    ],
+    "expect": "is out of order"
   }
  ]
 }

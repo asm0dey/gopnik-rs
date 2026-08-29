@@ -438,11 +438,17 @@ memory-operand `jmp` or `call`. Grouped:
 - **Formatting decisions, left uncited (24):** the section-header disjunctions
   (`Феньки: ` (CS `0x16d9`) at `1000:1bc2`/`1000:1bc9`, `Мощные феньки: `
   (CS `0x1710`) at
-  `1000:1c38`..`1000:1c46`, the weapon line at `1000:1e06`..`1000:1e30`), the
+  `1000:1c38`..`1000:1c46`, the weapon line at `1000:1e06`..`1000:1e35`), the
   ammo-quantity flavour (`1000:1dab`..`1000:1dd7`), and the dim `^4` arms of
   the best-item-wins pairs. They decide whether a *header* prints and in which
   colour; none of them reads a global the cited arms do not already read.
   `docs/re/gaps.md` says what would settle them.
+  (An earlier revision ended the weapon line at `1000:1e30`, which is the last
+  *guard* — `cmp byte [0x394c],0x0` — and stops one branch short of the
+  disjunction it names. `1000:1e35` is that guard's branch, `74 05 jz 0x1e3c`,
+  and it is the seventh member. `data/character_sheet.json`'s
+  `branch_partition.uncited` and `docs/re/gaps.md` both carry `1000:1e35`; this
+  line did not.)
 
 ## What this changes elsewhere
 

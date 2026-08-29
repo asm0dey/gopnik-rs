@@ -15,12 +15,32 @@ So this decodes the code. Two checks, both over `orig/g.exe`:
   * **every shipped literal exists** -- each game-text string literal above
     the module's `#[cfg(test)]` is encoded as a Borland shortstring (a length
     byte then cp866) and required to occur in the image;
-  * **every `CS 0x....` citation holds the literal beside it** -- the
-    shortstring at the cited offset must equal the nearest Rust literal, or,
-    when that literal is a `format!` template, one of the fragments the
+  * **every `CS 0x....` citation holds the literal beside it, IN ORDER** --
+    the shortstring at the cited offset must equal the nearest Rust literal,
+    or, when that literal is a `format!` template, one of the fragments the
     `{...}` placeholders split it into. `Сл:^{c0}#^7 Лв:^{c1}...` splits into
     exactly the five literals `1000:1b24`..`1000:1ba0` append, which is what
     makes the citation on a composed line checkable at all.
+
+    **Order is part of the check, and it did not used to be.** `fragments()
+    returned a SET and the test was `here in fragments(lit)`, so the five
+    citations on the stat line could be permuted among themselves and stay
+    green -- swapping `CS 0x16b7` with `CS 0x16ce`, or the header's
+    `CS 0x1664` with `CS 0x166a`, changed nothing. That is 7 of the module's
+    59 citations, and for those 7 the check pinned the citation to the GROUP,
+    not to the fragment. `fragments()` now returns a list in source order and
+    the citations naming one template must match its fragments as a strictly
+    increasing subsequence: citation k+1 matches a fragment strictly to the
+    right of citation k's. A permutation within a group now fails.
+
+    **What it still does not pin.** A subsequence may skip, so a group with
+    fewer citations than fragments leaves the citation pinned to the group
+    rather than to one fragment. Exactly two of the 59 are in that state --
+    `CS 0x1821` on `^{}Урон #-#    ` and `CS 0x18fa` on
+    `^{}Здоровье #/#  {cond}`, each one citation against two fragments, the
+    second of which is the one it names. Both are unambiguous by decode (the
+    other fragment is the bare `^`), but the CHECK does not say so, and this
+    paragraph is the scope of the claim rather than a promise it is airtight.
 
 Both checks are two-sided: the controls below feed the same scanners a
 literal that is one character wrong and require them to reject it.
@@ -109,13 +129,17 @@ def literals_on(line):
 def fragments(lit):
     """The runs of a literal that the ORIGINAL holds as one shortstring.
 
+    A LIST, in source order -- the order the original appends them in. It
+    used to be a set, which is what let citations permute inside one group
+    without any check noticing; see the module docstring.
+
     A plain literal is one run. A `format!` template is the runs its `{...}`
     placeholders separate -- `Сл:^{c0}#^7 Лв:^{c1}...` is five appends in the
     original, not one string, so five runs are what must be looked up.
     """
     if PLACEHOLDER.search(lit):
-        return {p for p in PLACEHOLDER.split(lit) if p}
-    return {lit}
+        return [p for p in PLACEHOLDER.split(lit) if p]
+    return [lit]
 
 
 def shipped_literals(lines):
@@ -123,23 +147,28 @@ def shipped_literals(lines):
     out = []
     for i, line in enumerate(lines):
         for lit in literals_on(line):
-            for frag in sorted(fragments(lit)):
+            for frag in fragments(lit):
                 out.append((i + 1, frag))
     return out
 
 
 def cited_pairs(lines):
-    """`(line_no, offset, literal_or_None)` for every `CS 0x....` citation."""
+    """`(line_no, offset, literal_or_None, group)` per `CS 0x....` citation.
+
+    `group` is the index of the source line the literal was found on, so the
+    citations that name one composed literal share a key and can be checked
+    against its fragments in order. `None` when no literal is in range.
+    """
     out = []
     for i, line in enumerate(lines):
         for hexoff in CS_CITE.findall(line):
-            found = None
+            found, group = None, None
             for j in range(i, min(i + 1 + LOOKAHEAD, len(lines))):
                 lits = literals_on(lines[j])
                 if lits:
-                    found = lits[0]
+                    found, group = lits[0], j
                     break
-            out.append((i + 1, int(hexoff, 16), found))
+            out.append((i + 1, int(hexoff, 16), found, group))
     return out
 
 
@@ -150,16 +179,48 @@ def scan_existence(img, lines):
 
 
 def scan_citations(img, lines):
-    """Citations whose offset does not hold the literal beside them."""
-    bad = []
-    for n, off, lit in cited_pairs(lines):
-        here = shortstring(img, off)
+    """Citations whose offset does not hold the fragment it names, in order.
+
+    Within one group -- the citations that resolve to the same literal --
+    the decoded shortstrings must be a strictly increasing subsequence of
+    that literal's fragments. Greedy leftmost matching decides it, which is
+    the standard subsequence test and is exact.
+
+    The two ways it can fail are reported with DIFFERENT wording, because
+    they are different defects and `tools/mutations.json` defends each with
+    its own case: `holds ... which is not a fragment of` is a wrong offset,
+    `is out of order` is a right offset in the wrong place.
+    """
+    bad, groups = [], {}
+    for n, off, lit, group in cited_pairs(lines):
         if lit is None:
             bad.append("line %d: CS 0x%04X has no literal within %d lines"
                        % (n, off, LOOKAHEAD))
-        elif here is None or here not in fragments(lit):
-            bad.append("line %d: CS 0x%04X holds %r, but the literal there "
-                       "is %r" % (n, off, here, lit))
+        else:
+            groups.setdefault(group, (lit, []))[1].append((n, off))
+    for group in sorted(groups):
+        lit, cites = groups[group]
+        frags = fragments(lit)
+        k = 0
+        for n, off in cites:
+            here = shortstring(img, off)
+            j = next((x for x in range(k, len(frags))
+                      if here is not None and frags[x] == here), None)
+            if j is None:
+                at = [x for x, f in enumerate(frags) if f == here]
+                if at:
+                    bad.append(
+                        "line %d: CS 0x%04X is out of order: it holds %r, "
+                        "fragment %s of %r, but an earlier citation in the "
+                        "same group already claimed through index %d"
+                        % (n, off, here, at, lit, k - 1))
+                else:
+                    bad.append(
+                        "line %d: CS 0x%04X holds %r, which is not a "
+                        "fragment of %r (fragments %r)"
+                        % (n, off, here, lit, frags))
+                break
+            k = j + 1
     return bad
 
 
@@ -224,7 +285,7 @@ class CharacterSheetPortTest(unittest.TestCase):
         """The composed lines are the ones a naive scanner has to skip."""
         self.assertEqual(
             fragments("^{}Урон #-#    "),
-            {"^", "Урон #-#    "})
+            ["^", "Урон #-#    "])
         good = ['        // CS `0x1821`',
                 '        &format!("^{}Урон #-#    ", d),']
         self.assertEqual(scan_citations(self.img, good), [])
@@ -232,6 +293,41 @@ class CharacterSheetPortTest(unittest.TestCase):
         bad = ['        // CS `0x1664`',
                '        &format!("^{}Урон #-#    ", d),']
         self.assertEqual(len(scan_citations(self.img, bad)), 1)
+
+    def test_two_citations_on_one_template_may_not_be_swapped(self):
+        """The defect the set-membership version could not see.
+
+        `0x1664` is `^2Ты ` and `0x166a` is ` # уровня - `; both are real,
+        both are fragments of the header template, and the old check took
+        them in either order because it tested set membership. The order
+        is what the original's four appends fix, so the order is checked.
+        """
+        good = ['    // CS `0x1664`',
+                '    // CS `0x166a`',
+                '    &format!("^2Ты {} # уровня - {}", r, k),']
+        swapped = ['    // CS `0x166a`',
+                   '    // CS `0x1664`',
+                   '    &format!("^2Ты {} # уровня - {}", r, k),']
+        self.assertEqual(scan_citations(self.img, good), [])
+        bad = scan_citations(self.img, swapped)
+        self.assertEqual(len(bad), 1, bad)
+        self.assertIn("is out of order", bad[0])
+
+    def test_five_citations_on_the_stat_line_may_not_be_permuted(self):
+        """The real site: `0x16b7`..`0x16d7` on `Сл:^{}#^7 Лв:^{}...`.
+
+        Swapping the first and fourth is the permutation the reviewer
+        demonstrated against the set-membership version.
+        """
+        tmpl = ('    &format!("Сл:^{a}#^7 Лв:^{b}#^7 Жв:^{c}#^7 Уд:^{d}#"),')
+        order = [0x16b7, 0x16bc, 0x16c5, 0x16ce, 0x16d7]
+        good = ['    // CS `0x%04x`' % o for o in order] + [tmpl]
+        self.assertEqual(scan_citations(self.img, good), [])
+        perm = [order[3], order[1], order[2], order[0], order[4]]
+        swapped = ['    // CS `0x%04x`' % o for o in perm] + [tmpl]
+        bad = scan_citations(self.img, swapped)
+        self.assertEqual(len(bad), 1, bad)
+        self.assertIn("is out of order", bad[0])
 
 
 if __name__ == "__main__":

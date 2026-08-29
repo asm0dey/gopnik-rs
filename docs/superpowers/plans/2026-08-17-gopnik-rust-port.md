@@ -1,5 +1,16 @@
 # GOPNIK v1.02 — Bit-Faithful Rust Port — Implementation Plan
 
+> **HISTORICAL RECORD — superseded from Task 13 on.** This plan's numbered
+> tasks stop at 12. From Task 13 onward the current state of the port, the task
+> ledger, and the remaining work live in `docs/superpowers/RESUME.md`; the
+> evidence rules live in `docs/re/METHODOLOGY.md` and `CLAUDE.md`. Nothing below
+> is re-edited to track the tree, so parts of it name APIs that no longer exist
+> (`Fighter::inventory_lines`, `show_health`: `git grep -n
+> 'inventory_lines\|show_health' src/` returns exactly one line, a doc comment
+> naming the test that replaced the first, and no definition or call of
+> either). Read it for the original architecture and constraints, not for the
+> current contract.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reimplement the 2003 Borland Pascal 7.0 DOS text-RPG "ГОПНИК v1.02" (`g.exe`, 88656 bytes) in Rust so that game logic — RNG, combat math, stat growth, prices, save format — reproduces the original's numbers exactly.
