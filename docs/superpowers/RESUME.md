@@ -887,11 +887,17 @@ revisit. The `chain_reentry` closure test; the den-flag scan's `mov byte`
 scope (judged over-stated — the test's assertion is about immediate stores and
 its scope matches its claim); the `live_probe` key-name divergence;
 `i32::from(agility)`'s zero-extension; `tests/game_flow.rs`'s backslash
-anchor; `Game::buy_pistol_row`'s home in `game.rs` rather than a shop module;
-the shop display-gate-as-action-gate divergence (`src/game.rs`'s
-`shop_action`); the duplicated gates inside `buy_pistol_row`; and
+anchor; `Game::buy_dealer_row`'s home in `game.rs` rather than a shop module
+(`buy_pistol_row` until Task 24 grew it to all nine `bmar` rows); and
 `Game::backup_in_fight` passing one `has_mobile` to both `1000:4cdb`'s
 equality test and `1000:4d73`'s inequality test.
+
+Two entries that were on this list are **closed by Task 24** and have been
+removed rather than left to read as open: the shop's
+display-gate-as-action-gate divergence (`Game::shop_action` now consults
+`gate_open` only on the `mar` path, and the menu's own filter is
+`Game::listed_rows`), and the duplicated gates inside the pistol rows (all
+nine `bmar` arms share `Game::buy_after_gates`).
 
 ## Findings from 11c worth not losing
 

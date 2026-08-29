@@ -364,43 +364,48 @@ on. See "The district question" above.
 
 ## What the port must change
 
-Read with `Game::shop_action` and `Game::buy_dealer_row` in `src/game.rs`
-(`grep -n 'buy_dealer_row' src/game.rs` finds both). **Task 24 did all five
-of the following**; the list is kept as the record of what it changed, and
-`Game::buy_pistol_row` is the name that function carried before it grew rows
-1–6. The generic path used to debit the price, echo the *menu* line, and
+**Task 24 did all five of the following, and this section is now a record of
+what it changed, not a list of outstanding work.** Read it with
+`Game::shop_action`, `Game::listed_rows` and `Game::buy_dealer_row` in
+`src/game.rs` (`grep -n 'fn buy_dealer_row' src/game.rs` finds the
+definition; `grep -n 'buy_dealer_row(' src/game.rs` finds it plus its call
+site and the one in the test that guards it). `Game::buy_pistol_row` is
+the name that function carried before it grew rows 1–6; nothing answers to it
+now. The generic path used to debit the price, echo the *menu* line, and
 refuse a district-gated row. For `bmar` 1..6 that was wrong in five ways:
 
 1. **Stop refusing on district anywhere on the dealers' BUY path — all five
-   gated rows, not two.** `Game::shop_action` calls `gate_open(row.gate)`
-   before it delegates to `Game::buy_pistol_row` (`grep -n 'gate_open'
-   src/game.rs`), so rows 7, 8 and 9 are refused below district 4 as well, and
-   their arms carry no district test either (`1000:ccc4`..`1000:ce80`, no
-   `[0x3692]` operand and no `92 36` byte pair). The menu must KEEP its gate —
-   all five of `1000:c68d`, `1000:c6f1`, `1000:c755`, `1000:c7ba` and
-   `1000:c81d` are real — so the two uses of the district have to be
-   separated rather than the gate deleted.
+   gated rows, not two.** `Game::shop_action` *used to* call
+   `gate_open(row.gate)` before it delegated, so rows 7, 8 and 9 were refused
+   below district 4 as well, and their arms carry no district test either
+   (`1000:ccc4`..`1000:ce80`, no `[0x3692]` operand and no `92 36` byte
+   pair). The menu had to KEEP its gate — all five of `1000:c68d`,
+   `1000:c6f1`, `1000:c755`, `1000:c7ba` and `1000:c81d` are real — so the two
+   uses of the district were separated rather than the gate deleted:
+   `Game::listed_rows` is the menu's filter and the buy path never consults
+   it.
 2. **Print the arm's own confirmation, not the menu line.** Six confirmations
    plus row 3's four stat lines; every CS offset is in the table above and in
-   `data/shop_arms.json`.
-3. **Print the arm's own refusal.** Rows 2, 4, 5 and 6 need an already-own
-   refusal; rows 5 and 6 need the better-weapon refusal; every row's
-   out-of-money wording differs from the generic
-   `^4Чёрт, бабок не хватает.` except row 1's, which is where that literal
-   comes from. No gate in rows 1–6 is silent — unlike row 9's first two.
+   `data/shop_arms.json`. All ten are now printed by their own arm.
+3. **Print the arm's own refusal.** Rows 2, 4, 5 and 6 needed an already-own
+   refusal; rows 5 and 6 the better-weapon refusal; every row's out-of-money
+   wording differs from the generic `^4Чёрт, бабок не хватает.` except
+   row 1's, which is where that literal comes from — the generic path no
+   longer prints it, row 1's arm does. No gate in rows 1–6 is silent — unlike
+   row 9's first two.
 4. **Apply the effects.** Joint count (`20ae:38c5`, a word), mobile
    (`20ae:38bb`), the four-way stat roll, tattoo (`20ae:38bc`), knuckles
    (`20ae:38ba`, +2/+2) and club (`20ae:394b`, +2/+2 **only** when the
    knuckles are owned). Every one of these is read elsewhere in the original,
-   so none of them is a write-only flag.
+   so none of them is a write-only flag, and every one is now applied.
 5. **Reproduce findings 1 and 2 above** — the club's missing `+4` and the
-   AND/OR mismatch — and add them to the divergence list rather than fixing
-   them.
+   AND/OR mismatch. Both are reproduced, cited in the arm, asserted by a test
+   and recorded in `docs/re/gaps.md` rather than fixed.
 
 Row 3 is the only one of the six that draws: `1000:ca0c` is a `Random(4)`
 (`python3 tools/re_query.py pushed-n 1000:ca0c` recovers the `n` from the
 idiom before it), so buying it advances the RNG stream and any trace the port
 compares against has to account for that.
 
-Rows 1 and 3 are repeatable and must stay repeatable; rows 2, 4, 5 and 6 are
+Rows 1 and 3 are repeatable and stay repeatable; rows 2, 4, 5 and 6 are
 one-shot through their own already-own test, not through any menu state.

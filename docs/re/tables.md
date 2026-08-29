@@ -491,7 +491,9 @@ Ghidra places inside `FUN_1000_3d11`, and the call-result site `1000:5014`.
 This section is the **menu**: which rows print, at what price, behind which
 gate. What a row's *purchase arm* then does -- its own gates, its own refusal
 and confirmation lines, and the globals it writes -- is a separate map.
-`bmar` rows 7-9 are Task 18's (`grep -n 'buy_pistol_row' src/game.rs`);
+`bmar` rows 7-9 are Task 18's; all nine now live in one function
+(`grep -n 'fn buy_dealer_row' src/game.rs`), which is what `buy_pistol_row`
+was renamed to when Task 24 grew it;
 **`bmar` rows 1-6 are `docs/re/shop-arms.md` and `data/shop_arms.json`**, with
 `python3 tools/test_shop_arms.py` re-deriving both from `orig/g.exe`. The nine
 `mar` arms are not mapped.

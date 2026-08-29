@@ -1255,11 +1255,26 @@ impl Game {
         "^69^7 - ^",
     ];
 
+    /// Which of `tag`'s rows the menu LISTS, in image order -- the district
+    /// filter and nothing else.
+    ///
+    /// Split out so the filter has exactly one implementation. It is the
+    /// **menu** half of the district's two uses: at `bmar` these five gates
+    /// (`1000:c68d`, `1000:c6f1`, `1000:c755`, `1000:c7ba`, `1000:c81d`) are
+    /// the only ones there are, and [`Game::shop_action`]'s buy path
+    /// deliberately does not consult them. A test that re-implemented this
+    /// predicate instead of calling it would pass with the gate deleted --
+    /// round 1 of this task shipped exactly that -- so
+    /// `a_gated_dealers_row_is_bought_below_its_district` calls this.
+    fn listed_rows(&self, tag: &str) -> Vec<&'static data::ShopEntry> {
+        data::shops()
+            .iter()
+            .filter(|r| r.shop == tag && self.gate_open(r.gate))
+            .collect()
+    }
+
     fn print_priced_rows(&self, tag: &str) {
-        for row in data::shops().iter().filter(|r| r.shop == tag) {
-            if !self.gate_open(row.gate) {
-                continue;
-            }
+        for row in self.listed_rows(tag) {
             let Some(idx) = row
                 .key
                 .parse::<usize>()
@@ -3068,8 +3083,9 @@ impl Game {
     ///
     /// `gates` is `(refuse, line)` in image order. `line` is `None` for a
     /// gate that prints nothing at all -- row 9's first two, whose branches
-    /// `1000:cdfe` and `1000:ce05` both land on `1000:ce76`, the next
-    /// compare.
+    /// `1000:cdfe` and `1000:ce05` both land on `1000:ce76`, the six-
+    /// instruction SETUP for the next compare (`1000:ce80`, the `x` verb),
+    /// not the compare itself.
     ///
     /// The money test is last in every one of the nine and is the same three
     /// instructions each time (`mov al,[price]` / `xor ah,ah` /
@@ -3082,10 +3098,30 @@ impl Game {
     ///
     /// The debit itself is `sub [0x38c7],ax` at `1000:c90a`, `1000:c973`,
     /// `1000:c9eb`, `1000:cb0f`, `1000:cba7`, `1000:cc60`, `1000:cd14`,
-    /// `1000:cdad` and `1000:ce3e`. Three arms set their ownership flag
-    /// *before* the debit rather than after (`1000:c969`, `1000:cb05`,
-    /// `1000:cb9d`); nothing between the two reads either, so the order is
-    /// not observable and the effect closure runs after the debit here.
+    /// `1000:cdad` and `1000:ce3e`.
+    ///
+    /// **Only rows 1 and 3 debit before they write anything else.** The other
+    /// seven write first, and this comment said "three arms" until a review
+    /// recounted them -- the inventory-that-stopped-early defect
+    /// `docs/re/METHODOLOGY.md` names, sitting inside the justification for a
+    /// deliberate divergence. Six of the seven set an ownership FLAG ahead of
+    /// the debit:
+    ///
+    /// | row | write | debit |
+    /// |---|---|---|
+    /// | 2 | `1000:c969` `mov byte [0x38bb],0x1` | `1000:c973` |
+    /// | 4 | `1000:cb05` `mov byte [0x38bc],0x1` | `1000:cb0f` |
+    /// | 5 | `1000:cb9d` `mov byte [0x38ba],0x1` | `1000:cba7` |
+    /// | 6 | `1000:cc56` `mov byte [0x394b],0x1` | `1000:cc60` |
+    /// | 7 | `1000:cd05` `mov byte [0x394d],0x1` | `1000:cd14` |
+    /// | 9 | `1000:ce34` `mov byte [0x394e],0x1` | `1000:ce3e` |
+    ///
+    /// The seventh is row 8's `1000:cda3 add word [0x394f],0x5`, a COUNT
+    /// rather than a flag, ahead of `1000:cdad`; row 7 adds to that same
+    /// count at `1000:cd0a`, also before its debit. In every one of the seven
+    /// the instructions between the write and the `sub` read neither the
+    /// money nor the thing written, so the order is not observable and the
+    /// effect closure runs after the debit here.
     fn buy_after_gates(
         &mut self,
         price: i32,
@@ -3391,9 +3427,11 @@ impl Game {
                     |g| {
                         g.pistol.owned = true; // 1000:cd05 mov byte [0x394d],0x1
                         g.pistol.cartridges += 3; // 1000:cd0a add word [0x394f],0x3
-                        term::println("^2Спасайся кто может!!!"); // CS 0x95c3
+
+                        // CS 0x95c3, pushed at 1000:cd18.
+                        term::println("^2Спасайся кто может!!!");
                         term::println(
-                            // CS 0x95db.
+                            // CS 0x95db, pushed at 1000:cd31.
                             "^0Только помни стреляй в бандитских районах - там менты не накроют",
                         );
                     },
@@ -3413,7 +3451,8 @@ impl Game {
                     |g| {
                         // 1000:cda3 adds FIVE, though the menu line says six.
                         g.pistol.cartridges += 5;
-                        term::println("^2Получи пять пуль.. на руки"); // CS 0x9649
+                        // CS 0x9649, pushed at 1000:cdb1.
+                        term::println("^2Получи пять пуль.. на руки");
                     },
                 );
                 true
@@ -3423,8 +3462,9 @@ impl Game {
             "9" => {
                 // 1000:cdf9 `cmp byte [0x394d],0x0` / 1000:cdfe `jz 0xce76`,
                 // and 1000:ce00 `cmp byte [0x3e32],0x19` / 1000:ce05
-                // `jnz 0xce76`. Both land on the next compare and print
-                // nothing at all -- the only silent gates among the nine.
+                // `jnz 0xce76`. Both land on 1000:ce76, the setup for the
+                // `x` compare at 1000:ce80, and print nothing at all -- the
+                // only silent gates among the nine.
                 let no_gun = !self.pistol.owned;
                 let not_delivered = self.dealer_delivery_counter != 25;
                 // 1000:ce07 `cmp byte [0x394e],0x0` / 1000:ce0c `jnz 0xce5d`.
@@ -3445,7 +3485,9 @@ impl Game {
                     "^4Подкопи бабла.", // CS 0x968a, 1000:ce19
                     |g| {
                         g.pistol.silencer = true; // 1000:ce34 mov byte [0x394e],0x1
-                        term::println("^2Теперь стреляй где хочешь!"); // CS 0x969b
+
+                        // CS 0x969b, pushed at 1000:ce42.
+                        term::println("^2Теперь стреляй где хочешь!");
                     },
                 );
                 true
@@ -6264,6 +6306,28 @@ mod tests {
         }
     }
 
+    /// Every `bmar` row in `data::shops()` is consumed by
+    /// [`Game::buy_dealer_row`], so the generic path in
+    /// [`Game::shop_action`] is unreachable from the dealers.
+    ///
+    /// That invariant is what lets the generic too-poor line be the market's
+    /// wording unconditionally: the dealers' side of that `match` was removed
+    /// because file `0xAC55` / CS `0x9385` is row 1's own refusal
+    /// (`1000:c8ea`), not a shop-wide literal. A tenth `bmar` row added to
+    /// the table without an arm would silently print the market's line, which
+    /// this is the guard against.
+    #[test]
+    fn every_dealers_row_has_an_arm_of_its_own() {
+        for row in data::shops().iter().filter(|r| r.shop == "bmar") {
+            let mut g = dealers(0);
+            assert!(
+                g.buy_dealer_row(row.key, row.price),
+                "bmar row {} falls through to the generic market path",
+                row.key
+            );
+        }
+    }
+
     /// The district gates the dealers' MENU, never the sale. Five rows are
     /// gated -- 5 (`1000:c68d`), 6 (`1000:c6f1`), 7 (`1000:c755`), 8
     /// (`1000:c7ba`) and 9 (`1000:c81d`) -- and every one of them is in the
@@ -6271,16 +6335,24 @@ mod tests {
     /// five are still buyable.
     #[test]
     fn a_gated_dealers_row_is_bought_below_its_district() {
+        // Through `Game::listed_rows`, the predicate `print_priced_rows`
+        // itself walks -- not a copy of it. Deleting the menu's gate makes
+        // this assertion fail, which the re-implemented filter round 1
+        // shipped here did not.
         let listed = |d: u8| {
             let mut g = game();
             g.district = d;
-            data::shops()
+            g.listed_rows("bmar")
                 .iter()
-                .filter(|r| r.shop == "bmar" && g.gate_open(r.gate))
                 .map(|r| r.key)
                 .collect::<Vec<_>>()
         };
         assert_eq!(listed(1), ["1", "2", "3", "4"], "the menu keeps its gate");
+        assert_eq!(
+            listed(4),
+            ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            "and lists everything once the district is high enough"
+        );
 
         let mut g = dealers(1_000);
         assert_eq!(g.district, 1);

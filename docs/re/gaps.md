@@ -1528,21 +1528,30 @@ points at this entry.
     dealers' whole **buy path** carries no district test, and the port's
     refusal of `bmar` rows 5, 6, 7, 8 and 9 below their districts was a
     five-row divergence — `Game::shop_action` called `gate_open(row.gate)`
-    before delegating to `Game::buy_pistol_row`, so the pistol rows were
-    refused too.
+    before delegating to `Game::buy_pistol_row` (the name
+    `Game::buy_dealer_row` carried until Task 24 grew it to all nine rows), so
+    the pistol rows were refused too.
 
     **Task 24 closed it, by separating the two uses of the district rather
-    than deleting the gate.** `Game::print_priced_rows` still calls
-    `gate_open`, so at district 1 the dealers' menu lists rows 1–4 and no
-    more; `Game::shop_action` now delegates to `Game::buy_dealer_row` *before*
-    it consults `gate_open`, and consults it afterwards only for `mar`
-    (`grep -n 'gate_open' src/game.rs` finds both sites). Typing `5` at
+    than deleting the gate.** The menu's filter is now
+    `Game::listed_rows(tag)` — one implementation, called by
+    `Game::print_priced_rows` and by the test below, so a test cannot pass
+    with the menu gate deleted — and at district 1 the dealers' menu lists
+    rows 1–4 and no more; `Game::shop_action` now delegates to
+    `Game::buy_dealer_row` *before* it consults `gate_open`, and consults it
+    afterwards only for `mar`
+    (`grep -n 'self.gate_open' src/game.rs` returns exactly those two call
+    sites: the menu filter and the `mar`-only buy gate). Typing `5` at
     district 1 buys the Кастет off a menu that never listed it, exactly as
     the original does. The Rust test
     `a_gated_dealers_row_is_bought_below_its_district` asserts both halves —
     the four-row listing and all five gated rows selling at district 1 — and
-    was observed red against a tree with the `gate_open` call restored ahead
-    of the delegation. **This is a claim about `bmar` and nothing else:**
+    was observed red twice: against a tree with the `gate_open` call restored
+    ahead of the delegation (3 tests red), and against one with the district
+    filter deleted from `Game::listed_rows` (1 test red). The first round of
+    this task asserted the listing against a *copy* of the filter, which the
+    review deleted the real gate under with zero red; that is why the
+    predicate has one implementation now. **This is a claim about `bmar` and nothing else:**
     `mar`'s arms were not decoded and its buy path keeps its gate untouched,
     which is Task 25's question. The reason the gate cannot simply be
     deleted: the handler has **five** district gates and all
@@ -1580,8 +1589,8 @@ points at this entry.
   observed red against a tree whose guard was replaced with `true`.
 
   **The label correction, carried by Task 24.** `1000:ccd8` is **not** row 7's
-  key compare, though the Task 18 brief, `src/game.rs`'s `buy_pistol_row` doc
-  comment and `src/combat_dispatch.rs` all called it that. It decodes to
+  key compare, though the Task 18 brief, `src/game.rs`'s then-`buy_pistol_row`
+  doc comment and `src/combat_dispatch.rs` all called it that. It decodes to
   `cmp byte [0x394d],0x0` — row 7's *already-own* gate. The key compare is
   `1000:ccce` (`call 0xf78:0xbd8` against the literal `7` at CS `0x9023`), and
   `1000:ccd3` is the `jz 0xccd8` in front of it. Row 8's and row 9's labels
