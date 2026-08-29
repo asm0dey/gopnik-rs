@@ -2,8 +2,9 @@
 """`data/shop_arms.json` and `docs/re/shop-arms.md` re-derived from `orig/g.exe`.
 
 The artifact and the prose are the two places the same claims about the `bmar`
-row-1..6 PURCHASE arms live; this is what stops either drifting from the binary
-it describes.  Nothing here reads `src/`, a screen, or Ghidra's C.
+row-1..6 and `mar` row-1..9 PURCHASE arms live; this is what stops either
+drifting from the binary it describes.  Nothing here reads `src/`, a screen,
+or Ghidra's C.
 `tools/test_character_sheet.py` is the model, and the same two signals are kept
 separate for the same reason (`docs/re/METHODOLOGY.md`, "Is this address a call
 site?"):
@@ -14,9 +15,9 @@ site?"):
   * **identity** -- the instruction decoded there says what the artifact says
     it says.
 
-Five claims here are not restatements of a decode and get their own checks,
+Six claims here are not restatements of a decode and get their own checks,
 because each is the kind of thing that reads authoritative and is easy to get
-wrong.  Three of them are INVENTORY claims, and every one of those is asserted
+wrong.  Four of them are INVENTORY claims, and every one of those is asserted
 by SET EQUALITY against a sweep of the binary -- never by checking that the
 listed entries hold up.  That distinction is the whole point: fix round 1
 found this file shipping an inventory of two district gates where the binary
@@ -32,14 +33,24 @@ has five, and every listed entry checked out.
     conjunct, an effect guard or a `Random` arm.  The strings sweep cannot
     catch a SILENT omitted gate, and "no gate in rows 1..6 refuses silently"
     is a headline claim of `docs/re/shop-arms.md`.
-  * **the district-gate inventory is complete.**  Set equality against every
-    `[0x3692]` operand in `1000:c4be`..`1000:ccd8`, plus a raw `92 36` count
-    over the same range.
-  * **no arm tests the district.**  The whole `1000:c8ce`..`1000:ccc4` span is
-    decoded as one aligned run and searched for an operand equal to `0x3692`,
+  * **`bmar`'s district-gate inventory is complete.**  Set equality against
+    every `[0x3692]` operand in `1000:c4be`..`1000:ccd8`, plus a raw `92 36`
+    count over the same range.
+  * **no `bmar` arm tests the district.**  The whole `1000:c8ce`..`1000:ccc4`
+    span is decoded as one aligned run and searched for an operand equal to `0x3692`,
     and the raw byte pair `92 36` is counted over the same span so the negative
     does not rest on the decoder alone.  `1000:ccc4`..`1000:ce80`, Task 18's
     three arms, is measured the same way: the divergence is the whole buy path.
+  * **`mar`'s district gates are complete, and the row-7 gap is real.**
+    `mar` is the shop where the district DOES reach the buy path, so its
+    inventory is a POSITIVE claim, and it can carry the same defect a negative
+    one can.  Both halves are swept together over `1000:b94a`..`1000:c31f` --
+    the three menu gates and the three buy-path gates -- because the finding is
+    the DIFFERENCE between the two sets, and a difference computed from a list
+    that stopped being written is worth nothing.  Which MENU lines each menu
+    gate covers is measured too (the price-byte operands inside the gate's own
+    listed range), and cross-checked against `data/shops.json`, which already
+    owns the menu half.
   * **the club-without-knuckles bug.**  `1000:cc69`'s not-taken path must reach
     the confirmation push with no `add` on it, while the loot arm's
     `1000:55d8` -- the same guard on the same flag, granting the same item --
@@ -120,8 +131,25 @@ class ArmsTest(unittest.TestCase):
         n = self.img[off]
         return self.img[off + 1:off + 1 + n].decode("cp866")
 
+    def bmar(self):
+        """The `bmar` handler block -- the artifact's top level."""
+        return self.art
+
+    def mar(self):
+        """The `mar` handler block, added by Task 25."""
+        return self.art["mar"]
+
+    def handlers(self):
+        return [self.bmar(), self.mar()]
+
     def rows(self):
-        return self.art["rows"]
+        """Every row of BOTH shops.
+
+        Row-level checks are shop-agnostic and run over all fifteen; the
+        handler-level ones take their rows from `handlers()` instead, because
+        the two shops' district findings are opposite and must not be mixed.
+        """
+        return [r for h in self.handlers() for r in h["rows"]]
 
     def span(self, row):
         return (addrmod.image_off_of_citation(row["span"]["start"]),
@@ -194,11 +222,17 @@ class ArmsTest(unittest.TestCase):
                 "-- the two address forms have been mixed"
                 % (path, node["file_offset"], cs, self.hdr))
 
-    def test_the_six_rows_are_the_six_bmar_rows_the_menu_prints(self):
-        rows = self.rows()
-        self.assertEqual([r["key"] for r in rows], list("123456"))
-        self.assertEqual({r["shop"] for r in rows}, {"bmar"})
-        menu = {r["key"]: r for r in self.shops if r["shop"] == "bmar"}
+    def test_each_shops_rows_are_the_rows_its_menu_prints(self):
+        expected = {"bmar": list("123456"), "mar": list("123456789")}
+        for h in self.handlers():
+            tag = h["shop"]
+            rows = h["rows"]
+            self.assertEqual([r["key"] for r in rows], expected[tag])
+            self.assertEqual({r["shop"] for r in rows}, {tag})
+            menu = {r["key"]: r for r in self.shops if r["shop"] == tag}
+            self._check_menu_rows(rows, menu)
+
+    def _check_menu_rows(self, rows, menu):
         for r in rows:
             m = menu[r["key"]]
             self.assertEqual(
@@ -226,9 +260,17 @@ class ArmsTest(unittest.TestCase):
                 cmp_ins.raw, b"\x9a\xd8\x0b\x78\x0f",
                 "%s: %s is not the `call 0f78:0bd8` shortstring compare (%s)"
                 % (where, r["compare_addr"], cmp_ins.hex()))
-            # the six-instruction push idiom in front of it
-            start, _ = self.span(r)
-            run = dis16.decode_run(self.img, start, cmp_ins.off)
+            # the six-instruction push idiom in front of it.  `mar` rows 6,
+            # 8 and 9 have a district gate ahead of the setup, so the span
+            # starts three instructions earlier than the idiom does and the
+            # walk is anchored on `setup_addr`, not on the span.
+            setup = r.get("setup_addr", r["span"]["start"])
+            if r.get("district_gate") is None:
+                self.assertEqual(setup, r["span"]["start"],
+                                 "row %s has no district gate, so its span "
+                                 "must start at its setup" % r["key"])
+            run = dis16.decode_run(
+                self.img, addrmod.image_off_of_citation(setup), cmp_ins.off)
             texts = [i.text for i in run]
             self.assertEqual(
                 texts,
@@ -243,26 +285,37 @@ class ArmsTest(unittest.TestCase):
                 % (where, r["key"]))
 
     def test_each_row_hands_the_line_on_to_the_next_row(self):
-        rows = self.rows()
-        for a, b in zip(rows, rows[1:]):
-            miss = self.check_insn(a["miss_branch"], "row %s" % a["key"])
+        for h in self.handlers():
+            rows = h["rows"]
+            for a, b in zip(rows, rows[1:]):
+                miss = self.check_insn(a["miss_branch"], "row %s" % a["key"])
+                self.assertEqual(
+                    a["miss_branch"]["target"], b["span"]["start"],
+                    "%s row %s's miss branch does not hand off to row %s"
+                    % (h["shop"], a["key"], b["key"]))
+                self.assertEqual(a["span"]["end"], b["span"]["start"])
+                del miss
+            # the last row hands off to a setup that belongs to the NEXT
+            # thing in the handler, and the literal that setup pushes is what
+            # bounds this range on the right without assuming it.
+            last = rows[-1]
+            bound = h["rows_bounded_on_the_right_by"]
+            self.assertEqual(last["miss_branch"]["target"], last["span"]["end"])
+            self.assertEqual(bound["setup_addr"], last["span"]["end"])
+            setup = addrmod.image_off_of_citation(bound["setup_addr"])
+            run = dis16.decode_run(self.img, setup, setup + 0x10)
+            lit = [i for i in run if i.raw[:1] == b"\xbf"][1]
             self.assertEqual(
-                a["miss_branch"]["target"], b["span"]["start"],
-                "row %s's miss branch does not hand off to row %s's setup"
-                % (a["key"], b["key"]))
-            self.assertEqual(a["span"]["end"], b["span"]["start"])
-            del miss
-        # the last row hands off to the row-7 setup, which is Task 18's block:
-        # the far call four bytes past it compares the literal `7`.
-        last = rows[-1]
-        self.assertEqual(last["miss_branch"]["target"], last["span"]["end"])
-        seven_setup = addrmod.image_off_of_citation(last["span"]["end"])
-        run = dis16.decode_run(self.img, seven_setup, seven_setup + 0x10)
-        lit = [i for i in run if i.raw[:1] == b"\xbf"][1]
-        self.assertEqual(
-            self.cs_literal("0x%04x" % int(lit.text.split(",")[1], 16)), "7",
-            "the instruction stream after row 6 does not set up the `7` "
-            "compare, so the row-1..6 span is not bounded where it says")
+                "0x%04x" % int(lit.text.split(",")[1], 16),
+                bound["literal"]["cs_offset"],
+                "%s: the setup after the last row does not push the literal "
+                "the artifact says bounds it" % h["shop"])
+            self.assertEqual(
+                self.cs_literal(bound["literal"]["cs_offset"]),
+                bound["literal"]["text"])
+            cmp_ins = self.check_insn(bound["compare"], h["shop"] + " bound")
+            self.assertEqual(bound["compare_addr"], bound["compare"]["addr"])
+            self.assertEqual(cmp_ins.raw, b"\x9a\xd8\x0b\x78\x0f")
 
     def test_the_gate_reads_the_price_the_debit_takes(self):
         for r in self.rows():
@@ -312,8 +365,8 @@ class ArmsTest(unittest.TestCase):
         f = self.art["district_finding"]
         lo = addrmod.image_off_of_citation(f["span"]["start"])
         hi = addrmod.image_off_of_citation(f["span"]["end"])
-        self.assertEqual(lo, self.span(self.rows()[0])[0])
-        self.assertEqual(hi, self.span(self.rows()[-1])[1])
+        self.assertEqual(lo, self.span(self.bmar()["rows"][0])[0])
+        self.assertEqual(hi, self.span(self.bmar()["rows"][-1])[1])
         run = dis16.decode_run(self.img, lo, hi)
         self.assertEqual(
             len(run), f["instruction_count"],
@@ -392,7 +445,7 @@ class ArmsTest(unittest.TestCase):
         lo = addrmod.image_off_of_citation(g["span"]["start"])
         hi = addrmod.image_off_of_citation(g["span"]["end"])
         self.assertEqual(lo, addrmod.image_off_of_citation(
-            self.rows()[-1]["span"]["end"]),
+            self.bmar()["rows"][-1]["span"]["end"]),
             "the rows 7..9 range must start where the rows 1..6 range ends, "
             "or the two measurements leave a hole between them")
         hits = ["1000:%04x %s" % (i.off, i.text)
@@ -410,50 +463,57 @@ class ArmsTest(unittest.TestCase):
         """The `gates[]` analogue of the `strings[]` completeness sweep.
 
         A refusal literal nobody pushes is caught by the strings sweep; a
-        SILENT omitted gate is not, and "no gate in rows 1..6 refuses
-        silently" is a headline claim of `docs/re/shop-arms.md`.  So every
+        SILENT omitted gate is not, and "no gate refuses silently" is a
+        headline claim of `docs/re/shop-arms.md` for both handlers.  So every
         conditional branch in a row's span must be one the artifact records --
-        as its miss branch, a gate branch, a conjunct branch, an effect guard
-        or a `Random` arm.  Unconditional `jmp`s are excluded by decoding the
-        recorded address rather than by trusting its field name.
+        as its miss branch, its district gate, a gate branch, a conjunct
+        branch, an effect guard or a `Random` arm.  Unconditional `jmp`s are
+        excluded by decoding the recorded address rather than by trusting its
+        field name.
         """
-        total = 0
-        for r in self.rows():
-            lo, hi = self.span(r)
-            swept = {"1000:%04x" % i.off
-                     for i in dis16.decode_run(self.img, lo, hi)
-                     if 0x70 <= i.raw[0] <= 0x7F
-                     or (i.raw[0] == 0x0F and 0x80 <= i.raw[1] <= 0x8F)
-                     or i.raw[0] in (0xE0, 0xE1, 0xE2, 0xE3)}
-            named = {r["miss_branch"]["addr"]}
-            for g in r["gates"]:
-                if "branch" in g:
-                    named.add(g["branch"]["addr"])
-                for c in g.get("conjuncts", []):
-                    named.add(c["branch"]["addr"])
-                if "fail_branch" in g:
-                    named.add(g["fail_branch"]["addr"])
-            for e in r["effects"]:
-                if e.get("guard_branch"):
-                    named.add(e["guard_branch"]["addr"])
-            for a in r.get("roll", {}).get("arms", []):
-                named.add(a["branch"]["addr"])
-            conditional = {a for a in named
-                           if self.at(a).raw[0] != 0xEB
-                           and self.at(a).raw[0] != 0xE9}
+        want = {"bmar": 27, "mar": 40}
+        for h in self.handlers():
+            total = sum(self._check_row_branches(r) for r in h["rows"])
             self.assertEqual(
-                swept, conditional,
-                "row %s: the conditional branches inside %s..%s are %r, the "
-                "artifact accounts for %r -- an unrecorded branch is an "
-                "unrecorded gate, and a silent one prints nothing for the "
-                "strings sweep to catch"
-                % (r["key"], r["span"]["start"], r["span"]["end"],
-                   sorted(swept), sorted(conditional)))
-            total += len(swept)
+                total, want[h["shop"]],
+                "the %s arms hold %d conditional branches, not the %d this "
+                "inventory was built over"
+                % (h["shop"], total, want[h["shop"]]))
+
+    def _check_row_branches(self, r):
+        lo, hi = self.span(r)
+        swept = {"1000:%04x" % i.off
+                 for i in dis16.decode_run(self.img, lo, hi)
+                 if 0x70 <= i.raw[0] <= 0x7F
+                 or (i.raw[0] == 0x0F and 0x80 <= i.raw[1] <= 0x8F)
+                 or i.raw[0] in (0xE0, 0xE1, 0xE2, 0xE3)}
+        named = {r["miss_branch"]["addr"]}
+        if r.get("district_gate"):
+            named.add(r["district_gate"]["branch"]["addr"])
+        for g in r["gates"]:
+            if "branch" in g:
+                named.add(g["branch"]["addr"])
+            for c in g.get("conjuncts", []):
+                named.add(c["branch"]["addr"])
+            if "fail_branch" in g:
+                named.add(g["fail_branch"]["addr"])
+        for e in r["effects"]:
+            if e.get("guard_branch"):
+                named.add(e["guard_branch"]["addr"])
+        for a in r.get("roll", {}).get("arms", []):
+            named.add(a["branch"]["addr"])
+        conditional = {a for a in named
+                       if self.at(a).raw[0] != 0xEB
+                       and self.at(a).raw[0] != 0xE9}
         self.assertEqual(
-            total, 27,
-            "the six arms hold %d conditional branches, not the 27 this "
-            "inventory was built over" % total)
+            swept, conditional,
+            "%s row %s: the conditional branches inside %s..%s are %r, the "
+            "artifact accounts for %r -- an unrecorded branch is an "
+            "unrecorded gate, and a silent one prints nothing for the "
+            "strings sweep to catch"
+            % (r["shop"], r["key"], r["span"]["start"], r["span"]["end"],
+               sorted(swept), sorted(conditional)))
+        return len(swept)
 
     def test_every_recorded_string_is_pushed_inside_its_own_arm(self):
         for r in self.rows():
@@ -482,22 +542,33 @@ class ArmsTest(unittest.TestCase):
             recorded.add(r["key_literal"]["cs_offset"])
             self.assertEqual(
                 pushed, recorded,
-                "row %s: the CS literals actually pushed inside %s..%s are %r, "
-                "the artifact records %r -- `strings[]` is not complete"
-                % (r["key"], r["span"]["start"], r["span"]["end"],
+                "%s row %s: the CS literals actually pushed inside %s..%s are "
+                "%r, the artifact records %r -- `strings[]` is not complete"
+                % (r["shop"], r["key"], r["span"]["start"], r["span"]["end"],
                    sorted(pushed), sorted(recorded)))
 
-    def test_no_gate_in_rows_1_to_6_refuses_silently(self):
-        """Row 9's first two gates print nothing; none of these do.
+    def test_the_only_silent_gate_in_any_arm_is_a_mar_district_gate(self):
+        """No `gates[]` entry anywhere refuses silently.
 
         Each gate names a refusal literal, every gate's literal is distinct
         from its siblings', and each is one of the arm's recorded strings.  Two
         gates sharing one literal would mean a refusal path was attributed to
         the wrong test.
+
+        `silent_gates` is therefore never a `gates[]` entry: among the fifteen
+        rows this artifact maps, the only silent test is a `mar` district
+        gate, which sits in front of the row's SETUP rather than inside the
+        arm, and `silent_gates` is asserted equal to exactly that -- so a
+        genuinely silent refusal added to `gates[]` cannot be hidden by
+        listing it here.  (`bmar` row 9's two silent gates are Task 18's and
+        are not among the fifteen.)
         """
         for r in self.rows():
-            self.assertEqual(r["silent_gates"], [],
-                             "row %s records a silent gate" % r["key"])
+            dg = r.get("district_gate")
+            self.assertEqual(
+                r["silent_gates"], [dg["addr"]] if dg else [],
+                "row %s %s: silent_gates must be exactly the row's district "
+                "gate, or empty when it has none" % (r["shop"], r["key"]))
             offs = [g["refusal_cs_offset"] for g in r["gates"]]
             self.assertTrue(all(offs), "row %s has a gate with no refusal "
                                        "string" % r["key"])
@@ -603,7 +674,7 @@ class ArmsTest(unittest.TestCase):
         # with no such pin, so the pin is made here.
         taken = dis16.decode_run(self.img, branch.end, skip)
         row6_lo, row6_hi = self.span(
-            [x for x in self.rows() if x["key"] == "6"][0])
+            [x for x in self.bmar()["rows"] if x["key"] == "6"][0])
         adds = bug["where"]["adds"]
         self.assertEqual(
             ["1000:%04x" % i.off for i in taken], adds,
@@ -623,7 +694,7 @@ class ArmsTest(unittest.TestCase):
                          ["add word [0x38a8],0x2", "add word [0x38aa],0x2"])
         # ... and the taken path lands straight on the confirmation push, so
         # there is NO `add word [0x38a8],0x4` arm the way the loot site has one.
-        row6 = [r for r in self.rows() if r["key"] == "6"][0]
+        row6 = [r for r in self.bmar()["rows"] if r["key"] == "6"][0]
         confirm = [s for s in row6["strings"] if s["role"] == "confirmation"][0]
         self.assertEqual(
             "1000:%04x" % skip, confirm["push"]["addr"],
@@ -649,9 +720,9 @@ class ArmsTest(unittest.TestCase):
         """Shop: every conjunct must be set to refuse.  Loot: any one does."""
         bug = [b for b in self.art["bugs"]
                if b["label"] == "shop-better-weapon-gate-is-AND-where-loot-is-OR"][0]
-        for r in self.rows():
+        for r in self.bmar()["rows"]:
             for g in r["gates"]:
-                if g["kind"] != "prereq":
+                if g["kind"] != "prereq" or "conjuncts" not in g:
                     continue
                 cj = g["conjuncts"]
                 proceed = None
@@ -697,7 +768,7 @@ class ArmsTest(unittest.TestCase):
                     % (name, a, nxt.text))
 
     def test_the_row_3_roll_is_a_random_4_with_four_arms(self):
-        r = [x for x in self.rows() if x["key"] == "3"][0]
+        r = [x for x in self.bmar()["rows"] if x["key"] == "3"][0]
         roll = r["roll"]
         call = self.check_insn(roll["call"], "row 3 roll")
         self.assertEqual(call.raw, b"\x9a\x4b\x11\x78\x0f",
@@ -716,6 +787,352 @@ class ArmsTest(unittest.TestCase):
         for e in r["effects"]:
             if e["condition"]:
                 self.assertRegex(e["condition"], r"Random\(4\) == [0-3]")
+
+    # ------------------------------------------------------ the `mar` shop
+    def test_the_mar_district_gates_are_every_district_operand_in_the_handler(self):
+        """`mar`'s inventory is a POSITIVE claim, swept the same way.
+
+        `bmar`'s finding is that no arm reads `20ae:3692`; `mar`'s is that
+        three do, and that the menu gates and the buy-path gates do NOT cover
+        the same rows.  A difference between two sets is worth nothing if
+        either set is a list that stopped being written, so both are asserted
+        SET-EQUAL to one sweep of the whole handler -- and the raw `92 36`
+        byte scan is counted over the same range so the sweep cannot have
+        missed a site the decoder skipped.
+        """
+        f = self.mar()["district_finding"]
+        district = int(f["district_ds"].split(":")[1], 16)
+        rows = self.mar()["rows"]
+        lo = addrmod.image_off_of_citation(f["span"]["start"])
+        hi = addrmod.image_off_of_citation(f["span"]["end"])
+        self.assertEqual(lo, self.span(rows[0])[0])
+        self.assertEqual(hi, self.span(rows[-1])[1])
+        run = dis16.decode_run(self.img, lo, hi)
+        self.assertEqual(
+            len(run), f["instruction_count"],
+            "the aligned run over %s..%s is %d instructions, not the %d the "
+            "artifact records -- without this a set equality could be passing "
+            "because the walk stopped early"
+            % (f["span"]["start"], f["span"]["end"], len(run),
+               f["instruction_count"]))
+
+        def hits(seq):
+            return {"1000:%04x" % i.off for i in seq
+                    for op in i.operands
+                    if op.kind in ("disp16", "disp16x", "moffs16")
+                    and op.value == district}
+
+        buy = {g["addr"] for g in f["buy_path_gates"]}
+        self.assertEqual(
+            hits(run), buy,
+            "the district operands inside the nine arms are %r, the artifact "
+            "records %r as the buy-path gates"
+            % (sorted(hits(run)), sorted(buy)))
+        sw = f["sweep_range"]
+        slo = addrmod.image_off_of_citation(sw["start"])
+        shi = addrmod.image_off_of_citation(sw["end"])
+        self.assertLess(slo, lo, "the sweep must start before the arms")
+        self.assertEqual(shi, hi, "the sweep must end where the arms do, "
+                                  "which is what keeps the pickpocket block's "
+                                  "three district reads out of it")
+        menu = {g["addr"] for g in f["menu_gates"]}
+        self.assertEqual(
+            hits(dis16.decode_run(self.img, slo, shi)), buy | menu,
+            "the district-gate inventory over %s..%s is not complete"
+            % (sw["start"], sw["end"]))
+        self.assertFalse(buy & menu, "a gate is recorded as both")
+        want = district.to_bytes(2, "little")
+        raw = {"0x%x" % (o - 2) for o in range(slo, shi - 1)
+               if self.img[o:o + 2] == want}
+        self.assertEqual(
+            len(raw), len(buy | menu),
+            "the raw `%s` byte scan over %s..%s finds %d candidate sites and "
+            "the artifact records %d gates"
+            % (want.hex(" "), sw["start"], sw["end"], len(raw),
+               len(buy | menu)))
+        for g in f["buy_path_gates"] + f["menu_gates"]:
+            ins = self.check_insn(g, "mar district_finding")
+            self.assertIn("0x%x" % district, ins.text)
+            self.check_insn(g["branch"], "mar district_finding")
+
+    def test_the_mar_buy_path_gates_stand_in_front_of_the_row_and_print_nothing(self):
+        """Below its district a gated `mar` row is unreachable, not refused.
+
+        The gate sits ahead of the row's SETUP, so the key compare never runs
+        and no literal is pushed -- which is why the port cannot reproduce it
+        with a refusal line.  Both halves are measured: the skip target is the
+        row's own span end, and the instruction run from the gate to the setup
+        is exactly the three instructions the artifact records, so there is no
+        push hiding in it.
+        """
+        f = self.mar()["district_finding"]
+        by_row = {g["row"]: g for g in f["buy_path_gates"]}
+        self.assertEqual(sorted(by_row), sorted(f["rows_gated_on_the_buy_path"]))
+        gated = []
+        for r in self.mar()["rows"]:
+            dg = r.get("district_gate")
+            if dg is None:
+                self.assertEqual(r["span"]["start"], r["setup_addr"])
+                self.assertIsNone(r["district_test"])
+                continue
+            gated.append(r["key"])
+            self.assertEqual(r["district_test"], f["district_ds"])
+            self.assertEqual(dg["addr"], by_row[r["key"]]["addr"])
+            self.assertEqual(
+                r["span"]["start"], dg["addr"],
+                "row %s's span must start at its district gate, or the gate "
+                "falls in the gap between two arms and no sweep sees it"
+                % r["key"])
+            gate = self.check_insn(dg, "mar row %s gate" % r["key"])
+            branch = self.check_insn(dg["branch"], "mar row %s" % r["key"])
+            self.assertEqual(
+                branch.raw[0], 0x77,
+                "row %s: the district branch at %s is %s, not the `ja` the "
+                "artifact reads the sense from"
+                % (r["key"], dg["branch"]["addr"], branch.text))
+            self.assertEqual("1000:%04x" % self.branch_target(branch),
+                             r["setup_addr"])
+            skip = self.check_insn(dg["skip"], "mar row %s" % r["key"])
+            self.assertEqual(skip.raw[0], 0xE9, "not a near jmp: %s" % skip.text)
+            self.assertEqual(
+                "1000:%04x" % self.branch_target(skip), r["span"]["end"],
+                "row %s: the district gate does not skip the whole arm"
+                % r["key"])
+            self.assertEqual(r["miss_branch"]["target"], r["span"]["end"])
+            head = dis16.decode_run(
+                self.img, addrmod.image_off_of_citation(dg["addr"]),
+                addrmod.image_off_of_citation(r["setup_addr"]))
+            self.assertEqual(
+                [i.text for i in head],
+                [gate.text, branch.text, skip.text],
+                "row %s: something other than the gate stands between %s and "
+                "the setup at %s" % (r["key"], dg["addr"], r["setup_addr"]))
+            self.assertEqual(
+                int(gate.text.rsplit(",", 1)[1], 16),
+                int(by_row[r["key"]]["sense"].rsplit(" ", 1)[1]),
+                "row %s: the recorded sense does not name the immediate the "
+                "gate compares against" % r["key"])
+        self.assertEqual(gated, f["rows_gated_on_the_buy_path"])
+
+    def test_mar_row_7_is_menu_gated_but_not_buy_gated(self):
+        """The divergence, as the difference between two MEASURED sets.
+
+        Which menu lines a menu gate covers is measured -- the price-byte
+        operands an aligned decode of the gate's own listed range finds -- and
+        cross-checked against `data/shops.json`, which already owns the menu
+        half.  The buy-path set comes from the sweep in the test above.  Only
+        then is the difference taken.
+        """
+        f = self.mar()["district_finding"]
+        rng = f["price_byte_range"]
+        lo_p = int(rng["first"].split(":")[1], 16)
+        hi_p = int(rng["last"].split(":")[1], 16)
+        rows = self.mar()["rows"]
+        self.assertEqual(
+            [r["price_addr"] for r in rows],
+            ["20ae:%04x" % o for o in range(lo_p, hi_p + 1)],
+            "the nine mar price bytes are not the contiguous run "
+            "price_byte_range names")
+        by_price = {r["price_addr"]: r["key"] for r in rows}
+        menu_gated = {}
+        for g in f["menu_gates"]:
+            ins = self.check_insn(g, "mar menu gate")
+            imm = int(ins.text.rsplit(",", 1)[1], 16)
+            self.assertEqual(g["gate"], "district>%d" % imm)
+            branch = self.check_insn(g["branch"], "mar menu gate")
+            if branch.raw[0] == 0x77:            # `ja <listed>` + `jmp <skip>`
+                self.assertEqual("1000:%04x" % self.branch_target(branch),
+                                 g["listed_from"])
+                nxt = self.at("1000:%04x" % branch.end)
+                self.assertEqual(nxt.raw[0], 0xE9, "not a near jmp: %s"
+                                 % nxt.text)
+                self.assertEqual("1000:%04x" % self.branch_target(nxt),
+                                 g["skip_target"])
+            else:                                # `jbe <skip>`, fall to listed
+                self.assertEqual(branch.raw[0], 0x76, "unexpected branch %s"
+                                 % branch.text)
+                self.assertEqual("1000:%04x" % self.branch_target(branch),
+                                 g["skip_target"])
+                self.assertEqual("1000:%04x" % branch.end, g["listed_from"])
+            glo = addrmod.image_off_of_citation(g["listed_from"])
+            ghi = addrmod.image_off_of_citation(g["skip_target"])
+            self.assertLess(glo, ghi)
+            covered = {"20ae:%04x" % op.value
+                       for i in dis16.decode_run(self.img, glo, ghi)
+                       for op in i.operands
+                       if op.kind in ("disp16", "disp16x", "moffs16")
+                       and lo_p <= op.value <= hi_p}
+            self.assertEqual(
+                covered, set(g["covers_price_bytes"]),
+                "the menu gate at %s lists the rows whose price bytes are %r, "
+                "the artifact records %r"
+                % (g["addr"], sorted(covered), sorted(g["covers_price_bytes"])))
+            self.assertEqual({by_price[c] for c in covered},
+                             set(g["covers_rows"]))
+            for k in g["covers_rows"]:
+                self.assertNotIn(k, menu_gated, "row %s is behind two menu "
+                                                "gates" % k)
+                menu_gated[k] = g["gate"]
+        self.assertEqual(sorted(menu_gated), sorted(f["rows_gated_in_the_menu"]))
+        # ... and the menu half must agree with the artifact that owns it
+        for r in rows:
+            m = [x for x in self.shops
+                 if x["shop"] == "mar" and x["key"] == r["key"]][0]
+            self.assertEqual(
+                m["gate"], menu_gated.get(r["key"]),
+                "mar row %s: data/shops.json says gate %r, the menu-gate "
+                "measurement here says %r"
+                % (r["key"], m["gate"], menu_gated.get(r["key"])))
+        buy_gated = {g["row"] for g in f["buy_path_gates"]}
+        self.assertEqual(sorted(buy_gated),
+                         sorted(f["rows_gated_on_the_buy_path"]))
+        self.assertEqual(
+            sorted(set(menu_gated) - buy_gated), ["7"],
+            "the rows the menu hides but the buy path sells are %r, and the "
+            "whole row-7 finding rests on that being exactly ['7']"
+            % sorted(set(menu_gated) - buy_gated))
+        self.assertEqual(sorted(buy_gated - set(menu_gated)), [],
+                         "a row is buy-gated but not menu-gated, which no "
+                         "part of the artifact claims")
+        bug = [b for b in self.mar()["bugs"]
+               if b["label"] == "mar-row-7-is-menu-gated-but-not-buy-gated"][0]
+        row7 = [r for r in rows if r["key"] == "7"][0]
+        self.assertIsNone(row7["district_gate"])
+        self.assertEqual(bug["where"]["row_7_span_start"], row7["span"]["start"])
+        self.assertEqual(bug["where"]["row_7_key_compare"], row7["compare_addr"])
+        self.assertEqual(
+            bug["where"]["buy_gate_for_row_6"],
+            [r for r in rows if r["key"] == "6"][0]["district_gate"]["addr"])
+        self.assertEqual(bug["where"]["menu_gate"], f["menu_gates"][0]["addr"])
+
+    def test_the_mar_upgrade_rows_grant_the_delta_not_the_bonus(self):
+        """Rows 7, 8 and 9 add less when the lesser item is already owned."""
+        bug = [b for b in self.mar()["bugs"]
+               if b["label"] == "mar-upgrade-rows-grant-the-delta-not-the-bonus"
+               ][0]
+        guards = bug["where"]["guards"]
+        branches = bug["where"]["guard_branches"]
+        rejoins = bug["where"]["delta_rejoins"]
+        self.assertEqual(len(guards), 3)
+        self.assertEqual(len(branches), 3)
+        self.assertEqual(len(rejoins), 3)
+        for key, guard, br, rj in zip(("7", "8", "9"), guards, branches,
+                                      rejoins):
+            r = [x for x in self.mar()["rows"] if x["key"] == key][0]
+            gi = self.at(guard)
+            bi = self.at(br)
+            self.assertEqual(bi.raw[0], 0x74, "%s: not a `jz`: %s" % (br,
+                                                                     bi.text))
+            delta = [e for e in r["effects"]
+                     if e.get("guard") and "!= 0" in e["condition"]]
+            full = [e for e in r["effects"]
+                    if e.get("guard") and "== 0" in e["condition"]]
+            self.assertTrue(delta and full,
+                            "row %s records no upgrade split" % key)
+            for e in delta + full:
+                self.assertEqual(e["guard"]["addr"], guard)
+                self.assertEqual(e["guard_branch"]["addr"], br)
+            self.assertEqual(
+                "1000:%04x" % bi.end, delta[0]["addr"],
+                "row %s: the guard's not-taken path is not the delta add"
+                % key)
+            self.assertEqual(
+                "1000:%04x" % self.branch_target(bi), full[0]["addr"],
+                "row %s: the guard does not jump to the full-bonus add" % key)
+            self.assertNotEqual(
+                [e["text"] for e in delta], [e["text"] for e in full],
+                "row %s: the two arms of the split add the same amount, so "
+                "there is no upgrade delta to reproduce" % key)
+            # the delta arm rejoins PAST the full-bonus arm, so the two are
+            # exclusive and neither falls into the other.  These three
+            # instructions are the ones `docs/re/shop-arms.md` shows inside a
+            # fence, where the prose checker cannot reach them.
+            ri = self.check_insn(rj, "mar row %s delta rejoin" % key)
+            self.assertEqual(ri.raw[0], 0xEB, "%s is not a short jmp: %s"
+                             % (rj["addr"], ri.text))
+            self.assertTrue(
+                addrmod.image_off_of_citation(delta[-1]["addr"]) < ri.off
+                < addrmod.image_off_of_citation(full[0]["addr"]),
+                "row %s: %s does not sit between the delta arm and the "
+                "full-bonus arm" % (key, rj["addr"]))
+            self.assertGreater(
+                self.branch_target(ri),
+                addrmod.image_off_of_citation(full[-1]["addr"]),
+                "row %s: the delta arm falls into the full-bonus add instead "
+                "of jumping over it, so the two would both apply" % key)
+            # the flag the guard reads is the LESSER row's own ownership flag
+            lesser = {"7": "4", "8": "5", "9": "6"}[key]
+            other = [x for x in self.mar()["rows"] if x["key"] == lesser][0]
+            self.assertIn(
+                "0x%x" % int(other["own_test"].split(":")[1], 16), gi.text,
+                "row %s's upgrade guard %s does not read row %s's ownership "
+                "flag %s" % (key, guard, lesser, other["own_test"]))
+
+    def test_the_mar_rolls_are_a_random_2_and_a_random_3(self):
+        """Row 1 heals `3 + Random(2)`; row 2's `Random(3)` is cosmetic."""
+        rows = {r["key"]: r for r in self.mar()["rows"]}
+        self.assertEqual(sorted(k for k, r in rows.items() if r.get("roll")),
+                         ["1", "2"],
+                         "some other mar row grew a Random draw")
+        for k in ("1", "2"):
+            roll = rows[k]["roll"]
+            call = self.check_insn(roll["call"], "mar row %s roll" % k)
+            self.assertEqual(call.raw, b"\x9a\x4b\x11\x78\x0f",
+                             "%s is not the `Random` far call"
+                             % roll["call"]["addr"])
+            self.check_insn(roll["n_push"], "mar row %s roll" % k)
+            n = re_query.pushed_n(self.prog, roll["call"]["addr"])
+            self.assertEqual(n["n"], roll["n"],
+                             "the idiom before %s pushes %r, not %d"
+                             % (roll["call"]["addr"], n["n"], roll["n"]))
+        # row 1: the draw is arithmetic, not a dispatch
+        r1 = rows["1"]
+        self.assertEqual(r1["roll"]["arms"], [])
+        add3 = self.check_insn(r1["roll"]["consumed_arithmetically"], "mar 1")
+        heal = [e for e in r1["effects"] if e["ds"] == "20ae:38ac"][0]
+        between = dis16.decode_run(
+            self.img, self.at(r1["roll"]["call"]["addr"]).end,
+            addrmod.image_off_of_citation(heal["addr"]))
+        self.assertEqual(
+            [i.text for i in between], [add3.text],
+            "something other than `%s` stands between row 1's Random(2) and "
+            "the hp add at %s, so `3 + Random(2)` is not what it heals"
+            % (add3.text, heal["addr"]))
+        # row 2: three arms, all converging on the beer counter
+        r2 = rows["2"]
+        arms = r2["roll"]["arms"]
+        self.assertEqual([a["value"] for a in arms], [0, 1, 2])
+        recorded = {s["cs_offset"]: s for s in r2["strings"]}
+        for a in arms:
+            ins = self.check_insn(a["compare"], "mar row 2 arm %d" % a["value"])
+            self.assertEqual(ins.text, "cmp ax,0x%x" % a["value"])
+            br = self.check_insn(a["branch"], "mar row 2 arm %d" % a["value"])
+            self.assertEqual(br.raw[0], 0x75, "not a `jnz`: %s" % br.text)
+            self.assertIn(a["prints_cs_offset"], recorded)
+            push = addrmod.image_off_of_citation(
+                recorded[a["prints_cs_offset"]]["push"]["addr"])
+            self.assertTrue(
+                br.end <= push < self.branch_target(br),
+                "mar row 2 arm %d: its literal is pushed at 0x%x, which is "
+                "not on the branch's not-taken path"
+                % (a["value"], push))
+        beer = [e for e in r2["effects"] if e["ds"] == "20ae:38c3"][0]
+        self.assertEqual(
+            "1000:%04x" % self.branch_target(self.at(arms[-1]["branch"]["addr"])),
+            beer["addr"],
+            "the last Random arm does not fall on the beer counter, so the "
+            "three arms do not converge the way the artifact says")
+        # ... and the refusal rejoins PAST it, so a failed buy adds no beer
+        gate = [g for g in r2["gates"] if g["kind"] == "afford"][0]
+        rejoin = self.check_insn(gate["refusal_rejoin"], "mar row 2 refusal")
+        self.assertEqual("1000:%04x" % self.branch_target(rejoin),
+                         gate["refusal_rejoin_target"])
+        self.assertEqual(gate["refusal_rejoin_target"], r2["span"]["end"])
+        self.assertLess(addrmod.image_off_of_citation(beer["addr"]),
+                        addrmod.image_off_of_citation(
+                            gate["refusal_rejoin_target"]),
+                        "the beer counter is not inside the arm the refusal "
+                        "jumps over")
 
 
 class ProseTest(unittest.TestCase):
@@ -818,19 +1235,20 @@ class ProseTest(unittest.TestCase):
 
     def test_the_prose_and_the_artifact_agree_on_every_row(self):
         """The two places rule, both directions, for the addresses that matter."""
-        for r in self.art["rows"]:
+        rows = self.art["rows"] + self.art["mar"]["rows"]
+        for r in rows:
             for cit in (r["compare_addr"], r["debit_addr"],
                         r["span"]["start"]):
                 self.assertIn(
                     cit, self.md,
                     "docs/re/shop-arms.md never names %s, which "
-                    "data/shop_arms.json records for row %s"
-                    % (cit, r["key"]))
+                    "data/shop_arms.json records for %s row %s"
+                    % (cit, r["shop"], r["key"]))
             for s in r["strings"]:
                 self.assertIn(
                     s["cs_offset"], self.md,
-                    "row %s: the prose does not carry CS %s"
-                    % (r["key"], s["cs_offset"]))
+                    "%s row %s: the prose does not carry CS %s"
+                    % (r["shop"], r["key"], s["cs_offset"]))
 
 
 if __name__ == "__main__":

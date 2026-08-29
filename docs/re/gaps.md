@@ -1505,15 +1505,17 @@ points at this entry.
   materialises either literal. What their arms do is still open.
 * **The quit message** (files `0xC3F3`, `0xC41A`, written at `1000:ee04`) and
   the university backstory (`0x7D81`..`0x7F1F`) — real strings, not wired up.
-* **Shop purchase effects — closed for all nine `bmar` rows (Task 24), still
-  open for all nine `mar` rows.**
-  `mar`'s rows deduct `price` and echo their menu text, applying no effect:
-  `Game::shop_action`'s generic path still prints the **menu line** where the
-  original prints each arm's own confirmation. Task 24 ported the whole
-  dealers' side into `Game::buy_dealer_row` (`grep -n 'fn buy_dealer_row'
-  src/game.rs`), so that generic path is now reached only from `mar`, and
-  every `bmar` row has its own gates, its own refusal lines, its own
-  confirmation and its own effect.
+* **Shop purchase effects — ported for all nine `bmar` rows (Task 24),
+  MAPPED but not yet ported for all nine `mar` rows (Task 25).**
+  `mar`'s rows still deduct `price` and echo their menu text, applying no
+  effect: `Game::shop_action`'s generic path still prints the **menu line**
+  where the original prints each arm's own confirmation. Task 24 ported the
+  whole dealers' side into `Game::buy_dealer_row` (`grep -n 'fn
+  buy_dealer_row' src/game.rs`), so that generic path is now reached only from
+  `mar`, and every `bmar` row has its own gates, its own refusal lines, its
+  own confirmation and its own effect. Task 25 decoded the market's nine arms
+  — `docs/re/shop-arms.md`'s second half and `data/shop_arms.json`'s `mar`
+  key — and the `src/` half of that is Task 26's.
 
   **Task 23 closed the RE half for `bmar` rows 1–6** —
   `docs/re/shop-arms.md`, `data/shop_arms.json`,
@@ -1602,8 +1604,60 @@ points at this entry.
   price *load* rather than the `sub`: rows 7 and 8 debit at `1000:cd14` and
   `1000:cdad`, not `1000:cd0f` / `1000:cda8`.
 
-  **Still open after Task 24:** all nine `mar` arms and `bmar`'s `x`/`wes`
-  arms.
+  **What Task 25 settled for the `mar` side, and what it did not.**
+  The map is `docs/re/shop-arms.md`'s `mar` half, `data/shop_arms.json`'s
+  `mar` key and `python3 tools/test_shop_arms.py` (26 tests, up from 21). The
+  range decoded is `1000:bd48`..`1000:c31f`, one aligned run of 696
+  instructions — the row-1 setup to the setup after row 9. The market
+  pickpocket block is out of that range and was not re-derived.
+
+  * **The district reaches the `mar` buy path, and `bmar`'s it does not.**
+    Three arms test `20ae:3692` before their key compare —
+    `1000:c08e` (row 6, `district>1`), `1000:c1d7` (row 8, `district>2`) and
+    `1000:c27f` (row 9, `district>3`). The inventory is asserted set-equal to
+    a sweep of `1000:b94a`..`1000:c31f` covering the menu block as well, plus
+    a raw `92 36` byte count, so it is six gates and not "the ones someone
+    listed". **Symmetry with `bmar` would have been the wrong answer**: this
+    was measured over `mar`'s own range, and the two shops disagree.
+  * **Those three gates print NOTHING.** Each sits ahead of the row's setup,
+    so the key compare never runs; `1000:c095`, `1000:c1de` and `1000:c286`
+    jump straight to the row's span end, so at district 1 typing `6` at the
+    market prints no message at all — it falls through to the handler's own
+    re-prompt at `1000:c47b`. `Game::shop_action` already returns without
+    printing when `Game::gate_open` is false, so this half of the behaviour
+    already matches; what does not is row 7, next.
+  * **Row 7 is menu-gated but not buy-gated — a divergence the port has
+    backwards.** The menu gate at `1000:bb80` covers *two* lines, rows 6 and 7
+    (`20ae:0b33` at `1000:bb8a` and `20ae:0b34` at `1000:bbe6`, measured
+    inside the gate's own listed range and cross-checked against
+    `data/shops.json`), while the buy path gates only row 6. Row 7's setup
+    `1000:c142` is exactly where `1000:c095` jumps. So the original sells the
+    adidas suit at district 1 off a menu that never listed it, and
+    `Game::shop_action` refuses it. The test asserts the difference between
+    the two measured sets is exactly `{7}`.
+  * **The two consumables, decoded rather than reasoned about.** Row 2
+    increments `20ae:38c3` at `1000:beb4` — the beer counter
+    `src/model.rs` already carries — after a purely cosmetic `Random(3)` at
+    `1000:be51` that picks one of three lines and changes no state; the draw
+    still advances the RNG stream. Row 1 heals `3 + Random(2)`
+    (`1000:bdbb`, `1000:bdc0 add ax,0x3`, `1000:bdc3 add [0x38ac],ax`) and
+    clamps to hp max at `1000:bdd3`. Row 1 also has a gate no other arm in
+    either shop has: `1000:bd5c cmp byte [0x38b0],0x1`, the broken jaw, whose
+    branch jumps *past* its refusal.
+  * **The equipment rows write `20ae:38b2`, the armour byte, and
+    `20ae:38a8`/`20ae:38aa`, the damage words — directly, not through a
+    combat-time global.** Rows 4 and 6 add 1 and 2 to armour unconditionally
+    (`1000:bfa7`, `1000:c107`); row 5 adds 1/1 to damage (`1000:c050`,
+    `1000:c054`). Rows 7, 8 and 9 apply the **upgrade delta**: they read the
+    lesser row's ownership flag and add only the difference
+    (`1000:c1af`, `1000:c24e`, `1000:c2f6`), so the total is the same in
+    either purchase order. That is what the gym's recompute at `1000:e3a4`
+    already subtracts, above.
+  * **No global a `mar` arm writes is write-only**, so every one of them is
+    behaviour the port owes a player.
+
+  **Still open:** the `src/` half of all nine `mar` arms (Task 26) and
+  `bmar`'s `x`/`wes` arms.
 
   **`bmar` rows 7, 8 and 9 were done first** (Task 18; they now live in
   `Game::buy_dealer_row` alongside rows 1–6), because they are what makes

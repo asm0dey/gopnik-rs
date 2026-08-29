@@ -1128,6 +1128,91 @@
       "ArmsTest.test_the_club_grants_no_damage_without_the_knuckles"
     ],
     "expect": "but the artifact names"
+  },
+  {
+    "label": "mar-arms-district-inventory-complete",
+    "defends": "`mar` is the shop where the district DOES reach the buy path, so its gate inventory is a POSITIVE claim and can carry the same defect a negative one can -- an inventory whose completeness claim stopped the next search.  buy_path_gates + menu_gates is asserted SET-EQUAL to every [0x3692] operand an aligned decode of 1000:b94a..1000:c31f finds, and to a raw `92 36` byte scan over the same range.  The perturbation points the row-9 menu gate at the row-8 one, which is still a real gate site at a real boundary, so only the COUNT of distinct recorded gates changes: six sites, five recorded.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["mar", "district_finding", "menu_gates", 2, "addr"],
+      "from": "1000:bca5",
+      "to": "1000:bc42"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_the_mar_district_gates_are_every_district_operand_in_the_handler"
+    ],
+    "expect": "is not complete"
+  },
+  {
+    "label": "mar-arms-row-7-gap-is-measured-not-asserted",
+    "defends": "The row-7 finding is the DIFFERENCE between the rows the menu hides and the rows the buy path gates, and a difference is worth nothing if either set is a list that stopped being written.  Which menu lines a menu gate covers is MEASURED -- the price-byte operands an aligned decode of the gate's own listed range finds -- and cross-checked against data/shops.json.  The perturbation drops row 7 from the first menu gate's coverage, which is exactly the shape of a hand-written list that stopped one entry early.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["mar", "district_finding", "menu_gates", 0, "covers_price_bytes"],
+      "from": ["20ae:0b33", "20ae:0b34"],
+      "to": ["20ae:0b33"]
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_mar_row_7_is_menu_gated_but_not_buy_gated"
+    ],
+    "expect": "the artifact records"
+  },
+  {
+    "label": "mar-arms-gates-completeness",
+    "defends": "The gates[] sweep counts every conditional branch in a mar row's span, including the SILENT district gate in front of rows 6, 8 and 9 -- the one test in either handler that prints nothing, so the strings sweep cannot see it.  The perturbation renames row 6's district branch to its afford branch, leaving five branches in the span accounted for by four.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["mar", "rows", 5, "district_gate", "branch", "addr"],
+      "from": "1000:c093",
+      "to": "1000:c0c3"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_the_recorded_gates_are_every_conditional_branch_in_the_arm"
+    ],
+    "expect": "mar row 6: the conditional branches"
+  },
+  {
+    "label": "mar-arms-strings-completeness",
+    "defends": "strings[] is the WHOLE set of CS literals a mar arm pushes, measured over the arm's span.  Five mar literals are shared between two rows (0x8ef9, 0x8f6d, 0x8f94, 0x8fc8, 0x8ff3), so attributing a refusal to the wrong arm is exactly the error to guard against here.  The perturbation moves row 7's afford refusal one byte on, where nothing pushes it.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["mar", "rows", 6, "strings", 0, "cs_offset"],
+      "from": "0x8ef9",
+      "to": "0x8efa"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_the_recorded_strings_are_every_literal_the_arm_pushes"
+    ],
+    "expect": "mar row 7: the CS literals"
+  },
+  {
+    "label": "mar-arms-upgrade-split-is-exclusive",
+    "defends": "Rows 7, 8 and 9 add the upgrade DELTA when the lesser item is owned and the full bonus when it is not, and the two arms are exclusive only because the delta arm jumps over the full one; a port applying both would over-grant.  The three rejoins are also the instructions docs/re/shop-arms.md shows inside a fence, where the prose checker cannot reach them.  The perturbation swaps row 8's rejoin RECORD for row 7's, address and text together, so the identity walk still passes and only the geometry is wrong -- the substituted jump sits outside row 8's split.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["mar", "bugs", 2, "where", "delta_rejoins", 1],
+      "from": {"addr": "1000:c258", "text": "jmp short 0xc264"},
+      "to": {"addr": "1000:c1b5", "text": "jmp short 0xc1bc"}
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_the_mar_upgrade_rows_grant_the_delta_not_the_bonus"
+    ],
+    "expect": "does not sit between the delta arm"
   }
  ]
 }

@@ -1,9 +1,10 @@
 {
-  "note": "The `bmar` (Барыги) PURCHASE arms for menu rows 1..6 -- what happens after the row key is typed at the `^0Барыги\\` prompt, not what the menu prints. The menu half is `data/shops.json` / `docs/re/tables.md` §2; rows 7..9 were mapped by Task 18. All nine `bmar` arms are ported and live in `Game::buy_dealer_row` (Task 24; `Game::buy_pistol_row` was that function's name until it grew rows 1..6, and nothing answers to it now). Prose twin: `docs/re/shop-arms.md`. Re-derived from `orig/g.exe` by `tools/test_shop_arms.py`; nothing here was read off a screen.",
+  "note": "The `bmar` (Барыги) PURCHASE arms for menu rows 1..6 -- what happens after the row key is typed at the `^0Барыги\\` prompt, not what the menu prints. The menu half is `data/shops.json` / `docs/re/tables.md` §2; rows 7..9 were mapped by Task 18. All nine `bmar` arms are ported and live in `Game::buy_dealer_row` (Task 24; `Game::buy_pistol_row` was that function's name until it grew rows 1..6, and nothing answers to it now). Prose twin: `docs/re/shop-arms.md`. Re-derived from `orig/g.exe` by `tools/test_shop_arms.py`; nothing here was read off a screen. The `mar` (Базар) shop's nine arms are the sibling block under the top-level `mar` key, mapped by Task 25; the two were measured over their own ranges and neither's findings were inferred from the other's.",
   "address_forms": "`1000:xxxx` is a Ghidra label (Form A of `docs/re/METHODOLOGY.md`) and, because the game's code segment is the load base, its OFF is also the image offset. `20ae:xxxx` is DGROUP. `cs_offset` is the image offset of a Pascal shortstring's LENGTH byte -- the exact immediate of the `mov di,imm16` that pushes it -- and `file_offset` is that plus the 0x18d0-byte MZ header, which is what `data/strings.json` keys on.",
   "globals_exclude": "20ae:38c7, the player's money, is written by every arm and referenced 107 times across the image; `docs/re/tables.md` \u00a7 \"Other price sources\" already owns that population, so `globals[]` does not restate it per row.",
   "shop": "bmar",
   "shop_tag_at": "1000:c4be",
+  "rows_bounded_on_the_right_by": {"setup_addr": "1000:ccc4", "compare_addr": "1000:ccce", "compare": {"addr": "1000:ccce", "text": "call 0xf78:0xbd8"}, "literal": {"cs_offset": "0x9023", "file_offset": "0xa8f3", "text": "7"}, "note": "Row 6's miss lands on 1000:ccc4, whose own six-instruction setup feeds the compare at 1000:ccce against the literal `7` -- Task 18's first row. That is what bounds the rows-1..6 range on the right without assuming it. 1000:ccd8, which three earlier documents called row 7's key compare, is its already-own gate; see `docs/re/gaps.md`."},
   "input_read": {
     "buffer": "20ae:3a72",
     "prompt_literal": {"cs_offset": "0x937b", "file_offset": "0xac4b", "text": "^0Барыги\\"},
@@ -463,5 +464,818 @@
       "claim": "See `district_finding`. The district byte gates only the menu print, never the arm.",
       "port_directive": "Reproduce. DONE in Task 24, and for all FIVE gated rows (5, 6, 7, 8, 9) rather than the two this label names -- see `district_finding.consequence`. Nothing is claimed here about `mar`."
     }
-  ]
+  ],
+  "mar": {
+    "note": "The `mar` (Базар, the market) PURCHASE arms for menu rows 1..9 -- what happens after the row key is typed at the `^0Базар\\` prompt, not what the menu prints. The menu half is `data/shops.json` / `docs/re/tables.md` §2. The market pickpocket block that follows row 9 (`1000:c353`..`1000:c369`, `docs/re/gaps.md`) is deliberately NOT mapped here. Prose twin: the `mar` half of `docs/re/shop-arms.md`. Re-derived from `orig/g.exe` by `tools/test_shop_arms.py`; nothing here was read off a screen.",
+    "shop": "mar",
+    "shop_tag_at": "1000:b94a",
+    "rows_bounded_on_the_right_by": {"setup_addr": "1000:c31f", "compare_addr": "1000:c329", "compare": {"addr": "1000:c329", "text": "call 0xf78:0xbd8"}, "literal": {"cs_offset": "0x9089", "file_offset": "0xa959", "text": "t"}, "note": "Row 9's miss lands on 1000:c31f, whose own six-instruction setup feeds the compare at 1000:c329 against the literal `t` -- the market pickpocket verb, whose block is out of this task's scope. That is what bounds the nine rows on the right without assuming it."},
+    "input_read": {
+      "buffer": "20ae:3a72",
+      "prompt_literal": {"cs_offset": "0x8dc1", "file_offset": "0xa691", "text": "^0Базар\\"},
+      "readln": {"addr": "1000:bd43", "text": "call 0xeed:0x216"},
+      "note": "The same one-buffer chain-of-ifs shape `bmar` uses: one line is read at 1000:bd43 into 20ae:3a72, then each row compares that one buffer against its own one-character CS literal with Borland's shortstring compare 0f78:0bd8, and each row's miss branch targets the next row's span start. Three rows differ from every `bmar` row: rows 6, 8 and 9 have a district gate in FRONT of their setup, so the row's span starts at the gate rather than at the `mov di,0x3a72`."
+    },
+    "district_finding": {
+      "claim": "Three of the nine `mar` arms DO test the district byte 20ae:3692, and they test it BEFORE the row's key compare -- so below the district the row is not refused, it is unreachable, and no message is printed. This is the opposite of `bmar`, whose buy path carries no district test at any of its nine rows.",
+      "tier": "flow",
+      "span": {"start": "1000:bd48", "end": "1000:c31f"},
+      "method": "The whole span decodes as one aligned run of 696 instructions -- 1000:bd48, the row-1 setup, to 1000:c31f, the setup for the compare at 1000:c329 that follows row 9. Every instruction in it carrying a direct-memory operand equal to 0x3692 is listed in `buy_path_gates`, asserted SET-EQUAL rather than spot-checked, and the raw `92 36` byte-pair count over the same span is asserted to match, so neither the positive nor the negative rests on the decoder alone.",
+      "district_ds": "20ae:3692",
+      "instruction_count": 696,
+      "sweep_range": {"start": "1000:b94a", "end": "1000:c31f", "note": "The `mar` verb compare to the end of row 9's arm -- i.e. the menu-print block AND the nine arms, and nothing else. `buy_path_gates` + `menu_gates` is asserted set-equal to every `[0x3692]` operand an aligned decode of this range finds, and to a raw `92 36` byte scan over it, so an omitted gate reds `tools/test_shop_arms.py`. The three further `[0x3692]` reads in the image at 1000:c333, 1000:c3a0 and 1000:c3b9 are the market pickpocket block, which starts at 1000:c31f and is out of this task's scope -- the range end is what excludes them, not a filter."},
+      "buy_path_gates": [
+        {"row": "6", "addr": "1000:c08e", "text": "cmp byte [0x3692],0x1", "branch": {"addr": "1000:c093", "text": "ja 0xc098"}, "skip": {"addr": "1000:c095", "text": "jmp 0xc142"}, "reach_setup_at": "1000:c098", "skip_target": "1000:c142", "sense": "reach row 6's setup iff district > 1", "prints": null},
+        {"row": "8", "addr": "1000:c1d7", "text": "cmp byte [0x3692],0x2", "branch": {"addr": "1000:c1dc", "text": "ja 0xc1e1"}, "skip": {"addr": "1000:c1de", "text": "jmp 0xc27f"}, "reach_setup_at": "1000:c1e1", "skip_target": "1000:c27f", "sense": "reach row 8's setup iff district > 2", "prints": null},
+        {"row": "9", "addr": "1000:c27f", "text": "cmp byte [0x3692],0x3", "branch": {"addr": "1000:c284", "text": "ja 0xc289"}, "skip": {"addr": "1000:c286", "text": "jmp 0xc31f"}, "reach_setup_at": "1000:c289", "skip_target": "1000:c31f", "sense": "reach row 9's setup iff district > 3", "prints": null}
+      ],
+      "menu_gates": [
+        {"addr": "1000:bb80", "text": "cmp byte [0x3692],0x1", "branch": {"addr": "1000:bb85", "text": "ja 0xbb8a"}, "listed_from": "1000:bb8a", "skip_target": "1000:bc42", "covers_price_bytes": ["20ae:0b33", "20ae:0b34"], "covers_rows": ["6", "7"], "gate": "district>1"},
+        {"addr": "1000:bc42", "text": "cmp byte [0x3692],0x2", "branch": {"addr": "1000:bc47", "text": "jbe 0xbca5"}, "listed_from": "1000:bc49", "skip_target": "1000:bca5", "covers_price_bytes": ["20ae:0b35"], "covers_rows": ["8"], "gate": "district>2"},
+        {"addr": "1000:bca5", "text": "cmp byte [0x3692],0x3", "branch": {"addr": "1000:bcaa", "text": "jbe 0xbd08"}, "listed_from": "1000:bcac", "skip_target": "1000:bd08", "covers_price_bytes": ["20ae:0b36"], "covers_rows": ["9"], "gate": "district>3"}
+      ],
+      "rows_gated_on_the_buy_path": ["6", "8", "9"],
+      "rows_gated_in_the_menu": ["6", "7", "8", "9"],
+      "price_byte_range": {"first": "20ae:0b2e", "last": "20ae:0b36", "note": "The nine `mar` price bytes, one per row, in key order. Used to measure which MENU lines each menu gate covers: the `mov al,[price]` operands an aligned decode of the gate's listed_from..skip_target range finds, restricted to this range so the colour byte 20ae:3b7a that the same range also loads is not mistaken for a row."},
+      "row_7_is_menu_gated_but_not_buy_gated": {
+        "claim": "Row 7 (adidas, 30 руб.) is hidden from the menu below district 2 and sold anyway. The menu gate at 1000:bb80 covers TWO menu lines -- rows 6 and 7 both load their price byte between its fall-through 1000:bb8a and its skip target 1000:bc42 -- while the buy path has a district gate only in front of row 6. Row 7's span starts at 1000:c142, which is exactly where row 6's district gate jumps when it skips (1000:c095 jmp 0xc142), and 1000:c142 is the `mov di,0x3a72` setup itself: no district test stands between the skip and row 7's key compare at 1000:c14c.",
+        "tier": "flow",
+        "consequence": "At district 1 the market lists rows 1..5 and no more; typing `6` falls through to the re-prompt without a word, and typing `7` buys the adidas suit for 30 руб. and applies its armour bonus. Rows 8 and 9 do have their own buy-path gates and are genuinely unreachable below districts 3 and 4.",
+        "port_directive": "Reproduce, do not fix."
+      },
+      "contrast_with_bmar": "`bmar`'s five district gates are ALL menu-print gates and its buy path has none (`district_finding` above, and `bugs[].row-5-and-6-are-buyable-below-their-menu-district`). `mar` is the other shape for three of its four gated rows and the `bmar` shape for the fourth. Neither shop's finding was inferred from the other's; each was measured over its own range."
+    },
+    "rows": [
+      {
+        "shop": "mar",
+        "key": "1",
+        "item": "Хотдог",
+        "price": 2,
+        "price_addr": "20ae:0b2e",
+        "span": {"start": "1000:bd48", "end": "1000:be0a"},
+        "setup_addr": "1000:bd48",
+        "district_gate": null,
+        "key_literal": {"cs_offset": "0x8dca", "file_offset": "0xa69a", "text": "1", "push": {"addr": "1000:bd4d", "text": "mov di,0x8dca"}},
+        "compare_addr": "1000:bd52",
+        "compare": {"addr": "1000:bd52", "text": "call 0xf78:0xbd8"},
+        "miss_branch": {"addr": "1000:bd57", "text": "jz 0xbd5c", "target": "1000:be0a", "note": "an inverted pair: `jz` over a `jmp 0xbe0a` at 1000:bd59, because the arm is too long for a short branch"},
+        "gates": [
+          {
+            "name": "broken-jaw",
+            "kind": "prereq",
+            "test": {"addr": "1000:bd5c", "text": "cmp byte [0x38b0],0x1"},
+            "branch": {"addr": "1000:bd61", "text": "jnz 0xbd7f"},
+            "sense": "refuse iff [20ae:38b0] == 1 -- the branch jumps PAST the refusal, so the refusal is the fall-through",
+            "fail_reached_by": "fall-through",
+            "fail_target": "1000:bd63",
+            "refusal_cs_offset": "0x8dcc"
+          },
+          {
+            "name": "already-healthy",
+            "kind": "state",
+            "load": {"addr": "1000:bd7f", "text": "mov ax,[0x38ac]"},
+            "test": {"addr": "1000:bd82", "text": "cmp ax,[0x38ae]"},
+            "branch": {"addr": "1000:bd86", "text": "jnl 0xbdf1"},
+            "sense": "refuse iff hp >= hp_max, i.e. [20ae:38ac] >= [20ae:38ae]",
+            "fail_reached_by": "branch",
+            "fail_target": "1000:bdf1",
+            "refusal_cs_offset": "0x8e37"
+          },
+          {
+            "name": "afford",
+            "kind": "afford",
+            "load": {"addr": "1000:bd88", "text": "mov al,[0xb2e]"},
+            "test": {"addr": "1000:bd8d", "text": "cmp ax,[0x38c7]"},
+            "branch": {"addr": "1000:bd91", "text": "jle 0xbdae"},
+            "sense": "buy iff price <= money",
+            "pass_target": "1000:bdae",
+            "fail_reached_by": "fall-through",
+            "fail_target": "1000:bd93",
+            "refusal_cs_offset": "0x8dfa"
+          }
+        ],
+        "roll": {
+          "n_push": {"addr": "1000:bdb7", "text": "mov ax,0x2"},
+          "call": {"addr": "1000:bdbb", "text": "call 0xf78:0x114b"},
+          "n": 2,
+          "arms": [],
+          "consumed_arithmetically": {"addr": "1000:bdc0", "text": "add ax,0x3"},
+          "note": "Not a dispatch: the Random(2) result has 3 added to it at 1000:bdc0 and the sum is added straight to hp at 1000:bdc3, so the hot dog heals 3 or 4. The menu line reads `Хотдог(3-4 з)`, which agrees -- but the range is established here, from 1000:bdb7 and 1000:bdc0, not from the line."
+        },
+        "effects": [
+          {"addr": "1000:bdb3", "text": "sub [0x38c7],ax", "ds": "20ae:38c7", "role": "debit", "condition": null},
+          {"addr": "1000:bdc3", "text": "add [0x38ac],ax", "ds": "20ae:38ac", "role": "hp += 3 + Random(2)", "condition": null},
+          {"addr": "1000:bdd3", "text": "mov [0x38ac],ax", "ds": "20ae:38ac", "role": "hp clamped back down to hp_max", "condition": "the new [0x38ac] > [0x38ae]", "guard": {"addr": "1000:bdca", "text": "cmp ax,[0x38ae]"}, "guard_branch": {"addr": "1000:bdce", "text": "jle 0xbdd6"}}
+        ],
+        "debit_addr": "1000:bdb3",
+        "strings": [
+          {"role": "refusal", "cs_offset": "0x8dcc", "file_offset": "0xa69c", "text": "^4Ты не можешь хавать из-за сломаной челюсти.", "push": {"addr": "1000:bd63", "text": "mov di,0x8dcc"}},
+          {"role": "refusal", "cs_offset": "0x8dfa", "file_offset": "0xa6ca", "text": "^4Чёрт, бабок даже на жратву не хватает.", "push": {"addr": "1000:bd93", "text": "mov di,0x8dfa"}},
+          {"role": "confirmation", "cs_offset": "0x8e23", "file_offset": "0xa6f3", "text": "^2Ты сожрал хот-дог", "push": {"addr": "1000:bdd6", "text": "mov di,0x8e23"}},
+          {"role": "refusal", "cs_offset": "0x8e37", "file_offset": "0xa707", "text": "^6Да неохота хавать", "push": {"addr": "1000:bdf1", "text": "mov di,0x8e37"}}
+        ],
+        "silent_gates": [],
+        "own_test": null,
+        "district_test": null,
+        "repeatable": true,
+        "globals": [
+          {
+            "ds": "20ae:38ac",
+            "written_at": ["1000:bdc3", "1000:bdd3"],
+            "xref_count": 74,
+            "refs_outside_arm": 70,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:4f82", "text": "cmp word [0x38ac],0x0", "what": "the death test"},
+              {"addr": "1000:210c", "text": "mov ax,[0x38ac]", "what": "the character sheet's hp/hpmax bar"}
+            ]
+          }
+        ]
+      },
+      {
+        "shop": "mar",
+        "key": "2",
+        "item": "Пиво",
+        "price": 5,
+        "price_addr": "20ae:0b2f",
+        "span": {"start": "1000:be0a", "end": "1000:beb8"},
+        "setup_addr": "1000:be0a",
+        "district_gate": null,
+        "key_literal": {"cs_offset": "0x8e4b", "file_offset": "0xa71b", "text": "2", "push": {"addr": "1000:be0f", "text": "mov di,0x8e4b"}},
+        "compare_addr": "1000:be14",
+        "compare": {"addr": "1000:be14", "text": "call 0xf78:0xbd8"},
+        "miss_branch": {"addr": "1000:be19", "text": "jz 0xbe1e", "target": "1000:beb8", "note": "inverted pair over `jmp 0xbeb8` at 1000:be1b"},
+        "gates": [
+          {
+            "name": "afford",
+            "kind": "afford",
+            "load": {"addr": "1000:be1e", "text": "mov al,[0xb2f]"},
+            "test": {"addr": "1000:be23", "text": "cmp ax,[0x38c7]"},
+            "branch": {"addr": "1000:be27", "text": "jle 0xbe44"},
+            "sense": "buy iff price <= money",
+            "pass_target": "1000:be44",
+            "refusal_rejoin": {"addr": "1000:be42", "text": "jmp short 0xbeb8"},
+            "refusal_rejoin_target": "1000:beb8",
+            "refusal_rejoin_note": "Recorded because this arm's state write sits AFTER its confirmation print, as rows 4..9's bonuses do: the refusal jumps to the row's span end, PAST 1000:beb4, so a failed purchase does not increment the beer counter.",
+            "fail_reached_by": "fall-through",
+            "fail_target": "1000:be29",
+            "refusal_cs_offset": "0x8e4d"
+          }
+        ],
+        "roll": {
+          "n_push": {"addr": "1000:be4d", "text": "mov ax,0x3"},
+          "call": {"addr": "1000:be51", "text": "call 0xf78:0x114b"},
+          "n": 3,
+          "arms": [
+            {"value": 0, "compare": {"addr": "1000:be56", "text": "cmp ax,0x0"}, "branch": {"addr": "1000:be59", "text": "jnz 0xbe76"}, "prints_cs_offset": "0x8e5a"},
+            {"value": 1, "compare": {"addr": "1000:be76", "text": "cmp ax,0x1"}, "branch": {"addr": "1000:be79", "text": "jnz 0xbe96"}, "prints_cs_offset": "0x8e7c"},
+            {"value": 2, "compare": {"addr": "1000:be96", "text": "cmp ax,0x2"}, "branch": {"addr": "1000:be99", "text": "jnz 0xbeb4"}, "prints_cs_offset": "0x8e93"}
+          ],
+          "note": "Purely cosmetic: all three arms converge on 1000:beb4 and the roll changes no state. It still DRAWS, so buying beer advances the RNG stream and any trace the port compares against has to account for that."
+        },
+        "effects": [
+          {"addr": "1000:be49", "text": "sub [0x38c7],ax", "ds": "20ae:38c7", "role": "debit", "condition": null},
+          {"addr": "1000:beb4", "text": "inc [0x38c3]", "ds": "20ae:38c3", "role": "пиво +1 (a WORD count in half-litres, not a flag)", "condition": null}
+        ],
+        "debit_addr": "1000:be49",
+        "strings": [
+          {"role": "refusal", "cs_offset": "0x8e4d", "file_offset": "0xa71d", "text": "^4Не хватает", "push": {"addr": "1000:be29", "text": "mov di,0x8e4d"}},
+          {"role": "confirmation", "cs_offset": "0x8e5a", "file_offset": "0xa72a", "text": "^2Глинское? Чё за нафиг? А ладно.", "push": {"addr": "1000:be5b", "text": "mov di,0x8e5a"}},
+          {"role": "confirmation", "cs_offset": "0x8e7c", "file_offset": "0xa74c", "text": "^2Пивко. Холодненькое.", "push": {"addr": "1000:be7b", "text": "mov di,0x8e7c"}},
+          {"role": "confirmation", "cs_offset": "0x8e93", "file_offset": "0xa763", "text": "^2Ну чё по пиву?.", "push": {"addr": "1000:be9b", "text": "mov di,0x8e93"}}
+        ],
+        "silent_gates": [],
+        "own_test": null,
+        "district_test": null,
+        "repeatable": true,
+        "globals": [
+          {
+            "ds": "20ae:38c3",
+            "written_at": ["1000:beb4"],
+            "xref_count": 19,
+            "refs_outside_arm": 18,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:23d5", "text": "cmp word [0x38c3],0x0", "what": "the character sheet's `Пиво #.#л.` line"},
+              {"addr": "1000:2a47", "text": "cmp word [0x38c3],0x0", "what": "the drink handler's no-beer guard, inside FUN_1000_29c4"},
+              {"addr": "1000:2a51", "text": "dec [0x38c3]", "what": "the same handler consuming one half-litre"}
+            ]
+          }
+        ]
+      },
+      {
+        "shop": "mar",
+        "key": "3",
+        "item": "Затемнённые очки",
+        "price": 10,
+        "price_addr": "20ae:0b30",
+        "span": {"start": "1000:beb8", "end": "1000:bf38"},
+        "setup_addr": "1000:beb8",
+        "district_gate": null,
+        "key_literal": {"cs_offset": "0x8ea5", "file_offset": "0xa775", "text": "3", "push": {"addr": "1000:bebd", "text": "mov di,0x8ea5"}},
+        "compare_addr": "1000:bec2",
+        "compare": {"addr": "1000:bec2", "text": "call 0xf78:0xbd8"},
+        "miss_branch": {"addr": "1000:bec7", "text": "jnz 0xbf38", "target": "1000:bf38"},
+        "gates": [
+          {
+            "name": "already-own",
+            "kind": "own",
+            "test": {"addr": "1000:bec9", "text": "cmp byte [0x38b3],0x0"},
+            "branch": {"addr": "1000:bece", "text": "jnz 0xbf1f"},
+            "sense": "refuse iff [20ae:38b3] != 0",
+            "fail_reached_by": "branch",
+            "fail_target": "1000:bf1f",
+            "refusal_cs_offset": "0x8ed9"
+          },
+          {
+            "name": "afford",
+            "kind": "afford",
+            "load": {"addr": "1000:bed0", "text": "mov al,[0xb30]"},
+            "test": {"addr": "1000:bed5", "text": "cmp ax,[0x38c7]"},
+            "branch": {"addr": "1000:bed9", "text": "jle 0xbef6"},
+            "sense": "buy iff price <= money",
+            "pass_target": "1000:bef6",
+            "fail_reached_by": "fall-through",
+            "fail_target": "1000:bedb",
+            "refusal_cs_offset": "0x8ea7"
+          }
+        ],
+        "effects": [
+          {"addr": "1000:bef6", "text": "mov byte [0x38b3],0x1", "ds": "20ae:38b3", "role": "тёмные очки owned", "condition": null},
+          {"addr": "1000:bf00", "text": "sub [0x38c7],ax", "ds": "20ae:38c7", "role": "debit", "condition": null}
+        ],
+        "debit_addr": "1000:bf00",
+        "strings": [
+          {"role": "refusal", "cs_offset": "0x8ea7", "file_offset": "0xa777", "text": "^4Не хватает бабок", "push": {"addr": "1000:bedb", "text": "mov di,0x8ea7"}},
+          {"role": "confirmation", "cs_offset": "0x8eba", "file_offset": "0xa78a", "text": "^2Модные такие очки от солнца.", "push": {"addr": "1000:bf04", "text": "mov di,0x8eba"}},
+          {"role": "refusal", "cs_offset": "0x8ed9", "file_offset": "0xa7a9", "text": "^6У тебя есть очки от солнца.", "push": {"addr": "1000:bf1f", "text": "mov di,0x8ed9"}}
+        ],
+        "silent_gates": [],
+        "own_test": "20ae:38b3",
+        "district_test": null,
+        "repeatable": false,
+        "globals": [
+          {
+            "ds": "20ae:38b3",
+            "written_at": ["1000:bef6"],
+            "xref_count": 6,
+            "refs_outside_arm": 4,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:1cf8", "text": "cmp byte [0x38b3],0x0", "what": "the character sheet's `У тебя есть тёмные очки` line"},
+              {"addr": "1000:b7c6", "text": "cmp byte [0x38b3],0x1", "what": "the wander cop encounter -- with the glasses on, no fight (`docs/re/gaps.md`)"},
+              {"addr": "1000:5621", "text": "cmp byte [0x38b3],0x0", "what": "the combat loot arm, which grants the same flag at 1000:5628"}
+            ]
+          }
+        ]
+      },
+      {
+        "shop": "mar",
+        "key": "4",
+        "item": "abibas",
+        "price": 15,
+        "price_addr": "20ae:0b31",
+        "span": {"start": "1000:bf38", "end": "1000:bfe1"},
+        "setup_addr": "1000:bf38",
+        "district_gate": null,
+        "key_literal": {"cs_offset": "0x8ef7", "file_offset": "0xa7c7", "text": "4", "push": {"addr": "1000:bf3d", "text": "mov di,0x8ef7"}},
+        "compare_addr": "1000:bf42",
+        "compare": {"addr": "1000:bf42", "text": "call 0xf78:0xbd8"},
+        "miss_branch": {"addr": "1000:bf47", "text": "jz 0xbf4c", "target": "1000:bfe1", "note": "inverted pair over `jmp 0xbfe1` at 1000:bf49"},
+        "gates": [
+          {
+            "name": "better-item",
+            "kind": "prereq",
+            "test": {"addr": "1000:bf4c", "text": "cmp byte [0x38b7],0x0"},
+            "branch": {"addr": "1000:bf51", "text": "jnz 0xbfc8"},
+            "sense": "refuse iff [20ae:38b7] != 0 -- the adidas suit, row 7. ONE conjunct, not a conjunction: unlike `bmar` rows 5 and 6 there is nothing to short-circuit.",
+            "fail_reached_by": "branch",
+            "fail_target": "1000:bfc8",
+            "refusal_cs_offset": "0x8f48"
+          },
+          {
+            "name": "already-own",
+            "kind": "own",
+            "test": {"addr": "1000:bf53", "text": "cmp byte [0x38b4],0x0"},
+            "branch": {"addr": "1000:bf58", "text": "jnz 0xbfad"},
+            "sense": "refuse iff [20ae:38b4] != 0",
+            "fail_reached_by": "branch",
+            "fail_target": "1000:bfad",
+            "refusal_cs_offset": "0x8f2e"
+          },
+          {
+            "name": "afford",
+            "kind": "afford",
+            "load": {"addr": "1000:bf5a", "text": "mov al,[0xb31]"},
+            "test": {"addr": "1000:bf5f", "text": "cmp ax,[0x38c7]"},
+            "branch": {"addr": "1000:bf63", "text": "jle 0xbf80"},
+            "sense": "buy iff price <= money",
+            "pass_target": "1000:bf80",
+            "fail_reached_by": "fall-through",
+            "fail_target": "1000:bf65",
+            "refusal_cs_offset": "0x8ef9"
+          }
+        ],
+        "effects": [
+          {"addr": "1000:bf80", "text": "mov byte [0x38b4],0x1", "ds": "20ae:38b4", "role": "костюм abibas owned", "condition": null},
+          {"addr": "1000:bf8a", "text": "sub [0x38c7],ax", "ds": "20ae:38c7", "role": "debit", "condition": null},
+          {"addr": "1000:bfa7", "text": "inc [0x38b2]", "ds": "20ae:38b2", "role": "armour +1 (a BYTE inc, `fe 06`)", "condition": null}
+        ],
+        "debit_addr": "1000:bf8a",
+        "strings": [
+          {"role": "refusal", "cs_offset": "0x8ef9", "file_offset": "0xa7c9", "text": "^4Не хватает денег", "push": {"addr": "1000:bf65", "text": "mov di,0x8ef9"}},
+          {"role": "confirmation", "cs_offset": "0x8f0c", "file_offset": "0xa7dc", "text": "^2Теперь ты больше похож на гопа.", "push": {"addr": "1000:bf8e", "text": "mov di,0x8f0c"}},
+          {"role": "refusal", "cs_offset": "0x8f2e", "file_offset": "0xa7fe", "text": "^6У тебя уже есть костюм.", "push": {"addr": "1000:bfad", "text": "mov di,0x8f2e"}},
+          {"role": "refusal", "cs_offset": "0x8f48", "file_offset": "0xa818", "text": "^6У тебя есть более крутой костюм.", "push": {"addr": "1000:bfc8", "text": "mov di,0x8f48"}}
+        ],
+        "silent_gates": [],
+        "own_test": "20ae:38b4",
+        "district_test": null,
+        "repeatable": false,
+        "globals": [
+          {
+            "ds": "20ae:38b4",
+            "written_at": ["1000:bf80"],
+            "xref_count": 8,
+            "refs_outside_arm": 6,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:22a1", "text": "cmp byte [0x38b4],0x0", "what": "the character sheet's `Костюм Abibas(+1)` line"},
+              {"addr": "1000:e3aa", "text": "cmp byte [0x38b4],0x0", "what": "the gym's armour-scratch recompute, which subtracts 1 for this flag"},
+              {"addr": "1000:c1aa", "text": "cmp byte [0x38b4],0x0", "what": "row 7's own +1/+2 split, in this same handler"}
+            ]
+          },
+          {
+            "ds": "20ae:38b2",
+            "written_at": ["1000:bfa7"],
+            "xref_count": 12,
+            "refs_outside_arm": 11,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:227b", "text": "cmp byte [0x38b2],0x0", "what": "the character sheet's `Броня #` line"},
+              {"addr": "1000:4769", "text": "mov al,[0x38b2]", "what": "the kick's damage reduction in combat"},
+              {"addr": "1000:e3a4", "text": "mov al,[0x38b2]", "what": "the gym's armour-scratch recompute"}
+            ]
+          }
+        ]
+      },
+      {
+        "shop": "mar",
+        "key": "5",
+        "item": "Понтовые бутсы",
+        "price": 15,
+        "price_addr": "20ae:0b32",
+        "span": {"start": "1000:bfe1", "end": "1000:c08e"},
+        "setup_addr": "1000:bfe1",
+        "district_gate": null,
+        "key_literal": {"cs_offset": "0x8f6b", "file_offset": "0xa83b", "text": "5", "push": {"addr": "1000:bfe6", "text": "mov di,0x8f6b"}},
+        "compare_addr": "1000:bfeb",
+        "compare": {"addr": "1000:bfeb", "text": "call 0xf78:0xbd8"},
+        "miss_branch": {"addr": "1000:bff0", "text": "jz 0xbff5", "target": "1000:c08e", "note": "inverted pair over `jmp 0xc08e` at 1000:bff2 -- and 1000:c08e is row 6's DISTRICT GATE, not its setup"},
+        "gates": [
+          {
+            "name": "better-item",
+            "kind": "prereq",
+            "test": {"addr": "1000:bff5", "text": "cmp byte [0x38b8],0x0"},
+            "branch": {"addr": "1000:bffa", "text": "jnz 0xc075"},
+            "sense": "refuse iff [20ae:38b8] != 0 -- the Понтовёйшие бутсы, row 8",
+            "fail_reached_by": "branch",
+            "fail_target": "1000:c075",
+            "refusal_cs_offset": "0x8fad"
+          },
+          {
+            "name": "already-own",
+            "kind": "own",
+            "test": {"addr": "1000:bffc", "text": "cmp byte [0x38b5],0x0"},
+            "branch": {"addr": "1000:c001", "text": "jnz 0xc05a"},
+            "sense": "refuse iff [20ae:38b5] != 0",
+            "fail_reached_by": "branch",
+            "fail_target": "1000:c05a",
+            "refusal_cs_offset": "0x8f94"
+          },
+          {
+            "name": "afford",
+            "kind": "afford",
+            "load": {"addr": "1000:c003", "text": "mov al,[0xb32]"},
+            "test": {"addr": "1000:c008", "text": "cmp ax,[0x38c7]"},
+            "branch": {"addr": "1000:c00c", "text": "jle 0xc029"},
+            "sense": "buy iff price <= money",
+            "pass_target": "1000:c029",
+            "fail_reached_by": "fall-through",
+            "fail_target": "1000:c00e",
+            "refusal_cs_offset": "0x8f6d"
+          }
+        ],
+        "effects": [
+          {"addr": "1000:c029", "text": "mov byte [0x38b5],0x1", "ds": "20ae:38b5", "role": "бутсы owned", "condition": null},
+          {"addr": "1000:c033", "text": "sub [0x38c7],ax", "ds": "20ae:38c7", "role": "debit", "condition": null},
+          {"addr": "1000:c050", "text": "inc [0x38a8]", "ds": "20ae:38a8", "role": "dmg_min +1", "condition": null},
+          {"addr": "1000:c054", "text": "inc [0x38aa]", "ds": "20ae:38aa", "role": "dmg_max +1", "condition": null}
+        ],
+        "debit_addr": "1000:c033",
+        "strings": [
+          {"role": "refusal", "cs_offset": "0x8f6d", "file_offset": "0xa83d", "text": "^4Нету на них денег", "push": {"addr": "1000:c00e", "text": "mov di,0x8f6d"}},
+          {"role": "confirmation", "cs_offset": "0x8f81", "file_offset": "0xa851", "text": "^2Зацени красовки.", "push": {"addr": "1000:c037", "text": "mov di,0x8f81"}},
+          {"role": "refusal", "cs_offset": "0x8f94", "file_offset": "0xa864", "text": "^6У тебя такие уже есть.", "push": {"addr": "1000:c05a", "text": "mov di,0x8f94"}},
+          {"role": "refusal", "cs_offset": "0x8fad", "file_offset": "0xa87d", "text": "^6У тебя бутсы по круче.", "push": {"addr": "1000:c075", "text": "mov di,0x8fad"}}
+        ],
+        "silent_gates": [],
+        "own_test": "20ae:38b5",
+        "district_test": null,
+        "repeatable": false,
+        "globals": [
+          {
+            "ds": "20ae:38b5",
+            "written_at": ["1000:c029"],
+            "xref_count": 8,
+            "refs_outside_arm": 6,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:1e81", "text": "cmp byte [0x38b5],0x0", "what": "the character sheet's `Бутсы(+1)` line"},
+              {"addr": "1000:c249", "text": "cmp byte [0x38b5],0x0", "what": "row 8's own +1/+2 split, in this same handler"}
+            ]
+          },
+          {
+            "ds": "20ae:38a8",
+            "written_at": ["1000:c050"],
+            "xref_count": 31,
+            "refs_outside_arm": 30,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:4492", "text": "sub ax,[0x38a8]", "what": "the damage computation inside the `k` blow loop"}
+            ]
+          },
+          {
+            "ds": "20ae:38aa",
+            "written_at": ["1000:c054"],
+            "xref_count": 31,
+            "refs_outside_arm": 30,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:448f", "text": "mov ax,[0x38aa]", "what": "the damage computation inside the `k` blow loop"}
+            ]
+          }
+        ]
+      },
+      {
+        "shop": "mar",
+        "key": "6",
+        "item": "Реальную кожанку",
+        "price": 25,
+        "price_addr": "20ae:0b33",
+        "span": {"start": "1000:c08e", "end": "1000:c142"},
+        "setup_addr": "1000:c098",
+        "district_gate": {"addr": "1000:c08e", "text": "cmp byte [0x3692],0x1", "branch": {"addr": "1000:c093", "text": "ja 0xc098"}, "skip": {"addr": "1000:c095", "text": "jmp 0xc142"}, "gate": "district>1", "prints": null},
+        "key_literal": {"cs_offset": "0x8fc6", "file_offset": "0xa896", "text": "6", "push": {"addr": "1000:c09d", "text": "mov di,0x8fc6"}},
+        "compare_addr": "1000:c0a2",
+        "compare": {"addr": "1000:c0a2", "text": "call 0xf78:0xbd8"},
+        "miss_branch": {"addr": "1000:c0a7", "text": "jz 0xc0ac", "target": "1000:c142", "note": "inverted pair over `jmp 0xc142` at 1000:c0a9"},
+        "gates": [
+          {
+            "name": "better-item",
+            "kind": "prereq",
+            "test": {"addr": "1000:c0ac", "text": "cmp byte [0x38b9],0x0"},
+            "branch": {"addr": "1000:c0b1", "text": "jnz 0xc129"},
+            "sense": "refuse iff [20ae:38b9] != 0 -- the Ваще крутая кожанка, row 9",
+            "fail_reached_by": "branch",
+            "fail_target": "1000:c129",
+            "refusal_cs_offset": "0x9007"
+          },
+          {
+            "name": "already-own",
+            "kind": "own",
+            "test": {"addr": "1000:c0b3", "text": "cmp byte [0x38b6],0x0"},
+            "branch": {"addr": "1000:c0b8", "text": "jnz 0xc10e"},
+            "sense": "refuse iff [20ae:38b6] != 0",
+            "fail_reached_by": "branch",
+            "fail_target": "1000:c10e",
+            "refusal_cs_offset": "0x8ff3"
+          },
+          {
+            "name": "afford",
+            "kind": "afford",
+            "load": {"addr": "1000:c0ba", "text": "mov al,[0xb33]"},
+            "test": {"addr": "1000:c0bf", "text": "cmp ax,[0x38c7]"},
+            "branch": {"addr": "1000:c0c3", "text": "jle 0xc0e0"},
+            "sense": "buy iff price <= money",
+            "pass_target": "1000:c0e0",
+            "fail_reached_by": "fall-through",
+            "fail_target": "1000:c0c5",
+            "refusal_cs_offset": "0x8fc8"
+          }
+        ],
+        "effects": [
+          {"addr": "1000:c0e0", "text": "mov byte [0x38b6],0x1", "ds": "20ae:38b6", "role": "кожанка owned", "condition": null},
+          {"addr": "1000:c0ea", "text": "sub [0x38c7],ax", "ds": "20ae:38c7", "role": "debit", "condition": null},
+          {"addr": "1000:c107", "text": "add byte [0x38b2],0x2", "ds": "20ae:38b2", "role": "armour +2", "condition": null}
+        ],
+        "debit_addr": "1000:c0ea",
+        "strings": [
+          {"role": "refusal", "cs_offset": "0x8fc8", "file_offset": "0xa898", "text": "^4Не достаточно бабла", "push": {"addr": "1000:c0c5", "text": "mov di,0x8fc8"}},
+          {"role": "confirmation", "cs_offset": "0x8fde", "file_offset": "0xa8ae", "text": "^2Ну весь на понтах.", "push": {"addr": "1000:c0ee", "text": "mov di,0x8fde"}},
+          {"role": "refusal", "cs_offset": "0x8ff3", "file_offset": "0xa8c3", "text": "^6Ты уже купил это.", "push": {"addr": "1000:c10e", "text": "mov di,0x8ff3"}},
+          {"role": "refusal", "cs_offset": "0x9007", "file_offset": "0xa8d7", "text": "^6Утебя есть кожанка круче.", "push": {"addr": "1000:c129", "text": "mov di,0x9007"}}
+        ],
+        "silent_gates": ["1000:c08e"],
+        "own_test": "20ae:38b6",
+        "district_test": "20ae:3692",
+        "repeatable": false,
+        "globals": [
+          {
+            "ds": "20ae:38b6",
+            "written_at": ["1000:c0e0"],
+            "xref_count": 8,
+            "refs_outside_arm": 6,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:2323", "text": "cmp byte [0x38b6],0x0", "what": "the character sheet's `Кожанка(+2)` line"},
+              {"addr": "1000:e3c8", "text": "cmp byte [0x38b6],0x0", "what": "the gym's armour-scratch recompute, which subtracts 2 for this flag when 20ae:38b9 is clear"},
+              {"addr": "1000:c2f1", "text": "cmp byte [0x38b6],0x0", "what": "row 9's own +2/+4 split, in this same handler"}
+            ]
+          },
+          {
+            "ds": "20ae:38b2",
+            "written_at": ["1000:c107"],
+            "xref_count": 12,
+            "refs_outside_arm": 11,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:227b", "text": "cmp byte [0x38b2],0x0", "what": "the character sheet's `Броня #` line"},
+              {"addr": "1000:4769", "text": "mov al,[0x38b2]", "what": "the kick's damage reduction in combat"}
+            ]
+          }
+        ]
+      },
+      {
+        "shop": "mar",
+        "key": "7",
+        "item": "adidas",
+        "price": 30,
+        "price_addr": "20ae:0b34",
+        "span": {"start": "1000:c142", "end": "1000:c1d7"},
+        "setup_addr": "1000:c142",
+        "district_gate": null,
+        "key_literal": {"cs_offset": "0x9023", "file_offset": "0xa8f3", "text": "7", "push": {"addr": "1000:c147", "text": "mov di,0x9023"}},
+        "compare_addr": "1000:c14c",
+        "compare": {"addr": "1000:c14c", "text": "call 0xf78:0xbd8"},
+        "miss_branch": {"addr": "1000:c151", "text": "jz 0xc156", "target": "1000:c1d7", "note": "inverted pair over `jmp 0xc1d7` at 1000:c153 -- and 1000:c1d7 is row 8's DISTRICT GATE, not its setup"},
+        "gates": [
+          {
+            "name": "already-own",
+            "kind": "own",
+            "test": {"addr": "1000:c156", "text": "cmp byte [0x38b7],0x0"},
+            "branch": {"addr": "1000:c15b", "text": "jnz 0xc1be"},
+            "sense": "refuse iff [20ae:38b7] != 0",
+            "fail_reached_by": "branch",
+            "fail_target": "1000:c1be",
+            "refusal_cs_offset": "0x9036"
+          },
+          {
+            "name": "afford",
+            "kind": "afford",
+            "load": {"addr": "1000:c15d", "text": "mov al,[0xb34]"},
+            "test": {"addr": "1000:c162", "text": "cmp ax,[0x38c7]"},
+            "branch": {"addr": "1000:c166", "text": "jle 0xc183"},
+            "sense": "buy iff price <= money",
+            "pass_target": "1000:c183",
+            "fail_reached_by": "fall-through",
+            "fail_target": "1000:c168",
+            "refusal_cs_offset": "0x8ef9"
+          }
+        ],
+        "effects": [
+          {"addr": "1000:c183", "text": "mov byte [0x38b7],0x1", "ds": "20ae:38b7", "role": "костюм adidas owned", "condition": null},
+          {"addr": "1000:c18d", "text": "sub [0x38c7],ax", "ds": "20ae:38c7", "role": "debit", "condition": null},
+          {"addr": "1000:c1b1", "text": "inc [0x38b2]", "ds": "20ae:38b2", "role": "armour +1 -- the UPGRADE delta", "condition": "[20ae:38b4] != 0, i.e. the abibas suit is already owned", "guard": {"addr": "1000:c1aa", "text": "cmp byte [0x38b4],0x0"}, "guard_branch": {"addr": "1000:c1af", "text": "jz 0xc1b7"}},
+          {"addr": "1000:c1b7", "text": "add byte [0x38b2],0x2", "ds": "20ae:38b2", "role": "armour +2 -- the full bonus", "condition": "[20ae:38b4] == 0, i.e. the abibas suit is NOT owned", "guard": {"addr": "1000:c1aa", "text": "cmp byte [0x38b4],0x0"}, "guard_branch": {"addr": "1000:c1af", "text": "jz 0xc1b7"}}
+        ],
+        "debit_addr": "1000:c18d",
+        "strings": [
+          {"role": "refusal", "cs_offset": "0x8ef9", "file_offset": "0xa7c9", "text": "^4Не хватает денег", "push": {"addr": "1000:c168", "text": "mov di,0x8ef9"}},
+          {"role": "confirmation", "cs_offset": "0x9025", "file_offset": "0xa8f5", "text": "^2Чистый гопник.", "push": {"addr": "1000:c191", "text": "mov di,0x9025"}},
+          {"role": "refusal", "cs_offset": "0x9036", "file_offset": "0xa906", "text": "^6У тебя уже есть этот костюм.", "push": {"addr": "1000:c1be", "text": "mov di,0x9036"}}
+        ],
+        "silent_gates": [],
+        "own_test": "20ae:38b7",
+        "district_test": null,
+        "repeatable": false,
+        "globals": [
+          {
+            "ds": "20ae:38b7",
+            "written_at": ["1000:c183"],
+            "xref_count": 8,
+            "refs_outside_arm": 6,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:22fc", "text": "cmp byte [0x38b7],0x0", "what": "the character sheet's `Костюм Adidas(+2)` line"},
+              {"addr": "1000:e3bc", "text": "cmp byte [0x38b7],0x0", "what": "the gym's armour-scratch recompute, which subtracts 2 for this flag"},
+              {"addr": "1000:bf4c", "text": "cmp byte [0x38b7],0x0", "what": "row 4's better-item gate, in this same handler"}
+            ]
+          },
+          {
+            "ds": "20ae:38b2",
+            "written_at": ["1000:c1b1", "1000:c1b7"],
+            "xref_count": 12,
+            "refs_outside_arm": 10,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:227b", "text": "cmp byte [0x38b2],0x0", "what": "the character sheet's `Броня #` line"},
+              {"addr": "1000:4769", "text": "mov al,[0x38b2]", "what": "the kick's damage reduction in combat"}
+            ]
+          }
+        ]
+      },
+      {
+        "shop": "mar",
+        "key": "8",
+        "item": "Понтовёйшие бутсы",
+        "price": 30,
+        "price_addr": "20ae:0b35",
+        "span": {"start": "1000:c1d7", "end": "1000:c27f"},
+        "setup_addr": "1000:c1e1",
+        "district_gate": {"addr": "1000:c1d7", "text": "cmp byte [0x3692],0x2", "branch": {"addr": "1000:c1dc", "text": "ja 0xc1e1"}, "skip": {"addr": "1000:c1de", "text": "jmp 0xc27f"}, "gate": "district>2", "prints": null},
+        "key_literal": {"cs_offset": "0x9055", "file_offset": "0xa925", "text": "8", "push": {"addr": "1000:c1e6", "text": "mov di,0x9055"}},
+        "compare_addr": "1000:c1eb",
+        "compare": {"addr": "1000:c1eb", "text": "call 0xf78:0xbd8"},
+        "miss_branch": {"addr": "1000:c1f0", "text": "jz 0xc1f5", "target": "1000:c27f", "note": "inverted pair over `jmp 0xc27f` at 1000:c1f2"},
+        "gates": [
+          {
+            "name": "already-own",
+            "kind": "own",
+            "test": {"addr": "1000:c1f5", "text": "cmp byte [0x38b8],0x0"},
+            "branch": {"addr": "1000:c1fa", "text": "jnz 0xc266"},
+            "sense": "refuse iff [20ae:38b8] != 0",
+            "fail_reached_by": "branch",
+            "fail_target": "1000:c266",
+            "refusal_cs_offset": "0x8f94"
+          },
+          {
+            "name": "afford",
+            "kind": "afford",
+            "load": {"addr": "1000:c1fc", "text": "mov al,[0xb35]"},
+            "test": {"addr": "1000:c201", "text": "cmp ax,[0x38c7]"},
+            "branch": {"addr": "1000:c205", "text": "jle 0xc222"},
+            "sense": "buy iff price <= money",
+            "pass_target": "1000:c222",
+            "fail_reached_by": "fall-through",
+            "fail_target": "1000:c207",
+            "refusal_cs_offset": "0x8f6d"
+          }
+        ],
+        "effects": [
+          {"addr": "1000:c222", "text": "mov byte [0x38b8],0x1", "ds": "20ae:38b8", "role": "понтовёйшие бутсы owned", "condition": null},
+          {"addr": "1000:c22c", "text": "sub [0x38c7],ax", "ds": "20ae:38c7", "role": "debit", "condition": null},
+          {"addr": "1000:c250", "text": "inc [0x38a8]", "ds": "20ae:38a8", "role": "dmg_min +1 -- the UPGRADE delta", "condition": "[20ae:38b5] != 0, i.e. the lesser бутсы are already owned", "guard": {"addr": "1000:c249", "text": "cmp byte [0x38b5],0x0"}, "guard_branch": {"addr": "1000:c24e", "text": "jz 0xc25a"}},
+          {"addr": "1000:c254", "text": "inc [0x38aa]", "ds": "20ae:38aa", "role": "dmg_max +1 -- the UPGRADE delta", "condition": "[20ae:38b5] != 0, i.e. the lesser бутсы are already owned", "guard": {"addr": "1000:c249", "text": "cmp byte [0x38b5],0x0"}, "guard_branch": {"addr": "1000:c24e", "text": "jz 0xc25a"}},
+          {"addr": "1000:c25a", "text": "add word [0x38a8],0x2", "ds": "20ae:38a8", "role": "dmg_min +2 -- the full bonus", "condition": "[20ae:38b5] == 0, i.e. the lesser бутсы are NOT owned", "guard": {"addr": "1000:c249", "text": "cmp byte [0x38b5],0x0"}, "guard_branch": {"addr": "1000:c24e", "text": "jz 0xc25a"}},
+          {"addr": "1000:c25f", "text": "add word [0x38aa],0x2", "ds": "20ae:38aa", "role": "dmg_max +2 -- the full bonus", "condition": "[20ae:38b5] == 0, i.e. the lesser бутсы are NOT owned", "guard": {"addr": "1000:c249", "text": "cmp byte [0x38b5],0x0"}, "guard_branch": {"addr": "1000:c24e", "text": "jz 0xc25a"}}
+        ],
+        "debit_addr": "1000:c22c",
+        "strings": [
+          {"role": "refusal", "cs_offset": "0x8f6d", "file_offset": "0xa83d", "text": "^4Нету на них денег", "push": {"addr": "1000:c207", "text": "mov di,0x8f6d"}},
+          {"role": "confirmation", "cs_offset": "0x9057", "file_offset": "0xa927", "text": "^2Офигенные бутцы.", "push": {"addr": "1000:c230", "text": "mov di,0x9057"}},
+          {"role": "refusal", "cs_offset": "0x8f94", "file_offset": "0xa864", "text": "^6У тебя такие уже есть.", "push": {"addr": "1000:c266", "text": "mov di,0x8f94"}}
+        ],
+        "silent_gates": ["1000:c1d7"],
+        "own_test": "20ae:38b8",
+        "district_test": "20ae:3692",
+        "repeatable": false,
+        "globals": [
+          {
+            "ds": "20ae:38b8",
+            "written_at": ["1000:c222"],
+            "xref_count": 8,
+            "refs_outside_arm": 6,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:1ecf", "text": "cmp byte [0x38b8],0x0", "what": "the character sheet's `Понтовые бутсы(Урон+2)` line"},
+              {"addr": "1000:bff5", "text": "cmp byte [0x38b8],0x0", "what": "row 5's better-item gate, in this same handler"}
+            ]
+          },
+          {
+            "ds": "20ae:38a8",
+            "written_at": ["1000:c250", "1000:c25a"],
+            "xref_count": 31,
+            "refs_outside_arm": 29,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:4492", "text": "sub ax,[0x38a8]", "what": "the damage computation inside the `k` blow loop"}
+            ]
+          },
+          {
+            "ds": "20ae:38aa",
+            "written_at": ["1000:c254", "1000:c25f"],
+            "xref_count": 31,
+            "refs_outside_arm": 29,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:448f", "text": "mov ax,[0x38aa]", "what": "the damage computation inside the `k` blow loop"}
+            ]
+          }
+        ]
+      },
+      {
+        "shop": "mar",
+        "key": "9",
+        "item": "Ваще крутую кожанку",
+        "price": 50,
+        "price_addr": "20ae:0b36",
+        "span": {"start": "1000:c27f", "end": "1000:c31f"},
+        "setup_addr": "1000:c289",
+        "district_gate": {"addr": "1000:c27f", "text": "cmp byte [0x3692],0x3", "branch": {"addr": "1000:c284", "text": "ja 0xc289"}, "skip": {"addr": "1000:c286", "text": "jmp 0xc31f"}, "gate": "district>3", "prints": null},
+        "key_literal": {"cs_offset": "0x906a", "file_offset": "0xa93a", "text": "9", "push": {"addr": "1000:c28e", "text": "mov di,0x906a"}},
+        "compare_addr": "1000:c293",
+        "compare": {"addr": "1000:c293", "text": "call 0xf78:0xbd8"},
+        "miss_branch": {"addr": "1000:c298", "text": "jz 0xc29d", "target": "1000:c31f", "note": "inverted pair over `jmp 0xc31f` at 1000:c29a; 1000:c31f is the setup for the compare at 1000:c329 that follows the nine rows, which is what bounds this range on the right"},
+        "gates": [
+          {
+            "name": "already-own",
+            "kind": "own",
+            "test": {"addr": "1000:c29d", "text": "cmp byte [0x38b9],0x0"},
+            "branch": {"addr": "1000:c2a2", "text": "jnz 0xc306"},
+            "sense": "refuse iff [20ae:38b9] != 0",
+            "fail_reached_by": "branch",
+            "fail_target": "1000:c306",
+            "refusal_cs_offset": "0x8ff3"
+          },
+          {
+            "name": "afford",
+            "kind": "afford",
+            "load": {"addr": "1000:c2a4", "text": "mov al,[0xb36]"},
+            "test": {"addr": "1000:c2a9", "text": "cmp ax,[0x38c7]"},
+            "branch": {"addr": "1000:c2ad", "text": "jle 0xc2ca"},
+            "sense": "buy iff price <= money",
+            "pass_target": "1000:c2ca",
+            "fail_reached_by": "fall-through",
+            "fail_target": "1000:c2af",
+            "refusal_cs_offset": "0x8fc8"
+          }
+        ],
+        "effects": [
+          {"addr": "1000:c2ca", "text": "mov byte [0x38b9],0x1", "ds": "20ae:38b9", "role": "крутая кожанка owned", "condition": null},
+          {"addr": "1000:c2d4", "text": "sub [0x38c7],ax", "ds": "20ae:38c7", "role": "debit", "condition": null},
+          {"addr": "1000:c2f8", "text": "add byte [0x38b2],0x2", "ds": "20ae:38b2", "role": "armour +2 -- the UPGRADE delta", "condition": "[20ae:38b6] != 0, i.e. the lesser кожанка is already owned", "guard": {"addr": "1000:c2f1", "text": "cmp byte [0x38b6],0x0"}, "guard_branch": {"addr": "1000:c2f6", "text": "jz 0xc2ff"}},
+          {"addr": "1000:c2ff", "text": "add byte [0x38b2],0x4", "ds": "20ae:38b2", "role": "armour +4 -- the full bonus", "condition": "[20ae:38b6] == 0, i.e. the lesser кожанка is NOT owned", "guard": {"addr": "1000:c2f1", "text": "cmp byte [0x38b6],0x0"}, "guard_branch": {"addr": "1000:c2f6", "text": "jz 0xc2ff"}}
+        ],
+        "debit_addr": "1000:c2d4",
+        "strings": [
+          {"role": "refusal", "cs_offset": "0x8fc8", "file_offset": "0xa898", "text": "^4Не достаточно бабла", "push": {"addr": "1000:c2af", "text": "mov di,0x8fc8"}},
+          {"role": "confirmation", "cs_offset": "0x906c", "file_offset": "0xa93c", "text": "^2Ну крутой, сдохнуть можно!", "push": {"addr": "1000:c2d8", "text": "mov di,0x906c"}},
+          {"role": "refusal", "cs_offset": "0x8ff3", "file_offset": "0xa8c3", "text": "^6Ты уже купил это.", "push": {"addr": "1000:c306", "text": "mov di,0x8ff3"}}
+        ],
+        "silent_gates": ["1000:c27f"],
+        "own_test": "20ae:38b9",
+        "district_test": "20ae:3692",
+        "repeatable": false,
+        "globals": [
+          {
+            "ds": "20ae:38b9",
+            "written_at": ["1000:c2ca"],
+            "xref_count": 8,
+            "refs_outside_arm": 6,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:237e", "text": "cmp byte [0x38b9],0x0", "what": "the character sheet's `Крутая кожанка(+4)` line"},
+              {"addr": "1000:e3db", "text": "cmp byte [0x38b9],0x0", "what": "the gym's armour-scratch recompute, which subtracts 4 for this flag"},
+              {"addr": "1000:c0ac", "text": "cmp byte [0x38b9],0x0", "what": "row 6's better-item gate, in this same handler"}
+            ]
+          },
+          {
+            "ds": "20ae:38b2",
+            "written_at": ["1000:c2f8", "1000:c2ff"],
+            "xref_count": 12,
+            "refs_outside_arm": 10,
+            "read_elsewhere": true,
+            "sample_read_at": [
+              {"addr": "1000:227b", "text": "cmp byte [0x38b2],0x0", "what": "the character sheet's `Броня #` line"},
+              {"addr": "1000:e3a4", "text": "mov al,[0x38b2]", "what": "the gym's armour-scratch recompute, whose starting value this is"}
+            ]
+          }
+        ]
+      }
+    ],
+    "bugs": [
+      {
+        "label": "mar-row-7-is-menu-gated-but-not-buy-gated",
+        "tier": "flow",
+        "claim": "See `district_finding.row_7_is_menu_gated_but_not_buy_gated`. The market's menu hides rows 6 AND 7 below district 2 behind ONE gate at 1000:bb80, and the buy path gates only row 6 (1000:c08e). Rows 8 and 9 have matching menu and buy gates.",
+        "where": {"menu_gate": "1000:bb80", "buy_gate_for_row_6": "1000:c08e", "row_7_span_start": "1000:c142", "row_7_key_compare": "1000:c14c"},
+        "port_directive": "Reproduce, do not fix."
+      },
+      {
+        "label": "mar-district-gates-refuse-silently",
+        "tier": "flow",
+        "claim": "The three `mar` buy-path district gates print NOTHING. Each sits in front of its row's SETUP, so below the district the key compare never runs: 1000:c095, 1000:c1de and 1000:c286 jump straight to the row's own span end, which is the next row's span start. Typing `6` at district 1 prints no message at all -- not a refusal, not an echo; the line falls through every remaining compare to 1000:c47b, the handler's own re-prompt, exactly as an unrecognised key does. `bmar` has one comparable shape, row 9's first two gates, which the port already reproduces.",
+        "where": {"gates": ["1000:c08e", "1000:c1d7", "1000:c27f"], "skips": ["1000:c095", "1000:c1de", "1000:c286"]},
+        "port_directive": "Reproduce, do not fix."
+      },
+      {
+        "label": "mar-upgrade-rows-grant-the-delta-not-the-bonus",
+        "tier": "flow",
+        "claim": "Rows 7, 8 and 9 each test the LESSER item's flag and grant only the DIFFERENCE when it is already owned: adidas +1 instead of +2 (guard 1000:c1aa, branch 1000:c1af), the better boots +1/+1 instead of +2/+2 (1000:c249 / 1000:c24e), the better jacket +2 instead of +4 (1000:c2f1 / 1000:c2f6). So the armour or damage a player ends up with is the same whichever order the two rows are bought in. Not a bug; recorded because reproducing it needs the guard, not just the add -- an arm that always added the full bonus would double-count the upgrade. CORROBORATION, not part of this task's decode: the gym's armour-scratch recompute subtracts exactly those totals (1 for 20ae:38b4 alone, 2 for 20ae:38b7, 2 for 20ae:38b6 alone, 4 for 20ae:38b9), which `docs/re/gaps.md` already established from 1000:e3a4..1000:e3e2 and which nothing here re-derives.",
+        "where": {"guards": ["1000:c1aa", "1000:c249", "1000:c2f1"], "guard_branches": ["1000:c1af", "1000:c24e", "1000:c2f6"], "delta_rejoins": [{"addr": "1000:c1b5", "text": "jmp short 0xc1bc"}, {"addr": "1000:c258", "text": "jmp short 0xc264"}, {"addr": "1000:c2fd", "text": "jmp short 0xc304"}], "delta_rejoins_note": "The unconditional jump that carries the DELTA arm past the full-bonus arm, one per row. Recorded because `docs/re/shop-arms.md` shows these three splits as fenced code blocks and the prose checker strips fences, so their identity is checked here instead."},
+        "port_directive": "Reproduce."
+      }
+    ]
+  }
 }
