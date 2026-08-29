@@ -612,6 +612,13 @@ does, but it means a `Game` holding an out-of-range value does not survive a
 save. `Save` -> bytes -> `Save` **is** exact, and that is the round trip
 `tests/save_roundtrip.rs` asserts.
 
+**One more refusal, not in the table above because it is not a save-format
+one:** the port cannot repeat the chapter-5 endgame arm's three lines and two
+forced fights every turn the way the original does once district 5 is
+reached — only once, at the turn district first reaches 5 (or at load, for a
+save already there). Detail, and why, is in "The district-advance autosave
+is mapped but not wired", below.
+
 ## The four armour flags are carried but the gym's `abs` ignores them
 
 *Cited from `src/game.rs`'s `imm_row_visible` and `src/persist.rs`.*
@@ -710,17 +717,37 @@ promotion loop -- as `Game::enter_district_5`, called from inside the `while
 self.district < 5` loop where its own guard clause (`district < 5`) makes it
 fire on exactly the turn `district` becomes 5, and structurally cannot fire
 again. That is not a guard invented to suppress the original's "every turn"
-repetition (`docs/re/wander.md`: `1000:ae18` sits at the top of every turn,
-and nothing ever clears `[0x3c83]`) -- it is the one hook this port's
-architecture has, and it has no mechanism for repeating anything every turn
-at all, this arm included. **What the port refuses that the original
-accepts:** a save loaded already at district 5 (from before this fix, or
-hypothetically any future path that sets `district` outside this loop) would
-never see `Game::enter_district_5` fire, where the original's per-turn check
-would catch it on the very next turn regardless of how district 5 was
-reached. Settling this needs the same fix as the autosave above -- a real
-per-turn hook re-reading `1000:ab75`..`1000:ad12` alongside `1000:adbf`..
-`1000:ae18` -- and is out of scope for a flag-setter task.
+repetition -- it is the one hook this port's architecture has, and it has no
+mechanism for repeating anything every turn at all, this arm included.
+`1000:ae18` sitting at the top of every turn is re-derived here, not
+inherited: `1000:ee01 jmp 0xab75` is the only branch instruction anywhere in
+the code segment whose target is `0xab75` (checked for every `e9`/`eb`/near-
+and short-`Jcc` encoding), and `1000:ab72 call 0x6a0d` falling straight
+through into `1000:ab75` shows the same address is also reached by
+straight-line fall-through the first time, so `ab75` onward genuinely runs
+every turn, both ways in.
+
+**What the port refuses that the original accepts, after Task 20's review
+fix:** only the "runs every turn, forever" repetition itself. A *loaded*
+save already at district 5 is now handled -- a review round found the first
+cut of this paragraph wrong about where to settle it, naming a false
+"class-5 character creation arm" (`1000:7364`) as unrelated and unmodelled,
+when it is in fact `FUN_1000_6a0d`'s OWN district-5 check (reads `[0x3692]`,
+not the class byte `[0x389c]`), inside the function the port already
+re-applies on every load (`Game::apply_class_bonus`, called from
+`src/persist.rs`'s `from_save`). `1000:7364` is now ported there, so a
+loaded save at district 5 arms `rector_showdown` on entry, matching the
+original. What remains unreproduced is only the per-turn REPEAT: the
+original re-prints the three lines and re-sets both (idempotent) flags every
+single turn once district 5 is reached, and re-enters the two forced fights
+every turn too. This port's hook fires the flags and prints exactly once --
+at the turn `district` first becomes 5 during play, or at entry for an
+already-district-5 load -- and never again, because there is nowhere else in
+this port's architecture to hang a per-turn check. Settling this for real
+needs a genuine per-turn hook re-reading `1000:ab75`..`1000:ad12` alongside
+`1000:adbf`..`1000:ae18`, the same fix the autosave above needs, and is out
+of scope for a flag-setter task.
+
 `Game::enter_district_5`'s own doc comment in `src/game.rs` additionally
 records why the arm's four calls (`FUN_1000_11c2` x2, `FUN_1000_3d11` x2, the
 rector and final-boss fights) are not ported here: `FUN_1000_3d11`'s
@@ -728,7 +755,14 @@ rector and final-boss fights) are not ported here: `FUN_1000_3d11`'s
 `param_1 == 4` victory ending at `1000:5085` -- is not modelled by
 `Game::run_combat` at all, and the ending has never been traced
 (`docs/re/wander.md`: "Whether `FUN_1000_3d11(4)` returns is not traced
-here").
+here"). Full detail on `FUN_1000_11c2` itself, which this task DID fully
+trace, is in "`FUN_1000_11c2` -- traced (Task 20), not ported", below.
+
+Also cross-referenced from "What the port REFUSES that the original
+accepts", above (§`557`), which is the section this task's own brief named
+for this write-up; the detail lives here because it is scoped to save-load
+refusals specifically and this divergence is not one -- it belongs to the
+main loop's shape, same as the autosave.
 
 ## `FUN_1000_11c2` -- traced (Task 20), not ported
 
@@ -738,12 +772,14 @@ here").
 disassembled it in full: `python3 tools/re_query.py resolve 1000:11c2 -n 250
 -i 80`.
 
-**Established from flow.** 50 instructions, `0x11c2`..`0x1271` (175 bytes,
-`file_off 0x2a92`..`0x2b41`; `python3 tools/re_query.py resolve 1000:11c2 -n
-175 -i 60 --json` and count instructions with `image_off <= 0x1271`), no
-branch besides its own two argument arms and no `9a 4b 11 78 0f` draw. It
-takes one byte argument (`bp+4`) and stores a fixed block into the enemy
-record `20ae:3952..396e`:
+**Established from flow.** 50 instructions, `0x11c2`..`0x1273` (178 bytes,
+prologue through the 3-byte `ret 0x2`; `file_off 0x2a92`..`0x2b43`;
+`python3 tools/re_query.py resolve 1000:11c2 -n 175 -i 60 --json` and count
+instructions with `image_off <= 0x1271`, the START of that `ret`), no branch
+besides its own two argument arms, no draw, and no call besides the
+`0f78:02cd` stack-check prologue every Pascal procedure carries. It takes one
+byte argument (`bp+4`) and stores a fixed block into the enemy record
+`20ae:3952..396e`:
 
 * `20ae:3952` (class) := `0xa`, unconditionally, before either arm.
 * arg `0`: `395c`(level)=`0x7d`, `3954`(str)=`0x29`, `3956`(agi)=`0x32`,
@@ -773,9 +809,10 @@ with `param_1 = 3`, `1000:ae39` with `4`) are what stay unported, because
   4}` (`docs/re/combat.md`, "The victory block"); `run_combat` awards XP
   unconditionally.
 * `1000:5085 cmp byte [bp+0x4],0x4` selects a separate victory ending for
-  `param_1 == 4` — `FUN_1000_074b(1)`, file `0x1DBF` (`^2Ты победил.`) — that
-  this project has never traced. `docs/re/wander.md`, "The three Den
-  setters": "Whether `FUN_1000_3d11(4)` returns is not traced here."
+  `param_1 == 4` — `FUN_1000_074b(1)`, file `0x1DBF` (a 49-byte shortstring,
+  "^2Ты победил." padded with 36 leading spaces to centre it) — that this
+  project has never traced. `docs/re/wander.md`, "The three Den setters":
+  "Whether `FUN_1000_3d11(4)` returns is not traced here."
 
 Porting the rector and final-boss fights needs that ending traced and
 `run_combat`'s signature widened for `param_1` first — a combat-dispatch
@@ -1399,7 +1436,12 @@ are the questions that pass left open, and the ones it created.
 * **Text the wander turn writes that this port still does not.** None costs a
   draw: `run`'s extra line (`1000:aeda`, above), the church's two long
   sermons and its rank-name pair, bucket 1's and bucket 4's flavour lines, and
-  the `0f16:031a` delays the original spaces its phone-call gags with.
+  the `0f16:031a` `ReadKey`s the original spaces its phone-call gags with --
+  waiting for a keystroke between each, not a timed pause. This line
+  previously called `0f16:031a` a delay; it is `ReadKey`
+  (`docs/re/rtl.md:494`; `Delay` is the unrelated `0f16:02a8`), fixed as part
+  of Task 20's review round (C1), which found the same mislabel newly
+  introduced in `src/game.rs`.
 * ~~**`Game::mage` charges but cannot save.**~~ **CLOSED by Task 19**: the
   paid path writes both files and prints `1000:7729`'s line.
   `tests/save_load.rs::the_mage_writes_both_files_when_paid` and its

@@ -375,26 +375,35 @@ pub struct Game {
     pub dealer_delivery_counter: u8,
     /// `20ae:3c83` -- the rector showdown. **Confirmed** in Task 17
     /// (`docs/re/combat-dispatch.md`): six references image-wide, two writes
-    /// (`1000:7364` after `^1Пора наконец отомстить ректору...` and
-    /// `1000:ae13` after `^1А вот и он...`) and four reads, and **nothing
-    /// ever clears it**. Its three effects are all in `FUN_1000_3d11`: no
-    /// crowd (`1000:411d`), no fleeing (`1000:48eb`) and a death message that
-    /// names the killer (`1000:4f8c`).
+    /// and four reads, and **nothing ever clears it**. Its three effects are
+    /// all in `FUN_1000_3d11`: no crowd (`1000:411d`), no fleeing
+    /// (`1000:48eb`) and a death message that names the killer
+    /// (`1000:4f8c`).
     ///
-    /// **Task 20 ported `1000:ae13`**, the second of the two writers: it is
-    /// set from [`Game::enter_district_5`], reached the turn `self.district`
-    /// first becomes 5. `1000:7364` (`FUN_1000_6a0d`'s class-5 character-
-    /// creation arm, printing the *other* line, `^1Пора наконец
-    /// отомстить...`) is still unmodelled -- see
-    /// [`Game::apply_class_bonus`], which is `1000:73bb`..`1000:73e5` only
-    /// and does not reach back to `1000:7347`. So a class-5 (Гопник)
-    /// character now gets this flag set twice in the original (once at
-    /// creation, again on reaching district 5) but only once in this port,
-    /// with no observable difference -- the flag is a boolean and every
-    /// reader tests it, never counts the writes. All three effects were
-    /// already implemented before this task and are now reachable in real
-    /// play, not only from a test that sets the field directly. Same shape
-    /// as [`Game::market_ban_countdown`]; registered in `docs/re/gaps.md`.
+    /// **Both writers are DIFFERENT original addresses, not the same store
+    /// reached twice.** `1000:ae13` is the per-turn one, inside the chapter-5
+    /// endgame arm at the top of the main loop -- ported as
+    /// [`Game::enter_district_5`], reached the turn `self.district` first
+    /// becomes 5 during play. `1000:7364` is the entry-time one, inside
+    /// `FUN_1000_6a0d` (the character-setup procedure, called exactly once,
+    /// at `1000:ab72`, before the main loop's first iteration) -- it reads
+    /// `[0x3692]`, the DISTRICT, at `1000:7262`/`1000:7347`, **not**
+    /// `[0x389c]`, the class (an earlier revision of this doc called it a
+    /// "class-5 character-creation arm" and invented a "set twice for a
+    /// Гопник" story from that wrong reading; there is no class dispatch
+    /// here at all). Because `FUN_1000_6a0d` runs on every entry into the
+    /// game, new character OR loaded save (`docs/re/wander.md`, "What
+    /// reaches `1000:73bb`"), a save loaded already at district 5 arms this
+    /// flag before turn one. Ported as part of
+    /// [`Game::apply_class_bonus`] (Task 20's review fix; see that method's
+    /// doc for the full re-derivation) rather than a separate method,
+    /// because `apply_class_bonus` is already the port's home for
+    /// everything else this same original function re-applies on load.
+    ///
+    /// All three effects were already implemented before Task 20 and are
+    /// now reachable in real play from both writers, not only from a test
+    /// that sets the field directly. Same shape as
+    /// [`Game::market_ban_countdown`]; registered in `docs/re/gaps.md`.
     pub rector_showdown: bool,
     /// `20ae:3e35` -- the den's loan credit. Set to 5 at `1000:73e5` and
     /// topped up once per walk while below `district * 10` (`1000:af19`).
@@ -580,17 +589,29 @@ impl Game {
         g
     }
 
-    /// `1000:73bb`..`1000:73e5`, the class bonus and the den's opening loan
-    /// credit.
+    /// `1000:7347`..`1000:73e5`, all of it inside `FUN_1000_6a0d`: the
+    /// district-5 rector-showdown arm, then the class bonus, then the den's
+    /// opening loan credit.
     ///
     /// **Established from flow.** `docs/re/wander.md` ("What reaches
     /// `1000:73bb`") shows both exits of the character-setup procedure
     /// converge on `1000:7262`, and `1000:7369`'s `jnz 0x73bb` skips only the
-    /// district-1 intro text, never the grants -- so this runs on **every**
-    /// entry into the game, new character or loaded save. Re-derived here:
+    /// district-1 intro text, never anything after it -- so this whole
+    /// function runs on **every** entry into the game, new character or
+    /// loaded save. Re-derived here (`1000:7240`..`1000:7369` re-disassembled
+    /// for Task 20's review fix; `1000:73bb`..`1000:73e5` from the original
+    /// port):
     ///
     /// ```text
-    /// 73bb  a1 9c 38        mov ax,[0x389c]
+    /// 7262  a0 92 36        mov al,[0x3692]   ; DISTRICT, not class
+    /// 7265  3c 01           cmp al,1 / jnz 0x729e   ; -> district-1 intro,
+    ///       ... (district 2, 3, 4 arms, each `jnz` to the next `cmp` --
+    ///       none of them touches `al`) ...
+    /// 7347  3c 05           cmp al,5 / jnz 0x7369   ; DISTRICT 5
+    /// 734b  WriteLn file 0x81F5   ; ^1Пора наконец отомстить ректору...
+    /// 7364  c6 06 83 3c 01  mov byte [0x3c83],1   ; rector_showdown
+    /// 7369  80 3e 92 36 01  cmp byte [0x3692],1    ; district == 1?
+    /// 73bb  a1 9c 38        mov ax,[0x389c]        ; CLASS, [0x389c]
     /// 73be  3d 05 00        cmp ax,5          ; Гопник
     /// 73c3  c6 06 96 36 01  mov byte [0x3696],1   ; Den
     /// 73ca  3d 03 00        cmp ax,3          ; Подтсан
@@ -601,11 +622,45 @@ impl Game {
     /// 73e5  c6 06 35 3e 05  mov byte [0x3e35],5   ; den loan credit
     /// ```
     ///
-    /// The three arms are mutually exclusive (`1000:73c8` and `1000:73d9`
-    /// jump straight to `1000:73e5`), and `1000:73e5` is unconditional.
-    /// Class 4 (Отморозок) gets no flag here -- its bonus is the +1 HP per
-    /// walk at `1000:b2d4`.
+    /// **`1000:7347`..`1000:7364` reads `[0x3692]`, the DISTRICT, not
+    /// `[0x389c]`, the class** -- a review fix for Task 20, which first
+    /// shipped this arm mislabelled as "class-5 character creation" and, on
+    /// that wrong reading, invented a "set twice for a Гопник" story that
+    /// does not exist: nothing about class selects this arm at all. What it
+    /// really is: whenever `FUN_1000_6a0d` runs with district already at 5
+    /// -- which for a **loaded save** can be true on the very first entry,
+    /// before a single turn is played -- it arms `rector_showdown` and
+    /// prints the line, exactly once (the arm falls straight through to
+    /// `1000:7369`, never looping). This is the "settling address" for the
+    /// loaded-save divergence `docs/re/gaps.md`'s "The district-advance
+    /// autosave is mapped but not wired" records: not a main-loop rewrite,
+    /// because `apply_class_bonus` is already the port's home for
+    /// everything else `FUN_1000_6a0d` re-applies on load
+    /// (`src/persist.rs`'s `from_save` calls it for exactly that reason),
+    /// and `self.district` is available here the same way `self.player.class`
+    /// already is.
+    ///
+    /// `1000:734b`'s line is a SEPARATE copy of the same text
+    /// [`Game::enter_district_5`] prints from `1000:adc3` (different file
+    /// offset, `0x81F5` vs `0x9CF2`, same 35 bytes) -- the original repeats
+    /// itself, this port reproduces both sites rather than reusing one
+    /// string constant for two different original addresses. The two never
+    /// fire for the same game: this one only at entry when district is
+    /// ALREADY 5 (so [`Game::enter_district_5`]'s own per-turn promotion
+    /// hook, gated on `district < 5`, cannot also have fired for that game),
+    /// and [`Game::enter_district_5`] only at the turn district first
+    /// BECOMES 5 during play (so this arm, which only runs once at entry,
+    /// already ran before that point and found district `< 5`).
+    ///
+    /// The three class arms are mutually exclusive (`1000:73c8` and
+    /// `1000:73d9` jump straight to `1000:73e5`), and `1000:73e5` is
+    /// unconditional. Class 4 (Отморозок) gets no flag here -- its bonus is
+    /// the +1 HP per walk at `1000:b2d4`.
     pub(crate) fn apply_class_bonus(&mut self) {
+        if self.district == 5 {
+            term::println("^1Пора наконец отомстить ректору...");
+            self.rector_showdown = true;
+        }
         match self.player.class {
             5 => self.places.mark_found(Location::Den),
             3 => {
@@ -678,7 +733,7 @@ impl Game {
             Command::Inspect => self.inspect_enemy(),
             Command::Backup => self.call_backup(),
             Command::Walk => self.walk(lines)?,
-            // file 0xB58A -- the inner `^6w^7` markup is part of the string.
+            // file 0xB58A -- the inner "^6w^7" markup is part of the string.
             Command::LegacyFight => {
                 term::println("^6Пережитки прошлого жми ^6w^7 чтобы искать врагов");
             }
@@ -928,7 +983,8 @@ impl Game {
         }
     }
 
-    /// The nine `^6N^7 - ^` prefixes, file `0xA4A2` upward.
+    /// The nine "^6N^7 - ^" prefixes (N = the row's digit), file `0xA4A2`
+    /// upward.
     const ROW_PREFIXES: [&'static str; 9] = [
         "^61^7 - ^",
         "^62^7 - ^",
@@ -1172,9 +1228,11 @@ impl Game {
     /// **The reveal prints two lines**, established by reading past the two
     /// stores rather than inferred: `dd00`..`dd19` and `dd19`..`dd2d` are
     /// each a `mov di,<string>` / `push cs` / `push di` / five zeroed
-    /// `WriteLn` format-spec words / `call 0eed:01c2` (`docs/re/rtl.md`
-    /// names `0eed:01c2` `WriteLn`) -- the same shape every other plain
-    /// string print in this module uses -- and execution falls straight
+    /// `WriteLn` format-spec words / `call 0eed:01c2` (`docs/re/rtl.md:476`
+    /// itself lists `0eed:01c2` unnamed; `docs/re/character-sheet.md:191`
+    /// and `docs/re/branches.md:359` are what name it `WriteLn`) -- the
+    /// same shape every other plain string print in this module uses --
+    /// and execution falls straight
     /// through from the first into the second with no branch between them,
     /// landing on `dd32` right after, which is also both early-out targets'
     /// destination.
@@ -1192,10 +1250,13 @@ impl Game {
         if level_in_district * 2 + self.pontovost_street < 0x28 {
             return;
         }
-        term::println("^0Тут у нас есть пара мест куда тебе стоит сходить");
-        term::println("^2Ты узнал где находится качалка и где находятся барыги");
+        // dcf6/dcfb store before dd00/dd19 print; matched here even though
+        // nothing reads either flag in between, so there is no observable
+        // difference -- this is a port, not just a functional match.
         self.places.mark_found(Location::Dealers);
         self.places.mark_found(Location::Gym);
+        term::println("^0Тут у нас есть пара мест куда тебе стоит сходить");
+        term::println("^2Ты узнал где находится качалка и где находятся барыги");
     }
 
     /// `Здоровье #/#  ` -- file `0x2BAE`, trailing double space included.
@@ -1541,9 +1602,9 @@ impl Game {
     /// wander's own bucket roll) so every address below is on a confirmed
     /// instruction boundary:
     ///
-    /// * `1000:b76a`..`1000:b77f` -- writes `^6Идет ментяра # уровня гроза
-    ///   гопов.` (file `0xA2DB`) with `[0x395c]`, the rolled level, pushed at
-    ///   `1000:b76f`. **No line is read**: there is no `Хочешь наехать?` on
+    /// * `1000:b76a`..`1000:b77f` -- writes "^6Идет ментяра # уровня гроза
+    ///   гопов." (file `0xA2DB`) with `[0x395c]`, the rolled level, pushed at
+    ///   `1000:b76f`. **No line is read**: there is no "Хочешь наехать?" on
     ///   this path.
     /// * `1000:b784`..`1000:b792` -- `district * 7 + 15` (`mul dx` with
     ///   `dx = 7`, then `add ax,0xf`) pushed into `Random`. Unlike
@@ -2411,21 +2472,17 @@ impl Game {
     /// byte-level difference between them. This doc traces the top-level copy
     /// at `1000:e97d`..`1000:ea85` (the one `entry` dispatches):
     ///
-    /// * broken jaw (`DS:38b0`) -> `^4Ты не схавать колёса из-за сломаной
-    ///   челюсти.` (file `0xBEF3`).
-    /// * already stoned (`DS:38cd != 0`) -> `^6Ты неможешь схавать ещё один
-    ///   косяк.` (file `0xBFB8`).
-    /// * no joints (`DS:38c5 <= 0`) -> `^4У тебя нет косяков` (file
-    ///   `0xBFA3`).
+    /// * broken jaw (`DS:38b0`) -> `^4Ты не схавать` ... (file `0xBEF3`).
+    /// * already stoned (`DS:38cd != 0`) -> `^6Ты неможешь` ... (file `0xBFB8`).
+    /// * no joints (`DS:38c5 <= 0`) -> `^4У тебя нет косяков` (file `0xBFA3`).
     /// * otherwise **exactly one** joint (`1000:e9b4`): stoned counter := 10
     ///   (`1000:e9b8` `c6 06 cd 38 0a`), strength += 2, `dmg_min` += 1,
     ///   `dmg_max` += 2, and heal a flat **+10** capped at `hpmax`, then
     ///   `^2Сила +2.` (file `0xBF98`).
     ///   The heal message splits like the beer routine's: when the shortfall
-    ///   is under 10 it writes `^2Колёса прибавляют #з. ` (file `0xBF22`,
-    ///   no newline) then `^2Здоровья:#/#. Осталось # косяков` (file
-    ///   `0xBF3B`); otherwise the single combined line at file `0xBF5E`,
-    ///   whose `косякова` typo is the original's.
+    ///   is under 10 it writes `^2Колёса прибавляют #з. ` (file `0xBF22`, no
+    ///   newline) then `^2Здоровья:#/#. Осталось # косяков` (file `0xBF3B`);
+    ///   otherwise the single combined line (`^2Колёса прибавляют` ..., file `0xBF5E`), whose "косякова" typo is the original's.
     ///
     /// `crate::model::Fighter` has a `stoned: bool`, not the original's
     /// countdown, so the flag is modelled as "stoned or not" and the
@@ -2873,9 +2930,11 @@ impl Game {
     ///   / `pop bp` / `ret 2` epilogue at `1000:0ac5` is unreachable
     ///   compiler boilerplate.
     /// * `1000:5189` the enemy died: file `0x5250` (`^2Враг сдох.`), then
-    ///   `1000:51b4` file `0x525D` with `str+agi+vit+luck` as the award.
-    ///   `^2Ты победил.` is *not* a per-fight line: it is file `0x1DBF`, the
-    ///   centred end-of-game banner `FUN_1000_074b` writes when you beat the
+    ///   `1000:51b4` file `0x525D` (`^6За отпин врага ты получаешь` ...) with
+    ///   `str+agi+vit+luck` as the award.
+    ///   "^2Ты победил." is *not* a per-fight line: it is file `0x1DBF` (a
+    ///   49-byte shortstring padded with 36 leading spaces to centre it),
+    ///   the end-of-game banner `FUN_1000_074b` writes when you beat the
     ///   rector, and printing it here was a fabrication.
     ///
     /// ## `run` -- fleeing
@@ -3146,7 +3205,7 @@ impl Game {
             self.district += 1;
             self.places.reset_for_new_district();
             if self.district == 5 {
-                self.enter_district_5();
+                self.enter_district_5(lines);
             }
         }
         Ok(())
@@ -3162,12 +3221,21 @@ impl Game {
     /// `1000:ab75`..`1000:ae18` region `docs/re/wander.md` calls "the
     /// genuine district-transition block".
     ///
+    /// This is the **per-turn** trigger, reached only while the game is
+    /// already running: it fires the turn `self.district` first becomes 5.
+    /// It is not the only original site that arms `rector_showdown` --
+    /// `1000:7364`, inside `FUN_1000_6a0d`, does so once at game **entry**
+    /// (new character or loaded save) when district is already 5 at that
+    /// point, and is ported in [`Game::apply_class_bonus`], not here. See
+    /// that method's doc for why the two are different original addresses
+    /// doing the same store.
+    ///
     /// **Established from flow**, re-disassembled for this task:
     ///
     /// ```text
     /// adbf  cmp al,5 / jnz 0xae18   ; chapter == district, [0x3692]
     /// adc3  WriteLn file 0x9CF2     ; ^1Пора наконец отомстить ректору...
-    /// addc  call 0f16:031a          ; Delay -- no state, not reproduced
+    /// addc  call 0f16:031a          ; ReadKey -- a blocking keypress, ported
     /// ade1  WriteLn file 0x9D16     ; ^1Ты пробрался в универ...
     /// adfa  WriteLn file 0x9D4E     ; ^1А вот и он...
     /// ae13  mov byte [0x3c83],1     ; rector_showdown
@@ -3180,10 +3248,25 @@ impl Game {
     /// ae36  mov al,4 / push ax / call 0x3d11 (ae39) ; the endgame fight
     /// ```
     ///
+    /// **`0f16:031a` is `ReadKey`, not `Delay`** (`docs/re/rtl.md:494`;
+    /// `Delay` is the unrelated `0f16:02a8`). An earlier revision of this
+    /// comment mislabelled it and dropped it as "no state" -- wrong on both
+    /// counts: `ReadKey` blocks for one keystroke (`int 0x16`, confirmed by
+    /// decoding `0f16:031a` directly) and its return value is discarded by
+    /// the caller (nothing after `addc` reads `al`), so it is a pure
+    /// input-stream synchronisation point, not a no-op. Ported the same way
+    /// `src/persist.rs`'s `choose_slot` already substitutes for a
+    /// `ReadKey`: this port has no raw-key input, so it consumes one line
+    /// from `lines` and discards it, matching the original's "one keystroke,
+    /// value unused" shape as closely as a line-based port can.
+    ///
     /// **The four calls at `ae27`..`ae39` are deliberately NOT ported --
     /// the brief's escape hatch.** `FUN_1000_11c2` was traced for this task
-    /// (no `docs/re/` file cited it before): 50 instructions, 175 bytes, no
-    /// branch and no draw, storing a fixed stat block into the enemy record
+    /// (no `docs/re/` file cited it before): 50 instructions, 178 bytes
+    /// (`0x11c2`..`0x1273`, prologue through the 3-byte `ret 0x2`), no
+    /// branch besides its own two argument arms, no draw, and no call
+    /// besides the `0f78:02cd` stack-check prologue every Pascal procedure
+    /// carries -- storing a fixed stat block into the enemy record
     /// `20ae:3952..396e` -- the same fields [`Game::roll_enemy`] fills for a
     /// rolled encounter -- selecting one of two blocks on its argument.
     /// Both blocks match `data/enemies.json`'s `rektor_ngu_v0` (arg 0) and
@@ -3200,23 +3283,32 @@ impl Game {
     ///   `run_combat` currently awards XP unconditionally.
     /// * `1000:5085 cmp byte [bp+0x4],0x4` selects an entirely separate
     ///   victory ending for `param_1 == 4` -- `FUN_1000_074b(1)`, the
-    ///   end-of-game banner (file `0x1DBF`, `^2Ты победил.`) -- which has
-    ///   never been traced by this project (`docs/re/wander.md`: "Whether
-    ///   `FUN_1000_3d11(4)` returns is not traced here").
+    ///   end-of-game banner (file `0x1DBF`) -- which has never been traced
+    ///   by this project (`docs/re/wander.md`: "Whether `FUN_1000_3d11(4)`
+    ///   returns is not traced here").
     ///
     /// Porting either fight correctly needs both of those traced and
     /// `run_combat`'s signature widened first; that is a combat-dispatch
-    /// task, not a flag-setter one. `1000:11c2` and `FUN_1000_3d11`'s
-    /// `param_1` handling are recorded as open in `docs/re/gaps.md` rather
-    /// than guessed at here, per "Do not port a call whose callee you have
-    /// not read" -- `1000:3d11`'s callee IS read (it is `run_combat`
-    /// itself), but not for this argument.
+    /// task, not a flag-setter one. `FUN_1000_3d11`'s `param_1` handling
+    /// (not `1000:11c2`, which this task fully settled) is recorded as open
+    /// in `docs/re/gaps.md` rather than guessed at here, per "Do not port a
+    /// call whose callee you have not read" -- `1000:3d11`'s callee IS read
+    /// (it is `run_combat` itself), but not for this argument.
     ///
     /// **The "runs every turn" hazard does not apply to what IS ported
     /// here.** In the original this whole arm -- prints, stores, and the
     /// two forced fights -- repeats on every turn once district 5 is
     /// reached, because nothing ever clears `[0x3c83]` and `1000:ae18`'s
     /// test is always taken (`docs/re/wander.md`, "The three Den setters").
+    /// That every-turn repetition is itself re-derived here, not inherited:
+    /// `1000:ee01 jmp 0xab75` is the ONLY branch instruction anywhere in the
+    /// code segment whose target is `0xab75` (a byte-scan for every `e9`/
+    /// `eb`/near-`Jcc`/short-`Jcc` form confirms it), and `1000:ab72 call
+    /// 0x6a0d` / `1000:ab75 ...` shows `ab75` is reached BOTH by that back
+    /// edge and by straight-line fall-through from the one-time startup
+    /// call into `FUN_1000_6a0d` -- so `ab75`, and everything after it
+    /// including this arm, genuinely runs every turn.
+    ///
     /// This port has no per-turn hook to repeat it from, so this method is
     /// called from the `while self.district < 5` loop above, whose own
     /// guard clause (`district < 5`) makes it unreachable once `district`
@@ -3224,13 +3316,20 @@ impl Game {
     /// and never again. That is a structural consequence of where the only
     /// available hook lives, not a guard this task added to suppress the
     /// original's repetition. The two stores are booleans, so idempotent
-    /// either way; the three prints are the one place a player of the
-    /// original would see more than this port ever shows -- every turn,
-    /// forever, once district 5 is reached, against this port's exactly
-    /// once. Recorded in `docs/re/gaps.md`, "The district-advance autosave
-    /// is mapped but not wired".
-    fn enter_district_5(&mut self) {
+    /// either way; the three prints (and the keypress between the first two)
+    /// are the one place a player of the original would see more than this
+    /// port ever shows -- every turn, forever, once district 5 is reached,
+    /// against this port's exactly once. Recorded in `docs/re/gaps.md`,
+    /// "What the port REFUSES that the original accepts" (cross-referenced
+    /// from "The district-advance autosave is mapped but not wired", where
+    /// the detail lives).
+    fn enter_district_5(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) {
         term::println("^1Пора наконец отомстить ректору...");
+        // 1000:addc -- ReadKey, blocking for one keystroke whose value is
+        // never read afterward. `lines.next()` is this port's line-based
+        // stand-in (see the doc comment above); `None` at EOF is treated the
+        // same as any other discarded keystroke.
+        let _ = lines.next();
         term::println("^1Ты пробрался в универ, в тёмный ректорский кабинет...");
         term::println("^1А вот и он...");
         self.rector_showdown = true;
@@ -3266,7 +3365,7 @@ impl Game {
     /// the end screen. The body, in order:
     ///
     /// ```text
-    /// 4fce  file 0x50DF, `^1Тебе повезло знакомые пацаны отвезли тебя в больницу...`
+    /// 4fce  file 0x50DF, `^1Тебе повезло знакомые пацаны отвезли тебя в больницу` ...
     /// 4fe7  83 2e cb 38 0a   sub word [0x38cb],10
     /// 4fec  a1 ae 38 / 99    mov ax,[0x38ae] / cdq        ; hpmax as a real
     /// 4ff0  call 0f78:1125                                ; int -> real
@@ -3503,7 +3602,7 @@ impl Game {
             // 1000:4eb9 jumps straight to the death test: an accepted verb
             // that prints nothing at all.
             Shot::NoPistol => {}
-            // 1000:4eca, CS 0x3716 -- the game's own typo for `Нельзя`.
+            // 1000:4eca, CS 0x3716 -- the game's own typo for "Нельзя".
             Shot::NotHere => term::println("^6Тельзя тут стрелять! Менты накроют!"),
             // 1000:4f69, CS 0x37a5.
             Shot::NoCartridges => term::println("^6Чё за батва? Блин патроны кончились!"),
@@ -3949,10 +4048,10 @@ impl Game {
     ///   (`1000:4807`, file `0x4BB1`) on a 0, and
     ///   `^2Защита спасла твои кривые клыки.` (`1000:4827`, file `0x4BE5`)
     ///   otherwise;
-    /// * the two `ещё раз` lines, `^2Из-за большой ловкости ты можешь пнуть
-    ///   ещё раз` (`1000:4639`, file `0x4B21`) and its enemy mirror
-    ///   `^4Из-за большой ловкости враг может пнуть ещё раз` (`1000:48ad`,
-    ///   file `0x4C59`), whose guards are NOT mirror images -- see the
+    /// * the two "ещё раз" lines, `^2Из-за большой ловкости ты можешь пнуть` ...
+    ///   (`1000:4639`, file `0x4B21`) and its enemy mirror,
+    ///   `^4Из-за большой ловкости враг может пнуть ещё раз` (`1000:48ad`, file `0x4C59`),
+    ///   whose guards are NOT mirror images -- see the
     ///   comment on the enemy loop's tail below.
     fn combat_round(&mut self, enemy: &mut Fighter) {
         // Both loops' exits are SIGNED tests on a defender's hp word, and the
@@ -4129,7 +4228,7 @@ enum Beer {
 ///
 /// Six of the seven strings are byte-identical between the pools. The seventh
 /// is not, and the difference is one letter: the combat copy at file `0x4DF0`
-/// ends `косяков`, the top-level copy at file `0xBF5E` ends `косякова`. Both
+/// ends "косяков", the top-level copy at file `0xBF5E` ends "косякова". Both
 /// are quoted verbatim -- a typo in the original is not this port's to fix,
 /// and neither is a typo the original made only once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5908,14 +6007,18 @@ mod tests {
     }
 
     // The both-already-set skip (`1000:dcbf` clear + `1000:dcc6` taken) has
-    // no assertable game-state effect once both flags are already found --
-    // `mark_found` on an already-found slot is a no-op either way, so a
-    // state-only assertion here cannot distinguish "the block ran again"
-    // from "the block was skipped". The block's only other effect is two
-    // `WriteLn`s, and this codebase has no stdout-capture harness (see
-    // `src/term.rs`: `println`/`print` write directly to `io::stdout()`).
-    // So, per the task brief, this case is recorded as NOT WRITABLE here
-    // rather than covered with a check that cannot fail.
+    // no assertable game-STATE effect once both flags are already found --
+    // `mark_found` on an already-found slot is a no-op either way -- so it
+    // cannot be checked in-process. Its only other effect is the ABSENCE of
+    // two `WriteLn`s, and `src/term.rs` writes straight to `io::stdout()`
+    // with no in-process capture. `tests/den_reveal_subprocess.rs` covers it
+    // instead, driving the real binary as a subprocess and asserting on its
+    // piped stdout, the same technique `tests/term_output.rs` already uses --
+    // an escape from "not writable" was claimed here once and was wrong; see
+    // that file's module doc for why a synthesized save is what makes the
+    // precondition (Dealers and Gym already found, threshold cleared)
+    // reachable deterministically, without depending on the wall-clock RNG
+    // seed real play would need.
 
     /// `1000:ae13`/`1000:ae1f` via [`Game::enter_district_5`] -- reaching
     /// district 5 sets `rector_showdown`, and the flee refusal at
@@ -5940,11 +6043,12 @@ mod tests {
         );
 
         // The reader: 1000:48eb refuses `run` outright while rector_showdown
-        // is set, where before Task 20 this arm was reachable only by
-        // setting the field directly in a test.
-        let mut g2 = game();
-        g2.rector_showdown = true;
-        let fled = g2.flee();
+        // is set. Reusing `g` itself -- not a fresh instance with the field
+        // poked directly -- is the point: this is the flag `enter_district_5`
+        // just armed, changing behaviour on the very game it armed it on,
+        // where before Task 20 this arm was reachable only by setting the
+        // field directly in a test.
+        let fled = g.flee();
         assert!(!fled, "1000:48eb refuses every flee once the flag is set");
     }
 }

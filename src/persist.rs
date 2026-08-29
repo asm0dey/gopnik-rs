@@ -34,7 +34,7 @@
 //!   `docs/re/gaps.md`.
 //!
 //!   That leaves the port **coherent, not half-implemented**: the increment
-//!   and the discovery-flag reset are faithful (`Game::resolve_fight` gets
+//!   and the discovery-flag reset are faithful (`Game::run_combat` gets
 //!   both gates right), and the two effects that are missing are inert today
 //!   -- the prompt has nothing to prompt for, and the ban countdowns it
 //!   clears are never set. The practical consequence is that **this port can
@@ -311,9 +311,14 @@ impl Game {
     /// that file (`1000:6c50` gates it on `district == 0`), so their
     /// `places` is all-clear.
     ///
-    /// `1000:73bb`'s class bonus runs on **every** entry into the game, new
-    /// character or loaded save (`docs/re/wander.md`, "What reaches
-    /// `1000:73bb`"), so it is re-applied here after `places` is installed.
+    /// `1000:7347`..`1000:73e5` -- the district-5 rector-showdown arm, the
+    /// class bonus, and the den loan credit -- runs on **every** entry into
+    /// the game, new character or loaded save (`docs/re/wander.md`, "What
+    /// reaches `1000:73bb`"; `Game::apply_class_bonus`'s own doc has the
+    /// full re-derivation of the district-5 half, added for Task 20's
+    /// review fix), so it is all re-applied here, after BOTH `places` and
+    /// `district` are installed -- the district-5 arm reads `district`,
+    /// which must therefore be set before this call, not after it.
     pub fn from_save(save: &Save, places: Places, district: u8, seed: u32) -> Game {
         let it = &save.items;
         let player = Fighter {
@@ -355,8 +360,15 @@ impl Game {
         // stores -- `1000:6da0` jumps past them -- so the flags are replaced
         // wholesale here rather than added to.
         g.places = places;
-        g.apply_class_bonus();
+        // `district` MUST be set before the re-applied `apply_class_bonus`
+        // call below: `1000:7347`..`1000:7364`, now ported inside it, reads
+        // `[0x3692]` (district) to decide whether this load arms
+        // `rector_showdown` -- `Game::new`'s own internal call ran with the
+        // struct literal's `district: 1`, which is right for a NEW
+        // character but would be wrong here, before this field is replaced
+        // with the loaded value.
         g.district = district;
+        g.apply_class_bonus();
         g.has_mobile = it.mobile;
         g.dark_glasses = it.dark_glasses;
         g.prison_tattoo = it.prison_tattoo;

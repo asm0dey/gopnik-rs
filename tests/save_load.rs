@@ -1016,3 +1016,43 @@ fn the_three_records_the_port_refuses_or_alters_are_the_documented_ones() {
     g.player.name = "x".repeat(252);
     assert_eq!(g.to_save().to_bytes().unwrap().len(), SIZE);
 }
+
+/// Task 20's review fix (C2): `1000:7347`..`1000:7364`, inside
+/// `FUN_1000_6a0d`, arms `rector_showdown` whenever the game is ENTERED
+/// with district already 5 -- a loaded save can have that be true on the
+/// very first turn, before `Game::enter_district_5`'s own promotion hook
+/// ever gets a chance to run (it only fires on the turn district BECOMES 5
+/// during play). Slot 0 derives district from `level / 10 + 1`
+/// (`1000:6d93`), so `level = 40` lands a fresh load at district 5 directly.
+#[test]
+fn loading_a_save_already_at_district_5_arms_the_rector_showdown() {
+    let dir = scratch("load-at-district-5-arms-rector-showdown");
+    let mut g = fresh_game();
+    g.player.level = 40;
+    assert!(!g.rector_showdown);
+    g.write_save_as(&dir, "save_r0.sav").unwrap();
+    g.write_places(&dir).unwrap();
+
+    let back = persist::load_slot(&dir, '0', 1).unwrap().expect("loads");
+    assert_eq!(back.district, 5, "level 40 / 10 + 1 = 5");
+    assert!(
+        back.rector_showdown,
+        "1000:7364 must fire on entry when the loaded district is already 5"
+    );
+}
+
+/// Control: a load that does NOT land at district 5 leaves the flag clear --
+/// proves the assertion above can fail, and that `apply_class_bonus`'s new
+/// district check does not fire unconditionally.
+#[test]
+fn loading_a_save_below_district_5_does_not_arm_the_rector_showdown() {
+    let dir = scratch("load-below-district-5-no-rector-showdown");
+    let mut g = fresh_game();
+    g.player.level = 25; // 25 / 10 + 1 = district 3
+    g.write_save_as(&dir, "save_r0.sav").unwrap();
+    g.write_places(&dir).unwrap();
+
+    let back = persist::load_slot(&dir, '0', 1).unwrap().expect("loads");
+    assert_eq!(back.district, 3);
+    assert!(!back.rector_showdown);
+}

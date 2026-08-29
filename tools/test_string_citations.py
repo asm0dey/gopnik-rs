@@ -30,15 +30,28 @@ import addr as addrmod                                              # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 #: Files whose string citations this checks. Task 19's own prose plus the two
-#: `src/` files the review found it contradicting.
+#: `src/` files the review found it contradicting, plus `src/game.rs`
+#: (Task 20's review round, M6): Task 20 added five new `file 0x...`
+#: citations there and none was machine-checked, because nothing pointed
+#: this scanner at the file that carries the game's own text -- the single
+#: largest source of string citations in the tree.
 SOURCES = [
     "src/persist.rs",
     "src/save.rs",
     "src/locations.rs",
+    "src/game.rs",
     "docs/re/save-format.md",
 ]
 
-CITE = re.compile(r"\b(file|image|CS)\s+`?0x([0-9A-Fa-f]{4})`?")
+# `{4,5}` -- most citations are the game code segment's 4-hex-digit file
+# offsets, but a handful (Task 20's review round, M6: added while widening
+# `SOURCES` to `src/game.rs`) reach into the RTL segments past file offset
+# 0x10000 (`orig/g.exe` is 0x15a50 bytes), which needs a 5th digit -- e.g.
+# `file 0x11166`, `1f78:0116`'s real offset. Greedy, so a genuine 4-digit
+# citation is unaffected as long as the character right after it is not
+# itself a hex digit (true of every citation format in this tree: a
+# backtick, space, or punctuation always follows).
+CITE = re.compile(r"\b(file|image|CS)\s+`?0x([0-9A-Fa-f]{4,5})`?")
 #: A backtick-quoted run. Non-greedy so `a` / `b` on one line yields two.
 QUOTED = re.compile(r"`([^`\n]{1,80})`")
 

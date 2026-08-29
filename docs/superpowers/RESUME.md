@@ -62,11 +62,16 @@ files after Task 18; the file count is derived from the tree, and Task 19 added
 `tools/test_branch_reach.py`, `tools/rngtrace/saveprobe.py` and two files under
 `data/probes/`), `cargo clippy --all-targets` clean,
 `cargo doc --no-deps` 12 warnings (all pre-existing private-item links).
-`cargo fmt --check` shows exactly three PRE-EXISTING diffs in
-`tests/wander_sequence.rs` — **lines 242, 993 and 1120** after Task 18's
-insertions moved them (they were 241, 973 and 1100; the content is
-byte-identical, confirmed by stashing). Seven reviewers have now confirmed
-they predate current work. Leave them; do not let them mask a new one.
+`cargo fmt --check` shows **seven** PRE-EXISTING diffs, not three: this
+line itself was stale, caught in Task 20's review round. Three are the
+`tests/wander_sequence.rs` ones tracked here since Task 18 (**lines 242, 993
+and 1120**, byte-identical content, confirmed by stashing); the other four
+were added whole by the `BigMarket -> Dealers` refactor commit on the Task
+20 branch (`90e2d28`, merged to `main`) — `src/locations.rs:175` and
+`tests/wander_sequence.rs:484` (both `TRACKED`/comment-alignment artifacts
+of the rename) and `tests/combat_sequence.rs:588`. All seven are
+byte-identical between `90e2d28` and every commit after it on `main`,
+confirmed the same way. Leave them; do not let them mask a new one.
 
 **The honest state of the project.** Tasks 13-review and 14 moved branch
 coverage by zero — sound work on the measuring apparatus that found real
