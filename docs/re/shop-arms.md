@@ -362,7 +362,7 @@ on. See "The district question" above.
 
 ---
 
-## What the port must change
+## What the port had to change, and what Task 24 changed
 
 **Task 24 did all five of the following, and this section is now a record of
 what it changed, not a list of outstanding work.** Read it with

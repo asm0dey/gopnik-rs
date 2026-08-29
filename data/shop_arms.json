@@ -1,5 +1,5 @@
 {
-  "note": "The `bmar` (Барыги) PURCHASE arms for menu rows 1..6 -- what happens after the row key is typed at the `^0Барыги\\` prompt, not what the menu prints. The menu half is `data/shops.json` / `docs/re/tables.md` §2; rows 7..9 were mapped by Task 18 and live in `Game::buy_pistol_row`. Prose twin: `docs/re/shop-arms.md`. Re-derived from `orig/g.exe` by `tools/test_shop_arms.py`; nothing here was read off a screen.",
+  "note": "The `bmar` (Барыги) PURCHASE arms for menu rows 1..6 -- what happens after the row key is typed at the `^0Барыги\\` prompt, not what the menu prints. The menu half is `data/shops.json` / `docs/re/tables.md` §2; rows 7..9 were mapped by Task 18. All nine `bmar` arms are ported and live in `Game::buy_dealer_row` (Task 24; `Game::buy_pistol_row` was that function's name until it grew rows 1..6, and nothing answers to it now). Prose twin: `docs/re/shop-arms.md`. Re-derived from `orig/g.exe` by `tools/test_shop_arms.py`; nothing here was read off a screen.",
   "address_forms": "`1000:xxxx` is a Ghidra label (Form A of `docs/re/METHODOLOGY.md`) and, because the game's code segment is the load base, its OFF is also the image offset. `20ae:xxxx` is DGROUP. `cs_offset` is the image offset of a Pascal shortstring's LENGTH byte -- the exact immediate of the `mov di,imm16` that pushes it -- and `file_offset` is that plus the 0x18d0-byte MZ header, which is what `data/strings.json` keys on.",
   "globals_exclude": "20ae:38c7, the player's money, is written by every arm and referenced 107 times across the image; `docs/re/tables.md` \u00a7 \"Other price sources\" already owns that population, so `globals[]` does not restate it per row.",
   "shop": "bmar",
@@ -29,9 +29,9 @@
       "tier": "flow",
       "span": {"start": "1000:ccc4", "end": "1000:ce80"},
       "method": "The row-7 setup to the `x` compare at 1000:ce80 -- i.e. all three of Task 18's arms. An aligned decode of that range carries no operand equal to 0x3692 and the byte pair `92 36` does not occur in it, by the same two measurements used on rows 1..6.",
-      "consequence": "The buy path of the dealers carries no district test at ALL, for any of the nine rows. The divergence is the whole path, not two rows."
+      "consequence": "The buy path of the dealers carries no district test at ALL, for any of the nine rows. When this was written the port refused all five gated rows, so the divergence was the whole path and not two rows; Task 24 closed it for every one of the five. The measurement above is a fact about `orig/g.exe` and is unchanged by that."
     },
-    "consequence": "At district 1 the menu prints neither row 5 nor row 6, but typing `5` or `6` still buys them; the same holds for rows 7..9 below district 4. The port calls `Game::gate_open(row.gate)` in `Game::shop_action` BEFORE delegating to `Game::buy_pistol_row` (`grep -n 'gate_open' src/game.rs`), so all five gated rows are refused. Nothing here is claimed about the `mar` shop -- that range was not decoded for this task."
+    "consequence": "At district 1 the menu prints neither row 5 nor row 6, but typing `5` or `6` still buys them; the same holds for rows 7..9 below district 4. The port reproduced this in Task 24 (commits 19a1a34, fef8c9c): the menu's district filter is `Game::listed_rows`, called only by `Game::print_priced_rows`, and `Game::shop_action` delegates to `Game::buy_dealer_row` BEFORE it consults `Game::gate_open`, consulting it afterwards only on the `mar` path (`grep -n 'self.gate_open' src/game.rs` returns exactly those two call sites). Until Task 24 the port called `gate_open` ahead of the delegation and refused all five gated rows; that is the divergence this field used to record as open. Nothing here is claimed about the `mar` shop -- that range was not decoded for this task."
   },
   "rows": [
     {
@@ -461,7 +461,7 @@
       "label": "row-5-and-6-are-buyable-below-their-menu-district",
       "tier": "flow",
       "claim": "See `district_finding`. The district byte gates only the menu print, never the arm.",
-      "port_directive": "Reproduce: the port must stop refusing bmar rows 5 and 6 on district."
+      "port_directive": "Reproduce. DONE in Task 24, and for all FIVE gated rows (5, 6, 7, 8, 9) rather than the two this label names -- see `district_finding.consequence`. Nothing is claimed here about `mar`."
     }
   ]
 }
