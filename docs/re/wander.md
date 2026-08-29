@@ -484,9 +484,12 @@ unknown before:
   and the leg (`+0x15`) above.
   `1000:81e9` increments it under `^1Накладываю на тебя защиту!`, i.e. the
   church grants +1 armour. The consumer was open until Task 11c: subtracted
-  from damage at `1000:4769`, printed as `^2Броня #` at `1000:227b`
-  (`docs/re/character-sheet.md`) and `1000:163f`, saved at `.SAV 0x216`
-  (`docs/re/save-format.md`). `data/wander.json`'s `unk_38b2` is now a stale
+  from damage at `1000:4769`, printed as `^2Броня #` at `1000:227b` (value
+  pushed at `1000:228a`; `docs/re/character-sheet.md`), saved at
+  `.SAV 0x216` (`docs/re/save-format.md`). The enemy's mirror, `20ae:3968` /
+  `[0x3968]`, is a separate byte with its own print routine at `1000:163f`,
+  using a second copy of the same string — it is not this field and is not
+  saved at `.SAV 0x216`. `data/wander.json`'s `unk_38b2` is now a stale
   name, not a disagreement.
 
 ## Corrections to existing `docs/re/` content
