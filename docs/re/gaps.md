@@ -81,11 +81,11 @@ becomes 5). The four calls that same endgame arm makes afterward
 (`FUN_1000_11c2` twice, `FUN_1000_3d11` twice, for the rector and final-boss
 fights) are deliberately NOT ported — see `Game::enter_district_5`'s doc
 comment in `src/game.rs` for why, and "The district-advance autosave —
-wired (Task 21)" below for why neither this arm nor its calls run "every
-turn" the way the original does. Task 21 replaced the *architectural*
-reason (there was no per-turn hook) with a narrower one: there is a per-turn
-hook now, and what still blocks the repeat is `FUN_1000_3d11`'s untraced
-`param_1`.
+wired (Task 21)" below. Task 21 narrowed this twice: the arm's own store
+and Den grant are not the divergence (the flag store runs once in the
+original too, and the Den grant is idempotent), and the four calls are —
+they run on **every** turn there, via `1000:ae18`, while the port runs none.
+The one reason that survives is `FUN_1000_3d11`'s untraced `param_1`.
 
 **All seventeen immediate setters are now in the port.** Market and Vet from
 character creation and from the wander preamble's draws 6 and 5; Club from
@@ -630,11 +630,13 @@ save. `Save` -> bytes -> `Save` **is** exact, and that is the round trip
 `tests/save_roundtrip.rs` asserts.
 
 **One more refusal, not in the table above because it is not a save-format
-one:** the port cannot repeat the chapter-5 endgame arm's three lines and two
-forced fights every turn the way the original does once district 5 is
-reached — only once, at the turn district first reaches 5 (or at load, for a
-save already there). Detail, and why, is in "The district-advance autosave —
-wired (Task 21)", below.
+one:** the port never runs the chapter-5 endgame arm's two forced fights
+(`1000:ae2d` `FUN_1000_3d11(3)` and `1000:ae39` `FUN_1000_3d11(4)`), which the
+original re-enters on **every** turn once district 5 is reached. The arm's
+three lines and its `1000:addc` keystroke are **not** part of that refusal —
+those run exactly once in the original too, and the port matches them. Detail,
+and the decode that separates the two halves, is in "The district-advance
+autosave — wired (Task 21)", below.
 
 ## The four armour flags are carried but the gym's `abs` ignores them
 
@@ -766,11 +768,28 @@ wrong one.
 
 **`1000:ab92` is the only in-play district write.**
 `python3 tools/re_query.py xrefs-to 20ae:3692` accepts 97 references and
-discards 0; exactly four of them write, and the other three (`1000:6bf9`,
-`1000:6d9d`, `1000:6dbe`) are all inside `FUN_1000_6a0d`, the one-time
-setup. `FUN_1000_3d11` has none — which is why the promotion belonged at the
-top of the loop and not in the post-fight block, and why a level won in a
-fight now promotes on the following turn.
+discards 0. **Four** of them are direct stores — `1000:6bf9`, `1000:6d9d` and
+`1000:6dbe`, all three inside `FUN_1000_6a0d`, the one-time setup, plus
+`1000:ab92` itself. A **fifth** reference also writes, by pointer rather than
+by displacement, and an inventory that stopped at four would be the
+completeness shape `docs/re/METHODOLOGY.md` names:
+
+```text
+0f78:134c  bf 92 36     mov di,0x3692     ; the DGROUP BSS start
+0f78:134f  1e / 07      push ds / pop es
+0f78:1351  b9 18 41     mov cx,0x4118     ; the BSS end
+0f78:1354  2b cf        sub cx,di
+0f78:1356  d1 e9        shr cx,1          ; words, not bytes
+0f78:1358  33 c0        xor ax,ax
+0f78:135a  fc / f3 ab   cld / rep stosw
+0f78:135d  c3           ret
+```
+
+That is the runtime's startup zero-fill of `20ae:3692`..`20ae:4118`, which
+covers the whole 694-byte record as well; it runs once, before anything
+game-shaped. `FUN_1000_3d11` has **no** reference of any kind — which is why
+the promotion belonged at the top of the loop and not in the post-fight
+block, and why a level won in a fight now promotes on the following turn.
 
 **What is still NOT reproduced, and why:**
 
@@ -787,28 +806,72 @@ fight now promotes on the following turn.
   the same.
 * **The district-keyed announcement arms at `1000:ad12`..`1000:adbf`**
   (`cmp al,2` at `1000:ad15` and the chain after it) are unported text.
-* **The chapter-5 endgame arm's per-turn REPEAT**, `1000:adbf`..`1000:ae1f`
-  (`docs/re/wander.md`, "The three Den setters", calls
-  `1000:ab75`..`1000:ae18` together "the genuine district-transition
-  block"). `1000:adbf`'s `cmp al,5` is unconditional, so the original
-  re-prints the three lines, re-takes the `1000:addc` keystroke, re-sets both
-  (idempotent) flags and re-enters both forced fights every single turn once
-  district 5 is reached. `Game::enter_district_5` fires once, from inside
-  `district_advance`'s just-incremented branch.
+* **The chapter-5 arm's two forced fights** — and *only* those.
 
-  **Moving the hook did NOT close that, and the reason is no longer "there
-  is no per-turn hook".** There is one now. What blocks it is the arm's own
-  body: it ends in `1000:ae2d` `FUN_1000_3d11(3)` (the rector) and
-  `1000:ae39` `FUN_1000_3d11(4)` (the ending), whose `param_1` handling
-  `Game::run_combat` does not model — the XP-award skip at
-  `1000:51b9`..`1000:51e9` and the `param_1 == 4` victory ending at
-  `1000:5085`, which has never been traced (`docs/re/wander.md`: "Whether
-  `FUN_1000_3d11(4)` returns is not traced here"). Repeating the arm per
-  turn would announce two fights every turn that the port then does not run,
-  which is a worse divergence than announcing them once. Closing it is a
-  combat-dispatch task: trace `FUN_1000_3d11`'s `param_1` first, then make
-  the call unconditional on `district == 5`. Full detail on `FUN_1000_11c2`,
-  the arm's other callee, which Task 20 DID fully trace, is in
+  **A correction, established from flow.** A first cut of this section (and
+  of the two `src/game.rs` doc comments that quote it) said `1000:adbf`'s
+  `cmp al,5` was "unconditional, so the original re-prints the three lines,
+  re-takes the `1000:addc` keystroke, re-sets both flags and re-enters both
+  forced fights every single turn". **The first four of those five are
+  false**, and the decode says so plainly. Once `[0x3692]` reaches 5:
+
+  ```text
+  ab88  80 3e 92 36 05  cmp byte [0x3692],5
+  ab8d  72 03           jb 0xab92      -- NOT taken at 5
+  ab8f  e9 86 02        jmp 0xae18     -- skips ad12..adbf entirely
+  ```
+
+  So `1000:ad12` and `1000:adbf` are unreachable on a non-promotion turn. An
+  encoding scan of the whole image (`e9`/`e8`/`eb`/short-`Jcc`/near-`Jcc`/
+  `loop`, each hit then checked against an anchored decode) finds **exactly
+  one** branch into `0xad12` — `1000:ac5b e9 b4 00 jmp 0xad12`, the `y`
+  mismatch arm, post-increment — and **exactly one** into `0xadbf` —
+  `1000:ad89 75 34 jnz 0xadbf`, the `cmp al,4` arm inside the `ad12` chain,
+  itself only entered post-increment (the chain's other entry is
+  fall-through from `1000:ad0d`'s `WriteLn`, also post-increment).
+  `1000:adc3`, `1000:addc` and `1000:ae13` have **zero** branches targeting
+  them at all; `1000:adbd eb 59 jmp short 0xae18` is what sits immediately
+  before `adbf`, so it is not reachable by fall-through either.
+
+  **What actually repeats every turn is the `1000:ae18` arm**, which every
+  gate failure jumps to (`ab85`, `ab8f`, `ad4b`, `ad84`, `adbd`, `adc1` — six
+  branches, plus fall-through from `ae13`):
+
+  ```text
+  ae18  80 3e 83 3c 01  cmp byte [0x3c83],1   -- nothing ever clears it
+  ae1d  75 1d           jnz 0xae3c
+  ae1f  c6 06 96 36 01  mov byte [0x3696],1   -- the Den, idempotent
+  ae27  e8 98 63        call 0x111c2          -- FUN_1000_11c2(0)
+  ae2d  e8 e1 8e        call 0x3d11           -- FUN_1000_3d11(3), the rector
+  ae33  e8 8c 63        call 0x111c2          -- FUN_1000_11c2(1)
+  ae39  e8 d5 8e        call 0x3d11           -- FUN_1000_3d11(4), the ending
+  ```
+
+  `docs/re/wander.md`, "The three Den setters" (§`423`), already scoped this
+  correctly — "`1000:ae18` sits at the top of every turn … once chapter 5 is
+  reached, this block runs every turn" — so the wrong version above put the
+  repo in contradiction with itself for one review round.
+
+  **Consequence for the port.** `Game::enter_district_5` prints the three
+  lines, consumes one line for `1000:addc`'s `ReadKey`, sets
+  `rector_showdown` (`1000:ae13`) and grants the Den (`1000:ae1f`) once,
+  from `district_advance`'s just-incremented branch. That **matches** the
+  original for the prints, the keystroke and the `ae13` store, which run
+  exactly once there too; the Den grant repeats in the original but is a
+  boolean store, so it is idempotent and indistinguishable. The **only**
+  remaining divergence is the four calls at `ae27`..`ae39` — in practice the
+  two fights, since `FUN_1000_11c2` only fills the enemy record.
+
+  **The reason that stays open is now the whole reason**, with nothing
+  propping it up: `FUN_1000_3d11`'s `param_1` is not modelled by
+  `Game::run_combat` — the XP-award skip at `1000:51b9`..`1000:51e9` and the
+  `param_1 == 4` victory ending at `1000:5085`, which has never been traced
+  (`docs/re/wander.md`: "Whether `FUN_1000_3d11(4)` returns is not traced
+  here"). Closing it is a combat-dispatch task: trace `param_1`, then call
+  the two fights from a per-turn `rector_showdown` check. The earlier
+  argument that repeating the arm "would announce two fights every turn"
+  was built on the false half and is withdrawn. Full detail on
+  `FUN_1000_11c2`, which Task 20 DID fully trace, is in
   "`FUN_1000_11c2` -- traced (Task 20), not ported", below.
 
 A *loaded* save already at district 5 is handled separately and was already
@@ -821,6 +884,68 @@ Also cross-referenced from "What the port REFUSES that the original
 accepts", above (§`557`); the detail lives here because that section is
 scoped to save-load refusals specifically and this divergence is not one —
 it belongs to the main loop's shape.
+
+## The trimmed `y` prompts — the port accepts input the original refuses
+
+*Cited from `src/commands.rs`'s `parse` and `src/game.rs`'s
+`district_advance`, `walk`, `mage`, `wander_girl`, `shop_turn` and
+`run_combat`.*
+
+**Established from flow.** Every typed compare in the original follows the
+same three-step shape: `ReadLn` into `DS:3972` or `DS:3a72`, case-fold with
+`0eed:0216`, then `0f78:0bd8` `rtl_str_compare` against a CS shortstring.
+`rtl_str_compare` compares Pascal shortstrings, whose **length byte is part
+of the value** — so `" y"` (length 2) can never equal `y` (length 1), and no
+step between the `ReadLn` and the compare strips a space. The four `y`
+prompts all compare against the same one-byte literal at file `0x9BF3`
+(`01 79`), except the mage's, which has its own copy at file `0x8D79`:
+
+| prompt | case-fold | compare | port |
+|---|---|---|---|
+| the district autosave | `1000:ac45` | `1000:ac54` | `Game::district_advance` |
+| the encounter accept | `1000:b704` | `1000:b713` | `Game::walk` |
+| wander bucket 2, the girl | `1000:b534` | `1000:b543` | `Game::wander_girl` |
+| the mage's paid save | `1000:75e6` | `1000:75f6` | `Game::mage` |
+
+**The port trims first, so it accepts `" y"` where the original refuses it.**
+This is **not** introduced by the autosave: it is the port's house idiom for
+every typed compare, `crate::commands::parse` (`src/commands.rs:214`,
+`input.trim().to_lowercase()`) included, and it therefore also widens the
+street verb table, `Game::shop_turn`'s key match, and the two in-combat verb
+compares `run_combat` handles itself (`run` at `1000:48e1` and `e` at
+`1000:4c56` — "The in-combat verb set", below, tabulates all nine). The
+inventory is a grep, with its command, rather than an assertion of
+completeness:
+
+```
+$ grep -rn '\.trim()' src/*.rs | grep -v 'trim_end_matches\|trim_start_matches'
+src/commands.rs:214   the street verb table
+src/main.rs:92        Val() on the class answer -- a number, not a token
+src/game.rs:894       the district autosave's `y`
+src/game.rs:1402      shop_turn's key
+src/game.rs:1807      the encounter accept's `y`
+src/game.rs:2337      the mage's `y`
+src/game.rs:2406      wander_girl's `y`
+src/game.rs:3261      combat's `run`
+src/game.rs:3300      combat's `e`
+```
+(comments and doc lines that merely mention `.trim()` elided; the remaining
+hits in `src/game.rs` are the two at `2657`/`2687`/`5541` that say
+`Game::rename` must **not** trim.)
+
+**One place deliberately does not trim, and it is the interesting one.**
+`1000:7220` and `1000:ed5f` test the just-read name shortstring's **length
+byte**, so a line of only spaces is a nonempty name and is kept rather than
+replaced by `Раз^6дол^4бай`. `Game::rename` and `main.rs`'s
+`create_character` strip only the line terminator for exactly that reason —
+which is the evidence that the trim elsewhere is a port choice, not a
+property of `ReadLn`.
+
+**Not fixed here.** Removing the trim is a one-line change per site, but it
+changes what nine input paths accept and belongs with a task that can test
+all of them; doing it only at the autosave would make this port
+self-inconsistent for no gain. Recorded so the divergence is in one place
+instead of nine comments.
 
 ## `FUN_1000_11c2` -- traced (Task 20), not ported
 

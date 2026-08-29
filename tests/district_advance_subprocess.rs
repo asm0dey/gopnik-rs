@@ -100,12 +100,18 @@ fn the_advance_runs_at_the_top_of_the_turn_and_y_writes_the_new_slot() {
     // 1000:ae3c's street prompt would sit between them. It must not: the
     // announcement is the very next thing written.
     let after_load = &out[out.find(LOADED).unwrap() + LOADED.len()..];
+    // `chars().take(80)`, NOT `&s[..80]`. Everything printed here is
+    // Cyrillic, so a byte-index slice lands mid-codepoint and panics with
+    // `not a char boundary` INSTEAD of the message naming the claim -- which
+    // is the one thing `docs/re/METHODOLOGY.md`'s mutate rule requires a
+    // failing assertion to print. The first cut of this file did exactly
+    // that and the review caught it.
     assert!(
         after_load
             .trim_start_matches('\n')
             .starts_with(ADVANCE_LINE),
         "1000:ab75 runs BEFORE 1000:ae3c's prompt; got {:?}",
-        &after_load[..after_load.len().min(80)]
+        after_load.chars().take(80).collect::<String>()
     );
 
     // 1000:acb9 Rewrite(f, 694) into the post-increment digit.

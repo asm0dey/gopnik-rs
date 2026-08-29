@@ -800,10 +800,14 @@ impl Game {
     /// inside `FUN_1000_3d11` (`1000:51ed`..`1000:5238`, reached from the
     /// wander at `1000:aea1`), which is downstream of `ab75` in the same
     /// turn. `1000:ab92` is the only in-play write to `[0x3692]`: the other
-    /// three (`1000:6bf9`, `1000:6d9d`, `1000:6dbe`) are all inside
-    /// `FUN_1000_6a0d`, the one-time setup
+    /// three direct stores (`1000:6bf9`, `1000:6d9d`, `1000:6dbe`) are all
+    /// inside `FUN_1000_6a0d`, the one-time setup, and the one remaining
+    /// writer, `0f78:134c bf 92 36 mov di,0x3692` + `rep stosw`, is the
+    /// runtime's startup BSS zero-fill of `20ae:3692`..`20ae:4118`
     /// (`python3 tools/re_query.py xrefs-to 20ae:3692` -- 97 accepted
-    /// references, 0 discarded).
+    /// references, 0 discarded; `docs/re/gaps.md` carries the full decode.
+    /// An earlier revision said "exactly four write" and missed the
+    /// pointer-form fifth).
     ///
     /// **Two port decisions, neither a property of the original.**
     ///
@@ -827,15 +831,20 @@ impl Game {
     ///   in `src/locations.rs`'s module doc and `docs/re/gaps.md`.
     /// * `1000:ad12`'s district-keyed announcement arms (`cmp al,2` and the
     ///   chain after it) are unported text.
-    /// * The chapter-5 arm at `1000:adbf`..`1000:ae18` still fires exactly
-    ///   once, from inside the `district == 5` branch below, rather than on
-    ///   every turn as `1000:adbf`'s bare `cmp al,5` does. Moving this hook
-    ///   did NOT close that: the arm's own body ends in two forced fights
-    ///   (`1000:ae2d` `FUN_1000_3d11(3)` and `1000:ae39` `FUN_1000_3d11(4)`)
-    ///   whose `param_1` handling [`Game::run_combat`] does not model, so
-    ///   repeating the arm per turn would repeat three prints and a consumed
-    ///   keystroke while still skipping the fights they announce. See
-    ///   [`Game::enter_district_5`].
+    /// * The chapter-5 arm's two forced fights, `1000:ae2d`
+    ///   `FUN_1000_3d11(3)` and `1000:ae39` `FUN_1000_3d11(4)`. Those, and
+    ///   only those: the arm's own prints and its `1000:addc` `ReadKey`
+    ///   (`1000:adc3`..`1000:ae13`) run exactly ONCE in the original too,
+    ///   because `1000:ab8d`'s `jb` fails at district 5 and `1000:ab8f`
+    ///   jumps straight to `1000:ae18`, so `1000:ad12`..`1000:adbf` are
+    ///   unreachable on a non-promotion turn. What repeats every turn is
+    ///   `1000:ae18`'s arm -- the idempotent Den grant at `1000:ae1f` plus
+    ///   those four calls. [`Game::enter_district_5`] reproduces everything
+    ///   except the calls; their `param_1` handling is what
+    ///   [`Game::run_combat`] does not model. An earlier revision of this
+    ///   bullet said `1000:adbf`'s `cmp al,5` made the whole arm repeat;
+    ///   that was wrong, and `docs/re/gaps.md` carries the branch-target
+    ///   scans that settle it.
     ///
     /// `pub` for the same reason [`Game::walk`] and [`Game::mage`] are: it is
     /// the only way a test can reach this arm. [`Game::run`] reads from
@@ -870,6 +879,19 @@ impl Game {
         };
         let answer = line?;
         // 1000:ac45's case-fold, then 1000:ac54's compare against `y`.
+        //
+        // `.trim()` is a PORT ADDITION and a real (if tiny) divergence:
+        // 1000:ac45 case-folds the whole DS:3a72 buffer and 1000:ac54 hands
+        // it straight to `0f78:0bd8` `rtl_str_compare`, which compares the
+        // shortstring's length byte too -- so `" y"` is length 2 against
+        // length 1 and the original refuses it, while this port saves. The
+        // port's line source (`BufRead::lines`) has already stripped the
+        // terminator the original's `ReadLn` also strips, so the trim only
+        // affects genuine leading/trailing spaces. Kept for consistency with
+        // the identical idiom in [`Game::mage`] and in
+        // `crate::commands::parse` rather than introduced here; the whole
+        // nine-site class is recorded in `docs/re/gaps.md`, "The trimmed `y`
+        // prompts", instead of nine separate comments.
         if answer.trim().eq_ignore_ascii_case("y") {
             // 1000:ac5e..1000:ac73 `Str([0x3692])` -- the district AFTER the
             // increment above, which is why the shipped corpus is
@@ -3425,12 +3447,20 @@ impl Game {
     /// top of [`Game::run`]'s loop -- so the call site is now the original's
     /// own position in the turn (this arm is the direct continuation of that
     /// preamble; `docs/re/wander.md` calls `1000:ab75`..`1000:ae18` "the
-    /// genuine district-transition block"). What is still not the original's
-    /// is the FREQUENCY: `1000:adbf`'s `cmp al,5` is unconditional, so the
-    /// original runs this every turn once district 5 is reached, while
-    /// `district_advance` reaches it only inside the branch that just
-    /// incremented. See that method's doc for why widening it would need
-    /// `FUN_1000_3d11`'s `param_1` first.
+    /// genuine district-transition block").
+    ///
+    /// **The frequency matches the original, and an earlier revision of this
+    /// comment claimed otherwise.** It said `1000:adbf`'s `cmp al,5` was
+    /// unconditional, so the whole arm repeated every turn. Flow refutes
+    /// that: at district 5 `1000:ab8d`'s `jb 0xab92` is not taken and
+    /// `1000:ab8f e9 86 02 jmp 0xae18` skips `1000:ad12`..`1000:adbf`
+    /// outright, so `adbf` is only reachable on a promotion turn -- the one
+    /// branch into `0xad12` is `1000:ac5b` and the one branch into `0xadbf`
+    /// is `1000:ad89`, both post-increment, and `1000:adc3`, `1000:addc` and
+    /// `1000:ae13` have no branch targeting them at all. So the three
+    /// prints, the `ReadKey` and the `[0x3c83]` store run exactly once in
+    /// the original too, which is what this method does. See the section
+    /// below for what genuinely does repeat.
     ///
     /// This is the **per-turn** trigger, reached only while the game is
     /// already running: it fires the turn `self.district` first becomes 5.
@@ -3506,45 +3536,50 @@ impl Game {
     /// call whose callee you have not read" -- `1000:3d11`'s callee IS read
     /// (it is `run_combat` itself), but not for this argument.
     ///
-    /// **The "runs every turn" hazard does not apply to what IS ported
-    /// here.** In the original this whole arm -- prints, stores, and the
-    /// two forced fights -- repeats on every turn once district 5 is
-    /// reached, because nothing ever clears `[0x3c83]` and `1000:ae18`'s
-    /// test is always taken (`docs/re/wander.md`, "The three Den setters").
-    /// That every-turn repetition is itself re-derived here, not inherited.
-    /// `1000:ee01 e9 71 bd` `jmp 0xab75` is the only branch INSTRUCTION
-    /// anywhere in the image whose target is `0xab75`, and `1000:ab72
-    /// e8 98 be` `call 0x6a0d` is a three-byte near call whose next
-    /// instruction is `ab75` -- so `ab75`, and everything after it including
-    /// this arm, is reached both by that back edge and by straight-line
-    /// fall-through out of the one-time startup call into `FUN_1000_6a0d`.
+    /// **What genuinely runs every turn is `1000:ae18`'s arm, not this
+    /// one**, and the difference is the whole of the remaining divergence.
+    /// `ab75` really is the loop top -- `1000:ee01 e9 71 bd jmp 0xab75` is
+    /// the only branch INSTRUCTION in the image targeting it, and
+    /// `1000:ab72 e8 98 be call 0x6a0d` is a three-byte near call whose next
+    /// instruction is `ab75`, the one-time fall-through entry -- but at
+    /// district 5 the block leaves it immediately:
     ///
-    /// **A raw byte scan alone gets this wrong, and Task 21 caught how.**
-    /// Scanning every `jmp`/`Jcc`/`call`/`loop` encoding of the target
-    /// returns TWO hits, and the second, `1000:ab00` `72 73`, scores 63 of
-    /// 64 votes in the alignment sweep -- yet it is the `rs` of
+    /// ```text
+    /// ab8d  72 03           jb 0xab92     ; not taken once [0x3692] == 5
+    /// ab8f  e9 86 02        jmp 0xae18    ; ad12..adbf skipped entirely
+    /// ...
+    /// ae18  80 3e 83 3c 01  cmp byte [0x3c83],1   ; nothing ever clears it
+    /// ae1d  75 1d           jnz 0xae3c
+    /// ae1f  c6 06 96 36 01  mov byte [0x3696],1   ; the Den -- idempotent
+    /// ae27/ae2d/ae33/ae39   the four calls        ; THESE repeat
+    /// ```
+    ///
+    /// The three prints, the `1000:addc` `ReadKey` and the `1000:ae13` store
+    /// are on the other side of that jump and run exactly once, which is
+    /// what this method does. Branch-target scans over the whole image
+    /// (`docs/re/gaps.md`) find one branch into `0xad12` (`1000:ac5b`), one
+    /// into `0xadbf` (`1000:ad89`), both post-increment, and none at all
+    /// into `0xadc3`, `0xaddc` or `0xae13`; `1000:adbd eb 59 jmp short
+    /// 0xae18` precedes `adbf`, so it is not a fall-through either.
+    ///
+    /// **A raw byte scan alone gets the `ab75` half wrong, and Task 21
+    /// caught how.** Scanning every `jmp`/`Jcc`/`call`/`loop` encoding of
+    /// that target returns TWO hits, and the second, `1000:ab00` `72 73`,
+    /// scores 63 of 64 votes in the alignment sweep -- yet it is the `rs` of
     /// `^4Gopnik: ^7version 1.02 june,` inside the CS literal pool, the
     /// `0x82b3`..`0xab59` gap `data/functions.json` leaves between
     /// `FUN_1000_7c67` and `entry`. This is `docs/re/METHODOLOGY.md`'s
     /// `1000:d83b` lesson on a second address: alignment never answers yes.
     ///
-    /// **Task 21 moved the hook; the frequency divergence survived it, and
-    /// the reason changed.** This method is now called from
-    /// [`Game::district_advance`], which really does run at the top of every
-    /// street turn -- so the "no per-turn hook exists" reason this comment
-    /// used to give is gone. What remains is the arm's own body: it ends in
-    /// `1000:ae2d` `FUN_1000_3d11(3)` and `1000:ae39` `FUN_1000_3d11(4)`,
-    /// whose `param_1` handling [`Game::run_combat`] does not model (below),
-    /// so making the three prints and the keystroke repeat per turn would
-    /// nag the player every turn with an announcement of two fights the port
-    /// then does not run. So the call stays inside the branch that just
-    /// incremented, firing on exactly the turn district becomes 5 and never
-    /// again. The two stores are booleans, so idempotent either way; the
-    /// three prints (and the keypress between the first two) are the one
-    /// place a player of the original would see more than this port ever
-    /// shows -- every turn, forever, once district 5 is reached, against
-    /// this port's exactly once. Recorded in `docs/re/gaps.md`, "The
-    /// district-advance autosave -- wired (Task 21)".
+    /// **So the only thing the port refuses here is the four calls** -- in
+    /// practice the two fights, since `FUN_1000_11c2` merely fills the enemy
+    /// record. The reason is `FUN_1000_3d11`'s `param_1`, above, and nothing
+    /// else: an earlier revision of this comment argued that repeating the
+    /// arm "would nag the player every turn with an announcement of two
+    /// fights the port then does not run", which was built on the false
+    /// claim that the announcement repeats. That argument is withdrawn.
+    /// Recorded in `docs/re/gaps.md`, "The district-advance autosave --
+    /// wired (Task 21)".
     fn enter_district_5(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) {
         term::println("^1Пора наконец отомстить ректору...");
         // 1000:addc -- ReadKey, blocking for one keystroke whose value is

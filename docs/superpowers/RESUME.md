@@ -354,7 +354,11 @@ post-fight `while` loop promoted several districts inside one fight, where
 `1000:ab75`..`1000:ad12` has no back edge and gains at most one per turn. See
 `docs/re/gaps.md`, "The district-advance autosave — wired (Task 21)", for
 what is still open there (the class-conditional flag resets, `1000:ad12`'s
-announcement text, and the chapter-5 arm's per-turn repeat).
+announcement text, and the chapter-5 arm's two forced fights — which
+`1000:ae18` re-enters every turn while the port runs none; the arm's prints,
+its `1000:addc` keystroke and its `1000:ae13` store are NOT part of that gap,
+because `1000:ab8f` skips `ad12`..`adbf` once district is 5, so they run once
+in the original too).
 
 ### What Task 14 built, and what it is for
 
