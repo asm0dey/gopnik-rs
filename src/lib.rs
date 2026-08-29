@@ -1,3 +1,4 @@
+pub mod character_sheet;
 pub mod combat;
 pub mod combat_dispatch;
 pub mod commands;

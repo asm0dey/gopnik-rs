@@ -319,6 +319,41 @@ E.g. `1000:1e81`/`1000:1e88` → `^1Бутсы(+1) `; `1000:1ea8`/`1000:1eaf` �
 `^4Бутсы ` (CS `0x183b`); `1000:1ecf` → `^1Понтовые бутсы(Урон+2) `. The dim
 arms are among the branches left uncited — see below.
 
+### How the rows become lines
+
+**Established from flow.** The table above lists thirty **rows**, not thirty
+lines, and three groups of them share a line with something else. The function
+never emits a line directly: it makes 30 `Write` calls (`0eed:0000`), 20
+`WriteLn` calls (`0eed:01c2`) and 6 bare Pascal `WriteLn` calls on the `Text`
+at `20ae:3fcc` (the counts are in "It reaches no game code" above), and a
+`Write` leaves the line open for whatever comes next to continue. So which of
+the three each row uses is what decides the layout:
+
+- **The charm rows share their section header's line.** `1000:1be4`,
+  `1000:1c04` and `1000:1c24` are all `call 0xeed:0x0`, and the bare
+  `WriteLn` at `1000:1c29`..`1000:1c33` is what closes them -- so the header
+  and every charm owned are ONE line. `Мощные феньки: ` is the same shape,
+  closed at `1000:1cc9`..`1000:1cd3`.
+- **The weapon rows share the damage line's.** `1000:1e7c` writes
+  `Урон #-#    ` with `call 0xeed:0x0`, every weapon label after it does the
+  same, and `1000:2023`..`1000:202d` closes the lot. The two suits and two
+  jackets do exactly this with `^2Броня #    ` (`1000:229c`), closed at
+  `1000:23a5`..`1000:23af`.
+- **The four condition rows are appended to the HEALTH line as a string.**
+  `1000:2032 mov byte [bp-0x100],0x0` empties the shortstring the `7777`
+  colour digits used earlier; each condition arm appends its own label to it
+  through the `rtl_str_assign` / `rtl_str_append` pair at `1000:204a`,
+  `1000:207b`, `1000:20ac` and `1000:20dd`; and `1000:2195` appends the whole
+  accumulator after `Здоровье #/#  `. Only `1000:21ab` closes the line.
+
+The two bare `WriteLn`s that really do produce an EMPTY line are the pistol
+block's brackets, `1000:1d42`..`1000:1d4c` and `1000:1df2`..`1000:1dfc`:
+whatever ran before each of them had already closed its own line.
+
+`src/character_sheet.rs` (Task 22) is the port, and it reproduces this by
+keeping one open line that `Write` appends to and either flavour of `WriteLn`
+closes.
+
 ## Three derived values, and not a single `Random`
 
 The function draws **no** random number: `0f78:114b` is not among its call

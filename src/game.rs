@@ -61,6 +61,7 @@
 //! post-fight block; see `docs/re/gaps.md`, "The district-advance autosave
 //! — wired (Task 21)".
 
+use crate::character_sheet;
 use crate::combat::{blows_per_round, resolve_blow_nth, Break, Swing};
 use crate::combat_dispatch::{self, Backup, Called, Shot, Status};
 use crate::commands::{parse, Command};
@@ -1517,37 +1518,58 @@ impl Game {
         term::println("^2Ты узнал где находится качалка и где находятся барыги");
     }
 
-    /// `Здоровье #/#  ` -- file `0x2BAE`, trailing double space included.
-    fn show_health(&self) {
-        term::println(&text::fill(
-            "Здоровье #/#  ",
-            &[self.player.hp as i64, self.player.hpmax as i64],
-        ));
+    /// Everything [`crate::character_sheet::lines`] needs that is not a
+    /// field of [`Fighter`], gathered off `self`.
+    ///
+    /// This is the port's stand-in for the original's argument convention,
+    /// which is *no arguments at all*: `FUN_1000_1a03` ends in a bare `ret`
+    /// at `1000:248e` and no instruction in its 2700 bytes uses a positive
+    /// `bp` displacement, so it reads the player's DGROUP globals directly
+    /// (`docs/re/character-sheet.md`, "The entry, and the argument
+    /// convention"). Those globals are fields of `Game` here, so they are
+    /// copied into the struct instead of being read out of a data segment.
+    fn sheet_kit(&self) -> character_sheet::Kit {
+        character_sheet::Kit {
+            xp_38ce: self.progress.xp,
+            threshold_38d0: self.progress.threshold,
+            buff_countdown_38cd: self.buff_countdown,
+            krestik_38bd: self.charm_krestik_38bd,
+            ring_gs_38be: self.charm_ring_38be,
+            ring_pg_38bf: self.oneshot_gift_1,
+            mega_ring_38c0: self.oneshot_gift_2,
+            ring_gp_38c1: self.ring_gospodi_pomilui,
+            mobile_38bb: self.has_mobile,
+            dark_glasses_38b3: self.dark_glasses,
+            prison_tattoo_38bc: self.prison_tattoo,
+            pistol: self.pistol,
+            boots_38b5: self.wear_boots_38b5,
+            boots_pontovye_38b8: self.wear_boots_pontovye_38b8,
+            kastet_38ba: self.weapon_kastet_38ba,
+            dubinka_394b: self.weapon_dubinka_394b,
+            nozh_38c2: self.weapon_nozhik_38c2,
+            tesak_394c: self.weapon_tesak_394c,
+            tooth_guard_394a: self.tooth_guard,
+            suit_abibas_38b4: self.wear_suit_abibas_38b4,
+            suit_adidas_38b7: self.wear_suit_adidas_38b7,
+            jacket_38b6: self.wear_jacket_38b6,
+            jacket_krutaya_38b9: self.wear_jacket_krutaya_38b9,
+        }
     }
 
-    /// `s`. `Сл:# Лв:# Жв:# Уд:#` file `0x2B6A`, `Урон #-#` file `0x2B7E`,
-    /// `Здоровье #/#  ` file `0x2BAE`, `^2Броня #    ` file `0x2C0A` -- the
-    /// last one's four trailing spaces and its `^2` are part of the string.
+    /// `s` -- `FUN_1000_1a03`, the character sheet.
+    ///
+    /// Reached from both prompts and from both endings: `1000:ec89` (the
+    /// street `\` prompt's `s`, compared at `1000:ec82`), `1000:4c35` (the
+    /// `Битва\` prompt's `s`, compared at `1000:4c2e`), `1000:ee36` (the
+    /// quit tail) and `1000:512b` (the rector-victory ending). All four
+    /// render the same sheet, because the function takes no arguments --
+    /// see [`Game::sheet_kit`].
+    ///
+    /// The lines are built by [`crate::character_sheet`] so a test can
+    /// assert them; this method is only the `term::println` loop the
+    /// original's 50 `Write`/`WriteLn` calls collapse into.
     fn show_stats(&self) {
-        let p = &self.player;
-        term::println(&text::fill(
-            "Сл:# Лв:# Жв:# Уд:#",
-            &[
-                p.strength as i64,
-                p.agility as i64,
-                p.vitality as i64,
-                p.luck as i64,
-            ],
-        ));
-        term::println(&text::fill(
-            "Урон #-#",
-            &[p.dmg_min as i64, p.dmg_max as i64],
-        ));
-        if p.armor > 0 {
-            term::println(&text::fill("^2Броня #    ", &[p.armor as i64]));
-        }
-        self.show_health();
-        for line in self.player.inventory_lines() {
+        for line in character_sheet::lines(&self.player, &self.player.name, &self.sheet_kit()) {
             term::println(&line);
         }
     }
@@ -4552,42 +4574,6 @@ impl Joint {
     }
 }
 
-/// Extension impl, deliberately **not** in `crate::model` -- that module is
-/// reviewed and frozen for this task. Rust does not require an `impl` block
-/// to share a file with its type's definition as long as both are in the
-/// same crate.
-impl Fighter {
-    /// One line per owned item/status the status screen would show
-    /// (`data/strings.json`, file `0x2FA9`..`0x32CC`). Only fields `Fighter`
-    /// actually carries are reproduced: per-item ownership (dental guard,
-    /// mobile phone, sunglasses, tattoo, pistol, silencer, bullet count) has
-    /// no backing field, so those status lines are not guessed at.
-    pub fn inventory_lines(&self) -> Vec<String> {
-        let mut lines = Vec::new();
-        lines.push(text::fill("Косяки #", &[self.joints as i64]));
-        if self.beer_dl > 0 {
-            lines.push(text::fill(
-                "Пиво #.#л.",
-                &[(self.beer_dl / 2) as i64, i64::from(self.beer_dl % 2) * 5],
-            ));
-        } else {
-            lines.push("^4Пива нет".to_string());
-        }
-        if self.money > 0 {
-            lines.push(text::fill("Бабки #", &[self.money as i64]));
-        } else {
-            lines.push("^4Нету бабок".to_string());
-        }
-        if self.broken_jaw {
-            lines.push("^4Сломана челюсть  ".to_string());
-        }
-        if self.broken_leg {
-            lines.push("^4Сломана нога  ".to_string());
-        }
-        lines
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5708,16 +5694,112 @@ mod tests {
         );
     }
 
+    /// One `sheet_kit` wiring case: a setter for one `Game` field and the
+    /// sheet line that field's DGROUP byte gates.
+    type FlagCase = (fn(&mut Game), &'static str);
+
+    /// The replacement for the old `inventory_lines` test, which covered
+    /// five of the sheet's thirty rows. `crate::character_sheet` owns the
+    /// rendering and tests it line by line; what is only testable HERE is
+    /// [`Game::sheet_kit`]'s wiring, so this flips one `Game` field at a
+    /// time and requires the line that field's DGROUP byte gates.
+    ///
+    /// A crossed pair of assignments in `sheet_kit` is the defect this
+    /// catches and nothing else can: both sides are `bool`, so the compiler
+    /// is happy and `character_sheet`'s own tests still pass.
     #[test]
-    fn inventory_lines_reflect_fighter_state() {
-        let mut f = player();
-        f.joints = 2;
-        f.money = 50;
-        f.beer_dl = 3;
-        let lines = f.inventory_lines();
-        assert!(lines.iter().any(|l| l.contains("Косяки 2")));
-        assert!(lines.iter().any(|l| l.contains("Бабки 50")));
-        assert!(lines.iter().any(|l| l.contains("1.5")));
+    fn sheet_kit_wires_each_game_flag_to_its_own_sheet_line() {
+        let cases: [FlagCase; 18] = [
+            (|g| g.charm_krestik_38bd = true, "^1Крестик(Удача +2) "),
+            (|g| g.charm_ring_38be = true, "^1Кольцо \"Гс\"(Удача +1) "),
+            (|g| g.oneshot_gift_1 = true, "^1Кольцо \"Пг\"(Всё +1) "),
+            (|g| g.oneshot_gift_2 = true, "^1Мега Кольцо(Всё +4) "),
+            (
+                |g| g.ring_gospodi_pomilui = true,
+                "^1Кольцо \"Гп\"(Самолечение) ",
+            ),
+            (|g| g.has_mobile = true, "^1У тебя есть мобильник"),
+            (|g| g.dark_glasses = true, "^1У тебя есть тёмные очки"),
+            (|g| g.prison_tattoo = true, "^1На тебе зоновская наколка"),
+            (|g| g.pistol.owned = true, "^1У тебя есть пистолет"),
+            (|g| g.wear_boots_38b5 = true, "^1Бутсы(+1) "),
+            (
+                |g| g.wear_boots_pontovye_38b8 = true,
+                "^1Понтовые бутсы(Урон+2) ",
+            ),
+            (|g| g.weapon_kastet_38ba = true, "^1Кастет(+2) "),
+            (|g| g.weapon_dubinka_394b = true, "^1Дубинка(+4)  "),
+            (|g| g.weapon_nozhik_38c2 = true, "^1Нож(+6) "),
+            (|g| g.weapon_tesak_394c = true, "^1Тесак(Урон+9) "),
+            (|g| g.tooth_guard = true, "^1Зубная защита  "),
+            (|g| g.buff_countdown = 3, "^6Обдолбаный  "),
+            (
+                |g| {
+                    g.player.armor = 2;
+                    g.wear_suit_abibas_38b4 = true;
+                },
+                "^1Костюм Abibas(+1) ",
+            ),
+        ];
+        for (set, want) in cases {
+            let mut g = game();
+            let before = character_sheet::lines(&g.player, &g.player.name, &g.sheet_kit());
+            assert!(
+                !before.iter().any(|l| l.contains(want)),
+                "{want:?} was already there before the flag was set"
+            );
+            set(&mut g);
+            let after = character_sheet::lines(&g.player, &g.player.name, &g.sheet_kit());
+            assert!(
+                after.iter().any(|l| l.contains(want)),
+                "{want:?} missing after setting its flag: {after:?}"
+            );
+        }
+    }
+
+    /// The four clothing flags whose line the armour gate hides
+    /// (`1000:2280 ja 0x2285`) need armour before they can be seen at all,
+    /// so they are wired separately from the loop above.
+    #[test]
+    fn sheet_kit_wires_the_three_remaining_clothing_flags() {
+        let cases: [FlagCase; 3] = [
+            (|g| g.wear_suit_adidas_38b7 = true, "^1Костюм Adidas(+2) "),
+            (|g| g.wear_jacket_38b6 = true, "^1Кожанка(+2) "),
+            (
+                |g| g.wear_jacket_krutaya_38b9 = true,
+                "^1Крутая кожанка(+4) ",
+            ),
+        ];
+        for (set, want) in cases {
+            let mut g = game();
+            g.player.armor = 2;
+            set(&mut g);
+            let after = character_sheet::lines(&g.player, &g.player.name, &g.sheet_kit());
+            assert!(
+                after.iter().any(|l| l.contains(want)),
+                "{want:?} missing: {after:?}"
+            );
+        }
+    }
+
+    /// The three non-boolean fields `sheet_kit` copies.
+    #[test]
+    fn sheet_kit_carries_the_xp_pair_and_the_magazine() {
+        let mut g = game();
+        g.progress.xp = 7;
+        g.progress.threshold = 30;
+        g.pistol = crate::combat_dispatch::Pistol {
+            owned: true,
+            silencer: true,
+            cartridges: 4,
+        };
+        let out = character_sheet::lines(&g.player, &g.player.name, &g.sheet_kit()).join("\n");
+        assert!(
+            out.contains("^6Сейчас у тебя 7 опыта, А для прокачки надо 30"),
+            "{out}"
+        );
+        assert!(out.contains("^1 с гушителем"), "{out}");
+        assert!(out.contains("^1! патронов - 4"), "{out}");
     }
 
     /// Only the "does not panic" half is asserted. `term` writes straight to

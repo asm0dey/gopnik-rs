@@ -45,6 +45,7 @@ SOURCES = [
     "src/save.rs",
     "src/locations.rs",
     "src/game.rs",
+    "src/character_sheet.rs",
     "docs/re/save-format.md",
 ]
 

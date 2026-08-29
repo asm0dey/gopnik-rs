@@ -139,3 +139,35 @@ pub fn shops() -> &'static [ShopEntry] {
 pub fn enemies() -> &'static [Enemy] {
     ENEMIES
 }
+
+/// The class-name table the character sheet's header indexes -- DGROUP
+/// `20ae:002e`, 11 entries, stride 256.
+///
+/// **Established from flow.** `1000:1a36` `mov di,[0x389c]` (the class),
+/// `1000:1a3a` `mov cl,8` / `1000:1a3c` `shl di,cl` (the 256 stride),
+/// `1000:1a3e` `add di,0x2e` (the base), `1000:1a44` appends the shortstring
+/// there onto the header. `docs/re/character-sheet.md`, "The two table
+/// lookups". The rows come from `data/string_tables.json`'s `ranks` table,
+/// whose `base` (74718 = file `0x123de`) `build.rs` asserts.
+///
+/// Out-of-range indices return `""`. The original has no bound check at all
+/// -- `index * 256 + 0x2e` walks straight off the end of the table into
+/// whatever DGROUP holds next -- so **this is a port decision, not the
+/// original's behaviour**; it is registered in `docs/re/gaps.md`. Nothing in
+/// this port can reach it: `1000:71b8` stores the creation prompt's answer
+/// plus 3, and `crate::progress::CLASS_WEIGHTS` is the same 11 rows.
+pub fn rank_name(class: u16) -> &'static str {
+    RANKS.get(usize::from(class)).copied().unwrap_or("")
+}
+
+/// The крутизна ladder the same header indexes by LEVEL -- DGROUP
+/// `20ae:0b42`, 43 entries, stride 256.
+///
+/// **Established from flow.** `1000:1a53` `mov di,[0x38a6]` (the level),
+/// `1000:1a59` `shl di,cl`, `1000:1a5b` `add di,0xb42`, `1000:1a61` appends.
+/// Same `""` port decision for an out-of-range index as [`rank_name`]; the
+/// level is capped at 40 by `1000:2580` (`crate::progress::MAX_LEVEL`), so
+/// 43 rows cover every reachable value.
+pub fn krutizna(level: u16) -> &'static str {
+    KRUTIZNA.get(usize::from(level)).copied().unwrap_or("")
+}

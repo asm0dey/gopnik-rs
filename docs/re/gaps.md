@@ -1927,3 +1927,73 @@ defended by five `tools/mutations.json` cases (four over the artifact, one over 
 * **`FUN_1000_0aec` and `FUN_1000_2526`** are cited from the rector-victory arm
   (`1000:5133`, `1000:5097`) and nothing more is claimed about either.
 
+
+## Opened and closed by Task 22 (porting the character sheet)
+
+`src/character_sheet.rs` is the port of `FUN_1000_1a03`; `Game::show_stats`
+now calls it and prints what it returns. What follows is what that port
+decided rather than established.
+
+### Closed
+
+* **The two DGROUP string tables reach `src/`.** `ranks` (`20ae:002e`, 11
+  entries) and `krutizna` (`20ae:0b42`, 43) were extracted into
+  `data/string_tables.json` and used by nothing;
+  `git grep -n 'RANKS\|KRUTIZNA' build.rs src/` now finds the `build.rs`
+  codegen and `crate::data::rank_name` / `crate::data::krutizna`. The header
+  line `^2Ты <class> # уровня - <krutizna>` is the only reader.
+* **The 24 branches `data/character_sheet.json`'s `branch_partition` leaves
+  uncited are IMPLEMENTED**, though still uncited in the artifact's sense.
+  They are the two section-header disjunctions
+  (`1000:1bc2`/`1000:1bc9`, `1000:1c38`..`1000:1c46`), the weapon line's
+  seven-way colour disjunction (`1000:1e06`..`1000:1e35`), the
+  ammo-quantity flavour (`1000:1dab`..`1000:1dd7`) and the dim `^4` arms of
+  the five best-item-wins pairs. Each was re-derived for the port from the
+  same aligned `tools/dis16.py` walk of `[1000:1a03, 1000:248f)` as the rest
+  of the function, and each is asserted by a unit test in
+  `src/character_sheet.rs`. Leaving them out was not an option a working
+  sheet had: without `1000:1bc2` the `Феньки: ` header either always or
+  never prints. What is still open is the artifact-side citation work, not
+  the behaviour.
+* **The sheet's lines are not its `Write` calls.** The function makes 30
+  `Write` (`0eed:0000`), 20 `WriteLn` (`0eed:01c2`) and 6 bare Pascal
+  `WriteLn` calls; a `Write` leaves the line open. So the four condition
+  labels are appended to the HEALTH line rather than printed on their own
+  (`1000:2032` empties `[bp-0x100]`, each condition appends to it, and
+  `1000:2195` appends the whole accumulator after `Здоровье #/#  `), the
+  charm rows share a line with their section header, and the weapon and
+  clothing labels share a line with `Урон #-#    ` and `^2Броня #    `.
+  `docs/re/character-sheet.md`'s "Flag lines" table names 30 *rows*, not 30
+  lines; the composition is now written down in that file's "How the rows
+  become lines".
+
+### Opened
+
+* **The decimal value of the two health-colour thresholds is still open, and
+  the port now CHOOSES one.** `src/character_sheet.rs`'s
+  `HEALTH_BROWN_ABOVE = 0.25` and `HEALTH_GREEN_ABOVE = 0.50` are a **port
+  decision**, not a reading of `1000:211d` / `1000:214d`. The entry above
+  ("The decimal value of the health-colour thresholds") is unchanged and
+  still says what would settle it; all this adds is that the port is no
+  longer silent about the gap — it satisfies the one established property
+  (the second threshold is strictly above the first) and labels the rest.
+  When the two gdb pokes settle the real values, the two constants are the
+  only things that change.
+* **`hpmax == 0` keeps the `1000:20fb` default colour.** `0f78:1117`'s
+  `or cl,cl` / `je` rejects a zero divisor and `docs/re/rtl.md` does not
+  establish what it leaves in the flags, so the port takes the `'4'` branch
+  rather than guess. Unreachable in play — nothing lowers `hpmax` to zero —
+  but a hand-built `Fighter` reaches it.
+* **An out-of-range class or level renders an empty name.** `1000:1a36` and
+  `1000:1a53` do `index * 256 + base` with no bound check at all, so the
+  original walks off the end of either table into the next DGROUP bytes.
+  `crate::data::rank_name` / `krutizna` return `""` instead. Unreachable
+  from this port's own state (11 classes, level capped at 40 by
+  `1000:2580`), reachable from a hand-edited `.SAV`.
+* **A player name containing `#` would diverge.** `0eed:0000` takes five
+  pushed words per call and substitutes them for `#` placeholders;
+  `crate::text::fill` leaves a `#` with no value as a literal `#`. Every
+  literal the port passes has as many values as placeholders, so the only
+  way a surplus `#` can reach the formatter is through the name at
+  `DS:379c`, appended at `1000:1a90`. Not modelled; what would settle it is
+  a breakpoint on `0eed:0000` with a `#` in the name.

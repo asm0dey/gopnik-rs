@@ -941,6 +941,40 @@
     "tools.test_decode_save.TestEveryNamedFieldMatchesTheBinary.test_the_word_fields_are_signed_integers"
    ],
    "expect": "the signed-word census has moved"
+  },
+  {
+    "label": "character-sheet-port-literal",
+    "defends": "tools/test_character_sheet_port.py decodes the Russian string literals src/character_sheet.rs actually SHIPS out of orig/g.exe.  tools/test_string_citations.py checks the BACKTICKED literal in the comment beside a CS citation, never the double-quoted one in the code, so before this scanner a comment could be right while the string the player sees was one character wrong.  The perturbation is a Cyrillic `с` typed as a Latin `c`, which renders identically in a diff.",
+    "artifact": "src/character_sheet.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "\"^1Бутсы(+1) \"",
+      "to": "\"^1Бутcы(+1) \"",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_character_sheet_port.py",
+      "CharacterSheetPortTest.test_every_shipped_literal_is_a_shortstring_in_the_image"
+    ],
+    "expect": "is not in orig/g.exe"
+  },
+  {
+    "label": "character-sheet-port-citation",
+    "defends": "tools/test_character_sheet_port.py pins every `CS 0x....` citation in src/character_sheet.rs to the literal beside it, splitting a format! template on its {...} placeholders first.  0x196e and 0x1983 are the two suit labels 21 bytes apart, both real, and both cited CORRECTLY elsewhere in the same file -- the Task 19 defect class, which only decoding the bytes tells apart.",
+    "artifact": "src/character_sheet.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "// CS `0x1983`",
+      "to": "// CS `0x196e`",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_character_sheet_port.py",
+      "CharacterSheetPortTest.test_every_cs_citation_holds_the_literal_beside_it"
+    ],
+    "expect": "but the literal there is"
   }
  ]
 }

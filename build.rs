@@ -1,4 +1,4 @@
-//! Compile-time codegen for the three runtime data tables.
+//! Compile-time codegen for the runtime data tables.
 //!
 //! `tools/extract_tables.py` writes `data/items.json`, `data/shops.json` and
 //! `data/enemies.json` by reading `orig/g.exe`; those files never change at
@@ -7,6 +7,10 @@
 //! `static SHOPS` and `static ENEMIES` array literals. `src/data.rs`
 //! `include!`s that file and hands the arrays back as `&'static [T]` --
 //! there is no `serde_json` in the shipped binary at all.
+//!
+//! `data/string_tables.json` is read the same way for the character sheet's
+//! two 256-byte-stride DGROUP string tables (`static RANKS`, `static
+//! KRUTIZNA`); see [`emit_string_tables`].
 //!
 //! This file parses with `serde_json::Value` rather than mirroring the
 //! `Item` / `ShopEntry` / `Enemy` / `EnemyStats` structs from `src/data.rs`:
@@ -29,11 +33,13 @@ fn main() {
     println!("cargo:rerun-if-changed=data/items.json");
     println!("cargo:rerun-if-changed=data/shops.json");
     println!("cargo:rerun-if-changed=data/enemies.json");
+    println!("cargo:rerun-if-changed=data/string_tables.json");
 
     let mut out = String::new();
     emit_items(&mut out);
     emit_shops(&mut out);
     emit_enemies(&mut out);
+    emit_string_tables(&mut out);
 
     fs::write(&dest, out).expect("failed to write generated tables.rs");
 }
@@ -311,4 +317,82 @@ fn emit_enemies(out: &mut String) {
         .unwrap();
     }
     writeln!(out, "];").unwrap();
+}
+
+/// `data/string_tables.json` -> `static RANKS` and `static KRUTIZNA`.
+///
+/// The two 256-byte-stride tables the character sheet indexes: `ranks` at
+/// DGROUP `20ae:002e` by the player's class and `krutizna` at `20ae:0b42`
+/// by the level. The file is keyed by `name`, not by position, so a
+/// reordering of the JSON cannot silently swap them, and the row's own
+/// `index` is asserted against its position so a missing entry cannot shift
+/// every later one by a slot.
+fn emit_string_tables(out: &mut String) {
+    const PATH: &str = "data/string_tables.json";
+    let text = fs::read_to_string(PATH).unwrap_or_else(|e| panic!("{PATH}: {e}"));
+    let value: Value =
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("{PATH}: invalid JSON: {e}"));
+    let tables = value
+        .get("tables")
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("{PATH}: missing top-level \"tables\" array"));
+
+    for (name, ident, want_len, want_base) in [
+        ("ranks", "RANKS", 11usize, 74718u64),
+        ("krutizna", "KRUTIZNA", 43, 77554),
+    ] {
+        let table = tables
+            .iter()
+            .find(|t| t.get("name").and_then(Value::as_str) == Some(name))
+            .unwrap_or_else(|| panic!("{PATH}: no table named {name:?}"));
+        let label = format!("{PATH}: table {name:?}");
+        let base = table
+            .get("base")
+            .and_then(Value::as_u64)
+            .unwrap_or_else(|| panic!("{label}: missing integer field \"base\""));
+        if base != want_base {
+            panic!("{label}: base is {base}, expected {want_base}");
+        }
+        let stride = table
+            .get("stride")
+            .and_then(Value::as_u64)
+            .unwrap_or_else(|| panic!("{label}: missing integer field \"stride\""));
+        if stride != 256 {
+            panic!("{label}: stride is {stride}, expected 256");
+        }
+        let entries = table
+            .get("entries")
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| panic!("{label}: missing \"entries\" array"));
+        if entries.len() != want_len {
+            panic!("{label}: {} entries, expected {want_len}", entries.len());
+        }
+
+        writeln!(out, "pub static {ident}: [&str; {want_len}] = [").unwrap();
+        for (i, row) in entries.iter().enumerate() {
+            let index = row
+                .get("index")
+                .and_then(Value::as_u64)
+                .unwrap_or_else(|| panic!("{label}: row #{i} has no integer \"index\""));
+            if index != i as u64 {
+                panic!("{label}: row #{i} declares index {index}");
+            }
+            let off = row
+                .get("off")
+                .and_then(Value::as_u64)
+                .unwrap_or_else(|| panic!("{label}: row #{i} has no integer \"off\""));
+            if off != base + stride * i as u64 {
+                panic!(
+                    "{label}: row #{i} is at file offset {off}, but base+{stride}*{i} is {}",
+                    base + stride * i as u64
+                );
+            }
+            let s = row
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| panic!("{label}: row #{i} has no string \"text\""));
+            writeln!(out, "    {},", str_lit(s)).unwrap();
+        }
+        writeln!(out, "];").unwrap();
+    }
 }
