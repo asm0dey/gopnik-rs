@@ -786,10 +786,27 @@ completeness shape `docs/re/METHODOLOGY.md` names:
 ```
 
 That is the runtime's startup zero-fill of `20ae:3692`..`20ae:4118`, which
-covers the whole 694-byte record as well; it runs once, before anything
-game-shaped. `FUN_1000_3d11` has **no** reference of any kind — which is why
-the promotion belonged at the top of the loop and not in the post-fight
-block, and why a level won in a fight now promotes on the following turn.
+covers the whole 694-byte record as well. **"At startup" is a chain of
+addresses, not an adjective** — an earlier revision asserted "it runs once,
+before anything game-shaped" with no caller cited at all:
+
+* `orig/g.exe`'s MZ header holds `e_cs:e_ip = 0000:ab59`. A stored segment is
+  relative to the load base (`docs/re/METHODOLOGY.md`), so relseg `0` is
+  Ghidra `0x1000` and the program entry point is `1000:ab59` — which is
+  exactly where `data/functions.json` puts the function it names `entry`.
+* `1000:ab59 9a 00 00 78 0f call 0f78:0000` is that entry's **first**
+  instruction.
+* `0f78:0000 ba ae 10 / 8e da` sets `DS` to DGROUP `0x10ae`, and
+  `0f78:000b e8 3e 13 call 0x10acc` reaches `0f78:134c`. That is the **only**
+  transfer to it in the image: one near call within segment `0f78`, and zero
+  occurrences of the far-call signature `9a 4c 13 78 0f` anywhere.
+* Control returns and reaches `1000:ab72 e8 98 be call 0x6a0d` — the
+  character setup — and only then falls through to `1000:ab75`.
+
+So the fill precedes every game write to `[0x3692]`, by address, and runs
+once. `FUN_1000_3d11` has **no** reference of any kind — which is why the
+promotion belonged at the top of the loop and not in the post-fight block,
+and why a level won in a fight now promotes on the following turn.
 
 **What is still NOT reproduced, and why:**
 
@@ -891,21 +908,44 @@ it belongs to the main loop's shape.
 `district_advance`, `walk`, `mage`, `wander_girl`, `shop_turn` and
 `run_combat`.*
 
-**Established from flow.** Every typed compare in the original follows the
-same three-step shape: `ReadLn` into `DS:3972` or `DS:3a72`, case-fold with
-`0eed:0216`, then `0f78:0bd8` `rtl_str_compare` against a CS shortstring.
-`rtl_str_compare` compares Pascal shortstrings, whose **length byte is part
-of the value** — so `" y"` (length 2) can never equal `y` (length 1), and no
-step between the `ReadLn` and the compare strips a space. The four `y`
-prompts all compare against the same one-byte literal at file `0x9BF3`
-(`01 79`), except the mage's, which has its own copy at file `0x8D79`:
+**Established from flow.** Each of the four `y` prompts below reads a line,
+case-folds it with `0eed:0216`, and compares it with `0f78:0bd8`
+`rtl_str_compare` against a CS shortstring. `rtl_str_compare` compares Pascal
+shortstrings, whose **length byte is part of the value** — so `" y"` (length
+2) can never equal `y` (length 1), and no step between the `ReadLn` and the
+compare strips a space. That is the whole argument, and it does not depend on
+where the buffer lives.
 
-| prompt | case-fold | compare | port |
-|---|---|---|---|
-| the district autosave | `1000:ac45` | `1000:ac54` | `Game::district_advance` |
-| the encounter accept | `1000:b704` | `1000:b713` | `Game::walk` |
-| wander bucket 2, the girl | `1000:b534` | `1000:b543` | `Game::wander_girl` |
-| the mage's paid save | `1000:75e6` | `1000:75f6` | `Game::mage` |
+**It is not "always `DS:3972` or `DS:3a72`", and an earlier revision of this
+paragraph said it was.** Three of the four rows read into `DS:3a72`; the
+mage's reads into a **stack-local** shortstring, re-pushed for each step:
+
+```text
+75c7  8d be 00 ff / 16 / 57   lea di,[bp-0x100] / push ss / push di
+75cd  b8 ff 00 / 50           mov ax,0xff / push ax        ; max length
+75d1  9a c6 06 78 0f          call 0f78:06c6               ; the ReadLn worker
+75d6  9a 9d 05 78 0f          call 0f78:059d               ; the line skip
+75db  9a 91 02 78 0f          call 0f78:0291               ; the {$I+} check
+75e0  8d be 00 ff / 16 / 57   lea di,[bp-0x100] / push ss / push di
+75e6  9a 16 02 ed 0e          call 0eed:0216               ; the case-fold
+75eb  8d be 00 ff / 16 / 57   lea di,[bp-0x100] / push ss / push di
+75f1  bf a9 74 / 0e / 57      mov di,0x74a9 / push cs      ; file 0x8D79 = `y`
+75f6  9a d8 0b 78 0f          call 0f78:0bd8
+75fb  74 03 / e9 5f 01        jz 0x7600, else jmp 0x775f
+```
+
+A stack shortstring carries its length byte exactly as a DGROUP one does, so
+the conclusion is untouched — but the universal as written was false, and
+`Game::mage`'s own doc already recorded the stack buffer as "a third input
+buffer". The four `y` prompts all compare against the same one-byte literal
+at file `0x9BF3` (`01 79`), except the mage's, whose copy is file `0x8D79`:
+
+| prompt | buffer | case-fold | compare | port |
+|---|---|---|---|---|
+| the district autosave | `DS:3a72` | `1000:ac45` | `1000:ac54` | `Game::district_advance` |
+| the encounter accept | `DS:3a72` | `1000:b704` | `1000:b713` | `Game::walk` |
+| wander bucket 2, the girl | `DS:3a72` | `1000:b534` | `1000:b543` | `Game::wander_girl` |
+| the mage's paid save | `SS:[bp-0x100]` | `1000:75e6` | `1000:75f6` | `Game::mage` |
 
 **The port trims first, so it accepts `" y"` where the original refuses it.**
 This is **not** introduced by the autosave: it is the port's house idiom for
@@ -913,25 +953,50 @@ every typed compare, `crate::commands::parse` (`src/commands.rs:214`,
 `input.trim().to_lowercase()`) included, and it therefore also widens the
 street verb table, `Game::shop_turn`'s key match, and the two in-combat verb
 compares `run_combat` handles itself (`run` at `1000:48e1` and `e` at
-`1000:4c56` — "The in-combat verb set", below, tabulates all nine). The
-inventory is a grep, with its command, rather than an assertion of
+`1000:4c56` — two rows of the nine-row compare-site table in "The in-combat
+verb set", below; that nine counts the original's `0f78:0bd8` sites inside
+`FUN_1000_3d11` and is unrelated to the nine trim sites counted here). The
+port-side inventory is a grep, with its command, rather than an assertion of
 completeness:
 
 ```
 $ grep -rn '\.trim()' src/*.rs | grep -v 'trim_end_matches\|trim_start_matches'
-src/commands.rs:214   the street verb table
-src/main.rs:92        Val() on the class answer -- a number, not a token
-src/game.rs:894       the district autosave's `y`
-src/game.rs:1402      shop_turn's key
-src/game.rs:1807      the encounter accept's `y`
-src/game.rs:2337      the mage's `y`
-src/game.rs:2406      wander_girl's `y`
-src/game.rs:3261      combat's `run`
-src/game.rs:3300      combat's `e`
+src/commands.rs:214:    let v = input.trim().to_lowercase();
+src/main.rs:92:    buf.trim().parse().unwrap_or(0)
+src/game.rs:883:        // `.trim()` is a PORT ADDITION and a real (if tiny) divergence:
+src/game.rs:895:        if answer.trim().eq_ignore_ascii_case("y") {
+src/game.rs:1403:        let key = line.trim().to_lowercase();
+src/game.rs:1808:        if answer.trim().eq_ignore_ascii_case("y") {
+src/game.rs:2338:        if !answer.trim().eq_ignore_ascii_case("y") {
+src/game.rs:2407:        if !answer.trim().eq_ignore_ascii_case("y") {
+src/game.rs:2658:    ///   kept, not substituted. `Game::rename` must not `.trim()` the line
+src/game.rs:2688:        // not `.trim()` `n` before this check -- that would substitute on
+src/game.rs:3262:            if line.trim().eq_ignore_ascii_case("run") {
+src/game.rs:3301:            if line.trim().eq_ignore_ascii_case("e") {
+src/game.rs:5542:    /// `Game::rename` stopped `.trim()`-ing the line, this case wrongly
 ```
-(comments and doc lines that merely mention `.trim()` elided; the remaining
-hits in `src/game.rs` are the two at `2657`/`2687`/`5541` that say
-`Game::rename` must **not** trim.)
+
+**Thirteen hits: nine call sites and four lines of prose about them.** The
+output above is pasted verbatim from the shipped tree rather than summarised,
+because an earlier revision of this block pasted a hand-annotated listing
+whose `src/game.rs` line numbers were each one lower — it had been produced
+before the commit that inserted `src/game.rs:883`. The nine call sites:
+
+| line | what it normalises |
+|---|---|
+| `src/commands.rs:214` | the street verb table |
+| `src/main.rs:92` | `Val()` on the class answer — a number, not a token |
+| `src/game.rs:895` | the district autosave's `y` |
+| `src/game.rs:1403` | `shop_turn`'s key |
+| `src/game.rs:1808` | the encounter accept's `y` |
+| `src/game.rs:2338` | the mage's `y` |
+| `src/game.rs:2407` | `wander_girl`'s `y` |
+| `src/game.rs:3262` | combat's `run` |
+| `src/game.rs:3301` | combat's `e` |
+
+The four prose hits are `883` (the autosave comment that points here) and
+`2658`, `2688`, `5542`, which all say `Game::rename` must **not** trim — the
+next paragraph is what they are about.
 
 **One place deliberately does not trim, and it is the interesting one.**
 `1000:7220` and `1000:ed5f` test the just-read name shortstring's **length
@@ -942,10 +1007,10 @@ which is the evidence that the trim elsewhere is a port choice, not a
 property of `ReadLn`.
 
 **Not fixed here.** Removing the trim is a one-line change per site, but it
-changes what nine input paths accept and belongs with a task that can test
-all of them; doing it only at the autosave would make this port
+changes what those nine input paths accept and belongs with a task that can
+test all of them; doing it only at the autosave would make this port
 self-inconsistent for no gain. Recorded so the divergence is in one place
-instead of nine comments.
+instead of nine scattered comments.
 
 ## `FUN_1000_11c2` -- traced (Task 20), not ported
 
