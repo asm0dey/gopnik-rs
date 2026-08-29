@@ -1523,11 +1523,23 @@ points at this entry.
     said row 6's arm (`1000:cc04`..`1000:ccd8`) carries no district test.
     **No arm of rows 1–6 does**: the whole `1000:c8ce`..`1000:ccc4` span
     decodes as one aligned run of 474 instructions with no operand equal to
-    `0x3692`, and the byte pair `92 36` does not occur in it at all. The only
-    district gates in the handler, `1000:c68d` and `1000:c6f1`, skip **menu
-    lines**. So the port's refusal of `bmar` rows 5 and 6 below their district
-    is a divergence, and fixing it means separating the menu gate from the buy
-    gate. Nothing is claimed here about `mar`, whose arms were not decoded.
+    `0x3692`, and the byte pair `92 36` does not occur in it at all. **Nor do
+    rows 7–9**: `1000:ccc4`..`1000:ce80` measures the same two ways. So the
+    dealers' whole **buy path** carries no district test, and the port's
+    refusal of `bmar` rows 5, 6, 7, 8 and 9 below their districts is a
+    five-row divergence — `Game::shop_action` calls `gate_open(row.gate)`
+    before delegating to `Game::buy_pistol_row`, so the pistol rows are
+    refused too. Fixing it means separating the menu gate from the buy gate,
+    not deleting the gate: the handler has **five** district gates and all
+    five skip a **menu line** — `1000:c68d` (row 5), `1000:c6f1` (row 6),
+    `1000:c755` (row 7), `1000:c7ba` (row 8), `1000:c81d` (row 9), the last
+    three being the `district>3` entries `docs/re/tables.md` §2 already
+    records. Task 23's first revision of this bullet named only the first two
+    and called them "the only district gates in the handler"; every address in
+    it was right and the inventory was not, which is the defect class this
+    file exists to catch. `tools/test_shop_arms.py` now asserts the inventory
+    set-equal to a sweep of `1000:c4be`..`1000:ccd8`. Nothing is claimed here
+    about `mar`, whose arms were not decoded.
   * each row's own gates, refusal literals and confirmation literals, with CS
     offsets; **no gate in rows 1–6 is silent** (unlike row 9's first two).
   * each row's effect: `20ae:38c5` (joints, a word count) for row 1,
@@ -1545,6 +1557,17 @@ points at this entry.
   `1000:cb62`, `1000:cb69`; `1000:cc18`, `1000:cc1f`) where the loot arms'
   is a disjunction (`1000:555f`, `1000:5566`, `1000:556d`; `1000:55c5`,
   `1000:55cc`).
+
+  **A label correction Task 24 has to carry.** `1000:ccd8` is **not** row 7's
+  key compare, though the Task 18 brief, `src/game.rs`'s `buy_pistol_row` doc
+  comment and `src/combat_dispatch.rs` all call it that
+  (`grep -rn '1000:ccd8' src/`). It decodes to `cmp byte [0x394d],0x0` — row
+  7's *already-own* gate. The key compare is `1000:ccce`
+  (`call 0xf78:0xbd8` against the literal `7` at CS `0x9023`), and `1000:ccd3`
+  is the `jz 0xccd8` in front of it. Row 8's and row 9's labels have the same
+  shape: `1000:cd76` and `1000:cdf9` are already-own / prerequisite gates, and
+  their key compares are `1000:cd6f` and `1000:cdef`. Task 23 did not edit
+  `src/`; Task 24 should fix the three doc comments with these citations.
 
   **Still open after Task 23:** all nine `mar` arms, `bmar`'s `x`/`wes`
   arms, and the porting work itself — `src/game.rs` is untouched by Task 23,

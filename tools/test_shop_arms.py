@@ -14,24 +14,39 @@ site?"):
   * **identity** -- the instruction decoded there says what the artifact says
     it says.
 
-Three claims here are not restatements of a decode and get their own checks,
+Five claims here are not restatements of a decode and get their own checks,
 because each is the kind of thing that reads authoritative and is easy to get
-wrong:
+wrong.  Three of them are INVENTORY claims, and every one of those is asserted
+by SET EQUALITY against a sweep of the binary -- never by checking that the
+listed entries hold up.  That distinction is the whole point: fix round 1
+found this file shipping an inventory of two district gates where the binary
+has five, and every listed entry checked out.
 
   * **`strings[]` is complete.**  Every `mov di,imm16` inside a row's span that
     is followed by `push cs` / `push di` -- the CS-literal push idiom -- must be
     either the row's key literal or one of its recorded strings, and every
     recorded string must be one of those pushes.  So "this arm prints nothing
     else" is a measurement over the span, not a list someone stopped writing.
+  * **`gates[]` is complete.**  Every conditional branch in a row's span must
+    be accounted for by the artifact -- as the miss branch, a gate branch, a
+    conjunct, an effect guard or a `Random` arm.  The strings sweep cannot
+    catch a SILENT omitted gate, and "no gate in rows 1..6 refuses silently"
+    is a headline claim of `docs/re/shop-arms.md`.
+  * **the district-gate inventory is complete.**  Set equality against every
+    `[0x3692]` operand in `1000:c4be`..`1000:ccd8`, plus a raw `92 36` count
+    over the same range.
   * **no arm tests the district.**  The whole `1000:c8ce`..`1000:ccc4` span is
     decoded as one aligned run and searched for an operand equal to `0x3692`,
     and the raw byte pair `92 36` is counted over the same span so the negative
-    does not rest on the decoder alone.
+    does not rest on the decoder alone.  `1000:ccc4`..`1000:ce80`, Task 18's
+    three arms, is measured the same way: the divergence is the whole buy path.
   * **the club-without-knuckles bug.**  `1000:cc69`'s not-taken path must reach
     the confirmation push with no `add` on it, while the loot arm's
     `1000:55d8` -- the same guard on the same flag, granting the same item --
     lands on `add word [0x38a8],0x4`.  The bug is the DIFFERENCE between two
-    sites in one binary, so both halves are re-derived.
+    sites in one binary, so both halves are re-derived, and the adds are
+    pinned by ADDRESS inside row 6's span rather than by decoded text (the
+    loot arm spells the same two instructions).
 
     python3 tools/test_shop_arms.py
 """
@@ -149,7 +164,8 @@ class ArmsTest(unittest.TestCase):
         m = re.search(r"0x([0-9a-f]+)$", ins.text)
         self.assertIsNotNone(m, "%r is not a branch this test can read"
                              % ins.text)
-        return int(m.group(1), 16)
+        assert m is not None          # the unittest assert above already
+        return int(m.group(1), 16)    # raised; this is for the type checker
 
     # ------------------------------------------------------------------ tests
     def test_every_cited_instruction_decodes_to_what_the_artifact_says(self):
@@ -332,6 +348,112 @@ class ArmsTest(unittest.TestCase):
             self.assertFalse(lo <= ins.off < hi,
                              "%s is inside the arm span" % g["addr"])
             self.check_insn(g["branch"], "district_finding")
+        # ... and the recorded list is ALL of them.  Without this the checks
+        # above prove only that the listed gates check out, never that the
+        # list is complete -- which is how an earlier revision of this
+        # artifact shipped two of the five and called them "the two district
+        # gates that exist in this handler".
+        sw = f["district_gates_sweep_range"]
+        slo = addrmod.image_off_of_citation(sw["start"])
+        shi = addrmod.image_off_of_citation(sw["end"])
+        self.assertLess(slo, lo, "the sweep range must start before the arms")
+        swept = {"1000:%04x" % i.off
+                 for i in dis16.decode_run(self.img, slo, shi)
+                 for op in i.operands
+                 if op.kind in ("disp16", "disp16x", "moffs16")
+                 and op.value == district}
+        recorded = {g["addr"] for g in f["district_gates_are_menu_only"]}
+        self.assertEqual(
+            swept, recorded,
+            "the district-gate inventory over %s..%s is not complete: the "
+            "binary has %r, the artifact records %r"
+            % (sw["start"], sw["end"], sorted(swept), sorted(recorded)))
+        # the same sweep by raw bytes, so an omission cannot hide behind a
+        # decode that skipped an instruction
+        raw_sw = {"0x%x" % (o - 2) for o in range(slo, shi - 1)
+                  if self.img[o:o + 2] == want}
+        self.assertEqual(
+            len(raw_sw), len(recorded),
+            "the raw `%s` byte scan over %s..%s finds %d candidate sites and "
+            "the artifact records %d gates"
+            % (want.hex(" "), sw["start"], sw["end"], len(raw_sw),
+               len(recorded)))
+
+    def test_the_rows_7_to_9_arms_carry_no_district_test_either(self):
+        """I2's measured half: the divergence is the whole buy path.
+
+        Task 18 mapped those three arms and this task does not re-map them,
+        but the district negative has to be measured over them too or the
+        port instruction scopes the fix to two rows instead of five.
+        """
+        f = self.art["district_finding"]
+        district = int(f["district_ds"].split(":")[1], 16)
+        g = f["rows_7_9_arms_carry_no_district_test_either"]
+        lo = addrmod.image_off_of_citation(g["span"]["start"])
+        hi = addrmod.image_off_of_citation(g["span"]["end"])
+        self.assertEqual(lo, addrmod.image_off_of_citation(
+            self.rows()[-1]["span"]["end"]),
+            "the rows 7..9 range must start where the rows 1..6 range ends, "
+            "or the two measurements leave a hole between them")
+        hits = ["1000:%04x %s" % (i.off, i.text)
+                for i in dis16.decode_run(self.img, lo, hi)
+                for op in i.operands
+                if op.kind in ("disp16", "disp16x", "moffs16")
+                and op.value == district]
+        self.assertEqual(hits, [], "rows 7..9 DO test the district: %r" % hits)
+        want = district.to_bytes(2, "little")
+        raw = ["0x%x" % o for o in range(lo, hi - 1)
+               if self.img[o:o + 2] == want]
+        self.assertEqual(raw, [], "the byte pair occurs at %r" % raw)
+
+    def test_the_recorded_gates_are_every_conditional_branch_in_the_arm(self):
+        """The `gates[]` analogue of the `strings[]` completeness sweep.
+
+        A refusal literal nobody pushes is caught by the strings sweep; a
+        SILENT omitted gate is not, and "no gate in rows 1..6 refuses
+        silently" is a headline claim of `docs/re/shop-arms.md`.  So every
+        conditional branch in a row's span must be one the artifact records --
+        as its miss branch, a gate branch, a conjunct branch, an effect guard
+        or a `Random` arm.  Unconditional `jmp`s are excluded by decoding the
+        recorded address rather than by trusting its field name.
+        """
+        total = 0
+        for r in self.rows():
+            lo, hi = self.span(r)
+            swept = {"1000:%04x" % i.off
+                     for i in dis16.decode_run(self.img, lo, hi)
+                     if 0x70 <= i.raw[0] <= 0x7F
+                     or (i.raw[0] == 0x0F and 0x80 <= i.raw[1] <= 0x8F)
+                     or i.raw[0] in (0xE0, 0xE1, 0xE2, 0xE3)}
+            named = {r["miss_branch"]["addr"]}
+            for g in r["gates"]:
+                if "branch" in g:
+                    named.add(g["branch"]["addr"])
+                for c in g.get("conjuncts", []):
+                    named.add(c["branch"]["addr"])
+                if "fail_branch" in g:
+                    named.add(g["fail_branch"]["addr"])
+            for e in r["effects"]:
+                if e.get("guard_branch"):
+                    named.add(e["guard_branch"]["addr"])
+            for a in r.get("roll", {}).get("arms", []):
+                named.add(a["branch"]["addr"])
+            conditional = {a for a in named
+                           if self.at(a).raw[0] != 0xEB
+                           and self.at(a).raw[0] != 0xE9}
+            self.assertEqual(
+                swept, conditional,
+                "row %s: the conditional branches inside %s..%s are %r, the "
+                "artifact accounts for %r -- an unrecorded branch is an "
+                "unrecorded gate, and a silent one prints nothing for the "
+                "strings sweep to catch"
+                % (r["key"], r["span"]["start"], r["span"]["end"],
+                   sorted(swept), sorted(conditional)))
+            total += len(swept)
+        self.assertEqual(
+            total, 27,
+            "the six arms hold %d conditional branches, not the 27 this "
+            "inventory was built over" % total)
 
     def test_every_recorded_string_is_pushed_inside_its_own_arm(self):
         for r in self.rows():
@@ -473,10 +595,32 @@ class ArmsTest(unittest.TestCase):
         self.assertEqual(guard.text, "cmp byte [0x38ba],0x0")
         self.assertEqual(branch.raw[0], 0x74, "not a `jz`: %s" % branch.text)
         skip = self.branch_target(branch)
-        # the not-taken path holds exactly the two adds the artifact records...
+        # The not-taken path holds exactly the two adds the artifact records --
+        # BY ADDRESS, not by text.  Comparing decoded text to decoded text
+        # passes just as happily when `adds` names the loot arm's 1000:55da /
+        # 1000:55df, which spell the same two instructions; `effects[]` pins
+        # its addresses in-span and `bugs[].where.adds` is a separate list
+        # with no such pin, so the pin is made here.
         taken = dis16.decode_run(self.img, branch.end, skip)
-        self.assertEqual([i.text for i in taken],
-                         [self.at(a).text for a in bug["where"]["adds"]])
+        row6_lo, row6_hi = self.span(
+            [x for x in self.rows() if x["key"] == "6"][0])
+        adds = bug["where"]["adds"]
+        self.assertEqual(
+            ["1000:%04x" % i.off for i in taken], adds,
+            "the not-taken path of %s is %r, but the artifact names %r as the "
+            "adds the guard skips" % (bug["where"]["branch"],
+                                      ["1000:%04x" % i.off for i in taken],
+                                      adds))
+        for a_ in adds:
+            off = addrmod.image_off_of_citation(a_)
+            self.assertTrue(
+                row6_lo <= off < row6_hi,
+                "%s is not inside row 6's span %s..%s, so the bug record is "
+                "citing an instruction from somewhere else that happens to "
+                "decode the same" % (a_, "1000:%04x" % row6_lo,
+                                     "1000:%04x" % row6_hi))
+        self.assertEqual([self.at(a_).text for a_ in adds],
+                         ["add word [0x38a8],0x2", "add word [0x38aa],0x2"])
         # ... and the taken path lands straight on the confirmation push, so
         # there is NO `add word [0x38a8],0x4` arm the way the loot site has one.
         row6 = [r for r in self.rows() if r["key"] == "6"][0]

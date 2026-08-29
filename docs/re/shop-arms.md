@@ -78,25 +78,48 @@ the byte pair `92 36` does not occur anywhere in that span — so there is not
 even a byte-scan candidate to discard, and the negative does not rest on the
 decoder alone.
 
-The two district gates that exist in this handler are in the **menu-print**
-block, well before the prompt:
+**Nor do rows 7, 8 and 9.** Their arms are Task 18's and are not re-mapped
+here, but the same two measurements were taken over `1000:ccc4`..`1000:ce80`
+(the row-7 setup to the `x` compare): no operand equal to `0x3692`, and no
+`92 36` byte pair. So the dealers' **buy path carries no district test at all,
+for any of the nine rows.**
 
-```
-1000:c68d  cmp byte [0x3692],0x1
-1000:c692  jbe 0xc6f1
-```
+**Every district gate in the handler is a menu-print gate, and there are
+five.** The inventory below is asserted set-equal to every `[0x3692]` operand
+an aligned decode of `1000:c4be`..`1000:ccd8` finds — the verb compare to the
+start of Task 18's block — so an omission reds
+`tools/test_shop_arms.py`. (An earlier revision of this document said "the two
+district gates that exist in this handler" and listed the first two. Every
+address in that list was right; the list was not. That is the recurring defect
+`docs/re/METHODOLOGY.md` names — an inventory whose completeness claim stopped
+the next search — and it is why the sweep now exists.)
 
-skips printing row 5's line, and `1000:c6f1 cmp byte [0x3692],0x2` /
-`1000:c6f6 jbe 0xc755` skips row 6's. They gate the *listing*, nothing else.
+| gate | branch | skips the menu line for |
+|---|---|---|
+| `1000:c755 cmp byte [0x3692],0x3` | `1000:c75a jbe 0xc7ba` | row 7, pistol (`20ae:0b3e` at `1000:c75c`) |
+| `1000:c7ba cmp byte [0x3692],0x3` | `1000:c7bf jbe 0xc81d` | row 8, cartridges (`20ae:0b3f` at `1000:c7c1`) |
+| `1000:c81d cmp byte [0x3692],0x3` | `1000:c822 jbe 0xc88e` | row 9, silencer (`1000:c824` is its two extra menu gates; `1000:c88e` is the prompt push) |
+
+and the two this section is really about:
+
+| gate | branch | skips the menu line for |
+|---|---|---|
+| `1000:c68d cmp byte [0x3692],0x1` | `1000:c692 jbe 0xc6f1` | row 5, Кастет (`20ae:0b3c` at `1000:c694`) |
+| `1000:c6f1 cmp byte [0x3692],0x2` | `1000:c6f6 jbe 0xc755` | row 6, Дубинка (`20ae:0b3d` at `1000:c6f8`) |
+
+All five gate the *listing*, nothing else. The three `district>3` entries are
+the ones `docs/re/tables.md` §2 already records for rows 7-9.
 
 So at district 1 the menu shows neither row 5 nor row 6, and typing `5` or `6`
-buys them anyway. This closes the open question `docs/re/gaps.md` recorded
-against `1000:cc04`..`1000:ccd8` and widens it: it is not only row 6.
+buys them anyway; below district 4 the same holds for rows 7, 8 and 9. This
+closes the open question `docs/re/gaps.md` recorded against
+`1000:cc04`..`1000:ccd8` and widens it twice over: it is not only row 6, and it
+is not only rows 5 and 6.
 
-**This is a claim about `bmar` rows 1–6 and about nothing else.** The `mar`
-shop's arms were not decoded for this task, and inferring one shop's behaviour
-from the other's is exactly the symmetry-as-evidence error
-`docs/re/METHODOLOGY.md` forbids.
+**This is a claim about `bmar` and about nothing else.** The `mar` shop's arms
+were not decoded for this task, and inferring one shop's behaviour from the
+other's is exactly the symmetry-as-evidence error `docs/re/METHODOLOGY.md`
+forbids.
 
 ---
 
@@ -330,9 +353,12 @@ refuse when **any** one is set: every conjunct at `1000:555f`, `1000:5566`,
 `jnz <refusal>`. So a player holding a knife can still buy the knuckles at the
 dealers but cannot loot them, and the two paths disagree by construction.
 
-### 3. Rows 5 and 6 are buyable below their menu district
+### 3. The dealers' buy path carries no district test at all
 
-See "The district question" above.
+Not for rows 5 and 6, and not for rows 7, 8 and 9 either — measured over
+`1000:c8ce`..`1000:ccc4` and `1000:ccc4`..`1000:ce80` respectively. Every
+district-gated `bmar` row is buyable below the district its menu line is gated
+on. See "The district question" above.
 
 ---
 
@@ -343,10 +369,15 @@ Read with `Game::shop_action` and `Game::buy_pistol_row` in `src/game.rs`
 debits the price, echoes the *menu* line, and refuses a district-gated row.
 For `bmar` 1..6 that is wrong in five ways:
 
-1. **Stop refusing on district for `bmar` rows 5 and 6.** `Game::gate_open`
-   must not be consulted for the dealers' buy path. The menu must keep the
-   gate — `1000:c68d` and `1000:c6f1` are real — so the two uses of the gate
-   have to be separated.
+1. **Stop refusing on district anywhere on the dealers' BUY path — all five
+   gated rows, not two.** `Game::shop_action` calls `gate_open(row.gate)`
+   before it delegates to `Game::buy_pistol_row` (`grep -n 'gate_open'
+   src/game.rs`), so rows 7, 8 and 9 are refused below district 4 as well, and
+   their arms carry no district test either (`1000:ccc4`..`1000:ce80`, no
+   `[0x3692]` operand and no `92 36` byte pair). The menu must KEEP its gate —
+   all five of `1000:c68d`, `1000:c6f1`, `1000:c755`, `1000:c7ba` and
+   `1000:c81d` are real — so the two uses of the district have to be
+   separated rather than the gate deleted.
 2. **Print the arm's own confirmation, not the menu line.** Six confirmations
    plus row 3's four stat lines; every CS offset is in the table above and in
    `data/shop_arms.json`.

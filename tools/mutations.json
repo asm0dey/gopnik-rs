@@ -1077,6 +1077,57 @@
       "ArmsTest.test_the_club_grants_no_damage_without_the_knuckles"
     ],
     "expect": "at 1000:55e6"
+  },
+  {
+    "label": "shop-arms-district-inventory-complete",
+    "defends": "district_gates_are_menu_only is asserted SET-EQUAL to every `cmp byte [0x3692],imm` site in 1000:c4be..1000:ccd8, so a MISSING entry reds -- not merely a wrong one.  Fix round 1 found this artifact listing two of the five gates while every listed entry decoded correctly and every check passed: the recurring defect is an inventory whose completeness claim stopped the next search.  The perturbation points the row-9 entry at the row-8 gate, which decodes to the very same instruction, so nothing but the COUNT of distinct gates changes -- five sites, four recorded.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["district_finding", "district_gates_are_menu_only", 4, "addr"],
+      "from": "1000:c81d",
+      "to": "1000:c7ba"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_no_arm_tests_the_district"
+    ],
+    "expect": "is not complete"
+  },
+  {
+    "label": "shop-arms-gates-completeness",
+    "defends": "gates[] is measured against every conditional branch in the arm's span, the analogue of the strings[] sweep.  A SILENT omitted gate prints nothing, so the strings sweep cannot see it, and `no gate in rows 1..6 refuses silently` is a headline claim.  The perturbation renames row 5's already-own branch so the arm's six conditional branches are accounted for by five.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["rows", 4, "gates", 1, "branch", "addr"],
+      "from": "1000:cb75",
+      "to": "1000:cb80"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_the_recorded_gates_are_every_conditional_branch_in_the_arm"
+    ],
+    "expect": "an unrecorded branch is an"
+  },
+  {
+    "label": "shop-arms-club-bug-adds-pinned-by-address",
+    "defends": "bugs[].where.adds is pinned by ADDRESS inside row 6's span, not by decoded text.  The loot arm's 1000:55da / 1000:55df spell the same two instructions, so a text-only comparison passed with the bug record citing the counter-example's own adds -- which would have made the finding one site quoted against itself.  The perturbation swaps in exactly those two addresses.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["bugs", 0, "where", "adds"],
+      "from": ["1000:cc6b", "1000:cc70"],
+      "to": ["1000:55da", "1000:55df"]
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_the_club_grants_no_damage_without_the_knuckles"
+    ],
+    "expect": "but the artifact names"
   }
  ]
 }

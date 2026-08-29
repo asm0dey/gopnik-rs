@@ -15,13 +15,23 @@
     "tier": "flow",
     "span": {"start": "1000:c8ce", "end": "1000:ccc4"},
     "method": "The whole span decodes as one aligned run (474 instructions from `1000:c8ce`, the row-1 setup, to `1000:ccc4`, the row-7 setup). No instruction in it carries a direct-memory operand whose value is 0x3692, and the byte pair `92 36` does not occur in the span at all -- so there is not even a byte-scan candidate to discard.",
+    "district_gates_sweep_range": {"start": "1000:c4be", "end": "1000:ccd8", "note": "The `bmar` verb compare to the start of row 7's already-own gate -- the whole handler up to Task 18's block. `district_gates_are_menu_only` is asserted SET-EQUAL to every `cmp byte [0x3692],imm` site an aligned decode of this range finds, so an omitted entry reds the test. An earlier revision of this artifact listed two of the five and called that `the two district gates that exist in this handler`; the sweep exists because that claim was guarded by nothing."},
     "district_gates_are_menu_only": [
-      {"addr": "1000:c68d", "text": "cmp byte [0x3692],0x1", "branch": {"addr": "1000:c692", "text": "jbe 0xc6f1"}, "skips": "the row-5 (Кастет) MENU line"},
-      {"addr": "1000:c6f1", "text": "cmp byte [0x3692],0x2", "branch": {"addr": "1000:c6f6", "text": "jbe 0xc755"}, "skips": "the row-6 (Дубинка) MENU line"}
+      {"addr": "1000:c68d", "text": "cmp byte [0x3692],0x1", "branch": {"addr": "1000:c692", "text": "jbe 0xc6f1"}, "skips": "the row-5 (Кастет) MENU line -- the fall-through at 1000:c694 loads its price byte 20ae:0b3c"},
+      {"addr": "1000:c6f1", "text": "cmp byte [0x3692],0x2", "branch": {"addr": "1000:c6f6", "text": "jbe 0xc755"}, "skips": "the row-6 (Дубинка) MENU line -- the fall-through at 1000:c6f8 loads 20ae:0b3d"},
+      {"addr": "1000:c755", "text": "cmp byte [0x3692],0x3", "branch": {"addr": "1000:c75a", "text": "jbe 0xc7ba"}, "skips": "the row-7 (pistol) MENU line -- the fall-through at 1000:c75c loads 20ae:0b3e"},
+      {"addr": "1000:c7ba", "text": "cmp byte [0x3692],0x3", "branch": {"addr": "1000:c7bf", "text": "jbe 0xc81d"}, "skips": "the row-8 (cartridges) MENU line -- the fall-through at 1000:c7c1 loads 20ae:0b3f"},
+      {"addr": "1000:c81d", "text": "cmp byte [0x3692],0x3", "branch": {"addr": "1000:c822", "text": "jbe 0xc88e"}, "skips": "the row-9 (silencer) MENU line -- the fall-through at 1000:c824 is the silencer's two extra menu gates, and 1000:c88e is the prompt push"}
     ],
     "district_ds": "20ae:3692",
     "instruction_count": 474,
-    "consequence": "At district 1 the menu prints neither row 5 nor row 6, but typing `5` or `6` still buys them. The port's `Game::gate_open` refuses the key outright, which is a divergence for `bmar` rows 5 and 6. Nothing here is claimed about the `mar` shop -- that range was not decoded for this task."
+    "rows_7_9_arms_carry_no_district_test_either": {
+      "tier": "flow",
+      "span": {"start": "1000:ccc4", "end": "1000:ce80"},
+      "method": "The row-7 setup to the `x` compare at 1000:ce80 -- i.e. all three of Task 18's arms. An aligned decode of that range carries no operand equal to 0x3692 and the byte pair `92 36` does not occur in it, by the same two measurements used on rows 1..6.",
+      "consequence": "The buy path of the dealers carries no district test at ALL, for any of the nine rows. The divergence is the whole path, not two rows."
+    },
+    "consequence": "At district 1 the menu prints neither row 5 nor row 6, but typing `5` or `6` still buys them; the same holds for rows 7..9 below district 4. The port calls `Game::gate_open(row.gate)` in `Game::shop_action` BEFORE delegating to `Game::buy_pistol_row` (`grep -n 'gate_open' src/game.rs`), so all five gated rows are refused. Nothing here is claimed about the `mar` shop -- that range was not decoded for this task."
   },
   "rows": [
     {
