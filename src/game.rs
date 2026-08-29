@@ -807,7 +807,10 @@ impl Game {
     /// (`python3 tools/re_query.py xrefs-to 20ae:3692` -- 97 accepted
     /// references, 0 discarded; `docs/re/gaps.md` carries the full decode.
     /// An earlier revision said "exactly four write" and missed the
-    /// pointer-form fifth).
+    /// pointer-form fifth). `FUN_1000_3d11` contains no write -- but it does
+    /// contain twelve `a0 92 36 mov al,[0x3692]` READS, so the claim is
+    /// "no write", never "no reference"; a later revision widened it to the
+    /// latter and `docs/re/gaps.md` lists all twelve.
     ///
     /// **Two port decisions, neither a property of the original.**
     ///

@@ -770,9 +770,30 @@ wrong one.
 `python3 tools/re_query.py xrefs-to 20ae:3692` accepts 97 references and
 discards 0. **Four** of them are direct stores — `1000:6bf9`, `1000:6d9d` and
 `1000:6dbe`, all three inside `FUN_1000_6a0d`, the one-time setup, plus
-`1000:ab92` itself. A **fifth** reference also writes, by pointer rather than
-by displacement, and an inventory that stopped at four would be the
-completeness shape `docs/re/METHODOLOGY.md` names:
+`1000:ab92` itself.
+
+**`FUN_1000_3d11` — the fight — contains no WRITE**, which is the whole of
+what the promotion's placement needs: a level won in a fight cannot move the
+district from inside the fight, so the district it earns is collected by
+`1000:ab92` at the top of the next turn. It is **not** true that the fight
+has "no reference of any kind", which an earlier revision of this sentence
+claimed. The same 97-reference scan puts **twelve** references inside it,
+every one a read and every one the identical three bytes `a0 92 36`
+`mov al,[0x3692]`, each anchored from the function's own entry:
+
+```text
+1000:4a8e  1000:4cbb  1000:4dad  1000:4dbe  1000:4e68  1000:529c
+1000:53f7  1000:5449  1000:57d4  1000:57e7  1000:5808  1000:5824
+```
+
+By function, the 97 accepted references fall out as `entry` 67,
+`FUN_1000_3d11` 12, `FUN_1000_6a0d` 7, `FUN_1000_0d14` 4, `FUN_1000_7538` 3,
+`FUN_1000_7c67` 2, `FUN_1000_5f55` 1, and one outside every catalogued
+function — which is the fifth writer, below.
+
+A **fifth** reference also writes, by pointer rather than by displacement,
+and an inventory that stopped at four would be the completeness shape
+`docs/re/METHODOLOGY.md` names:
 
 ```text
 0f78:134c  bf 92 36     mov di,0x3692     ; the DGROUP BSS start
@@ -797,16 +818,17 @@ before anything game-shaped" with no caller cited at all:
 * `1000:ab59 9a 00 00 78 0f call 0f78:0000` is that entry's **first**
   instruction.
 * `0f78:0000 ba ae 10 / 8e da` sets `DS` to DGROUP `0x10ae`, and
-  `0f78:000b e8 3e 13 call 0x10acc` reaches `0f78:134c`. That is the **only**
-  transfer to it in the image: one near call within segment `0f78`, and zero
-  occurrences of the far-call signature `9a 4c 13 78 0f` anywhere.
+  `0f78:000b e8 3e 13 call 0x10acc` reaches `0f78:134c`. That is the only
+  **direct** transfer to it in the image: one near call within segment
+  `0f78`, and zero occurrences of the far-call signature `9a 4c 13 78 0f`
+  anywhere. The scan covers `e8`/`e9`/`eb`/`7x`/`ea`/`9a`; it does **not**
+  cover indirect transfers (`ff /2`, `ff /3`), which no scan by target
+  address can, so "only" is scoped to direct ones rather than absolute.
 * Control returns and reaches `1000:ab72 e8 98 be call 0x6a0d` — the
   character setup — and only then falls through to `1000:ab75`.
 
 So the fill precedes every game write to `[0x3692]`, by address, and runs
-once. `FUN_1000_3d11` has **no** reference of any kind — which is why the
-promotion belonged at the top of the loop and not in the post-fight block,
-and why a level won in a fight now promotes on the following turn.
+once.
 
 **What is still NOT reproduced, and why:**
 
@@ -962,40 +984,56 @@ completeness:
 ```
 $ grep -rn '\.trim()' src/*.rs | grep -v 'trim_end_matches\|trim_start_matches'
 src/commands.rs:214:    let v = input.trim().to_lowercase();
+src/game.rs:886:        // `.trim()` is a PORT ADDITION and a real (if tiny) divergence:
+src/game.rs:898:        if answer.trim().eq_ignore_ascii_case("y") {
+src/game.rs:1406:        let key = line.trim().to_lowercase();
+src/game.rs:1811:        if answer.trim().eq_ignore_ascii_case("y") {
+src/game.rs:2341:        if !answer.trim().eq_ignore_ascii_case("y") {
+src/game.rs:2410:        if !answer.trim().eq_ignore_ascii_case("y") {
+src/game.rs:2661:    ///   kept, not substituted. `Game::rename` must not `.trim()` the line
+src/game.rs:2691:        // not `.trim()` `n` before this check -- that would substitute on
+src/game.rs:3265:            if line.trim().eq_ignore_ascii_case("run") {
+src/game.rs:3304:            if line.trim().eq_ignore_ascii_case("e") {
+src/game.rs:5545:    /// `Game::rename` stopped `.trim()`-ing the line, this case wrongly
 src/main.rs:92:    buf.trim().parse().unwrap_or(0)
-src/game.rs:883:        // `.trim()` is a PORT ADDITION and a real (if tiny) divergence:
-src/game.rs:895:        if answer.trim().eq_ignore_ascii_case("y") {
-src/game.rs:1403:        let key = line.trim().to_lowercase();
-src/game.rs:1808:        if answer.trim().eq_ignore_ascii_case("y") {
-src/game.rs:2338:        if !answer.trim().eq_ignore_ascii_case("y") {
-src/game.rs:2407:        if !answer.trim().eq_ignore_ascii_case("y") {
-src/game.rs:2658:    ///   kept, not substituted. `Game::rename` must not `.trim()` the line
-src/game.rs:2688:        // not `.trim()` `n` before this check -- that would substitute on
-src/game.rs:3262:            if line.trim().eq_ignore_ascii_case("run") {
-src/game.rs:3301:            if line.trim().eq_ignore_ascii_case("e") {
-src/game.rs:5542:    /// `Game::rename` stopped `.trim()`-ing the line, this case wrongly
 ```
 
 **Thirteen hits: nine call sites and four lines of prose about them.** The
 output above is pasted verbatim from the shipped tree rather than summarised,
 because an earlier revision of this block pasted a hand-annotated listing
 whose `src/game.rs` line numbers were each one lower — it had been produced
-before the commit that inserted `src/game.rs:883`. The nine call sites:
+before the commit that inserted the comment this block's own table now lists
+at `src/game.rs:886`.
+
+Two caveats on "verbatim", both learned the hard way:
+
+* **Any edit above `src/game.rs:886` desynchronises this block**, which is
+  how it went stale the first time and again while this very correction was
+  being written (a four-line doc comment added at `src/game.rs:809` shifted
+  every `game.rs` number by three). It has to be re-run and re-pasted in the
+  same commit as any such edit, not before it.
+* `grep` on the machine this was captured on is `ugrep 7.8.4`, which searches
+  in parallel, so the **file order** varies between runs — `src/main.rs:92`
+  moved from second to last between two consecutive captures. The content of
+  every line is stable; only the interleaving is not. Compare this block
+  line-set-wise, not byte-wise.
+
+The nine call sites:
 
 | line | what it normalises |
 |---|---|
 | `src/commands.rs:214` | the street verb table |
 | `src/main.rs:92` | `Val()` on the class answer — a number, not a token |
-| `src/game.rs:895` | the district autosave's `y` |
-| `src/game.rs:1403` | `shop_turn`'s key |
-| `src/game.rs:1808` | the encounter accept's `y` |
-| `src/game.rs:2338` | the mage's `y` |
-| `src/game.rs:2407` | `wander_girl`'s `y` |
-| `src/game.rs:3262` | combat's `run` |
-| `src/game.rs:3301` | combat's `e` |
+| `src/game.rs:898` | the district autosave's `y` |
+| `src/game.rs:1406` | `shop_turn`'s key |
+| `src/game.rs:1811` | the encounter accept's `y` |
+| `src/game.rs:2341` | the mage's `y` |
+| `src/game.rs:2410` | `wander_girl`'s `y` |
+| `src/game.rs:3265` | combat's `run` |
+| `src/game.rs:3304` | combat's `e` |
 
-The four prose hits are `883` (the autosave comment that points here) and
-`2658`, `2688`, `5542`, which all say `Game::rename` must **not** trim — the
+The four prose hits are `886` (the autosave comment that points here) and
+`2661`, `2691`, `5545`, which all say `Game::rename` must **not** trim — the
 next paragraph is what they are about.
 
 **One place deliberately does not trim, and it is the interesting one.**
