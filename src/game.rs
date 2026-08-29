@@ -5773,6 +5773,14 @@ mod tests {
         for (set, want) in cases {
             let mut g = game();
             g.player.armor = 2;
+            // The "absent before" half its 18-case sibling has. Without it a
+            // line that printed unconditionally would satisfy the assertion
+            // below without the flag having done anything.
+            let before = character_sheet::lines(&g.player, &g.player.name, &g.sheet_kit());
+            assert!(
+                !before.iter().any(|l| l.contains(want)),
+                "{want:?} was already there before the flag was set"
+            );
             set(&mut g);
             let after = character_sheet::lines(&g.player, &g.player.name, &g.sheet_kit());
             assert!(

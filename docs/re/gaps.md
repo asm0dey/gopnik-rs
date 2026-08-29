@@ -1950,11 +1950,23 @@ decided rather than established.
   ammo-quantity flavour (`1000:1dab`..`1000:1dd7`) and the dim `^4` arms of
   the five best-item-wins pairs. Each was re-derived for the port from the
   same aligned `tools/dis16.py` walk of `[1000:1a03, 1000:248f)` as the rest
-  of the function, and each is asserted by a unit test in
-  `src/character_sheet.rs`. Leaving them out was not an option a working
-  sheet had: without `1000:1bc2` the `Феньки: ` header either always or
-  never prints. What is still open is the artifact-side citation work, not
-  the behaviour.
+  of the function. Leaving them out was not an option a working sheet had:
+  without `1000:1bc2` the `Феньки: ` header either always or never prints.
+  What is still open is the artifact-side citation work, not the behaviour.
+
+  **What the unit tests cover is narrower than "each one", and the first
+  version of this entry said otherwise.** Task 22's review changed
+  `src/character_sheet.rs`'s ammo-flavour range from `(1..=2)` to `(0..=2)`
+  and `cargo test --lib` stayed green: `1000:1db2`, the LOWER half of that
+  pair, was ported and unasserted, because the only absence assertion near
+  it looked for `патронов - `, which `^6 А птронов-то мало ` does not
+  contain. Fixed in the review round — `the_cartridge_word_line_has_three_arms`
+  now asserts that line's absence at zero cartridges, and the `(0..=2)`
+  perturbation was observed failing it. Read this bullet as "all 24 are
+  implemented and exercised", never as "each has its own falsifiable
+  assertion": the count that has been demonstrated is
+  `cargo mutants -f src/character_sheet.rs`, 107 mutants, 106 caught, the
+  one survivor proven equivalent.
 * **The sheet's lines are not its `Write` calls.** The function makes 30
   `Write` (`0eed:0000`), 20 `WriteLn` (`0eed:01c2`) and 6 bare Pascal
   `WriteLn` calls; a `Write` leaves the line open. So the four condition

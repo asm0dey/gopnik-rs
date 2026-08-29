@@ -193,10 +193,12 @@ impl Out {
     ///
     /// Nothing is flushed here because nothing can be open: the last two
     /// blocks are both unconditional two-armed `WriteLn` pairs --
-    /// `1000:23d5` `jle 0x2415` picks `Пиво #.#л.` or `^4Пива нет`, and
-    /// `1000:242e` `jle 0x2451` picks `Бабки #` or `^4Нету бабок` -- so the
-    /// money line always closes, and the only thing that can follow it is
-    /// the `Хлам #` `WriteLn` at `1000:2471`.
+    /// `1000:23d5 cmp word [0x38c3],0x0` / `1000:23da jle 0x2415` picks
+    /// `Пиво #.#л.` or `^4Пива нет`, and
+    /// `1000:242e cmp word [0x38c7],0x0` / `1000:2433 jle 0x2451` picks
+    /// `Бабки #` or `^4Нету бабок` -- so the money line always closes, and
+    /// the only thing that can follow it is the `Хлам #` `WriteLn` at
+    /// `1000:2471`.
     fn finish(self) -> Vec<String> {
         self.lines
     }
@@ -363,8 +365,11 @@ fn pistol_block(o: &mut Out, kit: &Kit) {
     if !kit.pistol.owned {
         return;
     }
-    o.newline(); // `1000:1d42`..`1000:1d4c`
+    // The blank separator, `1000:1d42`..`1000:1d4c`.
+    o.newline();
     o.write("^1У тебя есть пистолет"); // CS `0x17b8`
+
+    // `1000:1d6a cmp byte [0x394e],0x0` / `1000:1d6f jz 0x1d8a`.
     if kit.pistol.silencer {
         o.write("^1 с гушителем"); // CS `0x17cf`, the game's own typo
     }
@@ -461,9 +466,12 @@ fn health_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     if p.broken_jaw {
         cond.push_str("^4Сломана челюсть  "); // CS `0x18b4`
     }
+    // `1000:2068 cmp byte [0x394a],0x1` / `1000:206d jnz 0x2099`.
     if kit.tooth_guard_394a {
         cond.push_str("^1Зубная защита  "); // CS `0x18c8`
     }
+    // `1000:2099 cmp byte [0x38b1],0x1` / `1000:209e jnz 0x20ca` -- the same
+    // equality shape as the jaw, not the `> 0` the item flags use.
     if p.broken_leg {
         cond.push_str("^4Сломана нога  "); // CS `0x18da`
     }
@@ -898,6 +906,12 @@ mod tests {
         assert!(joined(&armed(2, false)).contains("^1! патронов - 2"));
         assert!(joined(&armed(0, false)).contains("^1.^4 Правда без патронов"));
         assert!(!joined(&armed(0, false)).contains("патронов - "));
+        // `1000:1db2 cmp word [0x394f],0x0` / `jle 0x1dd2` is the LOWER half
+        // of the flavour line's guard pair, and the `!contains` above cannot
+        // see it: `^6 А птронов-то мало ` holds no `патронов - `. Without
+        // this line the range reads `(0..=2)` and every test still passes,
+        // which is the check-that-cannot-fail `docs/re/METHODOLOGY.md` names.
+        assert!(!joined(&armed(0, false)).contains("птронов-то мало"));
         assert!(joined(&armed(0, true)).contains("^1У тебя есть пистолет^1 с гушителем"));
     }
 
@@ -1005,6 +1019,47 @@ mod tests {
             "^2Здоровье 20/20  ^4Сломана челюсть  ^1Зубная защита  \
              ^4Сломана нога  ^6Обдолбаный  "
         );
+    }
+
+    /// One condition case: a setter for the flag one guard reads, and the
+    /// label that guard's arm appends.
+    type ConditionCase = (fn(&mut Fighter, &mut Kit), &'static str);
+
+    /// The four condition guards, one at a time and in the original's order.
+    ///
+    /// `the_conditions_ride_on_the_health_line` sets all four together, so a
+    /// crossed `1000:2037` / `1000:2099` pair -- the jaw's guard reading the
+    /// leg's flag and the other way round -- leaves its asserted string
+    /// identical. Both are `bool`, so the compiler cannot see it either.
+    /// This is the same defect class
+    /// `Game::sheet_kit_wires_each_game_flag_to_its_own_sheet_line` exists
+    /// for, one level down.
+    #[test]
+    fn each_condition_guard_reads_its_own_flag() {
+        let cases: [ConditionCase; 4] = [
+            // `1000:2037 cmp byte [0x38b0],0x1` / `jnz 0x2068`.
+            (|p, _| p.broken_jaw = true, "^4Сломана челюсть  "),
+            // `1000:2068 cmp byte [0x394a],0x1` / `jnz 0x2099`.
+            (|_, k| k.tooth_guard_394a = true, "^1Зубная защита  "),
+            // `1000:2099 cmp byte [0x38b1],0x1` / `jnz 0x20ca`.
+            (|p, _| p.broken_leg = true, "^4Сломана нога  "),
+            // `1000:20ca cmp byte [0x38cd],0x0` / `jbe 0x20fb`.
+            (|_, k| k.buff_countdown_38cd = 1, "^6Обдолбаный  "),
+        ];
+        for (set, want) in cases {
+            let mut p = player();
+            let mut kit = Kit::default();
+            assert!(
+                !health(&sheet(&p, &kit)).contains(want),
+                "{want:?} was on the health line before its flag was set"
+            );
+            set(&mut p, &mut kit);
+            assert_eq!(
+                health(&sheet(&p, &kit)),
+                format!("^2Здоровье 20/20  {want}"),
+                "{want:?} alone"
+            );
+        }
     }
 
     #[test]
