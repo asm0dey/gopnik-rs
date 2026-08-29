@@ -892,8 +892,9 @@ once.
 
   The `mov al,N / push ax` rows are shown rather than elided because
   `param_1` is what the rest of this section turns on: it is pushed at those
-  four addresses and nowhere else, so a listing that jumped `ae1f -> ae27`
-  would skip the bytes carrying the argument it then names.
+  four addresses and nowhere else **in this block**, so a listing that
+  jumped `ae1f -> ae27` would skip the bytes carrying the argument it then
+  names.
 
   `docs/re/wander.md`, "The three Den setters" (§`423`), already scoped this
   correctly — "`1000:ae18` sits at the top of every turn … once chapter 5 is

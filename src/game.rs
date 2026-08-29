@@ -708,9 +708,10 @@ impl Game {
     /// that **the level only rises on STREET turns**. Exactly one function
     /// increments it -- `progress::apply_levels`, whose `f.level += 1` is
     /// the file's only such statement and is not under a `#[cfg(test)]`
-    /// (`src/progress.rs` has none: `grep -c '#[cfg(test)]'
+    /// (`src/progress.rs` has none: `grep -c '#\[cfg(test)\]'
     /// src/progress.rs` prints `0`). `progress::demote` is the only other
-    /// writer of the field and it decrements. `apply_levels` has three
+    /// writer of the field in `src/progress.rs` and it decrements.
+    /// `apply_levels` has three
     /// callers -- `grep -n 'progress::apply_levels(' src/game.rs | grep -v
     /// '///'` (the `grep -v` drops this very comment, which the plain
     /// command matches: a citation that quotes its own search string is a
