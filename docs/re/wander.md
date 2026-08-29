@@ -480,7 +480,8 @@ unknown before:
   `docs/re/character-sheet.md`. The JSON's `dealer_order_placed` is now a
   stale name, not a disagreement.
 * **`20ae:38b2` — the armour byte (`Броня`).** Fighter-record offset `+0x16`
-  (`0x38b2 - 0x389c`), between the jaw (`+0x14`) and the leg (`+0x15`) above.
+  (`0x38b2 - 0x389c`), in the same injury/state group as the jaw (`+0x14`)
+  and the leg (`+0x15`) above.
   `1000:81e9` increments it under `^1Накладываю на тебя защиту!`, i.e. the
   church grants +1 armour. The consumer was open until Task 11c: subtracted
   from damage at `1000:4769`, printed as `^2Броня #` at `1000:227b`
