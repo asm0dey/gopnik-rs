@@ -1602,8 +1602,7 @@ impl Game {
     /// wander's own bucket roll) so every address below is on a confirmed
     /// instruction boundary:
     ///
-    /// * `1000:b76a`..`1000:b77f` -- writes "^6Идет ментяра # уровня гроза
-    ///   гопов." (file `0xA2DB`) with `[0x395c]`, the rolled level, pushed at
+    /// * `1000:b76a`..`1000:b77f` -- writes `^6Идет ментяра # уровня гроза гопов.` (file `0xA2DB`) with `[0x395c]`, the rolled level, pushed at
     ///   `1000:b76f`. **No line is read**: there is no "Хочешь наехать?" on
     ///   this path.
     /// * `1000:b784`..`1000:b792` -- `district * 7 + 15` (`mul dx` with
@@ -1745,8 +1744,14 @@ impl Game {
         // straight to 1000:b16c.
         if self.has_mobile {
             // Draw 3, 1000:b030 -- Random(200), the wrong-number gag. The
-            // original spaces these with 0f16:031a delays this port has no
-            // equivalent for.
+            // original spaces these with 0f16:031a `ReadKey`s (not a delay
+            // -- docs/re/rtl.md:494; `Delay` is the unrelated 0f16:02a8),
+            // waiting for a keystroke between each message; this site does
+            // not port that wait. [`Game::enter_district_5`] shows the port
+            // DOES have a working substitution for a `ReadKey` (a discarded
+            // line read, the same trick `src/persist.rs`'s `choose_slot`
+            // uses) -- it just is not applied to these phone-call gags. See
+            // docs/re/gaps.md.
             if self.rng.below_at("1000:b030", 200) == 0 {
                 term::println("Телефон:^6Алё Вася?");
                 term::print("^2Нет это ");
