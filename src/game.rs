@@ -704,11 +704,31 @@ impl Game {
     /// [`Game::district_advance`] returns without reading or printing unless
     /// a promotion is due, so removing the gate would only differ while the
     /// player is inside a shop AND `level >= district * 10` AND
-    /// `district < 5`. This port cannot reach that state: the level only
-    /// rises in combat, combat is only entered from a street turn, and the
-    /// advance that collects it runs at the top of the very next turn --
+    /// `district < 5`. This port cannot reach that state, and the reason is
+    /// that **the level only rises on STREET turns**. Exactly one function
+    /// increments it -- `progress::apply_levels`, whose `f.level += 1` is
+    /// the file's only such statement and is not under a `#[cfg(test)]`
+    /// (`src/progress.rs` has none: `grep -c '#[cfg(test)]'
+    /// src/progress.rs` prints `0`). `progress::demote` is the only other
+    /// writer of the field and it decrements. `apply_levels` has three
+    /// callers -- `grep -n 'progress::apply_levels(' src/game.rs` -- of
+    /// which the last is below this file's own `#[cfg(test)]`, leaving two:
+    ///
+    /// * [`Game::run_combat`]'s post-fight award, entered from
+    ///   [`Game::walk`], which is `Command::Walk` and so a Street turn;
+    /// * [`Game::church`]'s zero arm (`1000:7f68`, selected by draw 15's
+    ///   `Random(5)` at `1000:7f63`), which sets `xp := threshold`
+    ///   (`1000:7fe4`/`1000:7fe7`) and forces a level. The church is reached
+    ///   from the wander preamble's draw 13 -- `Random(200)` at
+    ///   `1000:b39e`, calling `1000:b3a7` on a zero -- which is also inside
+    ///   [`Game::walk`], hence also a Street turn.
+    ///
+    /// An earlier revision of this paragraph said "the level only rises in
+    /// combat", which the church arm refutes; the conclusion is unchanged
+    /// because both callers sit on a Street turn. So the advance that
+    /// collects the new level runs at the top of the very next iteration,
     /// clearing all seven discovery flags on the way
-    /// (`Places::reset_for_new_district`), so no shop is enterable
+    /// (`Places::reset_for_new_district`), and no shop is enterable
     /// afterwards either. It becomes reachable the moment the class-
     /// conditional spare at `1000:abc9` (class 5 keeps the Den) is
     /// implemented; `docs/re/gaps.md` records that as open.
@@ -913,8 +933,14 @@ impl Game {
                 Err(e) => term::println(&format!("^6{e}")),
             }
         }
-        // 1000:adbf, reached by fall-through from 1000:ad12 whichever way the
-        // compare above went.
+        // 1000:adbf, reached from 1000:ad12's compare chain via
+        // 1000:ad89's `jnz 0xadbf` -- NOT by fall-through, which
+        // 1000:adbd `eb 59 jmp short 0xae18` blocks. It is taken whichever
+        // way the `y` compare above went, because 1000:ac5b jumps into
+        // 1000:ad12 as well. (An earlier revision of this comment said
+        // "fall-through"; the doc on `enter_district_5` below and
+        // `docs/re/gaps.md` both had it right, so this file contradicted
+        // itself.)
         if self.district == 5 {
             self.enter_district_5(lines);
         }

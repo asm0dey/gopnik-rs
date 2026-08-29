@@ -880,11 +880,20 @@ once.
   ae18  80 3e 83 3c 01  cmp byte [0x3c83],1   -- nothing ever clears it
   ae1d  75 1d           jnz 0xae3c
   ae1f  c6 06 96 36 01  mov byte [0x3696],1   -- the Den, idempotent
+  ae24  b0 00 / 50      mov al,0 / push ax    -- param_1 = 0
   ae27  e8 98 63        call 0x111c2          -- FUN_1000_11c2(0)
+  ae2a  b0 03 / 50      mov al,3 / push ax    -- param_1 = 3
   ae2d  e8 e1 8e        call 0x3d11           -- FUN_1000_3d11(3), the rector
+  ae30  b0 01 / 50      mov al,1 / push ax    -- param_1 = 1
   ae33  e8 8c 63        call 0x111c2          -- FUN_1000_11c2(1)
+  ae36  b0 04 / 50      mov al,4 / push ax    -- param_1 = 4
   ae39  e8 d5 8e        call 0x3d11           -- FUN_1000_3d11(4), the ending
   ```
+
+  The `mov al,N / push ax` rows are shown rather than elided because
+  `param_1` is what the rest of this section turns on: it is pushed at those
+  four addresses and nowhere else, so a listing that jumped `ae1f -> ae27`
+  would skip the bytes carrying the argument it then names.
 
   `docs/re/wander.md`, "The three Den setters" (§`423`), already scoped this
   correctly — "`1000:ae18` sits at the top of every turn … once chapter 5 is
@@ -971,70 +980,57 @@ at file `0x9BF3` (`01 79`), except the mage's, whose copy is file `0x8D79`:
 
 **The port trims first, so it accepts `" y"` where the original refuses it.**
 This is **not** introduced by the autosave: it is the port's house idiom for
-every typed compare, `crate::commands::parse` (`src/commands.rs:214`,
+every typed compare, `crate::commands::parse` (its
 `input.trim().to_lowercase()`) included, and it therefore also widens the
 street verb table, `Game::shop_turn`'s key match, and the two in-combat verb
 compares `run_combat` handles itself (`run` at `1000:48e1` and `e` at
 `1000:4c56` — two rows of the nine-row compare-site table in "The in-combat
 verb set", below; that nine counts the original's `0f78:0bd8` sites inside
 `FUN_1000_3d11` and is unrelated to the nine trim sites counted here). The
-port-side inventory is a grep, with its command, rather than an assertion of
-completeness:
+port-side inventory is a **command**, not a pasted listing:
 
 ```
 $ grep -rn '\.trim()' src/*.rs | grep -v 'trim_end_matches\|trim_start_matches'
-src/commands.rs:214:    let v = input.trim().to_lowercase();
-src/game.rs:886:        // `.trim()` is a PORT ADDITION and a real (if tiny) divergence:
-src/game.rs:898:        if answer.trim().eq_ignore_ascii_case("y") {
-src/game.rs:1406:        let key = line.trim().to_lowercase();
-src/game.rs:1811:        if answer.trim().eq_ignore_ascii_case("y") {
-src/game.rs:2341:        if !answer.trim().eq_ignore_ascii_case("y") {
-src/game.rs:2410:        if !answer.trim().eq_ignore_ascii_case("y") {
-src/game.rs:2661:    ///   kept, not substituted. `Game::rename` must not `.trim()` the line
-src/game.rs:2691:        // not `.trim()` `n` before this check -- that would substitute on
-src/game.rs:3265:            if line.trim().eq_ignore_ascii_case("run") {
-src/game.rs:3304:            if line.trim().eq_ignore_ascii_case("e") {
-src/game.rs:5545:    /// `Game::rename` stopped `.trim()`-ing the line, this case wrongly
-src/main.rs:92:    buf.trim().parse().unwrap_or(0)
 ```
 
-**Thirteen hits: nine call sites and four lines of prose about them.** The
-output above is pasted verbatim from the shipped tree rather than summarised,
-because an earlier revision of this block pasted a hand-annotated listing
-whose `src/game.rs` line numbers were each one lower — it had been produced
-before the commit that inserted the comment this block's own table now lists
-at `src/game.rs:886`.
+**Thirteen hits: nine call sites and four lines of prose about them.** Run it
+and the counts are what to check, not the line numbers.
 
-Two caveats on "verbatim", both learned the hard way:
-
-* **Any edit above `src/game.rs:886` desynchronises this block**, which is
-  how it went stale the first time and again while this very correction was
-  being written (a four-line doc comment added at `src/game.rs:809` shifted
-  every `game.rs` number by three). It has to be re-run and re-pasted in the
-  same commit as any such edit, not before it.
-* `grep` on the machine this was captured on is `ugrep 7.8.4`, which searches
-  in parallel, so the **file order** varies between runs — `src/main.rs:92`
-  moved from second to last between two consecutive captures. The content of
-  every line is stable; only the interleaving is not. Compare this block
-  line-set-wise, not byte-wise.
-
-The nine call sites:
-
-| line | what it normalises |
+| where | what it normalises |
 |---|---|
-| `src/commands.rs:214` | the street verb table |
-| `src/main.rs:92` | `Val()` on the class answer — a number, not a token |
-| `src/game.rs:898` | the district autosave's `y` |
-| `src/game.rs:1406` | `shop_turn`'s key |
-| `src/game.rs:1811` | the encounter accept's `y` |
-| `src/game.rs:2341` | the mage's `y` |
-| `src/game.rs:2410` | `wander_girl`'s `y` |
-| `src/game.rs:3265` | combat's `run` |
-| `src/game.rs:3304` | combat's `e` |
+| `crate::commands::parse` | the street verb table |
+| `main.rs`'s `read_number` | `Val()` on the class answer — a number, not a token |
+| `Game::district_advance` | the district autosave's `y` |
+| `Game::shop_turn` | the location submenu key |
+| `Game::walk` | the encounter accept's `y` |
+| `Game::mage` | the mage's `y` |
+| `Game::wander_girl` | wander bucket 2's `y` |
+| `Game::run_combat` | combat's `run` (`1000:48e1`) |
+| `Game::run_combat` | combat's `e` (`1000:4c56`) |
 
-The four prose hits are `886` (the autosave comment that points here) and
-`2661`, `2691`, `5545`, which all say `Game::rename` must **not** trim — the
-next paragraph is what they are about.
+The four prose hits are the autosave comment that points at this section, and
+three in `Game::rename`'s neighbourhood saying it must **not** trim — the
+next paragraph is what those are about.
+
+**This block used to paste the grep's output verbatim, and that is why it is
+now a command.** The listing went stale three times in three consecutive
+review rounds, each time because an edit anywhere above the first hit in
+`src/game.rs` shifts every number below it: first by one (a comment inserted
+above `src/game.rs:883`), then by three (`git diff --numstat
+ee785f6..05ed2d3 -- src/game.rs` prints `4  1  src/game.rs`, one line
+replaced by four), then by twenty-plus when the final review's own fixes
+landed in the same file. Two of the three were caught only by re-running the
+command; the third would have shipped. `docs/re/METHODOLOGY.md`, "A port
+citation cites the command, not the line it printed", is the rule that came
+out of it, and this block is the first thing brought into line with it: the
+symbols above are stable across every edit, the counts are recomputable, and
+nothing here has to be re-synchronised by hand ever again.
+
+(A second reason a pasted block could not be trusted byte-for-byte here:
+`grep` on this machine is `ugrep 7.8.4`, which searches in parallel, so the
+**file order** of its output varies between runs — the `src/main.rs` hit
+moved from second to last between two consecutive captures while this
+section was being written.)
 
 **One place deliberately does not trim, and it is the interesting one.**
 `1000:7220` and `1000:ed5f` test the just-read name shortstring's **length
@@ -1461,8 +1457,11 @@ points at this entry.
   port because nothing sets `20ae:369a`". **That was false**, and it
   contradicted this file's own setter inventory above. The gym's flag is set
   by the wander preamble's draw 8 — `1000:b21c` `Random(100)`, store at
-  `1000:b22c`, ported at `src/game.rs:1421-1422` — so the gym is **rare, not
-  unreachable**: 1 in 100 per walk. The port's setter is
+  `1000:b22c`, ported in `Game::wander_preamble` (`grep -n '1000:b22c'
+  src/game.rs` finds the store) — so the gym is **rare, not
+  unreachable**: 1 in 100 per walk. This used to cite
+  `src/game.rs:1421-1422`, which was stale; a port citation names the
+  command, not the line (`docs/re/METHODOLOGY.md`). The port's setter is
   `mark_found(Location::Gym)` and `369a` appears near it only in a comment,
   which is how a grep for the address literal produced the wrong answer.
 * **The class-keyed combat-opener table** (`1000:3d32`..`1000:3e8a`, files
@@ -1679,7 +1678,16 @@ are the questions that pass left open, and the ones it created.
 * **The market's second pickpocket block spends three draws this port never
   makes** — `1000:c344` `Random(district * 5 + 5)`, `1000:c361` `Random(10)`
   and `1000:c371` `Random(luck * 2)`.
-  **Established from flow**, re-derived from an aligned start at `1000:c2a0`:
+  **Established from flow.** An earlier revision of this entry said
+  "re-derived from an aligned start at `1000:c2a0`" — `1000:c2a0` is **not**
+  an aligned start; it is three bytes into `1000:c29d`
+  `80 3e b9 38 00 cmp byte [0x38b9],0`, which is the true aligned start three
+  bytes earlier and the one this derivation actually walks from. Every other
+  address in this entry does sit on an instruction boundary (checked with
+  `tools/re_derive.py`'s `aligned_boundaries` over `data/branches.json`:
+  19 cited, 19 aligned, `1000:c2a0` the only miss). A verification claim
+  carrying the word "aligned" that its own artifact refutes is the recurring
+  defect at its most literal; the corrected walk:
   the token compare at `1000:c329` (`call 0f78:0bd8`, string operand
   `cs:0x9089`) jumps to `1000:c333` on a match, which reads the district
   `[0x3692]`, builds `district * 5 + 5` (`1000:c33a`..`1000:c340`) and spends

@@ -82,7 +82,10 @@ bolded 126 as 126 facts overstates the check by 55 lines:
 
 * **41 `xp_threshold` records carry no degree of freedom of their own.** Both
   sides compute `base + step * level` from the same two immediates —
-  `tools/difftest.py:597` and `src/progress.rs:173-175` — and those two
+  `tools/difftest.py`'s `xp_threshold` emitter and `progress::xp_to_next`
+  (`grep -n 'THRESHOLD_BASE + THRESHOLD_STEP' src/progress.rs`, one hit;
+  `src/progress.rs:173-175` is what this used to cite and is the
+  `growth_log` struct field, not the formula) — and those two
   immediates are *already* compared, as `scalar threshold_base` and
   `scalar threshold_step`. The linear form itself is never checked against the
   image: nothing here reads a curve out of `orig/g.exe`, because the original
@@ -486,7 +489,11 @@ typo cannot look like an empty trace.
 The gym **is** reachable in the port, but rarely. Its discovery flag
 `20ae:369a` is set by the wander preamble's fourth discovery roll — the
 original's `1000:b21c` `Random(100)` with `1000:b22c` `mov byte [0x369a],1`,
-implemented at `src/game.rs:1421-1422` and reached on every walk. The
+implemented in `Game::wander_preamble` (`grep -n '1000:b22c' src/game.rs`
+finds the store; the other two hits are doc comments) and reached on every
+walk. The `src/game.rs:1421-1422` this used to cite was already wrong when it
+shipped — see `docs/re/METHODOLOGY.md`, "A port citation cites the command,
+not the line it printed". The
 comparison constant IS the probability (`docs/re/METHODOLOGY.md`), so that is
 **1 in 100 per walk**, and the flag is cross-checked against the captured
 original in both oracle channels: `tests/wander_sequence.rs:484` against

@@ -220,14 +220,22 @@ Task 21 shipped this exact defect twice in one round. A
 `docs/re/gaps.md`; every `src/game.rs` line in it was already one lower than
 the committed tree because a comment inserted a line above the first hit
 (caught in review as I4). The fix — re-running the grep — went stale again
-inside the very next round: a three-line comment added above `src/game.rs:810`
-shifted the same nine sites by three more, caught only because that round
-re-ran the command instead of hand-editing the numbers. The already-shipped
-case neither round touched: `docs/re/difftest.md:489` still cites
-`src/game.rs:1421-1422` for the gym's discovery-flag setter; reading
-`src/game.rs` directly shows it at `src/game.rs:2042-2043`
-(`self.rng.below_at("1000:b21c", 100)` / `mark_found(Location::Gym); //
-1000:b22c`, verified against the current tree while writing this rule).
+inside the very next round: a doc comment that replaced one line at
+`src/game.rs:810` with four (`git diff --numstat ee785f6..05ed2d3 --
+src/game.rs` prints `4  1  src/game.rs`, a net +3) shifted the same nine
+sites by three more, caught only because that round re-ran the command
+instead of hand-editing the numbers. The already-shipped
+case neither round touched, until the whole-branch review caught the rule
+breaking itself: `docs/re/difftest.md` and `docs/re/gaps.md` both cited
+`src/game.rs:1421-1422` for the gym's discovery-flag setter, which is not
+where it is — and the first draft of this paragraph then "fixed" that by
+citing a different line number, which had itself gone stale within the hour.
+Both now cite the command instead: `grep -n '1000:b22c' src/game.rs` finds
+`mark_found(Location::Gym); // 1000:b22c` inside `Game::wander_preamble`,
+and stays true across every later edit. The two hits it returns besides the
+store are doc comments naming the same original address, which is the normal
+case: a command that needs one word of disambiguation is still a citation,
+and a line number that needs none is still stale.
 
 ## An assertion is not evidence until it has been seen failing
 
