@@ -61,19 +61,39 @@ files after Task 18; the file count is derived from the tree, and Task 19 added
 `tools/savegen.py`, `tools/test_savegen.py`, `tools/branch_reach.py`,
 `tools/test_branch_reach.py`, `tools/rngtrace/saveprobe.py` and two files under
 `data/probes/`), `cargo clippy --all-targets` clean,
-`cargo doc --no-deps` 12 warnings (all pre-existing private-item links).
-`cargo fmt --check` shows **seven** PRE-EXISTING diffs, not three: this
-line itself was stale, caught in Task 20's review round. Three are the
-`tests/wander_sequence.rs` ones tracked here since Task 18 (**lines 242, 993
-and 1120**, byte-identical content, confirmed by stashing); the other four
-were added whole by the `BigMarket -> Dealers` refactor commit on the Task
-20 branch (`90e2d28`, merged to `main`) — `src/locations.rs:175` and
-`tests/wander_sequence.rs:484` (both `TRACKED`/comment-alignment artifacts
-of the rename) and `tests/combat_sequence.rs:588`. All seven are
-byte-identical between `90e2d28` and every commit after it on `main`,
-confirmed the same way. Leave them; do not let them mask a new one.
+`cargo doc --no-deps` **13 warnings** (11 pre-existing private-item links,
+plus 2 added by Task 20's `rector_showdown` doc linking to the private
+`Game::apply_class_bonus` and `Game::enter_district_5` — 11 at the merge
+base `9837b74` and at `90e2d28`, 13 from `a776a97` on; the count was
+previously reported as a stale 12, never any commit's actual value, caught
+in the Task 20 final review round).
+`cargo fmt --check` is now clean. It had regressed 3 → 7 diffs (four new,
+from the `BigMarket -> Dealers` rename commit `90e2d28`, which shortened
+identifiers and changed rustfmt's comment-alignment decisions in
+`src/locations.rs:175`, `tests/combat_sequence.rs:588` and
+`tests/wander_sequence.rs:484`/`:938`) and was reported as "seven
+PRE-EXISTING", baselined against `90e2d28` itself rather than the merge
+base — a check that could not fail on a regression `90e2d28` introduced.
+Fixed in the Task 20 final review round by running `cargo fmt`; no
+behaviour changed.
 
-**The honest state of the project.** Tasks 13-review and 14 moved branch
+**Agent-config decisions, made deliberate in the Task 20 final review round.**
+`20a36e9` added `CLAUDE.md`'s trailing `@AGENTS.md` include silently (not
+mentioned in that commit's own message), and since `AGENTS.md` itself was
+not tracked until the next commit (`8e936bc`), a checkout of `20a36e9` alone
+has a `CLAUDE.md` pointing at a file that does not exist there — bisect-
+hostile, self-healing one commit later. Left as history (rewriting an
+already-made commit was out of scope for this fix round), but the chain it
+completes is now a deliberate keep, not a side effect: `CLAUDE.md` →
+`AGENTS.md` → `.tessl/RULES.md` → `good-oss-citizen.md` loads ~140 lines of
+open-source-contribution procedure into every session of this solo RE port
+with no upstream. Reviewed and kept — the procedural rules (templates,
+DCO, AI-disclosure) are inert with no target repo to apply them to, and
+`good-oss-citizen.md`'s "exclude `.claude/` from contributions" line is
+about a PR diff to a *different* project, not this repo's own tracked
+`.claude/` files (see I1's fix, above and in `.gitignore`); the two do not
+conflict. If the chain is ever judged not worth the session-start cost, drop
+it by editing `AGENTS.md`'s include, not by re-touching `.gitignore`. Tasks 13-review and 14 moved branch
 coverage by zero — sound work on the measuring apparatus that found real
 defects in the *evidence* and none in the port. Tasks 16–19 are the return to
 the thing measured: +118 branches and, in 18 and 19, real behaviour. Task 19
