@@ -40,11 +40,9 @@ recompute it from the shipped artifact and show the command that produced it.
 - State the runner with every number. `unittest discover` and `pytest` disagree
   by design in this repo and both are right; a count without its method is the
   defect above, committed.
-- The four oracles under `data/` are ground truth and are **never** regenerated.
+- The five oracles under `data/` are ground truth and are **never** regenerated.
 - When output and flow disagree, flow wins and the disagreement gets written
   down — in `docs/re/gaps.md` if it is a divergence this port keeps.
-
-<!-- jbcontext-instructions-start -->
 
 # Priority
 
@@ -84,11 +82,13 @@ it as progress on its own. **Progress is behaviour in `src/`.**
   deferred-minor, not a task.
 - **Reach for the existing instrument.** `tools/rngtrace/verbprobe.py`,
   `tools/re_query.py`, `tools/addr.py`, `tools/dis16.py`, `tools/mutate.py` and
-  the four frozen oracles already cover most questions. Re-point them; do not
+  the five frozen oracles already cover most questions. Re-point them; do not
   build a sibling.
 - **Fixing a document that contradicts itself is not yak shaving** — a wrong
   address propagates into every task that reads it. Correctness of the map is
   part of the port. Growing the map for its own sake is not.
+
+<!-- jbcontext-instructions-start -->
 
 # Tools
 
