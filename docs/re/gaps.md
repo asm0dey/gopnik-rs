@@ -45,25 +45,51 @@ inventory are now stated together.
 | `1000:73cf` | `0x3697` | Girl | `[0x389c] == 3` at `1000:73bb` | flow | **yes** (Task 11c) — `Game::apply_class_bonus` |
 | `1000:73d4` | `0x3699` | Club | `[0x389c] == 3` at `1000:73bb` | flow | **yes** (Task 11c) — `Game::apply_class_bonus` |
 | `1000:73e0` | `0x3695` | Dealers | `[0x389c] == 6` at `1000:73bb` | flow | **yes** (Task 11c) — `Game::apply_class_bonus` |
-| `1000:dcf6` | `0x3695` | Dealers | the `a` token at `1000:dcef` | flow | no |
-| `1000:dcfb` | `0x369a` | Gym | the `a` token at `1000:dcef` | flow | no |
-| `1000:ae1f` | `0x3696` | Den | the chapter-5 endgame arm at `1000:adbf` | flow | no |
-| `1000:4aa5` | `0x3696` | Den | the de-level (flee) penalty, `1000:4a87`/`1000:4aa0` | flow | no |
-| `1000:52b3` | `0x3696` | Den | the post-kill block, `1000:5295`/`1000:52b1` | flow | no |
+| `1000:dcf6` | `0x3695` | Dealers | the `a` token at `1000:dcef` | flow | **yes** (Task 20) — `Game::den_reveal` |
+| `1000:dcfb` | `0x369a` | Gym | the `a` token at `1000:dcef` | flow | **yes** (Task 20) — `Game::den_reveal` |
+| `1000:ae1f` | `0x3696` | Den | the chapter-5 endgame arm at `1000:adbf` | flow | **yes** (Task 20) — `Game::enter_district_5` |
+| `1000:4aa5` | `0x3696` | Den | the de-level (flee) penalty, `1000:4a87`/`1000:4aa0` | flow | **yes** — `Game::flee_penalty` |
+| `1000:52b3` | `0x3696` | Den | the post-kill block, `1000:5295`/`1000:52b1` | flow | **yes** — `Game::claim_spoils` |
 
 All three Den triggers were **closed by Task 11b** — see `docs/re/wander.md`,
 "The three Den setters". `1000:4aa5`'s store and the line it prints contradict
 each other in the original; that is recorded there, not resolved.
 
-**All seven flags are now reachable in this port** (Task 11c). Market and Vet
-from character creation and from the wander preamble's draws 6 and 5; Club from
-`girl`, from the class-3 bonus and from draw 7; Gym from draw 8; Girl from the
-wander bucket and the class-3 bonus; Den from the class-5 bonus; Dealers from
-the class-6 bonus. **Five** of the seventeen setters remain unimplemented —
-the table's five `no` rows: the `a` token (`1000:dcf6`, `1000:dcfb`), the
-chapter-5 endgame (`1000:ae1f`), the de-level penalty (`1000:4aa5`) and the
-post-kill block (`1000:52b3`). 12 `yes` + 5 `no` = 17. (An earlier revision
-said "Six" while naming these same five addresses.)
+**A revision of this section carried between Task 11b and Task 20 was
+itself wrong about the last two rows.** `1000:4aa5` and `1000:52b3` were
+marked `no` here even though both had already been ported — `1000:4aa5` in
+`Game::flee_penalty` (the `class != 5 && level - (district-1)*10 == 3` arm,
+storing the den flag right before `^4Такого конявого непустят в местный
+притон!`) and `1000:52b3` in `Game::claim_spoils` (the
+`!is_found(Den) && level - (district-1)*10 >= 3` arm). Both were confirmed
+against the shipped `src/game.rs` at the start of Task 20, before either was
+touched again. The table now says which won: the code, not the inventory
+that disagreed with it.
+
+Task 20 closed the two rows that were genuinely open: the `a` token
+(`1000:dcf6`, `1000:dcfb`, both stores unconditional once reached, in
+`Game::den_reveal`) and the chapter-5 endgame's own flag store and Den grant
+(`1000:ae1f`, in `Game::enter_district_5`, reached the turn `district` first
+becomes 5). The four calls that same endgame arm makes afterward
+(`FUN_1000_11c2` twice, `FUN_1000_3d11` twice, for the rector and final-boss
+fights) are deliberately NOT ported — see `Game::enter_district_5`'s doc
+comment in `src/game.rs` for why, and "The district-advance autosave is
+mapped but not wired" below for the architectural reason neither this arm
+nor its calls can run "every turn" the way the original does.
+
+**All seventeen setters are now in the port.** Market and Vet from character
+creation and from the wander preamble's draws 6 and 5; Club from `girl`, from
+the class-3 bonus and from draw 7; Gym from draw 8 and from the den's `a`
+reveal; Girl from the wander bucket and the class-3 bonus; Den from the
+class-5 bonus, the flee penalty, the post-kill block and the chapter-5
+endgame arm; Dealers from the class-6 bonus and from the den's `a` reveal.
+**Zero** of the seventeen setters remain unimplemented: the table has no `no`
+rows left. 17 `yes` + 0 `no` = 17. (An earlier revision said "Five" while
+naming the same five addresses this correction closes; before that, an
+earlier one still said "Six" naming the same five; before that, the earliest
+recorded revision — the intro paragraph above — said "Two" while itself
+naming five. The count and the inventory are stated together each time
+specifically so the next reader does not have to trust either alone.)
 
 ### Character creation grants Vet and Market — `1000:6dbe`
 
@@ -666,13 +692,96 @@ which is exactly why the shipped corpus is `SAVE_R2`..`SAVE_R5` with no
 `1000:acc8`, and the `^1Сохранено в save_r…` line at `1000:ad0d`.
 
 **The port advances the district in the wrong place**, and that is what
-blocks the rest. `Game::resolve_fight`'s `while self.district < 5 && …` loop
+blocks the rest. `Game::run_combat`'s `while self.district < 5 && …` loop
 reproduces both gates correctly but sits in the post-fight block, which has
 no input iterator, so there is nowhere to put the prompt's `ReadLn`. Moving
 the advance to the top of `Game::run` is the fix, and it is a change to the
 main loop's shape rather than to this task's subject. The two lines, the
 prompt, the `y` compare and the ban-countdown clears are all unreproduced
 with it.
+
+**The same gap blocks the chapter-5 endgame arm that immediately follows
+this one in the original**, `1000:adbf`..`1000:ae1f` (`docs/re/wander.md`,
+"The three Den setters" calls `1000:ab75`..`1000:ae18` together "the genuine
+district-transition block"). Task 20 ported that arm's flag store
+(`1000:ae13`, `rector_showdown`) and Den grant (`1000:ae1f`) into the same
+relocated hook this section already describes -- `Game::run_combat`'s
+promotion loop -- as `Game::enter_district_5`, called from inside the `while
+self.district < 5` loop where its own guard clause (`district < 5`) makes it
+fire on exactly the turn `district` becomes 5, and structurally cannot fire
+again. That is not a guard invented to suppress the original's "every turn"
+repetition (`docs/re/wander.md`: `1000:ae18` sits at the top of every turn,
+and nothing ever clears `[0x3c83]`) -- it is the one hook this port's
+architecture has, and it has no mechanism for repeating anything every turn
+at all, this arm included. **What the port refuses that the original
+accepts:** a save loaded already at district 5 (from before this fix, or
+hypothetically any future path that sets `district` outside this loop) would
+never see `Game::enter_district_5` fire, where the original's per-turn check
+would catch it on the very next turn regardless of how district 5 was
+reached. Settling this needs the same fix as the autosave above -- a real
+per-turn hook re-reading `1000:ab75`..`1000:ad12` alongside `1000:adbf`..
+`1000:ae18` -- and is out of scope for a flag-setter task.
+`Game::enter_district_5`'s own doc comment in `src/game.rs` additionally
+records why the arm's four calls (`FUN_1000_11c2` x2, `FUN_1000_3d11` x2, the
+rector and final-boss fights) are not ported here: `FUN_1000_3d11`'s
+`param_1` argument -- the XP-award skip at `1000:51b9`..`1000:51e9` and the
+`param_1 == 4` victory ending at `1000:5085` -- is not modelled by
+`Game::run_combat` at all, and the ending has never been traced
+(`docs/re/wander.md`: "Whether `FUN_1000_3d11(4)` returns is not traced
+here").
+
+## `FUN_1000_11c2` -- traced (Task 20), not ported
+
+*Cited from `src/game.rs`'s `Game::enter_district_5`.*
+
+**Entry point `1000:11c2`.** Never named in `docs/re/` before Task 20, which
+disassembled it in full: `python3 tools/re_query.py resolve 1000:11c2 -n 250
+-i 80`.
+
+**Established from flow.** 50 instructions, `0x11c2`..`0x1271` (175 bytes,
+`file_off 0x2a92`..`0x2b41`; `python3 tools/re_query.py resolve 1000:11c2 -n
+175 -i 60 --json` and count instructions with `image_off <= 0x1271`), no
+branch besides its own two argument arms and no `9a 4b 11 78 0f` draw. It
+takes one byte argument (`bp+4`) and stores a fixed block into the enemy
+record `20ae:3952..396e`:
+
+* `20ae:3952` (class) := `0xa`, unconditionally, before either arm.
+* arg `0`: `395c`(level)=`0x7d`, `3954`(str)=`0x29`, `3956`(agi)=`0x32`,
+  `3958`(vit)=`0x7b`, `395a`(luck)=`0x24`, `3968`(armour)=`0x3c`.
+* arg `1`: `395c`=`0xa0`, `3954`=`0x32`, `3956`=`0x3c`, `3958`=`0xbc`,
+  `395a`=`0x20`, `3968`=`0x50`.
+* both arms: `395e`(dmg_min) := strength/2 (`idiv 2`), `3960`(dmg_max) :=
+  strength, `3964`(hpmax) := `5*vitality + strength + 10`, `3962`(hp) :=
+  hpmax, `3966`/`3967` (jaw/leg) := 0, `396a`/`396c`/`396e` (loot) := 0.
+
+Both arms match `data/enemies.json`'s `rektor_ngu_v0` (arg 0: level 125, str
+41, agi 50, vit 123, luck 36, dmg 20-41, hp/hpmax 666, armour 60) and
+`rektor_ngu_v1` (arg 1: level 160, str 50, agi 60, vit 188, luck 32, dmg
+25-50, hp/hpmax 1000, armour 80) exactly, and the derived fields match this
+port's own `Game::roll_enemy` formulas (`hpmax = 10 + 5*vitality + strength`,
+`dmg_min/dmg_max = strength/2, strength`). So `1000:11c2` itself holds no
+open question: it is a stat-block initialiser for two already-catalogued
+`data/enemies.json` rows, and `Enemy::to_fighter` already builds a `Fighter`
+from either.
+
+**What is still open is `FUN_1000_3d11`'s `param_1`, not `FUN_1000_11c2`.**
+The two calls this arm makes to the fight function (`1000:ae2d call 0x3d11`
+with `param_1 = 3`, `1000:ae39` with `4`) are what stay unported, because
+`Game::run_combat` does not model `param_1` at all:
+
+* `1000:51b9`..`1000:51e9`, the XP award, is skipped for `param_1` in `{3,
+  4}` (`docs/re/combat.md`, "The victory block"); `run_combat` awards XP
+  unconditionally.
+* `1000:5085 cmp byte [bp+0x4],0x4` selects a separate victory ending for
+  `param_1 == 4` — `FUN_1000_074b(1)`, file `0x1DBF` (`^2Ты победил.`) — that
+  this project has never traced. `docs/re/wander.md`, "The three Den
+  setters": "Whether `FUN_1000_3d11(4)` returns is not traced here."
+
+Porting the rector and final-boss fights needs that ending traced and
+`run_combat`'s signature widened for `param_1` first — a combat-dispatch
+task, not a flag-setter one. Until then `1000:ae2d`/`1000:ae39` (and the two
+`FUN_1000_11c2` calls that feed them, `1000:ae27`/`1000:ae33`) stay
+unreproduced, registered here rather than left implicit.
 
 ## `help`'s printed content
 

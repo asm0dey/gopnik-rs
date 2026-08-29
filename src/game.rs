@@ -381,12 +381,20 @@ pub struct Game {
     /// crowd (`1000:411d`), no fleeing (`1000:48eb`) and a death message that
     /// names the killer (`1000:4f8c`).
     ///
-    /// **Nothing in this port sets it**, because neither of the two writers
-    /// is modelled: `1000:ae2d`/`1000:ae39` are the endgame's own two calls
-    /// to `FUN_1000_3d11` with opponent kinds 3 and 4, and this port has no
-    /// endgame. All three effects are implemented and reachable only from a
-    /// test that sets the field. Same shape as
-    /// [`Game::market_ban_countdown`]; registered in `docs/re/gaps.md`.
+    /// **Task 20 ported `1000:ae13`**, the second of the two writers: it is
+    /// set from [`Game::enter_district_5`], reached the turn `self.district`
+    /// first becomes 5. `1000:7364` (`FUN_1000_6a0d`'s class-5 character-
+    /// creation arm, printing the *other* line, `^1Пора наконец
+    /// отомстить...`) is still unmodelled -- see
+    /// [`Game::apply_class_bonus`], which is `1000:73bb`..`1000:73e5` only
+    /// and does not reach back to `1000:7347`. So a class-5 (Гопник)
+    /// character now gets this flag set twice in the original (once at
+    /// creation, again on reaching district 5) but only once in this port,
+    /// with no observable difference -- the flag is a boolean and every
+    /// reader tests it, never counts the writes. All three effects were
+    /// already implemented before this task and are now reachable in real
+    /// play, not only from a test that sets the field directly. Same shape
+    /// as [`Game::market_ban_countdown`]; registered in `docs/re/gaps.md`.
     pub rector_showdown: bool,
     /// `20ae:3e35` -- the den's loan credit. Set to 5 at `1000:73e5` and
     /// topped up once per walk while below `district * 10` (`1000:af19`).
@@ -776,12 +784,20 @@ impl Game {
     /// "Dealers, Den and Gym stay unreachable"; that is now false on all
     /// three counts and contradicted `docs/re/gaps.md`'s own inventory.
     ///
-    /// The remaining **five** of the seventeen are unimplemented: the `a`
-    /// token's two (`1000:dcf6`/`1000:dcfb`), the chapter-5 endgame
-    /// (`1000:ae1f`), the de-level penalty (`1000:4aa5`) and the post-kill
-    /// block (`1000:52b3`). 12 + 5 = 17. The complete 17-row inventory, with
-    /// a trigger and an evidence tier per row, is in `docs/re/gaps.md`,
-    /// "Discovery flags: the complete store inventory".
+    /// **All seventeen are now implemented, as of Task 20.** The de-level
+    /// penalty (`1000:4aa5` -- [`Game::flee_penalty`]) and the post-kill
+    /// block (`1000:52b3` -- [`Game::claim_spoils`]) were *already* ported
+    /// before Task 20 -- an earlier revision of this comment (and of
+    /// `docs/re/gaps.md`'s own inventory) claimed both were still missing,
+    /// which was wrong; the code was checked against that claim and the
+    /// code is what stands. Task 20 closed the two rows that genuinely were
+    /// open: the `a` token's two stores (`1000:dcf6`/`1000:dcfb` --
+    /// [`Game::den_reveal`]) and the chapter-5 endgame arm's flag store and
+    /// Den grant (`1000:ae1f` -- [`Game::enter_district_5`], which does NOT
+    /// port that arm's two forced fights -- see its own doc comment). 17 + 0
+    /// = 17. The complete 17-row inventory, with a trigger and an evidence
+    /// tier per row, is in `docs/re/gaps.md`, "Discovery flags: the
+    /// complete store inventory".
     fn enter_shop(&mut self, loc: Location) {
         if !self.places.is_found(loc) {
             term::println(Self::undiscovered_line(loc));
@@ -1109,6 +1125,7 @@ impl Game {
             (Location::Vet, "r") => return self.heal_leg(),
             (Location::Dealers, "x") => return self.sell_junk(),
             (Location::Dealers, "wes") => return self.sell_items(),
+            (Location::Den, "a") => return self.den_reveal(),
             (Location::Market | Location::Dealers, k)
                 if k.len() == 1 && k.chars().all(|c| c.is_ascii_digit()) =>
             {
@@ -1121,6 +1138,64 @@ impl Game {
             self.mode = Mode::Street;
         }
         // Everything else: ignored, prompt repeats.
+    }
+
+    /// `a` at the den prompt -- `1000:dcba`..`1000:dd32`, the hidden
+    /// Dealers+Gym reveal. `docs/re/wander.md`, "The `a` reveal's input
+    /// buffer" already established the token is read at the den's own
+    /// `ReadLn DS:3a72`, not the street prompt; this is that arm.
+    ///
+    /// **Established from flow**, re-disassembled for this task
+    /// (`python3 tools/re_query.py resolve 1000:dcba -n 200 -i 60`):
+    ///
+    /// ```text
+    /// dcba  cmp byte [0x3695],0 / jz 0xdcc8    ; Dealers CLEAR -> compute
+    /// dcc1  cmp byte [0x369a],0 / jnz 0xdd32   ; (else) Gym SET -> skip
+    /// dcc8  ax := (level - (district-1)*10) * 2 + pontovost_street
+    /// dce0  cmp ax,0x28 / jl 0xdd32            ; need >= 40
+    /// dce5  push 0x3a72 (the buffer) / push 0x9fc9 ("a", file 0xB899)
+    /// dcef  call 0f78:0bd8 / jnz 0xdd32        ; string compare
+    /// dcf6  mov byte [0x3695],1                ; Dealers
+    /// dcfb  mov byte [0x369a],1                ; Gym
+    /// dd00  WriteLn file 0xB89B
+    /// dd19  WriteLn file 0xB8CE
+    /// dd32  (next token in the chain)
+    /// ```
+    ///
+    /// So the skip at `dcc6` happens only when **both** Dealers and Gym are
+    /// already set: Dealers clear takes the `jz` straight past the Gym test
+    /// (Gym's own state never gates it), and Dealers set + Gym clear falls
+    /// through to `dcc8` exactly like Dealers clear does -- the arm still
+    /// runs. Getting `74`/`75` backwards here would flip which of "both
+    /// set" and "Dealers set, Gym clear" is the skip.
+    ///
+    /// **The reveal prints two lines**, established by reading past the two
+    /// stores rather than inferred: `dd00`..`dd19` and `dd19`..`dd2d` are
+    /// each a `mov di,<string>` / `push cs` / `push di` / five zeroed
+    /// `WriteLn` format-spec words / `call 0eed:01c2` (`docs/re/rtl.md`
+    /// names `0eed:01c2` `WriteLn`) -- the same shape every other plain
+    /// string print in this module uses -- and execution falls straight
+    /// through from the first into the second with no branch between them,
+    /// landing on `dd32` right after, which is also both early-out targets'
+    /// destination.
+    ///
+    /// **The two stores are unconditional once reached**: `dcf6` and `dcfb`
+    /// are back-to-back five-byte immediate stores with no compare and no
+    /// branch between or before them (after the `jnz 0xdd32` at `dcf4`), so
+    /// Dealers and Gym are set even when one of them was already set --
+    /// there is no compare instruction available to gate it on.
+    fn den_reveal(&mut self) {
+        if self.places.is_found(Location::Dealers) && self.places.is_found(Location::Gym) {
+            return;
+        }
+        let level_in_district = i32::from(self.player.level) - (i32::from(self.district) - 1) * 10;
+        if level_in_district * 2 + self.pontovost_street < 0x28 {
+            return;
+        }
+        term::println("^0Тут у нас есть пара мест куда тебе стоит сходить");
+        term::println("^2Ты узнал где находится качалка и где находятся барыги");
+        self.places.mark_found(Location::Dealers);
+        self.places.mark_found(Location::Gym);
     }
 
     /// `Здоровье #/#  ` -- file `0x2BAE`, trailing double space included.
@@ -2814,8 +2889,9 @@ impl Game {
     /// bypassed for it here.
     ///
     /// [`Game::flee`] is the arm, [`Game::flee_penalty`] the level it costs.
-    /// The `1000:48eb` refusal reads [`Game::rector_showdown`], which nothing
-    /// in this port sets, so that arm is reachable only from a test.
+    /// The `1000:48eb` refusal reads [`Game::rector_showdown`], which
+    /// [`Game::enter_district_5`] sets once `self.district` reaches 5 (Task
+    /// 20), so this arm is now reachable in real play, not only from a test.
     ///
     /// Fleeing does **not** end the prompt: `1000:4af7 mov byte [bp-0x1],1`
     /// only raises the exit flag, and `1000:5838` does not read it until the
@@ -3015,8 +3091,9 @@ impl Game {
             // rescue behind it: 1000:4fac is `ReadKey` and 1000:4fb4 calls
             // FUN_1000_074b with `al = 0`, the end screen, which halts. So
             // dying to the rector is final however much cred and whatever
-            // flags the player is carrying. [`Game::rector_showdown`] is
-            // never set by this port.
+            // flags the player is carrying. [`Game::enter_district_5`]
+            // (Task 20) sets [`Game::rector_showdown`] once `self.district`
+            // reaches 5.
             if self.rector_showdown {
                 term::println("^4Ты сдох. Ректор тебя замочил. Ты так и не доказал свою крутизну.");
                 self.running = false;
@@ -3068,8 +3145,96 @@ impl Game {
         while self.district < 5 && self.player.level >= u16::from(self.district) * 10 {
             self.district += 1;
             self.places.reset_for_new_district();
+            if self.district == 5 {
+                self.enter_district_5();
+            }
         }
         Ok(())
+    }
+
+    /// `1000:adbf`..`1000:ae1f` -- the chapter-5 endgame arm's flag stores
+    /// and its three announcement lines. Called from the promotion loop
+    /// just above rather than from anywhere resembling the original's own
+    /// site, for the reason `docs/re/gaps.md` ("The district-advance
+    /// autosave is mapped but not wired") already records: the original's
+    /// per-turn preamble `1000:ab75`..`1000:ad12` is not wired into this
+    /// port at all, and this arm is its direct continuation -- the same
+    /// `1000:ab75`..`1000:ae18` region `docs/re/wander.md` calls "the
+    /// genuine district-transition block".
+    ///
+    /// **Established from flow**, re-disassembled for this task:
+    ///
+    /// ```text
+    /// adbf  cmp al,5 / jnz 0xae18   ; chapter == district, [0x3692]
+    /// adc3  WriteLn file 0x9CF2     ; ^1Пора наконец отомстить ректору...
+    /// addc  call 0f16:031a          ; Delay -- no state, not reproduced
+    /// ade1  WriteLn file 0x9D16     ; ^1Ты пробрался в универ...
+    /// adfa  WriteLn file 0x9D4E     ; ^1А вот и он...
+    /// ae13  mov byte [0x3c83],1     ; rector_showdown
+    /// ae18  cmp byte [0x3c83],1 / jnz 0xae3c  ; always taken -- ae13 wrote
+    ///       the exact byte this reads, five bytes later
+    /// ae1f  mov byte [0x3696],1     ; Den
+    /// ae24  mov al,0 / push ax / call 0x11c2 (ae27) ; FUN_1000_11c2(0)
+    /// ae2a  mov al,3 / push ax / call 0x3d11 (ae2d) ; the rector fight
+    /// ae30  mov al,1 / push ax / call 0x11c2 (ae33) ; FUN_1000_11c2(1)
+    /// ae36  mov al,4 / push ax / call 0x3d11 (ae39) ; the endgame fight
+    /// ```
+    ///
+    /// **The four calls at `ae27`..`ae39` are deliberately NOT ported --
+    /// the brief's escape hatch.** `FUN_1000_11c2` was traced for this task
+    /// (no `docs/re/` file cited it before): 50 instructions, 175 bytes, no
+    /// branch and no draw, storing a fixed stat block into the enemy record
+    /// `20ae:3952..396e` -- the same fields [`Game::roll_enemy`] fills for a
+    /// rolled encounter -- selecting one of two blocks on its argument.
+    /// Both blocks match `data/enemies.json`'s `rektor_ngu_v0` (arg 0) and
+    /// `rektor_ngu_v1` (arg 1) exactly, including the derived
+    /// `hpmax := 5*vitality + strength + 10` and
+    /// `dmg_min, dmg_max := strength/2, strength` this port's own
+    /// `roll_enemy` already computes the same way. So `FUN_1000_11c2` itself
+    /// is not the obstacle to porting these two fights.
+    ///
+    /// The obstacle is `FUN_1000_3d11`'s own `param_1` (the fight function's
+    /// `bp+4`), which [`Game::run_combat`] does not model at all:
+    /// * `1000:51b9`..`1000:51e9`, the XP award, is skipped when `param_1`
+    ///   is 3 or 4 (`docs/re/combat.md`, "The victory block") --
+    ///   `run_combat` currently awards XP unconditionally.
+    /// * `1000:5085 cmp byte [bp+0x4],0x4` selects an entirely separate
+    ///   victory ending for `param_1 == 4` -- `FUN_1000_074b(1)`, the
+    ///   end-of-game banner (file `0x1DBF`, `^2Ты победил.`) -- which has
+    ///   never been traced by this project (`docs/re/wander.md`: "Whether
+    ///   `FUN_1000_3d11(4)` returns is not traced here").
+    ///
+    /// Porting either fight correctly needs both of those traced and
+    /// `run_combat`'s signature widened first; that is a combat-dispatch
+    /// task, not a flag-setter one. `1000:11c2` and `FUN_1000_3d11`'s
+    /// `param_1` handling are recorded as open in `docs/re/gaps.md` rather
+    /// than guessed at here, per "Do not port a call whose callee you have
+    /// not read" -- `1000:3d11`'s callee IS read (it is `run_combat`
+    /// itself), but not for this argument.
+    ///
+    /// **The "runs every turn" hazard does not apply to what IS ported
+    /// here.** In the original this whole arm -- prints, stores, and the
+    /// two forced fights -- repeats on every turn once district 5 is
+    /// reached, because nothing ever clears `[0x3c83]` and `1000:ae18`'s
+    /// test is always taken (`docs/re/wander.md`, "The three Den setters").
+    /// This port has no per-turn hook to repeat it from, so this method is
+    /// called from the `while self.district < 5` loop above, whose own
+    /// guard clause (`district < 5`) makes it unreachable once `district`
+    /// is already 5 -- this fires on exactly the turn district becomes 5,
+    /// and never again. That is a structural consequence of where the only
+    /// available hook lives, not a guard this task added to suppress the
+    /// original's repetition. The two stores are booleans, so idempotent
+    /// either way; the three prints are the one place a player of the
+    /// original would see more than this port ever shows -- every turn,
+    /// forever, once district 5 is reached, against this port's exactly
+    /// once. Recorded in `docs/re/gaps.md`, "The district-advance autosave
+    /// is mapped but not wired".
+    fn enter_district_5(&mut self) {
+        term::println("^1Пора наконец отомстить ректору...");
+        term::println("^1Ты пробрался в универ, в тёмный ректорский кабинет...");
+        term::println("^1А вот и он...");
+        self.rector_showdown = true;
+        self.places.mark_found(Location::Den);
     }
 
     /// Begin recording the fight channels, discarding anything recorded.
@@ -3687,7 +3852,8 @@ impl Game {
         // showdown has no spectators. The gate sits AFTER the counter block
         // at 1000:40f2, so `^7Начинают собираться зрители` still prints and
         // only the taunts (and their two draws) are suppressed.
-        // [`Game::rector_showdown`] is never set by this port.
+        // [`Game::enter_district_5`] (Task 20) sets [`Game::rector_showdown`]
+        // once `self.district` reaches 5.
         if self.rector_showdown {
             return;
         }
@@ -5680,5 +5846,105 @@ mod tests {
         assert!(g.running);
         assert!(g.last_enemy.is_some());
         assert!(g.progress.xp > before, "an award must be credited");
+    }
+
+    /// `1000:dce0 cmp ax,0x28 / jl 0xdd32` -- the threshold is on
+    /// `(level - (district-1)*10)*2 + pontovost_street`, computed here from
+    /// the formula rather than hard-coded, per the task brief. District 1
+    /// and `pontovost_street == 0` reduce it to `2 * level >= 0x28`, so
+    /// `level == 20` is the exact boundary.
+    #[test]
+    fn den_reveal_gates_on_the_computed_threshold() {
+        let district: i32 = 1;
+        let pontovost_street: i32 = 0;
+        // ax = (level - (district-1)*10) * 2 + pontovost_street; solved for
+        // ax == 0x28 exactly (the boundary), then one level below it.
+        let boundary_level = ((0x28 - pontovost_street) / 2 + (district - 1) * 10) as u16;
+
+        let mut g = game();
+        g.district = district as u8;
+        g.pontovost_street = pontovost_street;
+        g.player.level = boundary_level - 1;
+        g.shop_turn(Location::Den, "a");
+        assert!(
+            !g.places.is_found(Location::Dealers),
+            "below the threshold, Dealers must not be revealed"
+        );
+        assert!(
+            !g.places.is_found(Location::Gym),
+            "below the threshold, Gym must not be revealed"
+        );
+
+        let mut g = game();
+        g.district = district as u8;
+        g.pontovost_street = pontovost_street;
+        g.player.level = boundary_level;
+        g.shop_turn(Location::Den, "a");
+        assert!(
+            g.places.is_found(Location::Dealers),
+            "at the threshold, Dealers must be revealed"
+        );
+        assert!(
+            g.places.is_found(Location::Gym),
+            "at the threshold, Gym must be revealed"
+        );
+    }
+
+    /// `1000:dcbf jz 0xdcc8` / `1000:dcc6 jnz 0xdd32` -- Dealers set and Gym
+    /// CLEAR must still fall through and reveal Gym. This is the exact
+    /// assertion that catches `74`/`75` read backwards: misreading either
+    /// jump would make this case skip instead of reveal.
+    #[test]
+    fn den_reveal_still_fires_when_dealers_is_set_and_gym_is_not() {
+        let mut g = game();
+        g.player.level = 40; // comfortably above the threshold at district 1
+        g.places.mark_found(Location::Dealers);
+        assert!(!g.places.is_found(Location::Gym));
+        g.shop_turn(Location::Den, "a");
+        assert!(
+            g.places.is_found(Location::Gym),
+            "Dealers set + Gym clear must still reveal Gym (the fall-through)"
+        );
+    }
+
+    // The both-already-set skip (`1000:dcbf` clear + `1000:dcc6` taken) has
+    // no assertable game-state effect once both flags are already found --
+    // `mark_found` on an already-found slot is a no-op either way, so a
+    // state-only assertion here cannot distinguish "the block ran again"
+    // from "the block was skipped". The block's only other effect is two
+    // `WriteLn`s, and this codebase has no stdout-capture harness (see
+    // `src/term.rs`: `println`/`print` write directly to `io::stdout()`).
+    // So, per the task brief, this case is recorded as NOT WRITABLE here
+    // rather than covered with a check that cannot fail.
+
+    /// `1000:ae13`/`1000:ae1f` via [`Game::enter_district_5`] -- reaching
+    /// district 5 sets `rector_showdown`, and the flee refusal at
+    /// `1000:48eb` ([`Game::flee`]) is the reader this test drives live.
+    #[test]
+    fn reaching_district_5_arms_the_rector_showdown_and_flee_refuses() {
+        let mut g = game();
+        g.district = 4;
+        g.player.level = 40; // `player.level >= district * 10`: promotes to 5
+        assert!(!g.rector_showdown);
+        let mut dead_enemy = punchbag();
+        dead_enemy.hp = 0; // already dead: the win branch runs with no draw
+        g.run_combat(dead_enemy, &mut no_input()).unwrap();
+        assert_eq!(g.district, 5);
+        assert!(
+            g.rector_showdown,
+            "1000:ae13 must fire the turn district reaches 5"
+        );
+        assert!(
+            g.places.is_found(Location::Den),
+            "1000:ae1f must grant the Den in the same arm"
+        );
+
+        // The reader: 1000:48eb refuses `run` outright while rector_showdown
+        // is set, where before Task 20 this arm was reachable only by
+        // setting the field directly in a test.
+        let mut g2 = game();
+        g2.rector_showdown = true;
+        let fled = g2.flee();
+        assert!(!fled, "1000:48eb refuses every flee once the flag is set");
     }
 }
