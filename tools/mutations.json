@@ -1012,7 +1012,7 @@
   },
   {
     "label": "shop-arms-literal-identity",
-    "defends": "Every {cs_offset,text} record must be the Pascal shortstring actually at that CS offset.  This is what stops a refusal or a confirmation being attributed to the wrong arm -- the six bmar arms print 15 distinct literals and four of them are reused across rows.",
+    "defends": "Every {cs_offset,text} record must be the Pascal shortstring actually at that CS offset.  This is what stops a refusal or a confirmation being attributed to the wrong arm -- the six bmar arms push 22 literal records over 21 distinct literals, and rows 2 and 4 genuinely share one (CS 0x93b0).",
     "artifact": "data/shop_arms.json",
     "mutate": {
       "op": "json-set",
