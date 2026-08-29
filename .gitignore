@@ -14,3 +14,10 @@ __pycache__/
 # live in orig/ under their DOS uppercase names and are not matched here.
 /save_r?.sav
 /places.sav
+
+# Agent tool state, per-machine. The tessl manifest, AGENTS.md and the vendored
+# .tessl/ tree ARE tracked -- CLAUDE.md's `@AGENTS.md` include chains through
+# them, so a clone that lacked them would silently load nothing.
+/.claude/
+/.agents/
+/.mcp.json
