@@ -698,6 +698,20 @@ impl Game {
     /// `1000:ee01`. `Mode::Shop` is this port's line-at-a-time stand-in for
     /// that inner loop, so running the advance on those iterations would
     /// promote the player on turns the original does not.
+    ///
+    /// **That gate is established from flow and is currently unobservable,
+    /// which is stated rather than covered by a test that could not fail.**
+    /// [`Game::district_advance`] returns without reading or printing unless
+    /// a promotion is due, so removing the gate would only differ while the
+    /// player is inside a shop AND `level >= district * 10` AND
+    /// `district < 5`. This port cannot reach that state: the level only
+    /// rises in combat, combat is only entered from a street turn, and the
+    /// advance that collects it runs at the top of the very next turn --
+    /// clearing all seven discovery flags on the way
+    /// (`Places::reset_for_new_district`), so no shop is enterable
+    /// afterwards either. It becomes reachable the moment the class-
+    /// conditional spare at `1000:abc9` (class 5 keeps the Den) is
+    /// implemented; `docs/re/gaps.md` records that as open.
     pub fn run(&mut self) -> io::Result<()> {
         let stdin = io::stdin();
         let mut lines = stdin.lock().lines();
