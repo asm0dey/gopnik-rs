@@ -1505,15 +1505,50 @@ points at this entry.
   materialises either literal. What their arms do is still open.
 * **The quit message** (files `0xC3F3`, `0xC41A`, written at `1000:ee04`) and
   the university backstory (`0x7D81`..`0x7F1F`) — real strings, not wired up.
-* **Shop purchase effects — open for every row except three.**
+* **Shop purchase effects — open for every row except three, and now MAPPED
+  for six more.**
   `data/shops.json` rows deduct `price` and print their menu text, but never
   change `strength` / `armor` / etc.: most rows have no representable target
   on `Fighter`. Two further divergences on that generic path, both
-  pre-existing and both still open: it echoes the **menu line** where the
-  original prints each arm's own confirmation, and it refuses a
+  pre-existing and both still open in `src/`: it echoes the **menu line**
+  where the original prints each arm's own confirmation, and it refuses a
   district-gated row, where the original's *buy* compares carry no district
-  test at all (`1000:cc04`..`1000:ccd8`: row 6's arm is gated only on item
-  flags, so a row the menu did not print is still buyable).
+  test at all.
+
+  **Task 23 closed the RE half for `bmar` rows 1–6** —
+  `docs/re/shop-arms.md`, `data/shop_arms.json`,
+  `python3 tools/test_shop_arms.py`. What is now settled:
+
+  * the district question, and wider than it was posed. The earlier note here
+    said row 6's arm (`1000:cc04`..`1000:ccd8`) carries no district test.
+    **No arm of rows 1–6 does**: the whole `1000:c8ce`..`1000:ccc4` span
+    decodes as one aligned run of 474 instructions with no operand equal to
+    `0x3692`, and the byte pair `92 36` does not occur in it at all. The only
+    district gates in the handler, `1000:c68d` and `1000:c6f1`, skip **menu
+    lines**. So the port's refusal of `bmar` rows 5 and 6 below their district
+    is a divergence, and fixing it means separating the menu gate from the buy
+    gate. Nothing is claimed here about `mar`, whose arms were not decoded.
+  * each row's own gates, refusal literals and confirmation literals, with CS
+    offsets; **no gate in rows 1–6 is silent** (unlike row 9's first two).
+  * each row's effect: `20ae:38c5` (joints, a word count) for row 1,
+    `20ae:38bb` row 2, a `Random(4)` stat point at `1000:ca0c` for row 3,
+    `20ae:38bc` row 4, `20ae:38ba` +2/+2 row 5, `20ae:394b` row 6. Every one
+    of those globals is read elsewhere in the original, so none is a
+    write-only flag.
+
+  **Two more original bugs to reproduce, not fix.** `1000:cc69 jz 0xcc75`
+  skips **both** of the club's damage adds when the knuckles are not owned, so
+  buying the Дубинка first grants no damage at all despite the menu's
+  `урон+4`; the combat loot arm granting the same item has the missing branch
+  (`1000:55d8 jz 0x55e6` → `add word [0x38a8],0x4`). And the shop's
+  better-weapon refusal for rows 5 and 6 is a conjunction (`1000:cb5b`,
+  `1000:cb62`, `1000:cb69`; `1000:cc18`, `1000:cc1f`) where the loot arms'
+  is a disjunction (`1000:555f`, `1000:5566`, `1000:556d`; `1000:55c5`,
+  `1000:55cc`).
+
+  **Still open after Task 23:** all nine `mar` arms, `bmar`'s `x`/`wes`
+  arms, and the porting work itself — `src/game.rs` is untouched by Task 23,
+  which is Task 24's job.
 
   **`bmar` rows 7, 8 and 9 are done** (Task 18, `Game::buy_pistol_row`),
   because they are what makes `20ae:394d` reachable and therefore what makes

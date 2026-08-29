@@ -486,6 +486,22 @@ Two rows still carry `what: null` and are named nowhere: the `imm8` site
 Ghidra places inside `FUN_1000_3d11`, and the call-result site `1000:5014`.
 `20ae:3c82` is likewise unnamed. Unknown still means unknown.
 
+### What happens when a row is BOUGHT -- a pointer
+
+This section is the **menu**: which rows print, at what price, behind which
+gate. What a row's *purchase arm* then does -- its own gates, its own refusal
+and confirmation lines, and the globals it writes -- is a separate map.
+`bmar` rows 7-9 are Task 18's (`grep -n 'buy_pistol_row' src/game.rs`);
+**`bmar` rows 1-6 are `docs/re/shop-arms.md` and `data/shop_arms.json`**, with
+`python3 tools/test_shop_arms.py` re-deriving both from `orig/g.exe`. The nine
+`mar` arms are not mapped.
+
+One finding from there belongs here, because it qualifies the `gate` column
+above: for `bmar`, that column is a **menu-print** gate and nothing more. The
+row-1..6 arms carry no district test at all -- `1000:c68d` and `1000:c6f1`
+skip the row-5 and row-6 *listings*, and the buy path never reads
+`20ae:3692` -- so a row the menu did not print is still buyable.
+
 ---
 
 ## 3. Enemies

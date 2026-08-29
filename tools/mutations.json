@@ -992,6 +992,91 @@
       "CharacterSheetPortTest.test_every_cs_citation_holds_the_literal_beside_it"
     ],
     "expect": "is out of order"
+  },
+  {
+    "label": "shop-arms-instruction-identity",
+    "defends": "tools/test_shop_arms.py walks every {addr,text} record in data/shop_arms.json and requires orig/g.exe to decode that instruction at that address -- the identity half of the two signals docs/re/METHODOLOGY.md keeps apart.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["rows", 0, "effects", 1, "text"],
+      "from": "inc [0x38c5]",
+      "to": "inc [0x38c4]"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
+    ],
+    "expect": "orig/g.exe decodes"
+  },
+  {
+    "label": "shop-arms-literal-identity",
+    "defends": "Every {cs_offset,text} record must be the Pascal shortstring actually at that CS offset.  This is what stops a refusal or a confirmation being attributed to the wrong arm -- the six bmar arms print 15 distinct literals and four of them are reused across rows.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["rows", 0, "strings", 1, "text"],
+      "from": "^2Ты купил косяк",
+      "to": "^2Ты купил кастет"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_every_literal_decodes_to_the_recorded_text"
+    ],
+    "expect": "the Pascal shortstring at CS"
+  },
+  {
+    "label": "shop-arms-strings-completeness",
+    "defends": "strings[] is the WHOLE set of CS literals an arm pushes, measured by decoding the arm's span and collecting every `mov di,imm` followed by `push cs`/`push di`.  So \"this arm prints nothing else\" -- the claim the port's confirmation and refusal wording rests on -- is a measurement over the span, not a list that stopped being written.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["rows", 0, "strings", 1, "cs_offset"],
+      "from": "0x939f",
+      "to": "0x93a0"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_the_recorded_strings_are_every_literal_the_arm_pushes"
+    ],
+    "expect": "is not complete"
+  },
+  {
+    "label": "shop-arms-district-negative",
+    "defends": "The \"no arm of bmar rows 1..6 tests the district\" claim is a NEGATIVE, and it rests on one aligned decode covering the whole 1000:c8ce..1000:ccc4 span.  The recorded instruction count is what proves the walk covered it rather than stopping early -- without it an empty hit list could mean an empty search.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["district_finding", "instruction_count"],
+      "from": 474,
+      "to": 473
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_no_arm_tests_the_district"
+    ],
+    "expect": "instructions, not the"
+  },
+  {
+    "label": "shop-arms-club-bug-counterexample",
+    "defends": "The club-without-knuckles bug is the DIFFERENCE between the shop arm at 1000:cc69 and the combat loot arm at 1000:55d8, which tests the same flag for the same item and HAS the without-knuckles branch.  So the loot arm's `add word [0x38a8],0x4` is re-derived too; without it the bug claim would be one site quoted against itself.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["bugs", 0, "counter_example_in_the_same_binary", "without_knuckles", 0, "text"],
+      "from": "add word [0x38a8],0x4",
+      "to": "add word [0x38a8],0x2"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_the_club_grants_no_damage_without_the_knuckles"
+    ],
+    "expect": "at 1000:55e6"
   }
  ]
 }
