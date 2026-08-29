@@ -52,7 +52,7 @@
     { "addr": "20ae:38ae", "name": "hpmax", "width": 2, "tier": "flow", "evidence": "1000:71c8..1000:71cf computes vit*5 + 10 + str into it" },
     { "addr": "20ae:38b0", "name": "injury_jaw", "width": 1, "tier": "flow+corroborated", "evidence": "cleared at 1000:b2ae, whose message (file 0xA06B) names the jaw" },
     { "addr": "20ae:38b1", "name": "injury_leg", "width": 1, "tier": "flow+corroborated", "evidence": "cleared at 1000:b289, whose message (file 0xA043) names the leg" },
-    { "addr": "20ae:38b2", "name": "unk_38b2", "width": 1, "tier": "unverified", "note": "incremented at 1000:81e9 under the church message '^1Накладываю на тебя защиту!' (file 0x9476); no consumer traced" },
+    { "addr": "20ae:38b2", "name": "armor", "width": 1, "tier": "flow+corroborated", "note": "fighter-record offset +0x16; incremented at 1000:81e9 under the church message '^1Накладываю на тебя защиту!' (file 0x9476) -- church grants +1 armour. Consumed as damage subtraction at 1000:4769, printed as '^2Броня #' at 1000:227b and 1000:163f, saved at .SAV 0x216 (Task 11c); corroborated by SAVE_R3.SAV holding 4 there" },
     { "addr": "20ae:38bb", "name": "has_mobile", "width": 1, "tier": "flow+corroborated", "meaning": "the player owns a mobile phone; every phone-call event in the preamble is gated on it", "writes": ["1000:550d", "1000:566d", "1000:c969"], "evidence": "1000:550d/1000:566d print CS:0x3b9c = file 0x546C '^1Ты нашёл мобилу'; 1000:c969 is the dealers' purchase for 48 rubles (price byte DS:0b39), printing file 0xAC8D" },
     { "addr": "20ae:38bf", "name": "oneshot_gift_1", "width": 1, "sav_offset": "0x223", "tier": "flow" },
     { "addr": "20ae:38c0", "name": "oneshot_gift_2", "width": 1, "sav_offset": "0x224", "tier": "flow" },
@@ -63,7 +63,7 @@
     { "addr": "20ae:3692", "name": "district", "aka": "chapter", "width": 1, "tier": "flow", "meaning": "district counter, 1..5, raised at 1000:ab92 (`inc byte [0x3692]`) once понтовость reaches district*10. CANONICAL NAME IS `district` -- tools/extract_tables.py (DISTRICT_ADDR), docs/re/tables.md, docs/re/gaps.md, data/other_price_sites.json and src/locations.rs all call this byte that. This document first named it `chapter`, and the n_expr strings below still read `chapter * 20` / `chapter * 5`: same byte, same value, one variable. Use `district` in new code." },
     { "addr": "20ae:3693", "name": "flavour_toggle", "width": 1, "tier": "flow", "meaning": "toggled at 1000:b3c4..1000:b3ce, selects which of two district-keyed flavour sets bucket 1 prints" },
     { "addr": "20ae:3694", "name": "flag_market", "width": 1, "tier": "flow" },
-    { "addr": "20ae:3695", "name": "flag_bigmarket", "width": 1, "tier": "flow" },
+    { "addr": "20ae:3695", "name": "flag_dealers", "width": 1, "tier": "flow" },
     { "addr": "20ae:3696", "name": "flag_den", "width": 1, "tier": "flow" },
     { "addr": "20ae:3697", "name": "flag_girl", "width": 1, "tier": "flow" },
     { "addr": "20ae:3698", "name": "flag_vet", "width": 1, "tier": "flow" },
@@ -87,7 +87,7 @@
     { "seq": 1, "kind": "state", "at": "1000:aea1", "bytes": "80 3e cd 38 00", "what": "if buff_countdown > 0 then decrement it (1000:aea8); on reaching 0, undo the joint buff: strength -2 (1000:aeb3), dmg_min -1 (1000:aeb8), dmg_max -2 (1000:aebc) and print file 0x9D64", "tier": "flow" },
     { "seq": 2, "kind": "message", "at": "1000:aeda", "bytes": "bf 72 39 1e 57", "what": "if the typed line was `run` (compare at 1000:aee4) print file 0x9D7D", "tier": "flow" },
     { "seq": 3, "kind": "state", "at": "1000:af04", "bytes": "a0 92 36", "what": "if den_loan_credit < chapter*10 then increment it (1000:af19)", "tier": "flow" },
-    { "seq": 4, "kind": "state", "at": "1000:af1d", "bytes": "80 3e 95 36 00", "what": "if flag_bigmarket and dealer_order_placed and dealer_delivery_counter < 25: increment it (1000:af32); when it becomes exactly 25 (1000:af36) and has_mobile (1000:af3d), print file 0x9D8E", "tier": "flow" },
+    { "seq": 4, "kind": "state", "at": "1000:af1d", "bytes": "80 3e 95 36 00", "what": "if flag_dealers and dealer_order_placed and dealer_delivery_counter < 25: increment it (1000:af32); when it becomes exactly 25 (1000:af36) and has_mobile (1000:af3d), print file 0x9D8E", "tier": "flow" },
 
     { "seq": 5, "kind": "draw", "draw_ordinal": 1, "at": "1000:af68", "bytes": "9a 4b 11 78 0f", "n": 20, "n_at": "1000:af64", "n_bytes": "b8 14 00 50",
       "gate": { "at": "1000:af5d", "bytes": "80 3e 78 3b 00", "cond": "den_errand_1_pending == 0", "skip_target": "1000:afbc" },
@@ -275,7 +275,7 @@
             { "range": "0", "p": "1/5", "effect": "a forced level-up. Prints file 0x930C plus the old and new rank names (1000:7f9e / 1000:7fbb, the DS:0b42 256-byte-stride table indexed by level and level+1), then at 1000:7fe4/1000:7fe7 does `mov ax,[0x38d0] / mov [0x38ce],ax` -- xp := xp_threshold -- and at 1000:7fea..1000:7fed does `mov al,0x0 / push ax / call 0x2526`, the level-up routine documented in docs/re/progression.md. The routine's entry test at 1000:2535..1000:253c is `mov ax,[0x38ce] / cmp ax,[0x38d0] / jnl 0x2541`, which the church has just made pass by construction, so the level-up ALWAYS proceeds; it then spends draws 17 and 18 below. Byte-verified: `a1 d0 38 / a3 ce 38 / b0 00 / 50 / e8 36 a5`.", "state": "xp [0x38ce] := 0 and xp_threshold [0x38d0] += 10 (1000:2546..1000:2550, exactly one iteration because the church made them equal); then, unless level [0x38a6] == 40 (1000:2580 `cmp word [0x38a6],0x28`, tested only because the church passes param 0 -- 1000:257a `cmp byte [bp+0x4],0x0`), level [0x38a6] += 1 at 1000:258a..1000:258e (`a1 a6 38 / 40 / a3 a6 38` -- a load/inc/store, NOT a single `inc word`; 1000:258e is the store that commits it), plus the growth log written by draws 17/18" },
             { "range": "1", "p": "1/5", "effect": "-> draw 16, a stat blessing (test at 1000:7ff3 `cmp ax,0x1` / 1000:7ff6 `jz 0x7ffb`)" },
             { "range": "2", "p": "1/5", "effect": "the first unfired one-shot gift: oneshot_gift_1 (flag set at 1000:8134; grants all four stats +1 at 1000:8101..1000:810d, hpmax/hp +6 at 1000:8111/1000:8116, dmg_max +1 at 1000:811b, and dmg_min += 1 - (strength mod 2) at 1000:811f..1000:8130), else oneshot_gift_2 (flag at 1000:8184; all four +4, hpmax/hp +0x18, dmg_max +4, dmg_min +2 at 1000:815c..1000:817f), else ring_gospodi_pomilui (1000:81c4, text only here -- its effect is the wander regen)", "note": "the dmg_min term at 1000:8130 (`01 06 a8 38`, `add [0x38a8],ax`, where ax = 1 - strength mod 2 computed at 1000:811f..1000:812e) was missing from the first draft. It is state only, no draw. The same shape is documented for the post-kill copy of this gift in docs/re/progression.md's one-shot table." },
-            { "range": "3", "p": "1/5", "effect": "unk_38b2 += 1 (1000:81e9), message file 0x9476" },
+            { "range": "3", "p": "1/5", "effect": "armor += 1 (1000:81e9), message file 0x9476" },
             { "range": "4", "p": "1/5", "effect": "pontovost_street += chapter*50 + 50 (1000:820d..1000:821a), message files 0x9493 and 0x94CC" }
           ],
           "tier": "flow, corroborated by live trace",
@@ -338,7 +338,7 @@
       { "answer": 0, "class": 3, "rank": "Подтсан", "menu_text_file": "0x7FB0", "bonus": "flag_girl + flag_club, granted at 1000:73cf/1000:73d4" },
       { "answer": 1, "class": 4, "rank": "Отморозок", "menu_text_file": "0x7FE8", "bonus": "+1 hp per walk, 1000:b2d4..1000:b2dd" },
       { "answer": 2, "class": 5, "rank": "Гопник", "menu_text_file": "0x802A", "bonus": "flag_den, granted at 1000:73c3" },
-      { "answer": 3, "class": 6, "rank": "Вор", "menu_text_file": "0x8059", "bonus": "the wander theft (draws 10/11) + flag_bigmarket, granted at 1000:73e0" }
+      { "answer": 3, "class": 6, "rank": "Вор", "menu_text_file": "0x8059", "bonus": "the wander theft (draws 10/11) + flag_dealers, granted at 1000:73e0" }
     ],
     "consumers": [
       { "at": "1000:25aa", "what": "indexes the four-byte growth-weight table at DS:0002" },
@@ -355,7 +355,7 @@
       { "at": "1000:b2ea", "what": "wander: class 6 theft" },
       { "at": "1000:4a87", "what": "the de-level penalty skips its den store when class == 5" }
     ],
-    "asymmetry": "neither reset spares flag_bigmarket, so a Вор loses the dealers on district advance and on a places.sav read failure, while a Подтсан keeps girl+club and a Гопник keeps the den. 1000:73bb restores all of them, but only on game entry, not on district advance."
+    "asymmetry": "neither reset spares flag_dealers, so a Вор loses the dealers on district advance and on a places.sav read failure, while a Подтсан keeps girl+club and a Гопник keeps the den. 1000:73bb restores all of them, but only on game entry, not on district advance."
   },
 
   "den_setters": [
@@ -369,7 +369,7 @@
     "buffer": "DS:3a72",
     "read_at": "1000:db09",
     "what": "the den (`pr`) handler prints its menu, then does a single ReadLn into DS:3a72 at 1000:db00..1000:db09 -- the only 0f78:06c6 call between 1000:d802 and 1000:dd48 -- and compares that buffer against a chain of tokens, one of which is the single character `a` (file 0xB899) at 1000:dcea/1000:dcef. So the hidden `a` reveal is typed at the den's `^0Притон\\` prompt, not at the top-level prompt.",
-    "gate": "1000:dcba/1000:dcc1 skip when flag_bigmarket and flag_gym are already set; 1000:dcc8..1000:dce0 requires (level - (chapter-1)*10)*2 + pontovost_street >= 40",
+    "gate": "1000:dcba/1000:dcc1 skip when flag_dealers and flag_gym are already set; 1000:dcc8..1000:dce0 requires (level - (chapter-1)*10)*2 + pontovost_street >= 40",
     "tier": "flow"
   }
 }

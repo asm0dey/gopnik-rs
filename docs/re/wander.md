@@ -367,7 +367,7 @@ bonuses, and each one is a branch this task traced:
 | 0 | 3 | Подтсан | `^1Пацан - это нормальный тип. (Бонус - Гёлфренд, Клуб).` | `1000:73cf`/`1000:73d4` set Girl + Club |
 | 1 | 4 | Отморозок | `^1Отморозок - тупой корявый мудак. (Бонус - Самолечение царапин).` | `1000:b2cf`..`1000:b2dd`, +1 HP per walk |
 | 2 | 5 | Гопник | `^1Гопник - гоп он и есть гоп. (Бонус - Притон)` | `1000:73c3` sets Den |
-| 3 | 6 | Вор | `^1Вор - везучий ублюдок. (Бонус - Воровство, Барыги)` | draws 10/11 above, and `1000:73e0` sets BigMarket |
+| 3 | 6 | Вор | `^1Вор - везучий ублюдок. (Бонус - Воровство, Барыги)` | draws 10/11 above, and `1000:73e0` sets Dealers |
 
 That is a flow claim (the branches) corroborated by output (the menu text),
 never the other way round.
@@ -393,7 +393,7 @@ the den-loan credit the wander preamble tops up.
 and the same three compares at `1000:aba0`/`1000:abb1`/`1000:abc2`, are exactly
 the class bonuses. The resets clear what you *discovered* and keep what you
 *are*. **One asymmetry, established from flow:** neither reset spares
-BigMarket, so a Вор loses the dealers on a district advance while a Подтсан
+Dealers, so a Вор loses the dealers on a district advance while a Подтсан
 keeps girl+club and a Гопник keeps the den. `1000:73bb` restores it, but only
 on game entry, not on district advance. That is the original's behaviour, not a
 transcription slip: `1000:abbd` is an unconditional `c6 06 95 36 00`.
@@ -432,7 +432,7 @@ transcription slip: `1000:abbd` is an unconditional `c6 06 95 36 00`.
 and then does a single `ReadLn` into `DS:3a72` at `1000:db00`..`1000:db09` —
 the only `0f78:06c6` call between `1000:d802` and `1000:dd48` — and compares
 that buffer against a chain of tokens, one of which is the single character `a`
-(file `0xB899`) at `1000:dcea`/`1000:dcef`. The hidden BigMarket+Gym reveal is
+(file `0xB899`) at `1000:dcea`/`1000:dcef`. The hidden Dealers+Gym reveal is
 therefore typed at the den's `^0Притон\` prompt, not at the top-level prompt.
 
 ## Named globals this task established
@@ -479,8 +479,14 @@ unknown before:
   `^1У тебя есть пистолет` at `1000:1d51`, with no branch in between — see
   `docs/re/character-sheet.md`. The JSON's `dealer_order_placed` is now a
   stale name, not a disagreement.
-* **`20ae:38b2`** — left as `unk_38b2`. `1000:81e9` increments it under
-  `^1Накладываю на тебя защиту!`; no consumer was traced.
+* **`20ae:38b2` — the armour byte (`Броня`).** Fighter-record offset `+0x16`
+  (`0x38b2 - 0x389c`), between the jaw (`+0x14`) and the leg (`+0x15`) above.
+  `1000:81e9` increments it under `^1Накладываю на тебя защиту!`, i.e. the
+  church grants +1 armour. The consumer was open until Task 11c: subtracted
+  from damage at `1000:4769`, printed as `^2Броня #` at `1000:227b`
+  (`docs/re/character-sheet.md`) and `1000:163f`, saved at `.SAV 0x216`
+  (`docs/re/save-format.md`). `data/wander.json`'s `unk_38b2` is now a stale
+  name, not a disagreement.
 
 ## Corrections to existing `docs/re/` content
 
@@ -598,7 +604,8 @@ that assumes a bounded per-turn draw count will be wrong on bucket 3.
 * ~~The name of the item at `DS:394d`.~~ **CLOSED by Task 16** — the pistol,
   named by the character sheet at `1000:1d38`/`1000:1d51`
   (`docs/re/character-sheet.md`).
-* `unk_38b2`.
+* ~~`unk_38b2`.~~ **CLOSED by Task 11c** — the armour byte, record `+0x16`,
+  consumed at `1000:4769` and printed as `^2Броня #` (`1000:227b`).
 * ~~No live breakpoint was used.~~ **Done in Task 11d** — `tools/rngtrace`,
   `docs/re/rng-trace.md`, `data/rng_trace.json`. The fourteen in-range sites
   were observed in order on a pinned seed (the order is asserted by

@@ -391,9 +391,9 @@ fn a_district_slot_takes_its_district_from_the_key_and_ignores_places_sav() {
 
     let g = persist::load_slot(&dir, '4', 1).unwrap().expect("loads");
     assert_eq!(g.district, 4);
-    // SAVE_R4 is a Вор (class 6), whose 1000:73bb bonus is BigMarket alone.
+    // SAVE_R4 is a Вор (class 6), whose 1000:73bb bonus is Dealers alone.
     // If places.sav had been read, all seven would be found.
-    assert!(g.places.is_found(Location::BigMarket), "the class bonus");
+    assert!(g.places.is_found(Location::Dealers), "the class bonus");
     assert!(!g.places.is_found(Location::Club));
     assert!(!g.places.is_found(Location::Gym));
     assert!(

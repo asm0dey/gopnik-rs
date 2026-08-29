@@ -44,8 +44,8 @@ inventory are now stated together.
 | `1000:73c3` | `0x3696` | Den | `[0x389c] == 5` at `1000:73bb` | flow | **yes** (Task 11c) — `Game::apply_class_bonus` |
 | `1000:73cf` | `0x3697` | Girl | `[0x389c] == 3` at `1000:73bb` | flow | **yes** (Task 11c) — `Game::apply_class_bonus` |
 | `1000:73d4` | `0x3699` | Club | `[0x389c] == 3` at `1000:73bb` | flow | **yes** (Task 11c) — `Game::apply_class_bonus` |
-| `1000:73e0` | `0x3695` | BigMarket | `[0x389c] == 6` at `1000:73bb` | flow | **yes** (Task 11c) — `Game::apply_class_bonus` |
-| `1000:dcf6` | `0x3695` | BigMarket | the `a` token at `1000:dcef` | flow | no |
+| `1000:73e0` | `0x3695` | Dealers | `[0x389c] == 6` at `1000:73bb` | flow | **yes** (Task 11c) — `Game::apply_class_bonus` |
+| `1000:dcf6` | `0x3695` | Dealers | the `a` token at `1000:dcef` | flow | no |
 | `1000:dcfb` | `0x369a` | Gym | the `a` token at `1000:dcef` | flow | no |
 | `1000:ae1f` | `0x3696` | Den | the chapter-5 endgame arm at `1000:adbf` | flow | no |
 | `1000:4aa5` | `0x3696` | Den | the de-level (flee) penalty, `1000:4a87`/`1000:4aa0` | flow | no |
@@ -58,7 +58,7 @@ each other in the original; that is recorded there, not resolved.
 **All seven flags are now reachable in this port** (Task 11c). Market and Vet
 from character creation and from the wander preamble's draws 6 and 5; Club from
 `girl`, from the class-3 bonus and from draw 7; Gym from draw 8; Girl from the
-wander bucket and the class-3 bonus; Den from the class-5 bonus; BigMarket from
+wander bucket and the class-3 bonus; Den from the class-5 bonus; Dealers from
 the class-6 bonus. **Five** of the seventeen setters remain unimplemented —
 the table's five `no` rows: the `a` token (`1000:dcf6`, `1000:dcfb`), the
 chapter-5 endgame (`1000:ae1f`), the de-level penalty (`1000:4aa5`) and the
@@ -88,7 +88,7 @@ The `places.sav` reader's own failure arm (`1000:6d3b`) does **not** reach
 73be  cmp ax,5   / 73c1 jnz 0x73ca / 73c3  [0x3696] := 1   (Den)
 73ca  cmp ax,3   / 73cd jnz 0x73db / 73cf  [0x3697] := 1   (Girl)
                                     73d4  [0x3699] := 1   (Club)
-73db  cmp ax,6   / 73de jnz 0x73e5 / 73e0  [0x3695] := 1   (BigMarket)
+73db  cmp ax,6   / 73de jnz 0x73e5 / 73e0  [0x3695] := 1   (Dealers)
 73e5  mov byte [0x3e35],5
 ```
 
@@ -107,14 +107,14 @@ class".
 **Established from flow.** Not an untraceable path: it is a typed word.
 
 ```text
-dcba  cmp byte [0x3695],0 / 74 07  ; already-have check: BigMarket and
+dcba  cmp byte [0x3695],0 / 74 07  ; already-have check: Dealers and
 dcc1  cmp byte [0x369a],0 / 75 6a  ;   Gym both set -> skip to 0xdd32
 dcc8..dcdc                         ; ax := ([0x38a6] - ([0x3692]-1)*10)*2 + [0x38cb]
 dce0  cmp ax,0x28 / 7c 4d          ; < 40 -> skip
 dce5  push ds:0x3a72               ; the line just typed
 dcea  mov di,0x9fc9 / push cs      ; file 0xB899 = the single character 'a'
 dcef  call 0f78:0bd8 / 75 3c       ; string compare; not equal -> skip
-dcf6  [0x3695] := 1                ; BigMarket
+dcf6  [0x3695] := 1                ; Dealers
 dcfb  [0x369a] := 1                ; Gym
 ```
 
@@ -441,7 +441,7 @@ so this port cannot tell them apart and prints nothing. It costs no draw.
 6c87  call 0f78:0769                 ; Reset(f, 1)  -- record size 1
 6c8c  call 0f78:028a                 ; IOResult; non-zero -> 1000:6d3b
 6ca2  call 0f78:081e -> DS:0x3694    ; Read #1  Market
-6cb4  call 0f78:081e -> DS:0x3695    ; Read #2  BigMarket
+6cb4  call 0f78:081e -> DS:0x3695    ; Read #2  Dealers
 6cc6  call 0f78:081e -> DS:0x3696    ; Read #3  Den
 6cd8  call 0f78:081e -> DS:0x3697    ; Read #4  Girl
 6cea  call 0f78:081e -> DS:0x3698    ; Read #5  Vet
@@ -451,7 +451,7 @@ so this port cannot tell them apart and prints nothing. It costs no draw.
 6d20  writes '^0Загружено из places' (file 0x7CCD)
 ```
 
-File order therefore equals flag-address order: **Market, BigMarket, Den, Girl,
+File order therefore equals flag-address order: **Market, Dealers, Den, Girl,
 Vet, Club, Gym**. `TRACKED` carried Vet and Den swapped at slots 2 and 4 and
 has been corrected; the file's own bytes still cannot arbitrate (`orig/*.SAV`
 and `orig/PLACES.SAV` are `01` in every slot), but they no longer need to.
@@ -462,7 +462,7 @@ claims were wrong: the routine exists and there is no `BlockRead`.
 
 The failure arm at `1000:6d3b` is a **conditional** reset. It clears Vet
 (`6d3b`), Market (`6d40`), Club (`6d4c`), Gym (`6d51`), Girl (`6d5d`),
-BigMarket (`6d62`) and Den (`6d6e`), except that `1000:6d45`
+Dealers (`6d62`) and Den (`6d6e`), except that `1000:6d45`
 (`cmp word [0x389c],3` / `jz 0x6d51`) skips the Club clear, `1000:6d56`
 (same compare, `jz 0x6d62`) skips the Girl clear, and `1000:6d67`
 (`cmp word [0x389c],5` / `jz 0x6d73`) skips the Den clear — one flag each,
@@ -1154,9 +1154,10 @@ are the questions that pass left open, and the ones it created.
   church granting +1 armour. **Corroborated by state:** `SAVE_R3.SAV` holds
   `4` at `.SAV 0x216` and run E's guest, which never entered the church,
   reports `unk_38b2 == 4` at the end of the run. `src/game.rs` increments
-  `Fighter::armor` there. `data/wander.json` is a reviewed artifact this task
-  did not modify, so its `globals` entry still reads `unk_38b2`; that is a
-  stale name, not a disagreement.
+  `Fighter::armor` there. `data/wander.json`'s `globals` entry carried the stale
+  `unk_38b2` until it was renamed to `armor` (tier `flow+corroborated`); the
+  frozen probe captures under `data/probes/` and the `tools/rngtrace` column
+  key still spell it `unk_38b2`, which is a capture field name, not a claim.
 * ~~**The item at `DS:394d`.**~~ **CLOSED by Task 16** — it is the **pistol**.
   Bought from the dealers for 150 roubles at `1000:cd05` (price byte
   `DS:0b3e`), and it arms the 25-walk delivery counter `DS:3e32` that
@@ -1168,8 +1169,7 @@ are the questions that pass left open, and the ones it created.
   the silencer (`1000:1d6a`, `^1 с гушителем`) and `20ae:394f` the patron
   count (`1000:1d8a`), which is what `docs/re/tables.md:290` already read from
   the other direction. `data/wander.json`'s `dealer_order_placed` is a **stale
-  name** for `20ae:394d`, the same way its `unk_38b2` is above — the artifact
-  was not modified.
+  name** for `20ae:394d` — the artifact was not modified for that finding.
 * **`1000:4aa5` sets the Den flag while printing a refusal.** The byte is
   `c6 06 96 36 01` (verified) and the line is
   `^4Такого конявого непустят в местный притон!` (file `0x4D42`); the den gate

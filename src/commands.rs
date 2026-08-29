@@ -124,7 +124,7 @@
 /// One parsed player command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    BigMarket,
+    Dealers,
     Market,
     Vet,
     Girl,
@@ -215,7 +215,7 @@ pub fn parse(input: &str) -> Command {
     match v.as_str() {
         "w" | "run" => Command::Walk,
         "mar" => Command::Market,
-        "bmar" => Command::BigMarket,
+        "bmar" => Command::Dealers,
         "rep" => Command::Vet,
         "girl" => Command::Girl,
         "fight" => Command::LegacyFight,
@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn parses_confirmed_dispatcher_verbs() {
         assert_eq!(parse("mar"), Command::Market);
-        assert_eq!(parse("bmar"), Command::BigMarket);
+        assert_eq!(parse("bmar"), Command::Dealers);
         assert_eq!(parse("rep"), Command::Vet);
         assert_eq!(parse("girl"), Command::Girl);
         assert_eq!(parse("pr"), Command::Den);
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn is_case_insensitive_and_trims() {
-        assert_eq!(parse("  BMAR "), Command::BigMarket);
+        assert_eq!(parse("  BMAR "), Command::Dealers);
         assert_eq!(parse("Trn"), Command::Gym);
     }
 

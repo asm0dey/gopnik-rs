@@ -299,7 +299,7 @@ fn game_for(run: &Run) -> Game {
     g.places.reset_for_new_district();
     // 1000:73bb runs on the load path too (`docs/re/wander.md`, "What
     // reaches 1000:73bb"): a Вор gets the dealers back.
-    g.places.mark_found(Location::BigMarket);
+    g.places.mark_found(Location::Dealers);
     g
 }
 
@@ -485,7 +485,7 @@ fn assert_final_state(label: &str, run: &Run, g: &Game) {
         "{label}: 20ae:3694"
     );
     assert_eq!(
-        found(Location::BigMarket),
+        found(Location::Dealers),
         f.flag_3695,
         "{label}: 20ae:3695"
     );
@@ -939,7 +939,7 @@ fn assert_state_sample(label: &str, s: &StateSample, g: &Game) {
         at("20ae:3694")
     );
     assert_eq!(
-        found(Location::BigMarket),
+        found(Location::Dealers),
         s.flag_3695,
         "{}",
         at("20ae:3695")

@@ -54,6 +54,9 @@ STATE_BYTES = {
     "district_3692": 0x3692, "flag_market_3694": 0x3694, "flag_3695": 0x3695,
     "flag_den_3696": 0x3696, "flag_girl_3697": 0x3697, "flag_vet_3698": 0x3698,
     "flag_club_3699": 0x3699, "flag_gym_369a": 0x369A,
+    # `unk_38b2` is the ARMOUR byte (record +0x16, Task 11c -- docs/re/gaps.md).
+    # The key keeps its old spelling so the frozen captures under data/probes/
+    # and data/*_trace.json stay readable; it is not an open question.
     "broken_jaw_38b0": 0x38B0, "broken_leg_38b1": 0x38B1, "unk_38b2": 0x38B2,
     "has_mobile_38bb": 0x38BB, "ring_38c1": 0x38C1,
     "den_errand_1_3b78": 0x3B78, "den_errand_2_3b79": 0x3B79,

@@ -589,7 +589,7 @@ impl Game {
     /// 73cf  c6 06 97 36 01  mov byte [0x3697],1   ; Girl
     /// 73d4  c6 06 99 36 01  mov byte [0x3699],1   ; Club
     /// 73db  3d 06 00        cmp ax,6          ; Вор
-    /// 73e0  c6 06 95 36 01  mov byte [0x3695],1   ; BigMarket
+    /// 73e0  c6 06 95 36 01  mov byte [0x3695],1   ; Dealers
     /// 73e5  c6 06 35 3e 05  mov byte [0x3e35],5   ; den loan credit
     /// ```
     ///
@@ -604,7 +604,7 @@ impl Game {
                 self.places.mark_found(Location::Girl);
                 self.places.mark_found(Location::Club);
             }
-            6 => self.places.mark_found(Location::BigMarket),
+            6 => self.places.mark_found(Location::Dealers),
             _ => {}
         }
         self.den_loan_credit = 5;
@@ -639,7 +639,7 @@ impl Game {
         let p = match &self.mode {
             Mode::Street => "\\",
             Mode::Shop(Location::Market) => "^0Базар\\",
-            Mode::Shop(Location::BigMarket) => "^0Барыги\\",
+            Mode::Shop(Location::Dealers) => "^0Барыги\\",
             Mode::Shop(Location::Vet) => "^0Ветеренар\\",
             Mode::Shop(Location::Den) => "^0Притон\\",
             Mode::Shop(Location::Club) => "^0Клуб\\",
@@ -675,7 +675,7 @@ impl Game {
                 term::println("^6Пережитки прошлого жми ^6w^7 чтобы искать врагов");
             }
             Command::Market => self.enter_shop(Location::Market),
-            Command::BigMarket => self.enter_shop(Location::BigMarket),
+            Command::Dealers => self.enter_shop(Location::Dealers),
             Command::Vet => self.enter_shop(Location::Vet),
             Command::Girl => self.enter_shop(Location::Girl),
             Command::Den => self.enter_shop(Location::Den),
@@ -717,7 +717,7 @@ impl Game {
     fn undiscovered_line(loc: Location) -> &'static str {
         match loc {
             Location::Market => "^6Ты незнаешь, пока ешё, где находтся базар",
-            Location::BigMarket => {
+            Location::Dealers => {
                 "^6Туда любого дебила с улицы непропустят - сначала докажи, что ты не засранец - отпинай побольше ублюдков"
             }
             Location::Den => "^4Тебя мудака такого туда не пустят - поднимай понтовость",
@@ -769,11 +769,11 @@ impl Game {
     /// `1000:b22c` -- [`Game::wander_preamble`]) and the four `[0x389c]`
     /// progression reveals (`1000:73c3`, `1000:73cf`, `1000:73d4`,
     /// `1000:73e0` -- [`Game::apply_class_bonus`]). Den comes
-    /// from the class-5 bonus (`1000:73c3`), BigMarket from the class-6 bonus
+    /// from the class-5 bonus (`1000:73c3`), Dealers from the class-6 bonus
     /// (`1000:73e0`), and Gym from draw 8 (`1000:b21c` `Random(100)`, store
     /// at `1000:b22c`) — a 1-in-100 roll per walk, so *rare*, not
     /// unreachable. A revision of this comment written before Task 11c said
-    /// "BigMarket, Den and Gym stay unreachable"; that is now false on all
+    /// "Dealers, Den and Gym stay unreachable"; that is now false on all
     /// three counts and contradicted `docs/re/gaps.md`'s own inventory.
     ///
     /// The remaining **five** of the seventeen are unimplemented: the `a`
@@ -878,7 +878,7 @@ impl Game {
                 term::println("А можно чё-то купить");
                 self.print_priced_rows("mar");
             }
-            Location::BigMarket => {
+            Location::Dealers => {
                 term::println("Ты пришел к барыгам напиши  ^6w^7  чтобы уйти.");
                 term::println("Здесь можно толкнуть хлам(^6x^7) и купить кое-что");
                 term::println("Ещё ты можешь продать ненужные вещи - ^6wes^7");
@@ -1107,9 +1107,9 @@ impl Game {
         match (loc, key.as_str()) {
             (Location::Vet, "h") => return self.heal_jaw(),
             (Location::Vet, "r") => return self.heal_leg(),
-            (Location::BigMarket, "x") => return self.sell_junk(),
-            (Location::BigMarket, "wes") => return self.sell_items(),
-            (Location::Market | Location::BigMarket, k)
+            (Location::Dealers, "x") => return self.sell_junk(),
+            (Location::Dealers, "wes") => return self.sell_items(),
+            (Location::Market | Location::Dealers, k)
                 if k.len() == 1 && k.chars().all(|c| c.is_ascii_digit()) =>
             {
                 return self.shop_action(k.chars().next().unwrap());
@@ -1562,7 +1562,7 @@ impl Game {
         // seq 4, 1000:af1d -- the dealers' 25-walk delivery counter. Three
         // gates before the increment (1000:af1d, af24, af2b), then the call
         // only on the turn it becomes exactly 25 and only with a phone.
-        if self.places.is_found(Location::BigMarket)
+        if self.places.is_found(Location::Dealers)
             && self.pistol.owned
             && self.dealer_delivery_counter < 25
         {
@@ -1895,13 +1895,13 @@ impl Game {
                 }
             }
             // 1000:81cb's `cmp ax,3` -- `inc byte [0x38b2]` at 1000:81e9.
-            // `data/wander.json` carries 20ae:38b2 as `unk_38b2` with no
-            // consumer traced; it is fighter-record offset +0x16, which
+            // 20ae:38b2 is fighter-record offset +0x16, which
             // `crate::model` and `docs/re/combat.md` already establish as
             // ARMOUR (subtracted from damage at 1000:4769, printed as
             // `^2Броня #` at 1000:163f) -- and "накладываю защиту" is
             // exactly that. Corroborated by state: `SAVE_R3.SAV` holds 4 at
-            // `.SAV 0x216` and run E's guest reports `unk_38b2 == 4`.
+            // `.SAV 0x216` and run E's guest reports 4 there (the probe
+            // captures still spell that column `unk_38b2`).
             3 => {
                 term::println("^1Накладываю на тебя защиту!");
                 self.player.armor += 1;
@@ -2580,7 +2580,7 @@ impl Game {
     }
 
     /// Buy row `key` (a shop-row digit `'1'..'9'`) at the current market.
-    /// Only `Market`/`BigMarket` have a row table (`data/shops.json` covers
+    /// Only `Market`/`Dealers` have a row table (`data/shops.json` covers
     /// just `mar`/`bmar`).
     ///
     /// **Known gap:** buying only deducts `price` and prints the row text;
@@ -2591,7 +2591,7 @@ impl Game {
     fn shop_action(&mut self, k: char) {
         let tag = match self.location {
             Location::Market => "mar",
-            Location::BigMarket => "bmar",
+            Location::Dealers => "bmar",
             _ => return,
         };
         let key = k.to_string();
@@ -5066,8 +5066,8 @@ mod tests {
     fn the_dealers_sell_the_pistol_its_cartridges_and_its_silencer() {
         let shop = || {
             let mut g = game();
-            g.location = Location::BigMarket;
-            g.mode = Mode::Shop(Location::BigMarket);
+            g.location = Location::Dealers;
+            g.mode = Mode::Shop(Location::Dealers);
             g.district = 4; // all three rows are `district>3`
             g.player.money = 1_000;
             g
@@ -5076,12 +5076,12 @@ mod tests {
         // Row 7: the pistol, 150 roubles, and three cartridges with it
         // (1000:cd0a `add word [0x394f],3`).
         let mut g = shop();
-        g.shop_turn(Location::BigMarket, "7");
+        g.shop_turn(Location::Dealers, "7");
         assert!(g.pistol.owned, "1000:cd05");
         assert_eq!(g.pistol.cartridges, 3);
         assert_eq!(g.player.money, 850);
         // 1000:ccdd -- buying it twice is refused and costs nothing.
-        g.shop_turn(Location::BigMarket, "7");
+        g.shop_turn(Location::Dealers, "7");
         assert_eq!(g.player.money, 850, "1000:cd4c is a refusal, not a sale");
         assert_eq!(g.pistol.cartridges, 3);
 
@@ -5090,18 +5090,18 @@ mod tests {
         for (money, want) in [(149i32, false), (150, true)] {
             let mut g = shop();
             g.player.money = money;
-            g.shop_turn(Location::BigMarket, "7");
+            g.shop_turn(Location::Dealers, "7");
             assert_eq!(g.pistol.owned, want, "money {money}");
         }
 
         // Row 8: five cartridges (1000:cda3), though the menu line says six,
         // and refused outright without a pistol (1000:cd7b).
         let mut g = shop();
-        g.shop_turn(Location::BigMarket, "8");
+        g.shop_turn(Location::Dealers, "8");
         assert_eq!(g.pistol.cartridges, 0, "1000:cdcc -- no gun, no rounds");
         assert_eq!(g.player.money, 1_000);
         g.pistol.owned = true;
-        g.shop_turn(Location::BigMarket, "8");
+        g.shop_turn(Location::Dealers, "8");
         assert_eq!(
             g.pistol.cartridges, 5,
             "the arm adds five, not the six the line promises"
@@ -5114,7 +5114,7 @@ mod tests {
             let mut g = shop();
             g.pistol.owned = owned;
             g.dealer_delivery_counter = walks;
-            g.shop_turn(Location::BigMarket, "9");
+            g.shop_turn(Location::Dealers, "9");
             assert_eq!(
                 g.pistol.silencer, want,
                 "owned {owned}, delivery counter {walks}"
@@ -5133,13 +5133,13 @@ mod tests {
     #[test]
     fn a_pistol_bought_at_the_dealers_can_be_fired_in_a_fight() {
         let mut g = game();
-        g.location = Location::BigMarket;
-        g.mode = Mode::Shop(Location::BigMarket);
+        g.location = Location::Dealers;
+        g.mode = Mode::Shop(Location::Dealers);
         g.district = 4;
         g.player.money = 1_000;
         g.player.agility = 50; // beats every Random(0x32)
         g.flag_3693 = true; // 1000:4ebc, the shooting is permitted here
-        g.shop_turn(Location::BigMarket, "7");
+        g.shop_turn(Location::Dealers, "7");
         assert_eq!(g.pistol.cartridges, 3);
 
         g.mode = Mode::Street;
@@ -5180,14 +5180,14 @@ mod tests {
     #[test]
     fn sell_junk_and_sell_items_are_the_dealers_own_keys() {
         let mut g = game();
-        g.location = Location::BigMarket;
-        g.mode = Mode::Shop(Location::BigMarket);
+        g.location = Location::Dealers;
+        g.mode = Mode::Shop(Location::Dealers);
         // Neither has a backing field yet, so the only observable effect is
         // that the keys are routed at all: they must not leave the shop.
-        g.shop_turn(Location::BigMarket, "x");
-        assert_eq!(g.mode, Mode::Shop(Location::BigMarket));
-        g.shop_turn(Location::BigMarket, "wes");
-        assert_eq!(g.mode, Mode::Shop(Location::BigMarket));
+        g.shop_turn(Location::Dealers, "x");
+        assert_eq!(g.mode, Mode::Shop(Location::Dealers));
+        g.shop_turn(Location::Dealers, "wes");
+        assert_eq!(g.mode, Mode::Shop(Location::Dealers));
     }
 
     /// Every class `pick_enemy` can roll must resolve to a named row, or the

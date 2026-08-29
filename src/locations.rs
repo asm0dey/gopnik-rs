@@ -14,7 +14,7 @@
 //! unconditional. `1000:ab96` clears Vet and Market, then three `74 05` skips
 //! each spare exactly one flag -- Club at `1000:aba7` and Girl at `1000:abb8`
 //! are spared when `[20ae:389c] == 3`, Den at `1000:abc9` when it is `5`
-//! (Gym at `1000:abac` and BigMarket at `1000:abbd` are always cleared, being
+//! (Gym at `1000:abac` and Dealers at `1000:abbd` are always cleared, being
 //! the second store in each pair, past the skip). `reset_for_new_district`
 //! clears all seven unconditionally.
 //!
@@ -25,10 +25,20 @@
 //! belongs with the district-transition block (`1000:ab75`..`1000:ae18`)
 //! rather than with the wander turn. See `docs/re/gaps.md`.
 
+/// `Dealers` is `20ae:3695`, the `bmar` verb -- the original calls the place
+/// **Барыги**, not a market. Named from its own handler's strings: entry text
+/// `0xAA29` `'Ты пришел к барыгам напиши ^6w^7 чтобы уйти.'` and prompt
+/// `0xAC4B` `'^0Барыги\'`, both inside `1000:c4be`'s body, which is also
+/// where the pistol is bought (`1000:cd05`). `mar` / `20ae:3694` is the
+/// separate базар (`0xA9F8` `'где находтся базар'`), so `bmar` is a different
+/// location and not a bigger one; the Вор class bonus at `1000:73e0` sets
+/// this flag and its menu line calls the bonus `Барыги`
+/// (`docs/re/wander.md`). Earlier revisions called it `BigMarket`, read off
+/// the verb token alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Location {
     Street,
-    BigMarket,
+    Dealers,
     Market,
     Vet,
     Girl,
@@ -54,7 +64,7 @@ pub enum Location {
 /// 6c87  call 0f78:0769                      ; Reset(f, 1)   -- record size 1
 /// 6c8c  call 0f78:028a                      ; IOResult; non-zero -> 1000:6d3b
 /// 6ca2  call 0f78:081e  -> DS:0x3694        ; Read #1  Market
-/// 6cb4  call 0f78:081e  -> DS:0x3695        ; Read #2  BigMarket
+/// 6cb4  call 0f78:081e  -> DS:0x3695        ; Read #2  Dealers
 /// 6cc6  call 0f78:081e  -> DS:0x3696        ; Read #3  Den
 /// 6cd8  call 0f78:081e  -> DS:0x3697        ; Read #4  Girl
 /// 6cea  call 0f78:081e  -> DS:0x3698        ; Read #5  Vet
@@ -72,7 +82,7 @@ pub enum Location {
 /// | byte | `20ae:` | verb | location |
 /// |---|---|---|---|
 /// | 0 | `3694` | `mar` | Market |
-/// | 1 | `3695` | `bmar` | BigMarket |
+/// | 1 | `3695` | `bmar` | Dealers |
 /// | 2 | `3696` | `pr` | Den |
 /// | 3 | `3697` | `girl` | Girl |
 /// | 4 | `3698` | `rep` | Vet |
@@ -91,7 +101,7 @@ pub enum Location {
 /// leaves via `1000:6da0`; it is described in `docs/re/gaps.md`.
 pub const TRACKED: [Location; 7] = [
     Location::Market,
-    Location::BigMarket,
+    Location::Dealers,
     Location::Den,
     Location::Girl,
     Location::Vet,
@@ -166,7 +176,7 @@ mod tests {
             TRACKED,
             [
                 Location::Market,    // 6ca2 -> 0x3694
-                Location::BigMarket, // 6cb4 -> 0x3695
+                Location::Dealers, // 6cb4 -> 0x3695
                 Location::Den,       // 6cc6 -> 0x3696
                 Location::Girl,      // 6cd8 -> 0x3697
                 Location::Vet,       // 6cea -> 0x3698

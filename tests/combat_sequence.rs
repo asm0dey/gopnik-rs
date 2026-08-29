@@ -342,7 +342,7 @@ fn game_for(run: &Run) -> Game {
     // first per-turn sample is what settles it there.
     g.places.reset_for_new_district();
     // 1000:73bb runs on the load path too: a Вор gets the dealers back.
-    g.places.mark_found(Location::BigMarket);
+    g.places.mark_found(Location::Dealers);
     g
 }
 
@@ -589,7 +589,7 @@ fn assert_final_state(label: &str, run: &Run, g: &Game) {
         "{label}: 20ae:3694"
     );
     assert_eq!(
-        found(Location::BigMarket),
+        found(Location::Dealers),
         f.flag_3695,
         "{label}: 20ae:3695"
     );
