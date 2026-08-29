@@ -550,16 +550,47 @@ and the metric does not read them either.
 
 Two functions hold 75% of all game branches:
 
-| branches | cited | function |
+| branches | touched | function |
 |---:|---:|---|
-| 406 | 93 | `1000:ab59` — main loop + command dispatch |
-| 224 | 95 | `1000:3d11` — combat; its dispatcher half mapped in Task 17 |
-| 83 | 50 | `1000:1a03` — the character sheet, mapped in Task 16 |
-| 11 | 7 | `1000:1348` — the ENEMY's sheet, the `sv` handler, mapped in Task 17 |
+| 406 | 107 | `1000:ab59` — main loop + command dispatch |
+| 224 | 94 | `1000:3d11` — combat; its dispatcher half mapped in Task 17 |
+| 83 | 54 | `1000:1a03` — the character sheet, mapped in Task 16 |
+| 11 | 1 | `1000:1348` — the ENEMY's sheet, the `sv` handler, mapped in Task 17 |
 
-The metric undercounts (a function can be understood without every `jz` being
-cited) and a citation is not comprehension. Re-run the query above to track
-it.
+The `touched` column used to be `cited`, counted by the same `docs/re/*.md`
+text glob as the table above it (93 / 95 / 50 / 7) — a different, stale
+metric from a different commit. It is replaced here with
+`data/branches.json`'s `port_touched` per function, recomputed at `HEAD`
+(`f0efc63`) with the exact per-entry columns `docs/re/branches.md`'s
+*Recomputation, from the shipped artifacts → Coverage* block prints, so the
+two documents agree by construction:
+
+```bash
+python3 - <<'EOF'
+import json, glob, re, collections
+d = json.load(open('data/branches.json'))
+CITE = re.compile(r'\b([0-9a-fA-F]{4}):([0-9a-fA-F]{1,4})\b', re.ASCII)
+flat = lambda a: int(a[:4], 16) * 16 + int(a[5:], 16)
+cite = collections.defaultdict(set)
+for pat in d['port_citation_sources']:
+    for p in sorted(glob.glob(pat, recursive=True)):
+        for i, ln in enumerate(open(p, encoding='utf-8').read().splitlines(), 1):
+            for s, o in CITE.findall(ln):
+                s = int(s, 16)
+                cite[(s + 0x1000 if s < 0x1000 else s) * 16 + int(o, 16)].add('%s:%d' % (p, i))
+B = [b for b in d['branches'] if b['class'] == 'game']
+hit = lambda b: flat(b['addr']) in cite or bool(b['guard']) and flat(b['guard']['addr']) in cite
+for e in ('1000:ab59', '1000:3d11', '1000:1a03', '1000:1348'):
+    n = sum(1 for b in B if b['func_entry'] == e and hit(b))
+    print(e, 'touched', n)
+EOF
+```
+
+prints `1000:ab59 touched 107`, `1000:3d11 touched 94`, `1000:1a03 touched 54`,
+`1000:1348 touched 1` — identical to the same four rows in
+`docs/re/branches.md`'s validated block. The metric still undercounts (a
+function can be understood without every `jz` being cited) and a citation is
+not comprehension; re-run the block above to track it.
 
 ### `FUN_1000_1a03` — mapped in Task 16, PORTED in Task 22
 
@@ -762,9 +793,18 @@ corrections to what this condition used to claim:
   outside an identifier and would survive the suffix drop --
   `git grep -nE '(^|[^_[:alnum:]])38c2' -- src` returns one line each in
   `src/character_sheet.rs`, `src/persist.rs` and `src/save.rs`, and two in
-  `src/game.rs`. The other 22, including every `bmar` use site, spell the
-  address only inside the identifier and vanish from the grep. What survives
-  is *the declaration and its documented anchors*, not every site.
+  `src/game.rs`. The other 22 spell the address only inside the identifier
+  and vanish from the grep — none of them is in a `bmar` path (`bmar` is
+  handled at `src/game.rs:1188-1214` and `:3001-3040`, neither range contains
+  a `38c2` line). Mapped to enclosing scope: the two field declarations
+  (`Kit` in `src/character_sheet.rs:163`, `Game` in `src/game.rs:438`);
+  `character_sheet::damage_line` (5 sites) and its two unit tests
+  (`the_damage_line_is_dim_until_something_boosts_it`,
+  `best_item_wins_dims_the_superseded_weapon`); `Game::new`, `Game::sheet_kit`,
+  `Game::spoil_club`, `Game::spoil_blade` and its own unit test
+  (`sheet_kit_wires_each_game_flag_to_its_own_sheet_line`); and
+  `Game::from_save` in `src/persist.rs:387`. What survives is *the
+  declaration and its documented anchors*, not every site.
 * **Nothing binds those anchors to the image.** It claimed the decode checks
   (`tools/test_string_citations.py`, `tools/test_character_sheet_port.py`)
   "bind those comment addresses against `orig/g.exe`". They do not. Their

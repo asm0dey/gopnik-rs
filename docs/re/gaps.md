@@ -2009,9 +2009,10 @@ decided rather than established.
   way a surplus `#` can reach the formatter is through the name at
   `DS:379c`, appended at `1000:1a90`. Not modelled; what would settle it is
   a breakpoint on `0eed:0000` with a `#` in the name.
-* **Four of the sheet's quantity gates are SIGNED in the original and
-  unsigned in the port.** Established from flow — the guard, its branch and
-  the branch's opcode byte, all from `data/branches.json`:
+* **One of the sheet's four quantity gates is SIGNED in the original and
+  unsigned in the port; the other three are closed by the load path.**
+  Established from flow — the guard, its branch and the branch's opcode byte,
+  all from `data/branches.json`:
 
   | guard | branch | reads | .SAV | port |
   |---|---|---|---|---|
@@ -2023,15 +2024,29 @@ decided rather than established.
   `0x7e`/`0x7f` are the SIGNED pair (`jle`/`jg`); the unsigned pair is
   `0x76`/`0x77`. The port's fields are `u16`
   (`git grep -n 'pub joints\|pub beer_dl\|pub junk\|pub level' src/model.rs`),
-  so a word holding `>= 0x8000` reads as negative to the original and as a
-  large positive to the port, and the two take opposite arms: the original
-  suppresses the `Косяки #` / `Пиво #.#л.` / `Хлам #` line and keeps the
-  `<= 39` experience arm, the port prints the line and takes the `> 39` arm.
-  **Unreachable from play** — nothing in the port or the original raises any
-  of the four past a few hundred — so this is a hand-edited-`.SAV` divergence
-  of the same class as the three above it (out-of-range class or level,
-  `hpmax == 0`, a `#` in the name), registered rather than fixed. What would
-  settle whether it matters is a `.SAV` written with `0x8000` in any of the
-  four bytes, run under both. `money` needs no entry: it is `i32` in
-  `src/model.rs` and the original's money gate (`1000:242e` / `1000:2433`
-  `7e1c` JLE) is signed too, so the two already agree in sign.
+  so on its face a word holding `>= 0x8000` reads as negative to the original
+  and as a large positive to the port. But `.SAV` itself stores косяки, пиво
+  and хлам as `i16` (`src/save.rs:257` `beer_half_litres`, `src/save.rs:262`
+  `junk`, and the sibling `joints` field alongside them), and the load path
+  clamps each through `.max(0) as u16` before it ever reaches `Fighter`
+  (`src/persist.rs:345` `joints: it.joints.max(0) as u16`, `:350`
+  `beer_dl: it.beer_half_litres.max(0) as u16`, `:352`
+  `junk: it.junk.max(0) as u16`). A `.SAV` word `>= 0x8000` in any of those
+  three reads negative as `i16`, clamps to `0`, and the port's `> 0` check is
+  then false — the **same** arm the original's signed `JLE` takes on a
+  negative value. Those three are **closed by the load path**, not merely
+  unreachable from play.
+
+  `level` is different: it comes from `save.stats[5]` and `stats` is
+  `[u16; 8]` (`src/save.rs:318`), read straight into `Fighter::level` with no
+  clamp. A `.SAV` word `>= 0x8000` there stays a large `u16` in the port, so
+  `p.level <= 0x27` takes the `> 39` arm while the original's signed `JG`
+  reads the same bytes as negative and takes the `<= 39` arm — a genuine
+  divergence, registered rather than fixed, of the same class as the three
+  entries above this one (out-of-range class or level, `hpmax == 0`, a `#` in
+  the name). **Unreachable from play** — nothing in the port or the original
+  raises `level` past a few hundred. What would settle whether it matters is a
+  `.SAV` written with `0x8000` in the level word, run under both. `money`
+  needs no entry: it is `i32` in `src/model.rs` and the original's money gate
+  (`1000:242e` / `1000:2433` `7e1c` JLE) is signed too, so the two already
+  agree in sign.
