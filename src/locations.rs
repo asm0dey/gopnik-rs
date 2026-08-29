@@ -27,10 +27,12 @@
 
 /// `Dealers` is `20ae:3695`, the `bmar` verb -- the original calls the place
 /// **Барыги**, not a market. Named from its own handler's strings: entry text
-/// `0xAA29` `'Ты пришел к барыгам напиши ^6w^7 чтобы уйти.'` and prompt
-/// `0xAC4B` `'^0Барыги\'`, both inside `1000:c4be`'s body, which is also
+/// at file `0xAA29`, `Ты пришел к барыгам напиши  ^6w^7  чтобы уйти.` (note
+/// the double spaces around `^6w^7` in the binary), and prompt at
+/// file `0xAC4B`, `^0Барыги\`, both inside `1000:c4be`'s body, which is also
 /// where the pistol is bought (`1000:cd05`). `mar` / `20ae:3694` is the
-/// separate базар (`0xA9F8` `'где находтся базар'`), so `bmar` is a different
+/// separate базар, file `0xA9F8`,
+/// `^6Ты незнаешь, пока ешё, где находтся базар`, so `bmar` is a different
 /// location and not a bigger one; the Вор class bonus at `1000:73e0` sets
 /// this flag and its menu line calls the bonus `Барыги`
 /// (`docs/re/wander.md`). Earlier revisions called it `BigMarket`, read off
@@ -59,7 +61,7 @@ pub enum Location {
 /// ```text
 /// 6c5a  mov di,0x3e36 / push ds / push di   ; the file variable
 /// 6c6a  call 0f78:0ae7                      ; build the name from DS:3d32
-/// 6c74  call 0f78:0b66                      ; + cs:0x63f2 = file 0x7CC2, 'places.sav'
+/// 6c74  call 0f78:0b66                      ; + cs:0x63f2 = file 0x7CC2, `places.sav`
 /// 6c79  call 0f78:072e                      ; Assign
 /// 6c87  call 0f78:0769                      ; Reset(f, 1)   -- record size 1
 /// 6c8c  call 0f78:028a                      ; IOResult; non-zero -> 1000:6d3b
@@ -71,7 +73,7 @@ pub enum Location {
 /// 6cfc  call 0f78:081e  -> DS:0x3699        ; Read #6  Club
 /// 6d0e  call 0f78:081e  -> DS:0x369a        ; Read #7  Gym
 /// 6d1b  call 0f78:07ea                      ; Close
-/// 6d20  writes '^0Загружено из places' (file 0x7CCD)
+/// 6d20  writes `^0Загружено из places` (file 0x7CCD)
 /// ```
 ///
 /// So **file order == flag-address order**, and the array below is that
@@ -175,13 +177,13 @@ mod tests {
         assert_eq!(
             TRACKED,
             [
-                Location::Market,    // 6ca2 -> 0x3694
+                Location::Market,  // 6ca2 -> 0x3694
                 Location::Dealers, // 6cb4 -> 0x3695
-                Location::Den,       // 6cc6 -> 0x3696
-                Location::Girl,      // 6cd8 -> 0x3697
-                Location::Vet,       // 6cea -> 0x3698
-                Location::Club,      // 6cfc -> 0x3699
-                Location::Gym,       // 6d0e -> 0x369a
+                Location::Den,     // 6cc6 -> 0x3696
+                Location::Girl,    // 6cd8 -> 0x3697
+                Location::Vet,     // 6cea -> 0x3698
+                Location::Club,    // 6cfc -> 0x3699
+                Location::Gym,     // 6d0e -> 0x369a
             ]
         );
     }
