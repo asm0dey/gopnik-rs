@@ -502,12 +502,15 @@ the `param_1` dispatch chain the den's two blocked call sites cite in
 `Game::den_beat_up`'s and `Game::den_job`'s doc comments). **The `touched`
 column moved in exactly those two functions and nowhere else**; the
 `citations` column moved in six, which is the gap between *citing an address*
-and *citing a branch* the paragraph above is about:
+and *citing a branch* the paragraph above is about. (The two `1000:ab59` and
+`1000:3d11` citation figures below are after Task 28's review round 1, whose
+`param_1` corrections added 4 and 13 citation lines respectively and moved
+`touched` by zero — an address is not a branch.)
 
 | entry | touched | citations |
 |---|---|---|
-| `1000:ab59` | 188 → **214** | 1136 → 1356 |
-| `1000:3d11` | 96 → **106** | 630 → 647 |
+| `1000:ab59` | 188 → **214** | 1136 → 1360 |
+| `1000:3d11` | 96 → **106** | 630 → 660 |
 | `1000:1a03` | 54 (unchanged) | 174 → 176 |
 | `1000:6a0d` | 15 (unchanged) | 158 → 159 |
 | `1000:0d14` | 11 (unchanged) | 53 → 58 |
