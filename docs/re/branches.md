@@ -485,14 +485,38 @@ own columns when Ghidra last ran (`82a08d8`); the table below is recomputed from
 the shipped tree, and the block under *Recomputation* prints it. Quote the
 command, not the cell.
 
-After Task 26: 838 game branches; **388 touched (46.3%)**; 450 with no citation
+After Task 28: 838 game branches; **424 touched (50.6%)**; 414 with no citation
 at the branch or its guard. The recent history, each figure from the block under
 *Recomputation* run against a `git worktree` of that commit: `3981f74` (before
 Task 22) 280 (33.4%); `e657bbe` (Task 22 ported) 305 (36.4%); `19a1a34`
 (Task 24, `bmar` rows 1-6 ported) 348 (41.5%); `7b04cdf` and `768a85e`
 (Task 25, `mar` rows 1-9 MAPPED) **still 348** — an RE task moves this metric
-by nothing at all; Task 26 (`mar` rows 1-9 ported) 388 (46.3%). All of the +40
-is `1000:ab59`, which goes 148 → 188.
+by nothing at all; Task 26 (`mar` rows 1-9 ported) 388 (46.3%), all of the +40
+in `1000:ab59` (148 → 188); `629e56a` (Task 27, the den's submenu MAPPED)
+**still 388** — the same nothing an RE-only task moved at Task 25, measured
+again; Task 28 (the den's submenu ported) 424 (50.6%).
+
+**Task 28's +36 splits across two functions.** `1000:ab59` goes 188 → 214
+(+26, the den's own gates and arms) and `1000:3d11` goes 96 → 106 (+10, from
+the `param_1` dispatch chain the den's two blocked call sites cite in
+`Game::den_beat_up`'s and `Game::den_job`'s doc comments). **The `touched`
+column moved in exactly those two functions and nowhere else**; the
+`citations` column moved in six, which is the gap between *citing an address*
+and *citing a branch* the paragraph above is about:
+
+| entry | touched | citations |
+|---|---|---|
+| `1000:ab59` | 188 → **214** | 1136 → 1356 |
+| `1000:3d11` | 96 → **106** | 630 → 647 |
+| `1000:1a03` | 54 (unchanged) | 174 → 176 |
+| `1000:6a0d` | 15 (unchanged) | 158 → 159 |
+| `1000:0d14` | 11 (unchanged) | 53 → 58 |
+| `1000:2526` | 9 (unchanged) | 51 → 54 |
+
+**The per-entry table below is Task 26's and is NOT recomputed here.** Every
+cell Task 28 changed is in the table just above; the rest of the columns are
+byte-for-byte what the *Recomputation* block prints at this tree. Quote the
+command, not the cell.
 
 **Over the whole shop-arms branch the figure is +83, and it does NOT all land
 in one function.** `bfad0b4` → `e4e929b` is 305 → 388, splitting **+81 in
