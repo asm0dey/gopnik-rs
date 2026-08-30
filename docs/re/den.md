@@ -436,10 +436,29 @@ pending. Then it prints `^0Давай быстрее..` (CS `0xa038`) and
 1000:ddb3  jmp 0xde36
 ```
 
+**`20ae:38a4` is Удача, and the name is re-derived, not borrowed.** Two
+independent flow facts, neither of them an adjacent string. (1) It is the
+**fourth and last** of four stat words pushed into one `WriteLn` at
+`1000:1baa` (`20ae:389e`), `1000:1bae` (`20ae:38a0`), `1000:1bb2`
+(`20ae:38a2`) and `1000:1bb6` (`20ae:38a4`), and the format string those four
+`#` fill is assembled from `Сл:^` (CS `0x16b7`), `#^7 Лв:^` (CS `0x16bc`),
+`#^7 Жв:^` (CS `0x16c5`), `#^7 Уд:^` (CS `0x16ce`) and `#` (CS `0x16d7`) — so
+the fourth argument is the one the `Уд` label covers. (2) The de-level
+penalty's `1000:4a50 dec [0x38a4]` is followed immediately, in the same basic
+block with no branch between, by `1000:4a54 mov di,0x3466`, which pushes
+`^4Удача -1 ` (CS `0x3466`).
+
+A first revision of `data/den_arms.json` cited `1000:1b19` for this, which is
+the colour-digit patch site for slot 3 in `docs/re/character-sheet.md`'s
+table and not a reference to `20ae:38a4` at all, and named `1000:4a49` — the
+`'4'` case's own compare — as the decrement, which is seven bytes later. The
+**name is unchanged** by the correction, so nothing that rests on it, this
+predicate included, changes.
+
 **The `JL` beside the `JB` is not a slip.** It is Borland's canonical 32-bit
 compare: the high halves are compared SIGNED and the low halves UNSIGNED, and
 the 32-bit width comes from promoting `Random`'s `Word` result against the
-`Integer` at `20ae:38a4` (Удача). `1000:dd9c xor dx,dx` zero-extends the
+`Integer` at `20ae:38a4`. `1000:dd9c xor dx,dx` zero-extends the
 random into `bx:cx`; `1000:dda5 cwd` sign-extends luck into `dx:ax`. The whole
 predicate is `Longint([0x38a4]) < Longint(Random(district*15))`: true reaches
 `1000:ddb6`, false reaches `1000:de36`.

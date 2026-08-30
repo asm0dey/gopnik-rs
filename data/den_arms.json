@@ -1988,15 +1988,88 @@
  "globals": [
   {
    "ds": "20ae:3692",
-   "name": "district (1..5)",
-   "named_from": "`docs/re/tables.md` and `data/shops.json` already own it; every menu gate `1000:c68d`..`1000:c81d` reads it and `1000:ab92` is its only writer",
+   "name": "district, 1..5",
+   "named_from": "An index that starts at 1, is refused past 5, is raised when the LEVEL reaches district*10, and is reconstructed on load as `level div 10 + 1`. All four of its image-wide writers are in `xrefs.writers_image_wide`.",
+   "evidence": [
+    {
+     "addr": "1000:6dbe",
+     "text": "mov byte [0x3692],0x1",
+     "what": "character creation sets it to 1"
+    },
+    {
+     "addr": "1000:ab7f",
+     "text": "cmp ax,[0x38a6]",
+     "what": "the promotion test compares district*10 against the LEVEL at 20ae:38a6 -- NOT against понтовость"
+    },
+    {
+     "addr": "1000:ab88",
+     "text": "cmp byte [0x3692],0x5",
+     "what": "and refuses to raise it past 5"
+    },
+    {
+     "addr": "1000:ab92",
+     "text": "inc [0x3692]",
+     "what": "the raise itself"
+    },
+    {
+     "addr": "1000:6d9d",
+     "text": "mov [0x3692],al",
+     "what": "the load path rebuilds it from `level div 10 + 1` (1000:6d93..1000:6d9c)"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 97,
+    "accepted": 97,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:6bf9",
+     "1000:6d9d",
+     "1000:6dbe",
+     "1000:ab92"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3692"
+   },
    "written_in_range": [],
    "read_sites_in_range": 16
   },
   {
    "ds": "20ae:3695",
    "name": "Dealers (`bmar`) discovery flag",
-   "named_from": "`bmar`'s own entry gate is `cmp byte [0x3695],1` at `1000:c4c8` (`data/command_dispatch.json`)",
+   "named_from": "A byte compared against 1 as `bmar`'s own entry gate and stored as 1 by the two paths that reveal the dealers; cleared by the district reset and the `places.sav` load-failure arm.",
+   "evidence": [
+    {
+     "addr": "1000:c4c8",
+     "text": "cmp byte [0x3695],0x1",
+     "what": "`bmar`'s entry gate (`data/command_dispatch.json`)"
+    },
+    {
+     "addr": "1000:73e0",
+     "text": "mov byte [0x3695],0x1",
+     "what": "character setup sets it for one class"
+    },
+    {
+     "addr": "1000:dcf6",
+     "text": "mov byte [0x3695],0x1",
+     "what": "the den's `a` reveal sets it"
+    },
+    {
+     "addr": "1000:abbd",
+     "text": "mov byte [0x3695],0x0",
+     "what": "the district reset clears it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 12,
+    "accepted": 12,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:6d62",
+     "1000:73e0",
+     "1000:abbd",
+     "1000:dcf6"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3695"
+   },
    "written_in_range": [
     "1000:dcf6"
    ],
@@ -2005,14 +2078,84 @@
   {
    "ds": "20ae:3696",
    "name": "the den's own discovery flag",
-   "named_from": "`pr`'s entry gate at `1000:d80c`; set by wander bucket 3 (`docs/re/wander.md`)",
+   "named_from": "A byte compared against 1 as `pr`'s own entry gate, one of the seven contiguous flags at `20ae:3694..369a` `docs/re/gaps.md` inventories.",
+   "evidence": [
+    {
+     "addr": "1000:d80c",
+     "text": "cmp byte [0x3696],0x1",
+     "what": "`pr`'s entry gate -- the gate this map's range opens with"
+    },
+    {
+     "addr": "1000:ae1f",
+     "text": "mov byte [0x3696],0x1",
+     "what": "the chapter-5 endgame arm sets it"
+    },
+    {
+     "addr": "1000:73c3",
+     "text": "mov byte [0x3696],0x1",
+     "what": "character setup sets it for one class"
+    },
+    {
+     "addr": "1000:abc9",
+     "text": "mov byte [0x3696],0x0",
+     "what": "the district reset clears it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 18,
+    "accepted": 18,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:4aa5",
+     "1000:52b3",
+     "1000:6d6e",
+     "1000:73c3",
+     "1000:abc9",
+     "1000:ae1f"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3696"
+   },
    "written_in_range": [],
    "read_sites_in_range": 1
   },
   {
    "ds": "20ae:369a",
    "name": "Gym (`trn`) discovery flag",
-   "named_from": "`trn`'s entry gate is `cmp byte [0x369a],1` at `1000:e39a`; wander draw 8 sets it at `1000:b22c`",
+   "named_from": "A byte compared against 1 as `trn`'s own entry gate; the last of the seven contiguous discovery flags.",
+   "evidence": [
+    {
+     "addr": "1000:e39a",
+     "text": "cmp byte [0x369a],0x1",
+     "what": "`trn`'s entry gate"
+    },
+    {
+     "addr": "1000:b22c",
+     "text": "mov byte [0x369a],0x1",
+     "what": "wander draw 8 sets it"
+    },
+    {
+     "addr": "1000:dcfb",
+     "text": "mov byte [0x369a],0x1",
+     "what": "the den's `a` reveal sets it"
+    },
+    {
+     "addr": "1000:abac",
+     "text": "mov byte [0x369a],0x0",
+     "what": "the district reset clears it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 12,
+    "accepted": 12,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:6d51",
+     "1000:abac",
+     "1000:b22c",
+     "1000:dcfb"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:369a"
+   },
    "written_in_range": [
     "1000:dcfb"
    ],
@@ -2021,21 +2164,148 @@
   {
    "ds": "20ae:38a4",
    "name": "Удача (luck)",
-   "named_from": "the character sheet's stat 3 (`1000:1b19`); `1000:4a49 dec [0x38a4]` is a luck loss",
+   "named_from": "Named from TWO independent flow facts, neither of them an adjacent string. (1) It is the FOURTH and last of four stat words pushed into one `WriteLn` at `1000:1baa`..`1000:1bb6`, and the format string those four `#` fill is built with `Сл:^`, `#^7 Лв:^`, `#^7 Жв:^`, `#^7 Уд:^` (CS 0x16b7, 0x16bc, 0x16c5, 0x16ce) -- so the fourth argument is the one labelled `Уд`. (2) Its decrement in the de-level penalty is followed immediately, in the same basic block with no branch between, by the push of `^4Удача -1 ` (CS 0x3466). Fifteen image-wide writers, listed in `xrefs.writers_image_wide`.",
+   "evidence": [
+    {
+     "addr": "1000:1bb6",
+     "text": "push [0x38a4]",
+     "what": "the fourth stat push, the one the `Уд:` label covers"
+    },
+    {
+     "addr": "1000:1baa",
+     "text": "push [0x389e]",
+     "what": "the first of the four (Сила, 20ae:389e), which fixes the order"
+    },
+    {
+     "addr": "1000:4a50",
+     "text": "dec [0x38a4]",
+     "what": "the de-level penalty's decrement"
+    },
+    {
+     "addr": "1000:4a54",
+     "text": "mov di,0x3466",
+     "what": "the push of `^4Удача -1 ` right after it"
+    },
+    {
+     "addr": "1000:715a",
+     "text": "mov word [0x38a4],0x1",
+     "what": "character creation stores a class-dependent starting value"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 29,
+    "accepted": 29,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:2819",
+     "1000:4a50",
+     "1000:533b",
+     "1000:5399",
+     "1000:5493",
+     "1000:54c4",
+     "1000:715a",
+     "1000:7179",
+     "1000:7198",
+     "1000:71b2",
+     "1000:80b9",
+     "1000:810d",
+     "1000:816b",
+     "1000:caaa",
+     "1000:e33a"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38a4"
+   },
    "written_in_range": [],
-   "read_sites_in_range": 2
+   "read_sites_in_range": 2,
+   "note": "An earlier revision of this record cited `1000:1b19`, and named `1000:4a49` as the site of the decrement. Both were wrong and were caught in review. `1000:1b19` is the COLOUR-DIGIT patch site for slot 3 in `docs/re/character-sheet.md`'s table, not a reference to this address at all; `1000:4a49` is the `'4'` case's own compare (`docs/re/combat-dispatch.md` uses it as a ROW address) and the store is seven bytes later at `1000:4a50`. The NAME is unchanged -- the two facts above establish it -- so nothing that rests on it, including the `d` arm's predicate, changes."
   },
   {
    "ds": "20ae:38a6",
    "name": "level",
-   "named_from": "`1000:2580 cmp word [0x38a6],0x28` is the level cap inside the level-up routine",
+   "named_from": "The value the character sheet prints as the level and uses to index the `krutizna` title table, and the one the level-up routine increments under a cap of 0x28.",
+   "evidence": [
+    {
+     "addr": "1000:1a53",
+     "text": "mov di,[0x38a6]",
+     "what": "the sheet indexes `krutizna` (DGROUP 0xb42, stride 256 in `data/string_tables.json`) with it"
+    },
+    {
+     "addr": "1000:1a66",
+     "text": "push [0x38a6]",
+     "what": "and pushes it as the `#` of ` # уровня - ` (CS 0x166a)"
+    },
+    {
+     "addr": "1000:258a",
+     "text": "mov ax,[0x38a6]",
+     "what": "the level-up loads it"
+    },
+    {
+     "addr": "1000:258e",
+     "text": "mov [0x38a6],ax",
+     "what": "and stores it back incremented"
+    },
+    {
+     "addr": "1000:2580",
+     "text": "cmp word [0x38a6],0x28",
+     "what": "the cap the increment respects"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 34,
+    "accepted": 34,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:258e",
+     "1000:4ac3"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38a6"
+   },
    "written_in_range": [],
    "read_sites_in_range": 3
   },
   {
    "ds": "20ae:38c3",
    "name": "пиво, in HALF-litres (a word count, not a flag)",
-   "named_from": "the sheet prints it as `Пиво #.#л.` at `1000:23d5`; `mar` row 2 increments it at `1000:beb4`",
+   "named_from": "The sheet's `Пиво #.#л.` line divides it by 2 to fill the two `#`, which is what makes the unit half-litres rather than litres.",
+   "evidence": [
+    {
+     "addr": "1000:23d5",
+     "text": "cmp word [0x38c3],0x0",
+     "what": "the sheet's guard"
+    },
+    {
+     "addr": "1000:23dc",
+     "text": "mov di,0x19d1",
+     "what": "the push of `Пиво #.#л.` (CS 0x19d1)"
+    },
+    {
+     "addr": "1000:23e1",
+     "text": "mov ax,[0x38c3]",
+     "what": "the first `#`, `[0x38c3] div 2`"
+    },
+    {
+     "addr": "1000:beb4",
+     "text": "inc [0x38c3]",
+     "what": "`mar` row 2 grants one"
+    },
+    {
+     "addr": "1000:5241",
+     "text": "add [0x38c3],ax",
+     "what": "combat loot adds to it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 19,
+    "accepted": 19,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:2a51",
+     "1000:5241",
+     "1000:beb4",
+     "1000:db3a"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38c3"
+   },
    "written_in_range": [
     "1000:db3a"
    ],
@@ -2044,7 +2314,31 @@
   {
    "ds": "20ae:38c7",
    "name": "money",
-   "named_from": "every shop arm debits it; `docs/re/tables.md` owns the population",
+   "named_from": "The sheet's `Бабки #` line, and the right-hand side of every shop's affordability test. 107 references image-wide and 46 writers; `docs/re/tables.md`'s \"Other price sources\" already owns that population, so it is not restated per site here.",
+   "evidence": [
+    {
+     "addr": "1000:2435",
+     "text": "mov di,0x19e7",
+     "what": "the push of `Бабки #` (CS 0x19e7)"
+    },
+    {
+     "addr": "1000:243a",
+     "text": "push [0x38c7]",
+     "what": "and the value that fills its `#`"
+    },
+    {
+     "addr": "1000:c8e4",
+     "text": "cmp ax,[0x38c7]",
+     "what": "a shop's affordability test reads it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 107,
+    "accepted": 107,
+    "discarded": 0,
+    "writers_image_wide": "46 writers -- not listed; see docs/re/tables.md",
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38c7"
+   },
    "written_in_range": [
     "1000:db96",
     "1000:de6d"
@@ -2054,7 +2348,40 @@
   {
    "ds": "20ae:38c9",
    "name": "хлам (junk)",
-   "named_from": "the sheet's `Хлам #` line at `1000:246a`; combat loot adds to it at `1000:524f`",
+   "named_from": "The sheet's `Хлам #` line. Only seven references image-wide, all accepted, so the population is small enough to read whole.",
+   "evidence": [
+    {
+     "addr": "1000:2471",
+     "text": "mov di,0x19fc",
+     "what": "the push of `Хлам #` (CS 0x19fc)"
+    },
+    {
+     "addr": "1000:2476",
+     "text": "push [0x38c9]",
+     "what": "and the value that fills its `#`"
+    },
+    {
+     "addr": "1000:524f",
+     "text": "add [0x38c9],ax",
+     "what": "combat loot adds to it"
+    },
+    {
+     "addr": "1000:ce97",
+     "text": "mov [0x38c9],ax",
+     "what": "the dealers' `x` sells it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 7,
+    "accepted": 7,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:524f",
+     "1000:ce97",
+     "1000:de8f"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38c9"
+   },
    "written_in_range": [
     "1000:de8f"
    ],
@@ -2063,7 +2390,50 @@
   {
    "ds": "20ae:38cb",
    "name": "понтовость на улице (street cred)",
-   "named_from": "`.SAV 0x22f`; `1000:4e79` writes it and `1000:afdc` gates wander draw 2's message on it",
+   "named_from": "Named from the format-string ARGUMENT relationship, not from adjacency: the den's own `s` arm pushes the literal `^4Твоя понтовость сейчас = #.` (CS 0x9f87) and then pushes this word as the `#` that fills it, both into the same `0eed:01c2` call. Eight image-wide writers, in `xrefs.writers_image_wide`.",
+   "evidence": [
+    {
+     "addr": "1000:dc74",
+     "text": "mov di,0x9f87",
+     "what": "the `s` arm pushes the literal that names it"
+    },
+    {
+     "addr": "1000:dc79",
+     "text": "push [0x38cb]",
+     "what": "and this word as its `#` argument"
+    },
+    {
+     "addr": "1000:db3e",
+     "text": "add word [0x38cb],0x5",
+     "what": "the `p` arm's +5, matching its own confirmation string"
+    },
+    {
+     "addr": "1000:57de",
+     "text": "add [0x38cb],ax",
+     "what": "the fight function's `param_1 == 6` reward adds district*20"
+    },
+    {
+     "addr": "1000:4e75",
+     "text": "sub [0x38cb],ax",
+     "what": "the flee penalty subtracts from it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 23,
+    "accepted": 23,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:4e75",
+     "1000:4fe7",
+     "1000:5049",
+     "1000:5291",
+     "1000:57de",
+     "1000:821a",
+     "1000:db3e",
+     "1000:db9b"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38cb"
+   },
    "written_in_range": [
     "1000:db3e",
     "1000:db9b"
@@ -2073,30 +2443,177 @@
   {
    "ds": "20ae:38ce",
    "name": "xp not yet spent on a level",
-   "named_from": "`1000:2535`/`1000:254d`, the level-up routine's own drain -- `docs/re/save-format.md` cites `1000:2536` for the first of the two, which is one byte into `1000:2535 mov ax,[0x38ce]` and not an instruction boundary",
+   "named_from": "The quantity the level-up routine drains against the threshold at `20ae:38d0`, ten at a time.",
+   "evidence": [
+    {
+     "addr": "1000:2535",
+     "text": "mov ax,[0x38ce]",
+     "what": "the level-up's entry test loads it"
+    },
+    {
+     "addr": "1000:2538",
+     "text": "cmp ax,[0x38d0]",
+     "what": "and compares it with the threshold"
+    },
+    {
+     "addr": "1000:254d",
+     "text": "mov [0x38ce],ax",
+     "what": "the drain stores it back"
+    },
+    {
+     "addr": "1000:51e9",
+     "text": "add [0x38ce],ax",
+     "what": "the combat victory award adds to it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 21,
+    "accepted": 21,
+    "discarded": 0,
+    "writers_image_wide": "12 writers -- listed by the command in `xrefs.command`",
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38ce"
+   },
    "written_in_range": [
     "1000:debe"
    ],
-   "read_sites_in_range": 0
+   "read_sites_in_range": 0,
+   "note": "`docs/re/save-format.md` cites `1000:2536` for the first of these; that address is one byte into `1000:2535` and is not an instruction boundary. See `known_not_boundaries`."
   },
   {
    "ds": "20ae:3952",
    "name": "the rolled opponent's rank index",
-   "named_from": "`1000:0d2c mov [0x3952],ax` inside `FUN_1000_0d14`; `1000:b5c0 cmp word [0x3952],8` is the wander's cop test",
+   "named_from": "The word `FUN_1000_0d14` rolls and then clamps to 9, to 7 for `param_1 == 1` and to exactly 8 for `param_1 == 2`; every consumer uses it to index the `ranks` table at DGROUP 0x2e, stride 256.",
+   "evidence": [
+    {
+     "addr": "1000:0d2c",
+     "text": "mov [0x3952],ax",
+     "what": "the roll stores it"
+    },
+    {
+     "addr": "1000:0d9a",
+     "text": "cmp word [0x3952],0x9",
+     "what": "the clamp to 9"
+    },
+    {
+     "addr": "1000:0dc0",
+     "text": "mov word [0x3952],0x8",
+     "what": "`param_1 == 2` forces 8, which `ranks` names `Мент`"
+    },
+    {
+     "addr": "1000:dc26",
+     "text": "mov di,[0x3952]",
+     "what": "the den's `hp` arm indexes `ranks` with it"
+    },
+    {
+     "addr": "1000:b5c0",
+     "text": "cmp word [0x3952],0x8",
+     "what": "the wander's cop test compares it against 8"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 45,
+    "accepted": 45,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:0d2c",
+     "1000:0d54",
+     "1000:0d60",
+     "1000:0d83",
+     "1000:0d96",
+     "1000:0da1",
+     "1000:0db4",
+     "1000:0dc0",
+     "1000:11d0"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3952"
+   },
    "written_in_range": [],
    "read_sites_in_range": 1
   },
   {
    "ds": "20ae:395c",
    "name": "the rolled opponent's level",
-   "named_from": "`1000:0e45 mov [0x395c],ax` inside `FUN_1000_0d14`",
+   "named_from": "Stored by the same roll and pushed as the `#` of ` # уровня` wherever an opponent is announced.",
+   "evidence": [
+    {
+     "addr": "1000:0e45",
+     "text": "mov [0x395c],ax",
+     "what": "the roll stores it"
+    },
+    {
+     "addr": "1000:13ef",
+     "text": "mov di,0x1290",
+     "what": "the announcement appends ` # уровня` (CS 0x1290)"
+    },
+    {
+     "addr": "1000:1404",
+     "text": "push [0x395c]",
+     "what": "and pushes this word as its `#`"
+    },
+    {
+     "addr": "1000:dc43",
+     "text": "push [0x395c]",
+     "what": "the den's `hp` arm does the same"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 27,
+    "accepted": 27,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:0e45",
+     "1000:0e51",
+     "1000:0e76",
+     "1000:11dc",
+     "1000:1205"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:395c"
+   },
    "written_in_range": [],
    "read_sites_in_range": 1
   },
   {
    "ds": "20ae:3b72",
    "name": "the fight-accepted flag",
-   "named_from": "`1000:b5bb` clears it before the wander encounter and `1000:b747` sets it when the player says `y`",
+   "named_from": "Of its nine accepted references, eight are stores and exactly one is a load -- `1000:b81f`. The wander clears it before an encounter and sets it on each path that commits to a fight.",
+   "evidence": [
+    {
+     "addr": "1000:b5bb",
+     "text": "mov byte [0x3b72],0x0",
+     "what": "cleared before the wander encounter"
+    },
+    {
+     "addr": "1000:b747",
+     "text": "mov byte [0x3b72],0x1",
+     "what": "set when the player answers `y`"
+    },
+    {
+     "addr": "1000:b81f",
+     "text": "cmp byte [0x3b72],0x0",
+     "what": "the single load"
+    },
+    {
+     "addr": "1000:dc11",
+     "text": "mov byte [0x3b72],0x1",
+     "what": "the den's `hp` arm sets it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 12,
+    "accepted": 9,
+    "discarded": 3,
+    "writers_image_wide": [
+     "1000:b5bb",
+     "1000:b698",
+     "1000:b71a",
+     "1000:b747",
+     "1000:b81a",
+     "1000:c3d3",
+     "1000:dc11",
+     "1000:e184"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3b72"
+   },
    "written_in_range": [
     "1000:dc11"
    ],
@@ -2105,7 +2622,44 @@
   {
    "ds": "20ae:3b78",
    "name": "den errand one, pending",
-   "named_from": "wander draw 1 sets it unconditionally at `1000:af71` after the gate `1000:af5d`",
+   "named_from": "Six references image-wide and no more: one gate and one store in the wander, three reads in this handler and one clear. The whole population is in `xrefs` and `evidence` together.",
+   "evidence": [
+    {
+     "addr": "1000:af5d",
+     "text": "cmp byte [0x3b78],0x0",
+     "what": "wander draw 1's gate"
+    },
+    {
+     "addr": "1000:af71",
+     "text": "mov byte [0x3b78],0x1",
+     "what": "and its unconditional store"
+    },
+    {
+     "addr": "1000:d8c8",
+     "text": "cmp byte [0x3b78],0x1",
+     "what": "the den's menu line 6 reads it"
+    },
+    {
+     "addr": "1000:dbf3",
+     "text": "cmp byte [0x3b78],0x1",
+     "what": "and the `hp` arm gates on it before its key compare"
+    },
+    {
+     "addr": "1000:dc5e",
+     "text": "mov byte [0x3b78],0x0",
+     "what": "which then clears it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 6,
+    "accepted": 6,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:af71",
+     "1000:dc5e"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3b78"
+   },
    "written_in_range": [
     "1000:dc5e"
    ],
@@ -2114,7 +2668,44 @@
   {
    "ds": "20ae:3b79",
    "name": "den errand two, pending",
-   "named_from": "wander draw 2, same shape, `1000:afd0` after `1000:afbc`",
+   "named_from": "Six references image-wide, the same shape one flag along.",
+   "evidence": [
+    {
+     "addr": "1000:afbc",
+     "text": "cmp byte [0x3b79],0x0",
+     "what": "wander draw 2's gate"
+    },
+    {
+     "addr": "1000:afd0",
+     "text": "mov byte [0x3b79],0x1",
+     "what": "and its store"
+    },
+    {
+     "addr": "1000:d8e8",
+     "text": "cmp byte [0x3b79],0x0",
+     "what": "the den's menu line 7 reads it"
+    },
+    {
+     "addr": "1000:dd50",
+     "text": "cmp byte [0x3b79],0x0",
+     "what": "and the `d` arm gates on it"
+    },
+    {
+     "addr": "1000:dec8",
+     "text": "mov byte [0x3b79],0x0",
+     "what": "which then clears it on every outcome"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 6,
+    "accepted": 6,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:afd0",
+     "1000:dec8"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3b79"
+   },
    "written_in_range": [
     "1000:dec8"
    ],
@@ -2123,7 +2714,41 @@
   {
    "ds": "20ae:3b7a",
    "name": "the menu row's colour digit, an ASCII '0' or '4'",
-   "named_from": "`docs/re/tables.md`'s shop row idiom writes the same byte with the same two immediates at every priced row",
+   "named_from": "87 references image-wide and every one of them is the same three-part shape -- a store of 0x34, a store of 0x30 and a load feeding `0f78:0c03` -- which is the priced-row idiom `docs/re/tables.md` records. The den reuses it verbatim for its `p` and `r` rows.",
+   "evidence": [
+    {
+     "addr": "1000:b9be",
+     "text": "mov byte [0x3b7a],0x34",
+     "what": "the first shop row's dim store"
+    },
+    {
+     "addr": "1000:b9c5",
+     "text": "mov byte [0x3b7a],0x30",
+     "what": "its normal store"
+    },
+    {
+     "addr": "1000:b9e0",
+     "text": "mov al,[0x3b7a]",
+     "what": "and the load that turns it into a one-character string"
+    },
+    {
+     "addr": "1000:d98b",
+     "text": "mov byte [0x3b7a],0x34",
+     "what": "the den's `p` row, same three instructions"
+    },
+    {
+     "addr": "1000:d9ad",
+     "text": "mov al,[0x3b7a]",
+     "what": "and its load"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 87,
+    "accepted": 87,
+    "discarded": 0,
+    "writers_image_wide": "58 writers -- all of the 0x34/0x30 pair shape",
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3b7a"
+   },
    "written_in_range": [
     "1000:d98b",
     "1000:d992",
@@ -2135,7 +2760,45 @@
   {
    "ds": "20ae:3e35",
    "name": "the den's loan credit",
-   "named_from": "set to 5 at `1000:73e5`, topped up per walk while below district*10 at `1000:af19`",
+   "named_from": "Six references image-wide and no more: one initialiser, one per-walk top-up with its own load, two reads in this handler and one spend.",
+   "evidence": [
+    {
+     "addr": "1000:73e5",
+     "text": "mov byte [0x3e35],0x5",
+     "what": "character setup sets it to 5"
+    },
+    {
+     "addr": "1000:af10",
+     "text": "mov al,[0x3e35]",
+     "what": "the per-walk top-up loads it"
+    },
+    {
+     "addr": "1000:af19",
+     "text": "inc [0x3e35]",
+     "what": "and increments it"
+    },
+    {
+     "addr": "1000:d9ec",
+     "text": "cmp byte [0x3e35],0x0",
+     "what": "the den's menu line 12 gates on it"
+    },
+    {
+     "addr": "1000:dba0",
+     "text": "dec [0x3e35]",
+     "what": "the `r` arm spends one"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 6,
+    "accepted": 6,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:73e5",
+     "1000:af19",
+     "1000:dba0"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3e35"
+   },
    "written_in_range": [
     "1000:dba0"
    ],
@@ -2143,7 +2806,7 @@
   }
  ],
  "globals_not_memory_operands": {
-  "note": "Four more DGROUP addresses are used in this handler as IMMEDIATES (`mov di,imm16` / `push ds` / `push di`), so they never appear as a memory operand and the write sweep cannot see them.",
+  "note": "Four more DGROUP addresses are used in this handler as IMMEDIATES (`mov di,imm16` / `push ds` / `push di`), so they never appear as a memory operand and neither the write sweep nor `xrefs-to`'s operand-field filter reports them the same way.",
   "entries": [
    {
     "ds": "20ae:3972",

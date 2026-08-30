@@ -51,6 +51,16 @@ defect every review on this project has found.
     register-compare chain the first sweep cannot see.  The chain's
     contiguity is asserted as well, since that is what makes a register
     compare readable as a parameter test.
+  * **`globals[].named_from` cannot fabricate an instruction.**  Fix round 1
+    found three false provenance claims in that field -- a `dec [0x38a4]` at
+    an address that decodes `cmp byte [bp+di-0x10a],0x34`, a read described as
+    a write, and an "only writer" that had three more.  All three escaped
+    every check here, because the identity walk only sees dicts with SEPARATE
+    `addr` and `text` keys and instruction text embedded in a prose string has
+    neither.  So every `` `1000:xxxx <text>` `` span in every string value in
+    the artifact is now decoded too, and each global's `xrefs` census is
+    re-derived by running `re_query.xrefs_to` -- which turns "only writer"
+    from a phrase into a measured set.
   * **the range tiles.**  The seven arm spans, the menu, the prompt and the
     two boundary blocks must cover `1000:d802`..`1000:df06` end to end with no
     gap and no overlap, so a block cannot be dropped from the map by being
@@ -214,6 +224,131 @@ class DenTest(unittest.TestCase):
                 ins.text, node["text"],
                 "%s: data/den_arms.json says %s at %s, orig/g.exe decodes %s "
                 "there" % (path, node["text"], node["addr"], ins.text))
+
+    #: The reviewer's own sweep, kept verbatim: an instruction claim written
+    #: INSIDE a prose string, which carries neither a separate `addr` key nor
+    #: a separate `text` key and so escaped every other check in this file.
+    PROSE_INSN = re.compile(r"`(1000:[0-9a-f]{4})\s+([a-z][^`]*)`")
+
+    def test_every_prose_embedded_instruction_says_what_the_binary_says(self):
+        """The identity hole fix round 1 opened.
+
+        `test_every_cited_instruction_decodes_to_what_the_artifact_says` walks
+        dicts carrying SEPARATE `addr` and `text` keys.  A claim written as
+        `` `1000:4a49 dec [0x38a4]` `` inside a `named_from` sentence has
+        neither, so it escaped that walk, escaped the boundary walk (it IS
+        aligned -- it is just a different instruction), and escaped the
+        markdown scans because it lives only in the JSON.  Three such claims
+        shipped, one of them load-bearing for the `d` arm's whole predicate.
+        """
+        found = []
+
+        def rec(node, path):
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    rec(v, "%s.%s" % (path, k))
+            elif isinstance(node, list):
+                for i, v in enumerate(node):
+                    rec(v, "%s[%d]" % (path, i))
+            elif isinstance(node, str):
+                for m in self.PROSE_INSN.finditer(node):
+                    found.append((path, m.group(1), m.group(2)))
+        rec(self.art, "$")
+        # The floor exists so a regex that stops matching goes red rather
+        # than quietly measuring nothing.  Four is the CURRENT population,
+        # not a target: fix round 1 moved most instruction claims out of
+        # prose and into structured `evidence[]` records, where the identity
+        # walk above already sees them, so this number went DOWN and should
+        # keep going down.  Lower it deliberately if it does; do not raise
+        # the prose count to satisfy it.
+        self.assertGreaterEqual(
+            len(found), 4,
+            "the prose-embedded instruction sweep matched only %d spans; a "
+            "scan that measures nothing must not pass" % len(found))
+        # And prove the regex can still see a claim of the shape it hunts,
+        # so "no matches" can never be mistaken for "no defects".
+        self.assertEqual(
+            self.PROSE_INSN.findall("x `1000:4a49 dec [0x38a4]` y"),
+            [("1000:4a49", "dec [0x38a4]")],
+            "the prose-embedded pattern no longer matches the exact claim "
+            "shape that shipped wrong in the first revision")
+        for path, c, text in found:
+            ins = self.at(c)
+            self.assertEqual(
+                ins.text, text,
+                "%s: data/den_arms.json writes `%s %s` inside a prose string, "
+                "but orig/g.exe decodes %r there"
+                % (path, c, text, ins.text))
+
+    def test_every_globals_xref_census_is_what_re_query_reports(self):
+        """`named_from` is re-derived, not trusted.
+
+        Brief item 2 says to name each global from its writers and readers
+        with `tools/re_query.py xrefs-to`, never from the adjacent string.
+        Nothing checked that until fix round 1, and three of the eighteen were
+        wrong.  Now the raw/accepted/discarded counts and the image-wide
+        writer set are re-derived here, so an "only writer" claim is a
+        measurement or it is red.
+        """
+        seen = 0
+        for g in self.art["globals"]:
+            scan = re_query.xrefs_to(self.prog, g["ds"])["scan"]
+            xr = g["xrefs"]
+            self.assertEqual(
+                (scan["raw_hits"], len(scan["accepted"]),
+                 len(scan["discarded"])),
+                (xr["raw_hits"], xr["accepted"], xr["discarded"]),
+                "%s: `xrefs-to` reports raw=%d accepted=%d discarded=%d, the "
+                "artifact records raw=%d accepted=%d discarded=%d"
+                % (g["ds"], scan["raw_hits"], len(scan["accepted"]),
+                   len(scan["discarded"]), xr["raw_hits"], xr["accepted"],
+                   xr["discarded"]))
+            self.assertEqual(
+                xr["command"],
+                "python3 tools/re_query.py xrefs-to " + g["ds"],
+                "%s: the recorded command does not recompute the census "
+                "beside it" % g["ds"])
+            writers = [a["at"] for a in scan["accepted"]
+                       if WRITES_ABS_MEM.match(a["text"])]
+            if isinstance(xr["writers_image_wide"], list):
+                self.assertEqual(
+                    xr["writers_image_wide"], writers,
+                    "%s: the artifact lists %s as its image-wide writers, "
+                    "`xrefs-to` finds %s -- an 'only writer' claim that "
+                    "stopped the next search is exactly what this check "
+                    "exists for"
+                    % (g["ds"], xr["writers_image_wide"], writers))
+                seen += 1
+            else:
+                # The three populations too large to list are recorded as a
+                # sentence naming the COUNT; the count is still re-derived.
+                m = re.match(r"^(\d+) writers", xr["writers_image_wide"])
+                self.assertIsNotNone(
+                    m, "%s: writers_image_wide is neither a list nor a "
+                       "`<n> writers ...` sentence: %r"
+                       % (g["ds"], xr["writers_image_wide"]))
+                assert m is not None
+                self.assertEqual(
+                    int(m.group(1)), len(writers),
+                    "%s: the note says %s writers, `xrefs-to` finds %d"
+                    % (g["ds"], m.group(1), len(writers)))
+        self.assertGreaterEqual(
+            seen, 14,
+            "only %d globals carry an explicit writer LIST; the sweep is "
+            "meant to cover every population small enough to read whole"
+            % seen)
+        # And every `evidence` record must name an address the census saw.
+        for g in self.art["globals"]:
+            scan = re_query.xrefs_to(self.prog, g["ds"])["scan"]
+            at = {a["at"] for a in scan["accepted"]}
+            for e in g["evidence"]:
+                if "[0x%s]" % g["ds"].split(":")[1] not in e["text"]:
+                    continue          # a neighbouring instruction, by design
+                self.assertIn(
+                    e["addr"], at,
+                    "%s: evidence at %s decodes %r, which references this "
+                    "address, yet `xrefs-to` did not report it"
+                    % (g["ds"], e["addr"], e["text"]))
 
     def test_every_address_the_artifact_names_is_a_boundary(self):
         exempt = {e["addr"]
@@ -980,6 +1115,14 @@ class DenTest(unittest.TestCase):
                  for n, _ in self.walk(("cs_offset", "text"))}
         tables = json.loads(TABLES.read_text(encoding="utf-8"))
         known |= {e["text"] for t in tables["tables"] for e in t["entries"]}
+        # ...and every literal the DOC itself cites by CS offset, which is
+        # what the failure message below has always promised ("at any address
+        # the doc or the artifact names").  Each of those offsets was already
+        # decoded and, where the doc quotes it, checked against the binary by
+        # the two loops above, so this widens the set only to literals that
+        # are themselves verified.  A Russian word the doc invents, or one
+        # lifted from a literal it never cites, still fails.
+        known |= {self.cs_literal(o) for o in offs}
         unmatched = sorted({run for span in self.spans
                             for run in re.findall(r"[Ѐ-ӿ]+", span)
                             if not any(run in k for k in known)})

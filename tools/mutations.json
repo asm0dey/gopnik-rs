@@ -1637,6 +1637,74 @@
       "DenTest.test_every_instruction_inside_a_fence_says_what_the_binary_says"
     ],
     "expect": "tools/dis16.py decodes"
+  },
+  {
+    "label": "den-arms-prose-embedded-instruction-identity",
+    "defends": "The identity hole fix round 1 closed.  `test_every_cited_instruction_decodes_to_what_the_artifact_says` only walks dicts with SEPARATE `addr` and `text` keys, so an instruction claim written inside a prose sentence -- `1000:4a49` with the text `dec [0x38a4]`, which shipped -- escaped it, escaped the boundary walk (the address IS aligned, it is just a different instruction), and escaped the markdown scans because it lives only in the JSON.  Every such span in every string value is now decoded.  The perturbation below is the exact shape that shipped wrong.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["arms", 3, "notes"],
+      "from": "`1000:dc79 push [0x38cb]` is a READ -- the `#` substitution for the first line. The threshold arithmetic at `1000:dc8e`..`1000:dc9b` does NOT `dec ax` first, unlike all three threshold blocks: it is `district*10 + 10`, not `(district-1)*10`.",
+      "to": "`1000:dc79 dec [0x38cb]` is a READ -- the `#` substitution for the first line. The threshold arithmetic at `1000:dc8e`..`1000:dc9b` does NOT `dec ax` first, unlike all three threshold blocks: it is `district*10 + 10`, not `(district-1)*10`."
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_every_prose_embedded_instruction_says_what_the_binary_says"
+    ],
+    "expect": "inside a prose string, but orig/g.exe decodes"
+  },
+  {
+    "label": "den-arms-globals-writer-census",
+    "defends": "Brief item 2 says to name each global from its writers and readers with `tools/re_query.py xrefs-to`, never from the adjacent string.  Nothing re-derived that until fix round 1, and the shipped file claimed `1000:ab92` was 20ae:3692's ONLY writer when `xrefs-to` returns three more.  The image-wide writer set is now re-derived per global, so a completeness claim that stopped the next search goes red.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["globals", 0, "xrefs", "writers_image_wide"],
+      "from": ["1000:6bf9", "1000:6d9d", "1000:6dbe", "1000:ab92"],
+      "to": ["1000:ab92"]
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_every_globals_xref_census_is_what_re_query_reports"
+    ],
+    "expect": "stopped the next search"
+  },
+  {
+    "label": "den-arms-globals-xref-counts",
+    "defends": "The raw / accepted / discarded census beside each global must be what `re_query.xrefs_to` actually reports.  20ae:3b72 is the one global with discards (3 of 12 raw hits are byte-scan straddles), and `of its nine accepted references exactly one is a load` rests on that number being right.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["globals", 13, "xrefs", "discarded"],
+      "from": 3,
+      "to": 0
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_every_globals_xref_census_is_what_re_query_reports"
+    ],
+    "expect": "the artifact records raw="
+  },
+  {
+    "label": "den-arms-globals-evidence-is-a-real-reference",
+    "defends": "An `evidence` record whose decoded text references the global must be an address `xrefs-to` actually reported.  This is what stops the field drifting back into prose provenance: a plausible nearby address that does not touch the global fails instead of reading as authoritative.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["globals", 4, "evidence", 2, "addr"],
+      "from": "1000:4a50",
+      "to": "1000:5399"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
+    ],
+    "expect": "orig/g.exe decodes"
   }
  ]
 }
