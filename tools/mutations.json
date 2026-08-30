@@ -2078,6 +2078,56 @@
       "SellTest.test_the_ladders_are_the_arms_own_flags"
     ],
     "expect": "`sellable` is not the rungs an arm actually clears"
+  },
+  {
+    "label": "shop-arms-artifact-free-text-addresses-are-boundaries",
+    "defends": "The hole Task 29's review found.  `insn_records` and `literal_records` walk dicts with SEPARATE keys, so a `1000:xxxx` written inside a `note`, `what`, `claim` or `named_from` sentence reached `at()` through nothing -- while the same address in docs/re/shop-arms.md IS swept by ProseTest.  Task 29 shipped `1000:ce8e`..`1000:ce99` into sell.what_the_port_must_change[0] through exactly that gap: 1000:ce99 is the last BYTE of 1000:ce97 and decodes as `cmp [bx-0x6930],bh`.  Every string value in the whole artifact is now scanned.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "junk_arm", "falls_through_to"],
+      "from": "1000:cece",
+      "to": "1000:cecf"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_every_address_the_artifact_names_anywhere_is_a_boundary"
+    ],
+    "expect": "in free text, and an aligned decode"
+  },
+  {
+    "label": "shop-arms-prose-embedded-instruction-identity",
+    "defends": "The identity half of the same hole.  An address written inside a sentence WITH its mnemonic passes the boundary sweep -- it is aligned, it is just a different instruction -- and nothing compared the mnemonic against orig/g.exe.  Task 27 found three false provenance claims in data/den_arms.json through this exact shape; this is its twin for data/shop_arms.json.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "wes_dispatch", "note"],
+      "from": "The miss is the inverted pair `1000:cedd jz 0xcee2` over `1000:cedf jmp 0xd36d` -- it skips the whole sell block and lands on the handler's shared exit compare with the typed line intact.",
+      "to": "The miss is the inverted pair `1000:cedd jz 0xcee3` over `1000:cedf jmp 0xd36d` -- it skips the whole sell block and lands on the handler's shared exit compare with the typed line intact."
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_every_instruction_claim_in_artifact_prose_says_what_the_binary_says"
+    ],
+    "expect": "inside a prose string, but orig/g.exe decodes"
+  },
+  {
+    "label": "shop-arms-selltest-count-is-guarded",
+    "defends": "Task 29 advertised `SellTest` as sixteen cases, twice, against a class of seventeen -- a count in the shipped map that nothing checked.  The doc's two mentions are now compared against unittest.TestLoader's own case list, so the count cannot drift from the class in either direction.",
+    "artifact": "docs/re/shop-arms.md",
+    "mutate": {
+      "op": "text-replace",
+      "from": "seventeen `SellTest` cases. The final",
+      "to": "sixteen `SellTest` cases. The final"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ProseTest.test_the_selltest_count_this_file_advertises_is_the_real_one"
+    ],
+    "expect": "unittest.TestLoader finds"
   }
  ]
 }

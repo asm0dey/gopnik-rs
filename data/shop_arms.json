@@ -3718,7 +3718,7 @@
     "what_the_port_must_change": [
       {
         "n": 1,
-        "what": "`Game::sell_junk` is a hardcoded `^4Тебе нечего спихнуть.` and must become the real arm: refuse only when Хлам <= 0 (`1000:ce87` is a SIGNED word compare), otherwise add the whole junk word to the money ONE-FOR-ONE and zero it (`1000:ce8e`..`1000:ce99`), then print CS 0x96d0 with no number in it.",
+        "what": "`Game::sell_junk` is a hardcoded `^4Тебе нечего спихнуть.` and must become the real arm: refuse only when Хлам <= 0 (`1000:ce87` is a SIGNED word compare), otherwise add the whole junk word to the money ONE-FOR-ONE and zero it (`1000:ce8e`..`1000:ce9a`, the same exclusive-end convention every `span` in this file uses -- `1000:ce9a` is the confirmation push, and `1000:ce97 mov [0x38c9],ax` is the last instruction inside), then print CS 0x96d0 with no number in it.",
         "blocked": false
       },
       {

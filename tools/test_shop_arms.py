@@ -210,6 +210,26 @@ class _ArtifactBase(unittest.TestCase):
             self._xref_cache[ds] = re_query.xrefs_to(self.prog, ds)["scan"]
         return self._xref_cache[ds]
 
+    def string_values(self):
+        """Every string VALUE anywhere in the artifact, with its path.
+
+        `insn_records` and `literal_records` below walk dicts that carry
+        SEPARATE keys.  An address written inside a `note`, a `what`, a
+        `claim` or a `named_from` sentence has no such key, so neither walk
+        sees it -- and the prose twin's citations ARE swept by `ProseTest`.
+        That asymmetry is what this feeds.
+        """
+        def rec(node, path):
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    yield from rec(v, "%s.%s" % (path, k))
+            elif isinstance(node, list):
+                for i, v in enumerate(node):
+                    yield from rec(v, "%s[%d]" % (path, i))
+            elif isinstance(node, str):
+                yield path, node
+        return list(rec(self.art, "$"))
+
     def insn_records(self):
         """Every `{addr, text}` pair anywhere in the artifact, with its path."""
         def rec(node, path):
@@ -285,7 +305,73 @@ class _ArtifactBase(unittest.TestCase):
 
 
 class ArmsTest(_ArtifactBase):
+    #: An instruction claim written INSIDE a prose string -- it carries
+    #: neither a separate `addr` key nor a separate `text` key, so
+    #: `insn_records` never sees it.  Same regex `tools/test_den_arms.py`
+    #: uses, for the same reason.
+    PROSE_INSN = re.compile(r"`(1000:[0-9a-f]{4})\s+([a-z][^`]*)`")
+
     # ------------------------------------------------------------------ tests
+    def test_every_address_the_artifact_names_anywhere_is_a_boundary(self):
+        """The hole Task 29's review found, closed the way Task 27 closed it.
+
+        `at()` was reachable only from the two structured walks, so a
+        `1000:xxxx` written inside a sentence was checked by nothing --
+        while the same address in `docs/re/shop-arms.md` went through
+        `ProseTest.test_every_prose_address_is_an_instruction_boundary`.
+        Task 29 shipped `1000:ce8e`..`1000:ce99` into
+        `sell.what_the_port_must_change[0].what` through exactly that gap:
+        `1000:ce99` is the last BYTE of `1000:ce97 mov [0x38c9],ax` and
+        decodes as `cmp [bx-0x6930],bh`, the authoritative-looking two-byte
+        miss `docs/re/METHODOLOGY.md` warns about.
+
+        So every string value in the artifact is scanned, not just the ones
+        with an `addr` key, and the whole file is covered -- `rows`, `mar`
+        and `sell` alike.
+        """
+        seen = {}
+        for path, s in self.string_values():
+            for m in CITE.finditer(s):
+                seen.setdefault(m.group(0), []).append(path)
+        self.assertGreater(
+            len(seen), 400,
+            "the artifact-wide citation scan found only %d distinct "
+            "addresses; the walk or the regex has broken and this test is "
+            "checking almost nothing" % len(seen))
+        bad = sorted(c for c in seen
+                     if c not in self.aligned and c not in NOT_A_BOUNDARY)
+        self.assertEqual(
+            bad, [],
+            "data/shop_arms.json names %r in free text, and an aligned "
+            "decode from every segment-1000 function entry never reaches "
+            "it -- so it is a byte offset, not an address. Paths: %r"
+            % (bad, {c: seen[c] for c in bad}))
+
+    def test_every_instruction_claim_in_artifact_prose_says_what_the_binary_says(self):
+        """The identity half of the same hole.
+
+        A claim written as `` `1000:cdf4 jz 0xcdf9` `` inside a `what`
+        sentence is aligned -- so the boundary sweep above passes it -- and
+        still carries a mnemonic nothing compares against the binary.  Task
+        27 found three false ones in `data/den_arms.json`'s `named_from`
+        fields through this exact shape.
+        """
+        found = []
+        for path, s in self.string_values():
+            for m in self.PROSE_INSN.finditer(s):
+                found.append((path, m.group(1), m.group(2)))
+        self.assertGreaterEqual(
+            len(found), 8,
+            "only %d prose-embedded instruction claims found; the regex has "
+            "drifted and this test is checking almost nothing" % len(found))
+        for path, cit, text in found:
+            ins = self.at(cit)
+            self.assertEqual(
+                ins.text, text,
+                "%s: data/shop_arms.json writes `%s %s` inside a prose "
+                "string, but orig/g.exe decodes %r there"
+                % (path, cit, text, ins.text))
+
     def test_every_cited_instruction_decodes_to_what_the_artifact_says(self):
         seen = self.insn_records()
         self.assertGreater(len(seen), 100,
@@ -2206,6 +2292,46 @@ class ProseTest(unittest.TestCase):
                     s["cs_offset"], self.md,
                     "%s row %s: the prose does not carry CS %s"
                     % (r["shop"], r["key"], s["cs_offset"]))
+
+    #: How `docs/re/shop-arms.md` advertises `SellTest`'s size.  Kept as a
+    #: single spelling so both mentions are found by one pattern; a count
+    #: written any other way is invisible here, which is why the doc says
+    #: this and nothing else.
+    #: `\s+`, not a literal space: the count and the class name can fall on
+    #: either side of a line wrap, and a wrap must not hide a count.  The
+    #: floor below caught exactly that while this check was being written.
+    SELLTEST_COUNT = re.compile(r"\b([a-z]+)\s+`SellTest` cases\b")
+
+    #: Only the spellings the doc may use.  A number word outside this map
+    #: fails loudly rather than being skipped.
+    NUMBER_WORDS = {"fourteen": 14, "fifteen": 15, "sixteen": 16,
+                    "seventeen": 17, "eighteen": 18, "nineteen": 19,
+                    "twenty": 20, "twentyone": 21}
+
+    def test_the_selltest_count_this_file_advertises_is_the_real_one(self):
+        """A count in the shipped map, guarded by `unittest`'s own case list.
+
+        Task 29 shipped `sixteen` twice against a class of seventeen. The
+        number is not decoration: it is what a reader uses to decide whether
+        the sweep list in the class docstring is the whole set.
+        """
+        real = len(unittest.TestLoader().getTestCaseNames(SellTest))
+        found = self.SELLTEST_COUNT.findall(self.raw)
+        self.assertEqual(
+            len(found), 2,
+            "docs/re/shop-arms.md advertises `SellTest`'s size %d time(s), "
+            "not the 2 this check was written over -- either a mention was "
+            "removed or one was written in a spelling the pattern does not "
+            "see, which is how the wrong count shipped" % len(found))
+        for word in found:
+            self.assertIn(
+                word, self.NUMBER_WORDS,
+                "docs/re/shop-arms.md spells `SellTest`'s size %r, which is "
+                "not a number word this check can read" % word)
+            self.assertEqual(
+                self.NUMBER_WORDS[word], real,
+                "docs/re/shop-arms.md says %s `SellTest` cases; "
+                "unittest.TestLoader finds %d" % (word, real))
 
     def test_the_prose_and_the_artifact_agree_on_the_sell_path(self):
         """The two-places rule for Task 29's half.

@@ -24,8 +24,8 @@ misread: the four binary-swept completeness tests over `rows` in
 `tools/test_shop_arms.py` — `gates[]`, `strings[]`, `roll[]` and `effects[]` —
 reach **all nine `mar` rows and only six of the nine `bmar` rows**, so `src/`
 carries claims about `bmar` 7–9 that no sweep here covers. Those four sweeps
-say nothing at all about the sell path either: it carries its own six sweeps
-under `sell.sweeps` and its own sixteen cases in `SellTest`. The final
+say nothing at all about the sell path either: it carries its own sweeps
+under `sell.sweeps` and its own seventeen `SellTest` cases. The final
 whole-branch review swept the purchase gap by hand and found nothing wrong,
 which is why this is a coverage note and not a defect. The same asymmetry shows
 in `tools/mutations.json`: `mar-arms-effects-completeness`,
@@ -961,8 +961,10 @@ from there to `1000:d381` is the sell path, and `1000:d381 jmp short 0xd39c`
 is its last instruction. Mapped by Task 29.
 
 **Machine-readable twin:** the `sell` key of `data/shop_arms.json`.
-**Re-derivation:** `python3 tools/test_shop_arms.py SellTest` — sixteen cases,
-six of them set-equality sweeps over the whole range.
+**Re-derivation:** `python3 tools/test_shop_arms.py SellTest` — seventeen
+`SellTest` cases; the class docstring names what each sweep covers. Both counts
+in this file are checked against `unittest`'s own case list by
+`ProseTest.test_the_selltest_count_this_file_advertises_is_the_real_one`.
 
 Every claim below is **established from flow** unless it says otherwise. The
 range decoded is `1000:ce76`..`1000:d383` as one aligned run of **580
