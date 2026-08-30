@@ -492,7 +492,18 @@ Task 22) 280 (33.4%); `e657bbe` (Task 22 ported) 305 (36.4%); `19a1a34`
 (Task 24, `bmar` rows 1-6 ported) 348 (41.5%); `7b04cdf` and `768a85e`
 (Task 25, `mar` rows 1-9 MAPPED) **still 348** — an RE task moves this metric
 by nothing at all; Task 26 (`mar` rows 1-9 ported) 388 (46.3%). All of the +40
-is `1000:ab59`, which goes 148 → 188. The frozen columns inside
+is `1000:ab59`, which goes 148 → 188.
+
+**Over the whole shop-arms branch the figure is +83, and it does NOT all land
+in one function.** `bfad0b4` → `e4e929b` is 305 → 388, splitting **+81 in
+`1000:ab59`** (107 → 188) and **+2 in `1000:3d11`** (94 → 96, from Task 24's
+combat-adjacent citations). The Task-26-only "+40, all `1000:ab59`" above is
+exact because `1000:3d11` was already at 96 by 348; a reader who scales that
+sentence up to the branch gets the split wrong, which is why both are written
+out. Recomputed per revision with the block under *Recomputation*, over
+`git show <rev>:<file>` rather than a checkout.
+
+The frozen columns inside
 `data/branches.json` still say 84 (10.0%), which was true at `82a08d8` and is
 what this paragraph printed, unrecomputed, for four tasks. `docs/re/*.md` is
 deliberately excluded from the scan: documented is not ported — which is

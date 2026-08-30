@@ -106,6 +106,61 @@ def literals_near(lines, i):
     return out
 
 
+#: A Rust string literal, for the comment-vs-code pairing below.
+RUST_LITERAL = re.compile(r'"((?:[^"\\\n]|\\.){2,120})"')
+
+
+def code_literals(line):
+    """Game-text Rust literals on `line`, ignoring comment and doc lines.
+
+    The doc-line exclusion is not cosmetic: `src/game.rs`'s `run_combat`
+    prose quotes `"^2\u0422\u044b \u043f\u043e\u0431\u0435\u0434\u0438\u043b."` with straight quotes to say it is
+    NOT a per-fight line, which a matcher that read every `"..."` took for a
+    literal beside a neighbouring citation.
+    """
+    if line.lstrip().startswith("//"):
+        return []
+    return [t for t in RUST_LITERAL.findall(line) if t.startswith("^")]
+
+
+def comment_code_pairs(text):
+    """(pairs, bad) for backticked citations that name an adjacent literal.
+
+    `scan` binds a cited OFFSET to the backticked text beside it. It says
+    nothing about the Rust literal the port actually prints, so editing the
+    string in the code and leaving the comment alone stays green -- the exact
+    mutation the final review demonstrated. This binds the other half: where a
+    citation line carries a backticked game-text literal AND the nearest code
+    line within two carries one, the two must agree.
+
+    "Agree" is prefix-either-way, not equality, because a comment may cite the
+    binary's string while the code holds a `format!` template that extends it
+    (`^0\u0417\u0430\u0433\u0440\u0443\u0436\u0435\u043d\u043e \u0438\u0437 save_r` / `...{slot}`) -- and because a comment may quote a
+    prefix of a long line.
+    """
+    lines = text.splitlines()
+    pairs, bad = 0, []
+    for i, line in enumerate(lines):
+        if not CITE.search(line):
+            continue
+        quoted = [t for t in QUOTED.findall(line) if t.startswith("^")]
+        if not quoted:
+            continue
+        cand = code_literals(line)
+        for j in range(i + 1, min(len(lines), i + 3)):
+            if cand:
+                break
+            cand = code_literals(lines[j])
+        if not cand:
+            continue
+        pairs += 1
+        if not any(a.startswith(b) or b.startswith(a)
+                   for a in quoted for b in cand):
+            bad.append("line %d cites %r but the code beside it prints %r"
+                       % (i + 1, quoted[0][:40], cand[0][:40]))
+    return pairs, bad
+
+
 def scan(img, text, rel="<memory>"):
     """(checked, unchecked, bad) for one source file's citations."""
     lines = text.splitlines()
@@ -150,6 +205,41 @@ class StringCitationTest(unittest.TestCase):
         # synthetic fixture below instead; this only rules out zero.
         self.assertGreater(checked, 0, "no citation was resolved at all")
         self.assertGreater(unchecked, 0, "sanity: some citations are addresses")
+
+    def test_a_backticked_citation_agrees_with_the_literal_beside_it(self):
+        """The half `scan` cannot see: comment against CODE, not against bytes.
+
+        `scan` proves a cited offset holds the backticked text. Nothing proved
+        the backticked text is what the port prints, so changing a
+        `term::println` literal and leaving its comment alone stayed green --
+        which is what the final whole-branch review demonstrated on
+        `^2\u0421\u043f\u0430\u0441\u0430\u0439\u0441\u044f \u043a\u0442\u043e \u043c\u043e\u0436\u0435\u0442!!!`. Together the two halves bind
+        offset -> comment -> code.
+        """
+        pairs, bad = 0, []
+        for rel in SOURCES:
+            if not rel.endswith(".rs"):
+                continue
+            p, b = comment_code_pairs((ROOT / rel).read_text(encoding="utf-8"))
+            pairs += p
+            bad += ["%s %s" % (rel, x) for x in b]
+        self.assertEqual(bad, [], "\n".join(bad))
+        # Not a floor that cannot fail downwards: the two-sided control below
+        # is what proves the pairing can go red at all. This rules out a
+        # regex change that silently pairs nothing.
+        self.assertGreater(pairs, 0, "no citation was paired with code")
+
+    def test_the_pairing_accepts_a_matching_literal_and_refuses_a_drifted_one(self):
+        """Two-sided control for `comment_code_pairs`, on a fixture."""
+        ok = ('// CS 0x95c3 `^2\u0421\u043f\u0430\u0441\u0430\u0439\u0441\u044f \u043a\u0442\u043e \u043c\u043e\u0436\u0435\u0442!!!`, pushed at 1000:cd18.\n'
+              'term::println("^2\u0421\u043f\u0430\u0441\u0430\u0439\u0441\u044f \u043a\u0442\u043e \u043c\u043e\u0436\u0435\u0442!!!");\n')
+        drifted = ('// CS 0x95c3 `^2\u0421\u043f\u0430\u0441\u0430\u0439\u0441\u044f \u043a\u0442\u043e \u043c\u043e\u0436\u0435\u0442!!!`, pushed at 1000:cd18.\n'
+                   'term::println("^2\u0421\u043f\u0430\u0441\u0430\u0439\u0441\u044f \u043a\u0442\u043e \u041d\u0415 \u043c\u043e\u0436\u0435\u0442!!!");\n')
+        self.assertEqual(comment_code_pairs(ok), (1, []))
+        pairs, bad = comment_code_pairs(drifted)
+        self.assertEqual(pairs, 1)
+        self.assertEqual(len(bad), 1, bad)
+        self.assertIn("\u041d\u0415", bad[0])
 
     def test_the_scanner_accepts_a_right_citation_and_refuses_a_wrong_one(self):
         """The two-sided control, on a fixture rather than on the tree.

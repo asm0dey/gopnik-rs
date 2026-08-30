@@ -12,6 +12,22 @@ are named here only where a row 1–6 claim depends on them.
 every literal in both this file and the artifact out of `orig/g.exe`, so
 neither can drift from the binary.
 
+**Artifact coverage boundary — read this before trusting a sweep.**
+`data/shop_arms.json` holds **15 rows**: `bmar` 1–6 (this file's first half,
+Task 23) and `mar` 1–9 (its second half, Task 25). **`bmar` rows 7, 8 and 9 are
+NOT in it.** They were mapped by Task 18, before the artifact existed, and Task
+24 re-homed their port into `Game::buy_dealer_row` alongside rows 1–6 without
+widening the artifact. The consequence is precise and easy to misread: the four
+binary-swept completeness tests in `tools/test_shop_arms.py` — `gates[]`,
+`strings[]`, `roll[]` and `effects[]` — reach **all nine `mar` rows and only
+six of the nine `bmar` rows**, so `src/` carries claims about `bmar` 7–9 that
+no sweep here covers. The final whole-branch review swept that gap by hand and
+found nothing wrong, which is why this is a coverage note and not a defect.
+The same asymmetry shows in `tools/mutations.json`: `mar-arms-effects-completeness`,
+`mar-arms-random-site-completeness` and `mar-arms-district-sweep-start-is-anchored`
+have no `bmar` twin. Widening the artifact to `bmar` 7–9 is new RE scope and is
+deliberately not done here.
+
 **The market's nine arms are the second half of this file** — see *`mar` rows
 1–9: the purchase arms* below, mapped by Task 25 over its own range
 (`1000:b94a`..`1000:c4be`). The two shops were measured separately and neither
@@ -378,7 +394,9 @@ definition; `grep -n 'buy_dealer_row(' src/game.rs` finds it plus its call
 site and the one in the test that guards it). `Game::buy_pistol_row` is
 the name that function carried before it grew rows 1–6; nothing answers to it
 now. The generic path used to debit the price, echo the *menu* line, and
-refuse a district-gated row. For `bmar` 1..6 that was wrong in five ways:
+refuse a district-gated row; **Task 26 deleted it outright** once `mar`'s nine
+arms landed, so there is no fall-through left in either shop. For `bmar` 1..6
+it was wrong in five ways:
 
 1. **Stop refusing on district anywhere on the dealers' BUY path — all five
    gated rows, not two.** `Game::shop_action` *used to* call

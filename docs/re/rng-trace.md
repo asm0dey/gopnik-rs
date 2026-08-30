@@ -37,6 +37,20 @@ exceptions. Python standard library only.
 The FreeDOS boot floppy is not committed (it is a 1.4 MB third-party image);
 `--boot-img` points at one. FreeDOS 1.3 "FloppyEdition" was used here.
 
+**What the captured runs do NOT cover: the shops.** The tracer drives character
+creation and N *walks*, so no run here ever enters `mar` or `bmar`, and three
+`Random` sites therefore appear in no trace in `data/rng_trace.json`:
+`1000:ca0c` (`Random(4)`, `bmar` row 3), `1000:bdbb` (`Random(2)`, `mar` row 1)
+and `1000:be51` (`Random(3)`, `mar` row 2). The last of those discards its
+result and draws anyway, so a session that buys beer advances the stream by one
+per purchase with nothing observable to show for it — the shape a
+draw-for-draw comparison is least able to recover after the fact. All three are
+mapped in `docs/re/shop-arms.md` / `data/shop_arms.json` and ported in
+`Game::buy_dealer_row` / `Game::buy_market_row`, each asserted against its site
+and `n` by a Rust `#[test]` rather than by a capture. Extending the driver to
+type a shop verb would be the way to bring them under this instrument; nothing
+here claims they are covered today.
+
 ## Step 1 — pinning the seed
 
 `Randomize` seeds `RandSeed` from `INT 21h/AH=2Ch` on every run

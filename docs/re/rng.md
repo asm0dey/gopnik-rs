@@ -284,6 +284,26 @@ Literal moduli seen at those call sites include `2`, `3`, `4`, `5`, `6`,
 `Random(hi - lo)` for ranges and `Random(level * 25)` /
 `Random(level * 40)`-shaped rolls.
 
+**A shop purchase is not RNG-neutral.** Three of the 42 `entry` call sites are
+inside the two shops' purchase arms, and an RNG task reading only this document
+would not know it:
+
+| site | `n` | shop / row | what it does |
+|---|---|---|---|
+| `1000:ca0c` | 4 | `bmar` 3, Офигенный косяк | picks which stat the joint raises |
+| `1000:bdbb` | 2 | `mar` 1, Хотдог | the heal, consumed by `1000:bdc0 add ax,0x3` |
+| `1000:be51` | 3 | `mar` 2, Пиво | picks one of three lines and **changes no state at all** |
+
+`1000:be51` is the one to know about: its result is discarded, so a port that
+skips it "because nothing depends on it" desynchronises every draw after the
+first beer. All three are mapped in `docs/re/shop-arms.md` and
+`data/shop_arms.json` (whose `roll[]` completeness is asserted against a fresh
+`9a 4b 11 78 0f` scan of each arm by `python3 tools/test_shop_arms.py`), and
+ported in `Game::buy_dealer_row` / `Game::buy_market_row`. **Nothing above this
+line is contradicted** — the per-function split still holds; these three are
+named because they are the sites least likely to be found by looking where an
+RNG task looks.
+
 ## `data/rng_vectors.json` — provenance
 
 Regenerate with:

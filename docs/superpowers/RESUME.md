@@ -928,10 +928,15 @@ equality test and `1000:4d73`'s inequality test.
 
 Two entries that were on this list are **closed by Task 24** and have been
 removed rather than left to read as open: the shop's
-display-gate-as-action-gate divergence (`Game::shop_action` now consults
-`gate_open` only on the `mar` path, and the menu's own filter is
-`Game::listed_rows`), and the duplicated gates inside the pistol rows (all
-nine `bmar` arms share `Game::buy_after_gates`).
+display-gate-as-action-gate divergence, and the duplicated gates inside the
+pistol rows (all nine `bmar` arms share `Game::buy_after_gates`).
+
+The first of those read "`Game::shop_action` now consults `gate_open` only on
+the `mar` path" until Task 26's final review. **It consults it on no path.**
+Task 26 took the gate off `mar`'s buy path as well — three of its four gated
+rows carry their own district immediate and the fourth carries none — so
+`Game::gate_open`'s one caller is the menu filter `Game::listed_rows`:
+`grep -c 'self[.]gate_open(' src/game.rs` returns 1, against 2 at `fef8c9c`.
 
 ## Findings from 11c worth not losing
 

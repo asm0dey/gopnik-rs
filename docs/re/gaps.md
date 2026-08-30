@@ -1522,9 +1522,12 @@ points at this entry.
   **`Game::shop_action`'s generic "debit `price` and echo the menu line" path
   is deleted** — the original never had one, and the echo was this port's
   invention. `Game::gate_open` has exactly **one** caller left,
-  `Game::listed_rows`, the menu filter. (`grep -n 'self.gate_open'
-  src/game.rs` returns two lines: that call site and the doc comment on
-  `Game::shop_action` that names the grep.) No buy path in either shop consults
+  `Game::listed_rows`, the menu filter: `grep -c 'self[.]gate_open('
+  src/game.rs` returns **1**, against **2** for the same pattern at `fef8c9c`.
+  Count calls, not mentions — the looser `grep -c 'self.gate_open'` returns 2
+  at both revisions, because a doc comment naming the grep moved into the
+  deleted call's place, and `data/shop_arms.json` shipped that unfalsifiable
+  form until the final whole-branch review caught it. No buy path in either shop consults
   `row.gate` any more — at `bmar` because there is no buy-path district test
   at all, at `mar` because three of its four gated rows carry their own
   immediate and the fourth carries none, which `row.gate` cannot express.
