@@ -642,9 +642,28 @@ the shape it had when the map was written.
    full, gates and strings included, and both dispatch the fight through the
    unparameterised `Game::run_combat` rather than being left out. The two
    unmodelled arguments are `docs/re/gaps.md`'s "`FUN_1000_3d11`'s `param_1`
-   — the den's two call sites", which names what each one costs: for 6, only
-   `1000:57ce`'s `add [0x38cb],ax`; for 5, the undecoded
-   `1000:3d32`..`1000:3fa7`.
+   — the den's two call sites", which is the authority on what each costs.
+
+   **A first revision of this line said "for 6, only `1000:57ce`'s
+   `add [0x38cb],ax`; for 5, the undecoded `1000:3d32`..`1000:3fa7`". Both
+   halves were wrong, and both in the same way** — a bound asserted from the
+   gap between two known addresses rather than decoded. Corrected:
+
+   * **6.** `1000:57d2 jnz 0x5838` makes the block exclusive to 6 exactly
+     `1000:57d4`..`1000:5838`, 47 instructions, and it carries FIVE effects:
+     `1000:57de` понтовость `+= district*20`, CS `0x3c99` at `1000:57e2`,
+     CS `0x3ce9` at `1000:5803`, `1000:582e` **xp `+= district*10`**, and
+     `1000:5835 call 0x2526` — the capped level-up drain, **which spends
+     `Random` draws**. A missing draw is observable state, so this is the
+     serious half. *When* the block runs is still not established: thirteen
+     predecessors reach `1000:57ce` and none of them was decoded.
+   * **5.** `1000:3d32`..`1000:3fa7` is an address INTERVAL, not an arm — 310
+     instructions containing the rest of the dispatch chain (`1000:3e8d`,
+     `1000:3ead`, `1000:3f2b`, named in this document's own `param_1`
+     section) and the 1/3/4 arm entries. The arm is `1000:3d32`..`1000:3e8d`,
+     168 instructions, only exit `1000:3e8a jmp 0x3fa7`. It spends **no**
+     `Random` draw, so this residue cannot desynchronise the stream. What
+     those 168 instructions do was not decoded.
 7. **The den does not trim its input.** See "The input read" above.
    **UNCHANGED:** `Game::shop_turn` still trims, and the den joins
    `docs/re/gaps.md`'s trimmed-prompt population rather than getting a

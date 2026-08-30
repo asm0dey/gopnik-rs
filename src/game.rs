@@ -2001,30 +2001,47 @@ impl Game {
     /// of its clamp sites (`1000:0da7`, `1000:0dba`): 1 clamps the class to
     /// 7, so this errand can never roll the class-8 `Мент`.
     ///
-    /// ## `FUN_1000_3d11`'s `param_1 = 6` is NOT modelled -- the one gap
+    /// ## `FUN_1000_3d11`'s `param_1 = 6` is NOT modelled, and it costs draws
     ///
     /// [`Game::run_combat`] takes no `param_1` and implements the
-    /// `param_1 = 0` path the wander's `1000:b826` uses. Two complete
-    /// sweeps over an aligned decode of the fight function's 6971 bytes
-    /// (3043 instructions, `data/den_arms.json`'s `fight_param_finding`)
-    /// bound the difference: every `[bp+0x4]` reference (exactly eight --
-    /// `1000:3d24`, `1000:5085`, `1000:5139`, `1000:51a6`, `1000:51ac`,
-    /// `1000:51f6`, `1000:51fc`, `1000:57ce`) and every `cmp al,imm8`
-    /// (exactly five, the dispatch chain `1000:3d24 mov al,[bp+0x4]`
-    /// feeds: `1000:3d27` tests 0, `1000:3d2b` tests 6, `1000:3e8d` 1,
-    /// `1000:3ead` 3, `1000:3f2b` 4). 0 and 6 take the **same** arm
-    /// `1000:3d32`, and of the seven non-load `[bp+0x4]` tests only
-    /// `1000:57ce` names 6 -- it guards `1000:57de add [0x38cb],ax` with
-    /// `ax = district*20` (`1000:57d4`..`1000:57dc`).
+    /// `param_1 = 0` path the wander's `1000:b826` uses. Two sweeps over an
+    /// aligned decode of the fight function's 6971 bytes (3043
+    /// instructions, `data/den_arms.json`'s `fight_param_finding`) find
+    /// every `[bp+0x4]` reference (exactly eight -- `1000:3d24`,
+    /// `1000:5085`, `1000:5139`, `1000:51a6`, `1000:51ac`, `1000:51f6`,
+    /// `1000:51fc`, `1000:57ce`) and every `cmp al,imm8` (exactly five, the
+    /// dispatch chain `1000:3d24 mov al,[bp+0x4]` feeds: `1000:3d27` tests
+    /// 0, `1000:3d2b` 6, `1000:3e8d` 1, `1000:3ead` 3, `1000:3f2b` 4). 0
+    /// and 6 take the **same** target `1000:3d32`, and of the seven
+    /// non-load `[bp+0x4]` tests only `1000:57ce` names 6.
     ///
-    /// So the whole difference between the call this arm makes and the one
-    /// this port performs is that one понтовость award, and **whether it is
-    /// reached is not established**: `1000:57ce` sits near the function's
-    /// end and neither its guard's context nor the `1000:3d32` arm was
-    /// decoded. Rather than invent a condition, this port runs the fight
-    /// through the unparameterised `run_combat` and registers the missing
-    /// award in `docs/re/gaps.md`, "`FUN_1000_3d11`'s `param_1` -- the den's
-    /// two call sites".
+    /// `1000:57ce`'s `1000:57d2 jnz 0x5838` makes the block exclusive to 6
+    /// exactly `1000:57d4`..`1000:5838`, **47 instructions, decoded in
+    /// full**, and it holds FIVE effects rather than the one an earlier
+    /// revision of this comment claimed:
+    ///
+    /// * `1000:57d4`..`1000:57de` -- `add [0x38cb],ax`, `ax = district*20`;
+    /// * `1000:57e2` / `1000:57fe` -- CS `0x3c99`, `#` = `district*20`;
+    /// * `1000:5803` / `1000:581f` -- CS `0x3ce9`, `#` = `district*10`;
+    /// * `1000:5824`..`1000:582e` -- `add [0x38ce],ax`, an **xp** award;
+    /// * `1000:5832` / `1000:5835` -- `FUN_1000_2526(0)`, the capped
+    ///   level-up drain, **which spends `Random` draws** at `1000:25fe`.
+    ///
+    /// The missing draws are the serious half: the RNG sequence is
+    /// observable state, so a fight entered here leaves this port's
+    /// generator at a different point from the original's. The extent is
+    /// measured, not assumed -- over the 3043-instruction walk the block
+    /// holds zero conditional branches, zero `jmp`s and zero
+    /// `call 0f78:114b`, and no branch in the function targets any address
+    /// inside it.
+    ///
+    /// **Where this stopped:** *when* the block runs is NOT established.
+    /// `1000:57ce` has thirteen predecessors -- twelve branches plus the
+    /// fall-through from `1000:57c9` -- and which fight outcomes reach them
+    /// was not decoded. `docs/re/gaps.md`, "`FUN_1000_3d11`'s `param_1` --
+    /// the den's two call sites", lists all thirteen and is the authority
+    /// here; this port invents no condition and runs the fight through the
+    /// unparameterised `run_combat`.
     fn den_beat_up(
         &mut self,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
@@ -2196,14 +2213,29 @@ impl Game {
     /// `award` and does `p.xp += award` before the same drain.
     ///
     /// **`ddfc`'s `param_1 = 5` is NOT modelled.** Unlike `hp`'s 6, which
-    /// takes the same `1000:3d32` arm as 0, 5 matches none of the five
-    /// values `FUN_1000_3d11` tests and reaches the default arm
-    /// `1000:3fa7` directly -- so it SKIPS whatever `1000:3d32`..`1000:3fa7`
-    /// does, and that span was not decoded. This port runs the cop fight
-    /// through the unparameterised [`Game::run_combat`], which implements
-    /// the `param_1 = 0` path; the divergence is registered in
-    /// `docs/re/gaps.md`, "`FUN_1000_3d11`'s `param_1` -- the den's two
-    /// call sites".
+    /// takes the same `1000:3d32` target as 0, 5 matches none of the five
+    /// values `FUN_1000_3d11` tests and reaches `1000:3fa7` directly, so it
+    /// SKIPS the prologue 0 and 6 run.
+    ///
+    /// An earlier revision of this comment called that prologue
+    /// `1000:3d32`..`1000:3fa7`. **That is an address interval, not an
+    /// arm**: 310 instructions containing the rest of the dispatch chain
+    /// (`1000:3e8d`, `1000:3ead`, `1000:3f2b`) and the entries of the arms
+    /// for 1, 3 and 4 (`1000:3e91`, `1000:3eb1`, `1000:3f2f`). The arm
+    /// itself is `1000:3d32`..`1000:3e8d` -- **168 instructions**, entered
+    /// only by `1000:3d29 jz 0x3d32` and `1000:3d2d jz 0x3d32`, whose only
+    /// exit is `1000:3e8a jmp 0x3fa7`, and `1000:3e8d` is reached by
+    /// exactly one branch image-wide (`1000:3d2f jmp 0x3e8d`, the chain's
+    /// own miss) so it is the next chain link and not part of the arm.
+    ///
+    /// **It spends no `Random` draw** -- zero `call 0f78:114b` across those
+    /// 168 instructions -- so unlike the `hp` arm's residue this one cannot
+    /// desynchronise the draw stream. **Where this stopped:** what the 168
+    /// instructions DO was not decoded, so nothing here says what the cop
+    /// fight gains or loses by skipping them. This port runs it through the
+    /// unparameterised [`Game::run_combat`]; `docs/re/gaps.md`,
+    /// "`FUN_1000_3d11`'s `param_1` -- the den's two call sites", is the
+    /// authority.
     fn den_job(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
         // 1000:dd46 / 1000:dd4b -- signed, and silent.
         if self.pontovost_street < 0x64 {
@@ -8813,6 +8845,80 @@ mod tests {
             "one below it dims"
         );
         assert_eq!(row(2, 0), None, "1000:d9ec hides the row entirely");
+    }
+
+    /// **The menu is wired to entry, and prints exactly once.** Every other
+    /// menu test calls `print_den_menu` directly, which cannot see whether
+    /// anything calls it -- deleting the call in [`Game::print_shop_intro`]
+    /// left the whole suite green, and so would moving it into
+    /// [`Game::shop_turn`], which would reprint the menu on every turn.
+    /// This drives the real path: `dispatch(Command::Den)` ->
+    /// `enter_shop(Location::Den)` -> `print_shop_intro`, then a `shop_turn`
+    /// at the den prompt, and asserts the placement claim
+    /// `print_den_menu`'s own doc rests on -- `1000:dede`, the loop's only
+    /// back edge from below, targets the prompt push `1000:dae2` and not the
+    /// menu.
+    #[test]
+    fn entering_the_den_prints_the_menu_once_and_a_turn_does_not_reprint_it() {
+        // CS 0x9db3, the unconditional `w` line: present in every state, so
+        // counting it counts menu prints and nothing else.
+        const W_LINE: &str = "Напиши ^6w^7 чтобы уйти";
+        // CS 0x9cf0, the intro's own prefix -- `print_den_intro`, not the
+        // menu, so it separates "the menu ran" from "entry ran at all".
+        const INTRO: &str = "Ты пришел в притон - ";
+        let count = |v: &[String], t: &str| v.iter().filter(|l| l.contains(t)).count();
+
+        let mut g = den_game_all_gates_open();
+        assert_eq!(g.mode, Mode::Street);
+        let entry = term::capture::lines(|| {
+            g.dispatch(Command::Den, &mut no_input()).unwrap();
+        });
+        assert_eq!(g.mode, Mode::Shop(Location::Den), "the den is modal");
+        assert_eq!(
+            count(&entry, INTRO),
+            1,
+            "1000:d816's prefix, once: {entry:?}"
+        );
+        assert_eq!(
+            count(&entry, W_LINE),
+            1,
+            "the menu must print on entry, exactly once: {entry:?}"
+        );
+        // Every other gated line is there too, so this is the whole menu and
+        // not one surviving line.
+        assert!(entry
+            .iter()
+            .any(|l| l == "Напиши ^6d^7 чтобы пойти на дело"));
+        assert!(entry
+            .iter()
+            .any(|l| l == "Напиши ^6a^7  чтобы спросить чё-то"));
+
+        // A turn at the prompt. `s` is chosen because it prints and writes
+        // nothing, so anything else in the capture came from a reprint.
+        let turn = term::capture::lines(|| {
+            g.shop_turn(Location::Den, "s", &mut no_input()).unwrap();
+        });
+        assert_eq!(
+            count(&turn, W_LINE),
+            0,
+            "1000:dede targets the prompt, not the menu -- no reprint: {turn:?}"
+        );
+        assert_eq!(count(&turn, INTRO), 0, "nor the intro: {turn:?}");
+        assert_eq!(
+            turn,
+            vec![
+                "^4Твоя понтовость сейчас = 100.",
+                "^0Да если чё мы за тебя впрягаемся.",
+            ],
+            "the turn prints the `s` arm and nothing else"
+        );
+
+        // And an unrecognised key prints nothing at all -- the same shape,
+        // measured through the real dispatch path rather than a direct call.
+        let silent = term::capture::lines(|| {
+            g.shop_turn(Location::Den, "zzz", &mut no_input()).unwrap();
+        });
+        assert!(silent.is_empty(), "{silent:?}");
     }
 
     /// Menu lines 7 and 16 are each a CONJUNCTION of two different bytes --

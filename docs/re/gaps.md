@@ -2322,25 +2322,96 @@ complete sweeps over an aligned decode of the fight function's 6971 bytes /
 something else, and this port routes both through `run_combat` unchanged
 rather than omitting the fights:
 
-- **`1000:dc5b`, `param_1 = 6`** (`Game::den_beat_up`, the `hp` arm). The
-  dispatch chain `1000:3d24 mov al,[bp+0x4]` feeds tests exactly 0
-  (`1000:3d27`), 6 (`1000:3d2b`), 1 (`1000:3e8d`), 3 (`1000:3ead`) and 4
-  (`1000:3f2b`), and **0 and 6 jump to the same arm `1000:3d32`**. Of the
-  seven non-load `[bp+0x4]` references (`1000:5085`, `1000:5139`,
-  `1000:51a6`, `1000:51ac`, `1000:51f6`, `1000:51fc`, `1000:57ce`) only
-  `1000:57ce cmp byte [bp+0x4],0x6` names 6, and it guards
-  `1000:57de add [0x38cb],ax` with `ax = district*20`
-  (`1000:57d4`..`1000:57dc`) — the errand's own понтовость reward, which
-  lives inside the fight function and not in the den. **So the whole
-  divergence for `hp` is that one missing award.** Whether it is reached is
-  NOT established: neither `1000:57ce`'s guard context nor the `1000:3d32`
-  arm was decoded, so this port does not invent a condition for it.
-- **`1000:ddfc`, `param_1 = 5`** (`Game::den_job`, the cop fight). 5 matches
-  none of the five tested values and reaches the default arm `1000:3fa7`
-  directly, so it **skips** whatever `1000:3d32`..`1000:3fa7` does — the span
-  `param_1 = 0` takes and which was not decoded. This is the larger of the
-  two unknowns and it is why the arm is registered here rather than claimed
-  correct.
+The dispatch chain `1000:3d24 mov al,[bp+0x4]` feeds tests exactly 0
+(`1000:3d27`), 6 (`1000:3d2b`), 1 (`1000:3e8d`), 3 (`1000:3ead`) and 4
+(`1000:3f2b`); 0 and 6 take the same target `1000:3d32` and everything else,
+5 included, falls to `1000:3fa7`.
+
+**A first revision of this entry said the whole `param_1 = 6` divergence was
+one понтовость award, and named `1000:3d32`..`1000:3fa7` as the `param_1 = 5`
+residue. Both were wrong, and both were the same mistake** — an inventory
+whose completeness claim stopped the next search, which is the defect
+`docs/re/METHODOLOGY.md` names. Neither bound had been decoded; each was the
+gap between two addresses that were. What follows is what an aligned decode
+of `FUN_1000_3d11` from its own entry `1000:3d11` — **3043 instructions**,
+the count Task 27 recorded — actually shows. The instruction counts are
+recorded because the negatives below are only worth as much as the walk that
+produced them.
+
+#### `1000:dc5b`, `param_1 = 6` (`Game::den_beat_up`, the `hp` arm)
+
+Of the seven non-load `[bp+0x4]` references (`1000:5085`, `1000:5139`,
+`1000:51a6`, `1000:51ac`, `1000:51f6`, `1000:51fc`, `1000:57ce`) only
+`1000:57ce cmp byte [bp+0x4],0x6` names 6. Its `1000:57d2 jnz 0x5838` makes
+the block exclusive to `param_1 == 6` exactly `1000:57d4`..`1000:5838` --
+half-open, like every range in `docs/re/den.md`, so `1000:5838` is the
+`jnz`'s own target and the first instruction NOT in the block. A first
+revision of this paragraph closed the range on the inclusive last byte
+instead, which falls two bytes inside `1000:5835 call 0x2526` (`e8 ee cc`)
+and is not an instruction boundary at all;
+`tools/test_den_arms.py`'s `test_every_prose_address_is_an_instruction_boundary`
+is what caught it, on the `docs/re/den.md` copy. That block **is decoded
+here, in full: 47 instructions**. It holds **five**
+effects, not one:
+
+| address | what |
+|---|---|
+| `1000:57d4`..`1000:57de` | `add [0x38cb],ax` with `ax = district*20` — понтовость |
+| `1000:57e2` (printed `1000:57fe`) | CS `0x3c99` `^2Ты отпинал этого мудака - пацаны этого незабудут. Понтовость улутшилась на #.`, its `#` recomputed as `district*20` at `1000:57e7`..`1000:57f1` |
+| `1000:5803` (printed `1000:581f`) | CS `0x3ce9` `^6Ты получаешь # качков опыта за помощь`, `#` = `district*10` at `1000:5808`..`1000:5812` |
+| `1000:5824`..`1000:582e` | `add [0x38ce],ax` with `ax = district*10` — **an XP award** |
+| `1000:5832` / `1000:5835` | `FUN_1000_2526(0)`, the capped level-up drain — **which spends `Random` draws**, at `1000:25fe` |
+
+**So the residue is a понтовость award, an xp award, two printed lines and
+the draws the level-up drain spends.** The missing draws are the serious
+half: the RNG sequence is observable state, and a fight entered from the den's
+`hp` arm leaves this port's generator at a different point from the
+original's.
+
+The extent claim is measured, not assumed. Over the 3043-instruction walk:
+`1000:57d4`..`1000:5838` contains **zero** conditional branches and **zero**
+`jmp`s, and **no branch anywhere in the function targets any address inside
+it**, so once `1000:57d2`'s `jnz` is not taken all 47 instructions run and
+control falls into `1000:5838`. It contains **zero** `call 0f78:114b`, so the
+block itself spends no draw — every draw it costs comes from `1000:2526`.
+Exactly two CS-literal pushes, exactly two absolute writes and exactly three
+calls, all tabled above.
+
+**Where this stopped.** *When* the block runs is NOT established. `1000:57ce`
+is reached by twelve branches — `1000:5469`, `1000:5470`, `1000:5512`,
+`1000:560b`, `1000:5672`, `1000:567a`, `1000:5729`, `1000:5731`, `1000:573b`
+(all `jmp 0x57ce`) and `1000:57b4`, `1000:57bb`, `1000:57c2` (all
+`jnz 0x57ce`) — plus the fall-through from `1000:57c9`, and which fight
+outcomes reach those thirteen predecessors was not decoded. Nor was what
+`FUN_1000_2526(0)` costs on this call; only that it is the same capped entry
+the den's own `1000:dec5` uses, which this port models as
+`progress::apply_levels(..., uncapped: false)`.
+
+#### `1000:ddfc`, `param_1 = 5` (`Game::den_job`, the cop fight)
+
+**`1000:3d32`..`1000:3fa7` is an address interval, not an arm, and citing it
+as the residue was the same unearned-bound mistake.** It is 310 instructions
+and it *contains* the rest of the dispatch chain — `1000:3e8d`, `1000:3ead`
+and `1000:3f2b`, the three links this very entry names above — together with
+the entries of the arms for 1, 3 and 4 (`1000:3e91 mov di,0x2cfa`,
+`1000:3eb1 mov di,0x2d10`, `1000:3f2f mov di,0x2d79`).
+
+The arm 0 and 6 actually take is `1000:3d32`..`1000:3e8d`, and that extent
+IS measured: **168 instructions**, whose only exit is `1000:3e8a jmp 0x3fa7`
+(every other branch inside it targets an address inside it), entered only by
+`1000:3d29 jz 0x3d32` and `1000:3d2d jz 0x3d32`. `1000:3e8d` is reached by
+exactly one branch image-wide, `1000:3d2f jmp 0x3e8d` — the chain's own miss
+— so it is the next chain link and not part of the arm.
+
+**The arm spends no `Random` draw**: zero `call 0f78:114b` across those 168
+instructions. So unlike the `param_1 = 6` residue, `param_1 = 5` skipping this
+prologue cannot desynchronise the draw stream inside `FUN_1000_3d11`.
+
+**Where this stopped.** What those 168 instructions *do* was not decoded, so
+this entry cannot say what the cop fight gains or loses by skipping them, and
+cannot say whether `Game::run_combat` reproduces any of it. It says only that
+the prologue exists, that it is 168 instructions bounded as above, and that it
+costs no draw.
 
 Both join the population of "`FUN_1000_11c2` -- traced (Task 20), not ported"
 above, whose `1000:ae2d` (`param_1 = 3`) and `1000:ae39` (`param_1 = 4`) have
@@ -2370,7 +2441,7 @@ not trace.
 
 Rows 11 and 12 of the den menu write the colour digit to `20ae:3b7a`
 (`1000:d98b`/`1000:d992` and `1000:d9e0`/`1000:d9e7`) and load it back
-(`1000:d9ad`, `1000:da0a`); `Game::print_den_menu` computes it inline
+(`1000:d9ad`, `1000:da09`); `Game::print_den_menu` computes it inline
 instead. **Row 12's store runs BEFORE its `1000:d9ec` visibility gate**, so
 the original writes the byte on a turn where the row is not printed. Not
 modelled, and not observable: `20ae:3b7a` has 87 image-wide references and
