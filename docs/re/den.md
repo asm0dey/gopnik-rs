@@ -27,16 +27,22 @@ exactly:
 | `1000:dee3`..`1000:defc` | the not-discovered refusal |
 | `1000:defc`..`1000:df06` | the `kl` verb's own setup — the right boundary |
 
-The right edge is not a number picked to fit: `1000:defc` is where both den
-exits land (`1000:dee1 jmp short 0xdefc` from the `w` arm, and the
-not-discovered refusal's own fall-through out of `1000:def7`) and also where
-the `pr` verb's own miss goes (`1000:d809 jmp 0xdefc`); `1000:df06` is the
-`kl` compare (`call 0f78:0bd8` against `kl`, CS `0xa0ea`).
+The right edge is not a number picked to fit. Scanning every decoded branch
+in the image for a target of `1000:defc` returns exactly two —
+`1000:d809 jmp 0xdefc`, the `pr` verb's own miss, and
+`1000:dee1 jmp short 0xdefc`, the `w` arm's exit — and the not-discovered
+refusal reaches it by falling out of `1000:def7`. So every way out of this
+handler lands there. `1000:df06` is then the `kl` compare
+(`call 0f78:0bd8` against `kl`, CS `0xa0ea`).
 
 ### It is a loop with a one-shot preamble
 
-**Established from flow.** The loop's only back edge is `1000:dede`, and it
-targets `1000:dae2` — the PROMPT push, not the menu:
+**Established from flow**, by scanning every decoded branch in the image for
+one whose target is `1000:dae2`. There are exactly three: `1000:dac0 jl
+0xdae2` and `1000:dac7 jz 0xdae2`, which are menu line 16's own two gate
+misses — the ENTRY into the prompt from the menu — and `1000:dede`, the only
+one from below. So the loop's only back edge is `1000:dede`, and it targets
+the PROMPT push, not the menu:
 
 ```
 1000:decd  mov di,0x3a72
