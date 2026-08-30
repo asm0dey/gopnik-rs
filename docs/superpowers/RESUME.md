@@ -507,9 +507,11 @@ behaviour; the next shipped the behaviour and wrote no new addresses into
 `docs/`, because the map already held them all. Neither number on its own says
 which task moved the game.
 
-**Two cautions on the four rows above.** First, the `296/838` row does not
-reproduce: the snippet below prints `298` at `9837b74` and at every Task-19
-endpoint tried (`a59ad67`, `f6a4c29`, `90e2d28`). Two branches are
+**Two cautions on the first table above** -- the long `cited` history, not the
+four-row side-by-side that Task 26 inserted between it and this paragraph.
+First, its `296/838` row (Task 19) does not reproduce: the snippet below
+prints `298` at `9837b74` and at every Task-19 endpoint tried (`a59ad67`,
+`f6a4c29`, `90e2d28`). Two branches are
 unaccounted for and the discrepancy is recorded rather than silently
 overwritten. Second, and more important, **this metric is not progress.** It
 globs `docs/re/*.md` and nothing else, so it rises when a document is written

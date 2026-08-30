@@ -552,8 +552,10 @@ inverted pair, `1000:bd57 jz 0xbd5c` over `1000:bd59 jmp 0xbe0a`.
    `1000:bd82 cmp ax,[0x38ae]` / `1000:bd86 jnl 0xbdf1`, refusing with
    `^6Да неохота хавать` (CS `0x8e37`) when hp is already at hp max.
 3. **afford** — `1000:bd91 jle 0xbdae`, refusing with
-   `^4Чёрт, бабок даже на жратву не хватает.` (CS `0x8dfa`). That is the
-   literal `Game::shop_action`'s generic path prints today.
+   `^4Чёрт, бабок даже на жратву не хватает.` (CS `0x8dfa`). Until Task 26
+   the port printed that literal from `Game::shop_action`'s generic path, for
+   every `mar` row; it belongs to row 1 alone, and row 1's own arm is what
+   prints it now.
 
 **Effect.** Debit at `1000:bdb3`, then a `Random(2)` at `1000:bdbb`
 (`mov ax,0x2` at `1000:bdb7`, recovered with

@@ -1295,10 +1295,69 @@ impl Game {
     /// What a priced row's `#` placeholders are filled with, in the order the
     /// original pushes them.
     ///
+    /// ## Why surplus values are ignored, and where the surplus is
+    ///
+    /// **Established from flow, and this is the premise both fills below rest
+    /// on.** Every priced menu line is written by one `call 0eed:01c2`
+    /// (`System.WriteLn`), and **all 24 of those call sites in the two menu
+    /// blocks push exactly five words**. Measured over an aligned linear walk
+    /// of `entry` from `1000:ab59` (7742 instructions, its whole recorded
+    /// `size`), filtered to `1000:b94a`..`1000:bd08` for `mar` and
+    /// `1000:c4be`..`1000:c8ce` for `bmar` -- each block from its shop-tag
+    /// compare to its prompt push, the same `shop_tag_at` anchors
+    /// `data/shop_arms.json` records, and **all four bounds are instruction
+    /// boundaries the walk reaches**. 24 sites, and the push-count histogram
+    /// is `{5: 24}` -- not one site with four or six. The slots a row does
+    /// not use are `xor ax,ax` / `push ax`, so a row with one `#` pushes its
+    /// price and then **four zeros**, and Borland's `Write` consumes the
+    /// placeholders left to right and drops what is left over. That is why
+    /// `text::fill` taking more values than the template has `#`s is the
+    /// original's own behaviour and not a port convenience
+    /// (`crate::text::tests::fill_drops_surplus_values` asserts it).
+    ///
+    /// **The lower bound is load-bearing.** Starting the `mar` filter at
+    /// `1000:b930` -- not an instruction boundary; a cold decode there reads
+    /// `rcl [bx+si+0x31],0xc0` -- sweeps in a 25th site at `1000:b93b`, which
+    /// is the `WriteLn` immediately *before* the `mar` verb compare at
+    /// `1000:b94a` and belongs to the handler that precedes the market, not
+    /// to its menu. Its five words are all zeros, so it changes no
+    /// conclusion, but it is a row that is not a row: hence the aligned
+    /// anchor.
+    ///
+    /// The 120 pushed words split exactly **97 zeros + 18 price bytes + 5
+    /// immediates**. The 18 is the eighteen priced rows, one price byte each
+    /// (`mov al,[imm8]` / `xor ah,ah`), which is the cross-check that the
+    /// sweep found every row and no extra site. The five immediates belong to
+    /// three rows:
+    ///
+    /// | row | surplus pushes | consumed? |
+    /// |---|---|---|
+    /// | `mar` 2 | `1000:ba5a mov ax,0x5` | yes -- the second `#` |
+    /// | `bmar` 5 | `1000:c6df mov ax,0x5` | **no -- discarded** |
+    /// | `bmar` 6 | `1000:c743 mov ax,0x5` | **no -- discarded** |
+    /// | `bmar` 7 | `1000:c7a7 mov ax,0x14`, `1000:c7ab mov ax,0x1e` | yes -- the second and third `#` |
+    ///
+    /// **`1000:c6df` and `1000:c743` are surplus the original itself throws
+    /// away, and no row is broken by it.** Their strings hold one `#` each
+    /// and bake their numbers into the text --
+    /// CS `0x92b8` (pushed at `1000:c6cf`) is `#^7 руб. Кастет(урон+2)` and
+    /// CS `0x92d0` (pushed at `1000:c733`) is
+    /// `#^7 руб. Дубинка(урон+4), заменяет кастет` -- so the `5` each pushes
+    /// lands in no slot. Both are recorded here so a later task opening
+    /// `bmar`'s remaining arms reads them as *discarded*, not as a
+    /// placeholder this helper forgot; neither address had appeared anywhere
+    /// in `src/` or `docs/` before this note.
+    ///
+    /// ## The two rows that DO consume a surplus push
+    ///
     /// Sixteen of the eighteen rows in `data/shops.json` hold exactly one
     /// `#` and it is the price. **Two hold more, and every extra one is an
     /// instruction immediate rather than a price.** Both were printing a
-    /// bare `#` on screen until Task 26.
+    /// bare `#` on screen until Task 26. The inventory was first taken from
+    /// the `data/shops.json` side alone -- counting `#` in the template --
+    /// and the complementary sweep above, over which call sites push a
+    /// non-price immediate, is what found the other two rows and made
+    /// "sixteen" a measured number rather than a stopped search.
     ///
     /// **`mar` row 2, `#^7 руб.  Пиво(#з)`.** The line is assembled at
     /// `1000:ba4a mov di,0x8bfe`; then `1000:ba54 mov al,[0xb2f]` /
@@ -3157,12 +3216,22 @@ impl Game {
     /// The `mar` district gates are the one place a gate here does NOT sit
     /// where the original's does: all three stand in front of their row's key
     /// compare, not behind it. The behaviour is the same either way, because
-    /// the skip target is the next row's setup and no later compare in the
-    /// handler matches the skipped row's digit -- row 6's skip lands on row
-    /// 7's compare against `7` (`1000:c14c`), row 8's on row 9's against `9`
-    /// (`1000:c293`), row 9's on the pickpocket verb `t` (`1000:c329`) -- so
-    /// the typed line reaches the re-prompt at `1000:c47b` in silence, which
-    /// is what a leading silent gate produces here.
+    /// no compare the skip can reach matches the skipped row's digit again:
+    ///
+    /// * `1000:c095` lands on row 7's setup `1000:c142`, whose compare
+    ///   `1000:c14c` tests `7`.
+    /// * `1000:c1de` lands on row 9's own **district gate** `1000:c27f
+    ///   cmp byte [0x3692],0x3` -- not its setup `1000:c289` and not its
+    ///   compare -- whose two exits are `1000:c289` (reaching the compare
+    ///   against `9` at `1000:c293`) and `1000:c31f`. Neither compares `8`.
+    /// * `1000:c286` lands on `1000:c31f`, the setup for the pickpocket verb
+    ///   `t` at `1000:c329`.
+    ///
+    /// So the typed line reaches the re-prompt at `1000:c47b` in silence,
+    /// which is what a leading silent gate produces here. An earlier revision
+    /// of this comment said `1000:c1de` lands on "row 9's compare against
+    /// `9` (`1000:c293`)"; the conclusion was right and the instruction named
+    /// was not.
     ///
     /// The money test is last in every one of the eighteen and is the same
     /// three instructions each time (`mov al,[price]` / `xor ah,ah` /
@@ -3240,8 +3309,12 @@ impl Game {
     }
 
     /// The dealers' nine purchase arms -- `bmar` rows 1..9. Returns `true`
-    /// when the key was one of the nine and the arm has run, so the caller's
-    /// generic "debit and echo the menu line" path is skipped.
+    /// when the key was one of the nine and the arm has run. The caller has
+    /// no fall-through left for a `false` to reach: Task 26 deleted the
+    /// generic "debit and echo the menu line" path, so a `false` here means a
+    /// row of `data/shops.json` with no arm, which
+    /// [`Game::shop_action`]'s `debug_assert!` catches in debug and
+    /// `every_dealers_row_has_an_arm_of_its_own` catches in either profile.
     ///
     /// **Established from flow.** Rows 7-9 are Task 18's; rows 1-6 are
     /// Task 24's, off the map `docs/re/shop-arms.md` / `data/shop_arms.json`
@@ -6784,22 +6857,24 @@ mod tests {
     }
 
     /// Every `bmar` row in `data::shops()` is consumed by
-    /// [`Game::buy_dealer_row`], so the generic path in
-    /// [`Game::shop_action`] is unreachable from the dealers.
+    /// [`Game::buy_dealer_row`], so [`Game::shop_action`] has no
+    /// fall-through to reach from the dealers -- and since Task 26 it has
+    /// none to reach at all: the generic "debit and echo the menu line" path
+    /// is deleted, and a keyless row now trips a `debug_assert!` that is a
+    /// no-op in release.
     ///
-    /// That invariant is what lets the generic too-poor line be the market's
-    /// wording unconditionally: the dealers' side of that `match` was removed
-    /// because file `0xAC55` / CS `0x9385` is row 1's own refusal
-    /// (`1000:c8ea`), not a shop-wide literal. A tenth `bmar` row added to
-    /// the table without an arm would silently print the market's line, which
-    /// this is the guard against.
+    /// So this is the guard that works in both profiles. Task 24's reason for
+    /// it still holds and is why it is per-row rather than a count: file
+    /// `0xAC55` / CS `0x9385` is row 1's OWN refusal (`1000:c8ea`), not a
+    /// shop-wide literal, so a tenth `bmar` row added to the table without an
+    /// arm would not fall back to anything -- it would silently do nothing.
     #[test]
     fn every_dealers_row_has_an_arm_of_its_own() {
         for row in data::shops().iter().filter(|r| r.shop == "bmar") {
             let mut g = dealers(0);
             assert!(
                 g.buy_dealer_row(row.key, row.price),
-                "bmar row {} falls through to the generic market path",
+                "bmar row {} has no purchase arm",
                 row.key
             );
         }

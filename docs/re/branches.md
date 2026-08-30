@@ -500,7 +500,7 @@ exactly what the two Task 25 rows above demonstrate.
 
 | entry | bytes | branches | touched | citations | note |
 |-------|------:|---------:|--------:|----------:|------|
-| `1000:ab59` `entry` | 17143 | 406 | 188 | 1113 | the top-level body; most of the game |
+| `1000:ab59` `entry` | 17143 | 406 | 188 | 1136 | the top-level body; most of the game |
 | `1000:3d11` | 6971 | 224 | 96 | 630 | combat (identified in `docs/re/combat.md`) |
 | `1000:1a03` | 2700 | 83 | 54 | 174 | the character sheet — ported in Task 22, `src/character_sheet.rs` |
 | `1000:6a0d` | 2527 | 33 | 15 | 158 | |
@@ -680,7 +680,7 @@ carry:
 
 ```
 game branches 838 | touched 388 (46.3%) | uncited 450
-1000:ab59    bytes 17143 branches 406 touched 188 citations 1113
+1000:ab59    bytes 17143 branches 406 touched 188 citations 1136
 1000:3d11    bytes  6971 branches 224 touched  96 citations 630
 1000:1a03    bytes  2700 branches  83 touched  54 citations 174
 1000:6a0d    bytes  2527 branches  33 touched  15 citations 158
