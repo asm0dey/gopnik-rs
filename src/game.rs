@@ -354,6 +354,23 @@ pub struct Game {
     pub den_errand_1_pending: bool,
     /// `20ae:3b79` -- den errand two (`1000:afd0`, same shape).
     pub den_errand_2_pending: bool,
+    /// `20ae:3b72` -- the fight-accepted flag. Eight of its nine accepted
+    /// references are stores and exactly one is a load, `1000:b81f`
+    /// (`data/den_arms.json`'s `globals[]` census, recomputed by
+    /// `python3 tools/re_query.py xrefs-to 20ae:3b72`).
+    ///
+    /// **The den's `hp` arm is the only writer this port carries.**
+    /// `1000:dc11` `mov byte [0x3b72],0x1` is ported in
+    /// [`Game::den_beat_up`]. The wander's own seven stores
+    /// (`1000:b5bb`, `1000:b698`, `1000:b71a`, `1000:b747`, `1000:b81a`,
+    /// and `1000:c3d3` / `1000:e184` outside it) are modelled by
+    /// [`Game::walk`] as CONTROL FLOW -- it calls `run_combat` where the
+    /// original sets the flag and lets `1000:b81f` read it -- so nothing in
+    /// this port reads this field. Carried anyway, per the brief's "add
+    /// whatever state the arms need ... on `Game` when it is a standalone
+    /// global", and registered in `docs/re/gaps.md`, "The den's `hp` arm
+    /// sets `20ae:3b72` and nothing in this port reads it".
+    pub fight_accepted_3b72: bool,
     /// `20ae:394d` / `.SAV 0x2b1`, `20ae:394e`, `20ae:394f` -- the pistol, its
     /// silencer and its magazine. See [`crate::combat_dispatch::Pistol`],
     /// which carries the evidence for all three.
@@ -564,6 +581,7 @@ impl Game {
             club_ban_countdown: 0,
             den_errand_1_pending: false,
             den_errand_2_pending: false,
+            fight_accepted_3b72: false,
             pistol: crate::combat_dispatch::Pistol::default(),
             rector_showdown: false,
             dealer_delivery_counter: 0,
@@ -755,7 +773,7 @@ impl Game {
                     let cmd = parse(&line);
                     self.dispatch(cmd, &mut lines)?;
                 }
-                Mode::Shop(loc) => self.shop_turn(loc, &line),
+                Mode::Shop(loc) => self.shop_turn(loc, &line, &mut lines)?,
             }
         }
         Ok(())
@@ -1227,7 +1245,13 @@ impl Game {
                 // 1000:d423 / 1000:d478: prefix + affordability digit + text.
                 self.print_imm_rows("rep");
             }
-            Location::Den => self.print_den_intro(),
+            Location::Den => {
+                // 1000:d816..1000:d8b9 then 1000:d8b9..1000:dae2 -- one
+                // straight-line run with no branch between them; the split
+                // into two methods is the port's, not the original's.
+                self.print_den_intro();
+                self.print_den_menu();
+            }
             Location::Club => {
                 term::println("Ты пришел в клуб напиши  ^6w^7  чтобы уйти");
                 term::println(" Здесь можно сыграть в карты (^6p^7 Минимальная ставка- 5р.)");
@@ -1516,9 +1540,9 @@ impl Game {
     /// of the differential replay in `tests/wander_sequence.rs`, so a future
     /// capture that drove the den would report a spurious mismatch.
     ///
-    /// **Not reproduced:** the conditional lines that follow
-    /// (`1000:d8c8` onward, gated on flags `20ae:3b78`/`20ae:3b79` this port
-    /// does not model) and the den's own `p`/`r`/`hp`/`s`/`a`/`d` menu.
+    /// The conditional lines that follow (`1000:d8b9` onward) are
+    /// [`Game::print_den_menu`], ported by Task 28; this method is menu
+    /// lines 0..4 of `data/den_arms.json`'s seventeen and nothing else.
     fn print_den_intro(&mut self) {
         term::print("Ты пришел в притон - ");
         match self.district {
@@ -1542,6 +1566,171 @@ impl Game {
         }
     }
 
+    /// The den's menu, `1000:d8b9`..`1000:dae2` -- lines 5..16 of
+    /// `data/den_arms.json`'s seventeen, the twelve
+    /// [`Game::print_den_intro`] does not print. `docs/re/den.md`, "The
+    /// menu", is the map; every gate, string and colour store below cites
+    /// its own address.
+    ///
+    /// **They print ONCE, on entry.** Established from flow in
+    /// `docs/re/den.md`: every branch in the image whose target is the
+    /// prompt push `1000:dae2` is one of exactly three -- `1000:dac0` and
+    /// `1000:dac7` (line 16's own gate misses, i.e. the entry from the
+    /// menu) and `1000:dede` (the `w` compare's miss, the loop's only back
+    /// edge). So the back edge lands on the PROMPT, never on the menu, and
+    /// this method belongs in [`Game::print_shop_intro`] and not in
+    /// [`Game::shop_turn`].
+    ///
+    /// | # | gate | address |
+    /// |---|---|---|
+    /// | 5 | -- | a bare `WriteLn` on `20ae:3fcc`, `1000:d8be` -- one blank line, no literal |
+    /// | 6 | `1000:d8c8 cmp byte [0x3b78],0x1` / `jnz 0xd8e8` | errand one pending |
+    /// | 7 | `1000:d8e8 cmp byte [0x3b79],0x0` / `jz 0xd90f` **and** `1000:d8ef cmp word [0x38cb],0x64` / `jl 0xd90f` | errand two AND cred >= 100 |
+    /// | 8 | threshold block #1, `1000:d90f`..`1000:d941` | [`Game::den_menu_reveal_hint`] |
+    /// | 9 | -- | a second blank `WriteLn`, `1000:d961` |
+    /// | 10 | -- | unconditional |
+    /// | 11 | colour only, `1000:d984 cmp word [0x38c3],0x0` / `jnz 0xd992` | the `p` row |
+    /// | 12 | `1000:d9ec cmp byte [0x3e35],0x0` / `jbe 0xda35`, colour `1000:d9d9 cmp word [0x38cb],0x2` / `jnl 0xd9e7` | the `r` row |
+    /// | 13 | `1000:da35 cmp byte [0x3b78],0x1` / `jnz 0xda55` | the `hp` row |
+    /// | 14 | -- | unconditional |
+    /// | 15 | threshold block #2, `1000:da6e`..`1000:daa0` | the `a` row |
+    /// | 16 | `1000:dabb cmp word [0x38cb],0x64` / `jl 0xdae2` **and** `1000:dac2 cmp byte [0x3b79],0x0` / `jz 0xdae2` | the `d` row |
+    ///
+    /// **The two dimmed rows.** Rows 11 and 12 are built with the same
+    /// three-call idiom `docs/re/tables.md` records for the priced shop
+    /// rows, writing the colour digit to `20ae:3b7a` first: `0x34` (ASCII
+    /// `4`, dim) at `1000:d98b` / `1000:d9e0` and `0x30` (ASCII `0`) at
+    /// `1000:d992` / `1000:d9e7`, then `1000:d9ad` / `1000:da09`
+    /// `mov al,[0x3b7a]` loads it back between the prefix `Напиши ^`
+    /// (CS `0x9dcb`) and the row text. This port computes the digit inline
+    /// rather than carrying `20ae:3b7a` as a field.
+    ///
+    /// **That is not a shortcut around row 12's ordering.** `1000:d9d9`'s
+    /// colour store runs BEFORE `1000:d9ec`'s visibility gate, so the
+    /// original writes `20ae:3b7a` even on a turn where the `r` row is not
+    /// printed. It is unobservable: `20ae:3b7a` has 87 image-wide
+    /// references and every one of them is the same store-store-load
+    /// triple (`data/den_arms.json`'s `globals[]` record for it), so no
+    /// reader anywhere reaches the byte without its own writer running
+    /// first, and row 12's is the last store in the den either way.
+    ///
+    /// **Nothing here is a `Random` site.** The whole `1000:d8b9`..
+    /// `1000:dae2` span holds no `call 0f78:114b`: `data/den_arms.json`'s
+    /// draw sweep over the range returns exactly five sites and they are
+    /// `1000:d83f` (the intro, ported), `1000:dd97`, `1000:ddda`,
+    /// `1000:de5a` and `1000:de7c` (all four in the `d` arm).
+    fn print_den_menu(&self) {
+        // 1000:d8be `call 0f78:05dd` / 1000:d8c3 `call 0f78:0291` -- a bare
+        // Pascal `WriteLn` on the output `Text` at 20ae:3fcc, i.e. a blank
+        // line with no literal pushed.
+        term::println("");
+        // 1000:d8c8, string CS 0x9d46 pushed at 1000:d8cf.
+        if self.den_errand_1_pending {
+            term::println("^6На одного пацана наехал какой-то урод");
+        }
+        // 1000:d8e8 and 1000:d8ef -- a conjunction: either miss lands on the
+        // same 1000:d90f. `jl` is signed. String CS 0x9d6e at 1000:d8f6.
+        if self.den_errand_2_pending && self.pontovost_street >= 0x64 {
+            term::println("^6Ты пацан нормальный. Есть дело.");
+        }
+        // 1000:d90f..1000:d941, threshold block #1. String CS 0x9d90 at
+        // 1000:d943, printed by 1000:d957.
+        if self.den_menu_reveal_hint() {
+            term::println("^6Пацаны хотят тебе кое-чё сказать");
+        }
+        // 1000:d961 -- the second bare `WriteLn`.
+        term::println("");
+        // 1000:d96b, string CS 0x9db3, printed by 1000:d97f.
+        term::println("Напиши ^6w^7 чтобы уйти");
+        // Row 11: prefix CS 0x9dcb (1000:d99d) + the colour digit + suffix
+        // CS 0x9dd4 (1000:d9bb), one `WriteLn` at 1000:d9d4. The line ALWAYS
+        // prints; only its colour depends on the beer count.
+        term::println(&format!(
+            "Напиши ^{}p^7  чтобы угостить пацанов пивом",
+            // 1000:d984 `cmp word [0x38c3],0x0` / 1000:d989 `jnz 0xd992`:
+            // a NON-ZERO beer count takes the `jnz` to the '0' store. The
+            // test is equality, not order, so this is `!= 0` and not `> 0`
+            // -- unlike the `p` arm's own `jle` gate at 1000:db38.
+            if self.player.beer_dl != 0 { "0" } else { "4" }
+        ));
+        // Row 12: same prefix CS 0x9dcb (1000:d9f9) + digit + suffix
+        // CS 0x9df6 (1000:da17), one `WriteLn` at 1000:da30.
+        //
+        // 1000:d9ec `cmp byte [0x3e35],0x0` / `jbe 0xda35` is UNSIGNED on a
+        // byte compared with zero, so it refuses exactly `== 0`.
+        if self.den_loan_credit != 0 {
+            term::println(&format!(
+                "Напиши ^{}r^7  чтобы занять 2 рубля",
+                // 1000:d9d9 `cmp word [0x38cb],0x2` / 1000:d9de `jnl 0xd9e7`
+                // -- signed, `>= 2` is the normal colour.
+                if self.pontovost_street >= 2 { "0" } else { "4" }
+            ));
+        }
+        // 1000:da35, string CS 0x9e10 at 1000:da3c, printed by 1000:da50.
+        if self.den_errand_1_pending {
+            term::println("Напиши ^6hp^7 чтобы отпинать мудака который наезжал на пацана");
+        }
+        // 1000:da55, string CS 0x9e4e, printed by 1000:da69. Unconditional.
+        term::println("Напиши ^6s^7  чтобы узнать отношение");
+        // 1000:da6e..1000:daa0, threshold block #2 -- BYTE-IDENTICAL to
+        // block #1 and NOT the block the `a` arm uses. String CS 0x9e73 at
+        // 1000:daa2, printed by 1000:dab6.
+        if self.den_menu_reveal_hint() {
+            term::println("Напиши ^6a^7  чтобы спросить чё-то");
+        }
+        // 1000:dabb (signed `jl`) and 1000:dac2 -- both misses land on the
+        // prompt push 1000:dae2. String CS 0x9e96 at 1000:dac9, printed by
+        // 1000:dadd.
+        if self.pontovost_street >= 0x64 && self.den_errand_2_pending {
+            term::println("Напиши ^6d^7 чтобы пойти на дело");
+        }
+    }
+
+    /// Threshold blocks **#1** (`1000:d90f`..`1000:d941`, menu line 8) and
+    /// **#2** (`1000:da6e`..`1000:daa0`, menu line 15, the `a` row).
+    ///
+    /// **These two are one predicate and the `a` ARM's is a different one.**
+    /// Established from flow by re-slicing the bytes out of `orig/g.exe`
+    /// (`data/den_arms.json`'s `threshold_blocks[]` carries all three byte
+    /// strings): blocks #1 and #2 are **52 bytes each and byte-identical**,
+    /// branch displacements included, while block #3 -- `1000:dcba`, the one
+    /// [`Game::den_reveal`] implements -- is **43 bytes**. The nine missing
+    /// bytes are exactly `1000:d92f sub ax,0x5` (`2d 05 00`),
+    /// `1000:d932 mov si,ax` (`8b f0`), the *second* `1000:d936 shl ax,1`
+    /// (`d1 e0`) and `1000:d938 add ax,si` (`01 f0`). So with
+    /// `k = level - (district-1)*10`, this predicate is `5k - 25 + cred >= 40`
+    /// and the arm's is `2k + cred >= 40`.
+    ///
+    /// **Neither implies the other**, which is why they are two methods and
+    /// not one: `k = 1, cred = 38` satisfies the arm and not this, so the
+    /// reveal fires with no menu line offering it; `k = 13, cred = 0`
+    /// satisfies this and not the arm, so the menu offers `a` and the arm
+    /// refuses in silence.
+    /// `the_den_menu_hint_and_the_a_arm_disagree_in_both_directions` drives
+    /// both of those states.
+    ///
+    /// The shared thirteen-byte prefix IS identical in all three:
+    /// `1000:d90f cmp byte [0x3695],0x0` / `1000:d914 jz 0xd91d` /
+    /// `1000:d916 cmp byte [0x369a],0x0` / `1000:d91b jnz 0xd95c`, so the
+    /// skip happens only when Dealers **and** Gym are both already found --
+    /// Dealers clear takes the `jz` straight past the Gym test.
+    ///
+    /// The arithmetic runs in 16-bit `ax` in the original and `1000:d93e
+    /// cmp ax,0x28` / `1000:d941 jl 0xd95c` is a SIGNED compare; this port
+    /// widens to `i32`, exactly as [`Game::den_reveal`] already does, so a
+    /// `[0x38cb]` large enough to wrap `ax` would diverge. Unreachable at
+    /// any value the port can produce.
+    fn den_menu_reveal_hint(&self) -> bool {
+        if self.places.is_found(Location::Dealers) && self.places.is_found(Location::Gym) {
+            return false;
+        }
+        // 1000:d91d..1000:d93a: ax := level - (district-1)*10, minus 5,
+        // times 5 (`mov si,ax` / `shl ax,1` / `shl ax,1` / `add ax,si`),
+        // plus [0x38cb].
+        let level_in_district = i32::from(self.player.level) - (i32::from(self.district) - 1) * 10;
+        (level_in_district - 5) * 5 + self.pontovost_street >= 0x28
+    }
+
     /// One turn at a location's own prompt. The location's keys are checked
     /// *before* the street verb table, because the original reads them with
     /// its own `ReadLn DS:3a72` that never reaches `entry`'s `DS:3972`
@@ -1549,26 +1738,82 @@ impl Game {
     /// the street's `h` (drink a beer, `1000:e966`) can share a letter.
     /// `w`/`run` leaves, which every location's intro text names as the way
     /// out. Anything else is ignored and the prompt repeats.
-    fn shop_turn(&mut self, loc: Location, line: &str) {
+    ///
+    /// ## The den's seven keys
+    ///
+    /// Each is established at its own `0f78:0bd8` compare against the den's
+    /// own buffer `20ae:3a72`, never from a menu string (`docs/re/den.md`,
+    /// "The arms"): `p` `1000:db2c`, `r` `1000:db81`, `hp` `1000:dc04`,
+    /// `s` `1000:dc6d`, `a` `1000:dcef`, `d` `1000:dd3c`, `w` `1000:ded7`.
+    ///
+    /// `hp` is the one arm whose gate stands **in front of** its own key
+    /// compare rather than behind it: `1000:dbf3 cmp byte [0x3b78],0x1` /
+    /// `1000:dbf8 jnz 0xdc63`, so with no errand pending the token is never
+    /// compared and the line falls straight through to the `s` compare.
+    /// `a` is the same shape with threshold block #3 in front of it
+    /// ([`Game::den_reveal`]).
+    ///
+    /// **An unrecognised key prints nothing.** `1000:dede jmp 0xdae2` is
+    /// the loop's only back edge from below and it targets the PROMPT, not
+    /// the menu; there is no "unknown command" literal anywhere in
+    /// `1000:d802`..`1000:df06` for it to print (`data/den_arms.json`'s
+    /// string sweep over the range: 45 pushes, none of them a refusal for a
+    /// bad key). The `_ => {}` fall-through below is that.
+    ///
+    /// **The den's `ReadLn` does not trim.** `1000:db1d call 0eed:0216`
+    /// only lowercases ASCII `A`..`Z` -- it compares against no `0x20` --
+    /// so ` p` is a miss in the original and a hit here. That is the
+    /// existing trimmed-prompt divergence in `docs/re/gaps.md`, which the
+    /// den now joins; the `.trim()` below is deliberately left alone rather
+    /// than special-cased for one location.
+    fn shop_turn(
+        &mut self,
+        loc: Location,
+        line: &str,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<()> {
         let key = line.trim().to_lowercase();
         match (loc, key.as_str()) {
-            (Location::Vet, "h") => return self.heal_jaw(),
-            (Location::Vet, "r") => return self.heal_leg(),
-            (Location::Dealers, "x") => return self.sell_junk(),
-            (Location::Dealers, "wes") => return self.sell_items(),
-            (Location::Den, "a") => return self.den_reveal(),
+            (Location::Vet, "h") => self.heal_jaw(),
+            (Location::Vet, "r") => self.heal_leg(),
+            (Location::Dealers, "x") => self.sell_junk(),
+            (Location::Dealers, "wes") => self.sell_items(),
+            // 1000:db2c, key literal CS 0x9ec1.
+            (Location::Den, "p") => self.den_beer(),
+            // 1000:db81, key literal CS 0x9a50.
+            (Location::Den, "r") => self.den_borrow(),
+            // 1000:dbf3 gates 1000:dc04, key literal CS 0x9f82. The guard is
+            // the arm's own, not a dispatch condition the port invented: a
+            // `hp` typed with no errand pending reaches 1000:dc63 and is
+            // compared against `s`, which it is not.
+            (Location::Den, "hp") if self.den_errand_1_pending => {
+                return self.den_beat_up(lines);
+            }
+            // 1000:dc6d, key literal CS 0x9f85.
+            (Location::Den, "s") => self.den_regard(),
+            // 1000:dcef behind threshold block #3 at 1000:dcba.
+            (Location::Den, "a") => self.den_reveal(),
+            // 1000:dd3c, key literal CS 0xa036.
+            (Location::Den, "d") => return self.den_job(lines),
             (Location::Market | Location::Dealers, k)
                 if k.len() == 1 && k.chars().all(|c| c.is_ascii_digit()) =>
             {
-                return self.shop_action(k.chars().next().unwrap());
+                self.shop_action(k.chars().next().unwrap());
             }
-            _ => {}
+            _ => {
+                // The den's own exit compare is 1000:ded7 against CS 0x848e
+                // (`w`), whose hit jumps out at 1000:dee1. That literal is
+                // shared by nine push sites image-wide, so it is every
+                // location's exit key rather than the den's own, which is
+                // why this stays one shared arm.
+                if matches!(parse(line), Command::Walk) {
+                    self.location = Location::Street;
+                    self.mode = Mode::Street;
+                }
+                // Everything else: ignored, prompt repeats.
+            }
         }
-        if matches!(parse(line), Command::Walk) {
-            self.location = Location::Street;
-            self.mode = Mode::Street;
-        }
-        // Everything else: ignored, prompt repeats.
+        Ok(())
     }
 
     /// `a` at the den prompt -- `1000:dcba`..`1000:dd32`, the hidden
@@ -1632,6 +1877,396 @@ impl Game {
         self.places.mark_found(Location::Gym);
         term::println("^0Тут у нас есть пара мест куда тебе стоит сходить");
         term::println("^2Ты узнал где находится качалка и где находятся барыги");
+    }
+
+    /// `p` at the den prompt -- `1000:db22`..`1000:db77`, treat the lads to
+    /// beer. **Established from flow**, re-derived for this task with
+    /// `python3 tools/re_query.py resolve 1000:db22 -n 40 -i 60`:
+    ///
+    /// ```text
+    /// db22  bf 72 3a           mov di,0x3a72        ; the den's own buffer
+    /// db27  bf c1 9e           mov di,0x9ec1        ; the key literal `p`
+    /// db2c  9a d8 0b 78 0f     call 0f78:0bd8       ; the token compare
+    /// db31  75 44              jnz 0xdb77           ; miss -> the `r` arm
+    /// db33  83 3e c3 38 00     cmp word [0x38c3],0x0
+    /// db38  7e 24              jle 0xdb5e           ; SIGNED: 0 and below refuse
+    /// db3a  ff 0e c3 38        dec [0x38c3]         ; пиво -1
+    /// db3e  83 06 cb 38 05     add word [0x38cb],0x5 ; понтовость +5
+    /// db43  bf c3 9e           mov di,0x9ec3        ; the confirmation
+    /// db57  call 0eed:01c2
+    /// db5c  eb 19              jmp short 0xdb77
+    /// db5e  bf fb 9e           mov di,0x9efb        ; the refusal
+    /// ```
+    ///
+    /// One gate and two effects, in that order: the stores at `db3a`/`db3e`
+    /// both run before the `db57` print. The confirmation string says the
+    /// rise is 5 and `db3e`'s immediate is 5 -- checked against the bytes,
+    /// not assumed from the wording. Nothing one-shot is consumed, so the
+    /// arm is repeatable, and it spends no `Random` draw
+    /// (`data/den_arms.json`'s draw sweep puts all four of the handler's
+    /// unported draws in the `d` arm).
+    ///
+    /// `1000:db38` is `jle`, a SIGNED compare against zero, so a negative
+    /// count would refuse too. `beer_dl` is a `u16` here, matching the
+    /// original's `word`; the cast reproduces the signedness rather than
+    /// silently reading it as `== 0`.
+    fn den_beer(&mut self) {
+        if (self.player.beer_dl as i16) <= 0 {
+            // 1000:db5e, string CS 0x9efb, printed by 1000:db72.
+            term::println("^6А нет у тебя пива.");
+            return;
+        }
+        // 1000:db3a then 1000:db3e -- both stores run before the print.
+        self.player.beer_dl -= 1;
+        self.pontovost_street += 5;
+        // 1000:db43, string CS 0x9ec3, printed by 1000:db57.
+        term::println("^2Ты угостил пацанов пивом. Понтовость улутшилась на 5.");
+    }
+
+    /// `r` at the den prompt -- `1000:db77`..`1000:dbf3`, borrow two
+    /// roubles. **Established from flow** (`docs/re/den.md`, "`r` --
+    /// `1000:db77`"):
+    ///
+    /// ```text
+    /// db77  mov di,0x3a72 / db7c mov di,0x9a50 / db81 call 0f78:0bd8
+    /// db86  jnz 0xdbf3                       ; miss -> the `hp` arm
+    /// db88  cmp byte [0x3e35],0x0
+    /// db8d  jbe 0xdbda                       ; UNSIGNED byte vs 0: refuses `== 0`
+    /// db8f  cmp word [0x38cb],0x0
+    /// db94  jle 0xdbbf                       ; SIGNED
+    /// db96  add word [0x38c7],0x2            ; money +2
+    /// db9b  sub word [0x38cb],0x2            ; понтовость -2
+    /// dba0  dec [0x3e35]                     ; the loan credit -1
+    /// dba4  mov di,0x9f10  (printed at dbb8) ; the confirmation
+    /// dbbf  mov di,0x9f49  (printed at dbd3) ; refusal: no понтовость
+    /// dbda  mov di,0x9f66  (printed at dbee) ; refusal: credit exhausted
+    /// ```
+    ///
+    /// **Two gates with two distinct, non-interchangeable refusals, and the
+    /// order is the original's.** The credit is checked FIRST (`db8d`) and
+    /// prints `^6Ты уже всю мелочь выгреб!`; the понтовость check
+    /// (`db94`) prints `^6Ты не можешь занять денег.`. Swapping them would
+    /// print the wrong line for a player who is out of both.
+    ///
+    /// `20ae:3e35` is the one-shot resource: it starts at 5 (`1000:73e5`)
+    /// and is topped up once per walk while below `district * 10`
+    /// (`1000:af19`), both of which [`Game::den_loan_credit`] already
+    /// models -- so this arm is reachable in play, not only from a test.
+    fn den_borrow(&mut self) {
+        if self.den_loan_credit == 0 {
+            // 1000:dbda, string CS 0x9f66, printed by 1000:dbee.
+            term::println("^6Ты уже всю мелочь выгреб!");
+            return;
+        }
+        if self.pontovost_street <= 0 {
+            // 1000:dbbf, string CS 0x9f49, printed by 1000:dbd3.
+            term::println("^6Ты не можешь занять денег.");
+            return;
+        }
+        // 1000:db96, 1000:db9b, 1000:dba0 -- in that order.
+        self.player.money += 2;
+        self.pontovost_street -= 2;
+        self.den_loan_credit -= 1;
+        // 1000:dba4, string CS 0x9f10, printed by 1000:dbb8.
+        term::println("^2Ты занял 2 рубля на пиво. Понтовость уменьшилась на 2.");
+    }
+
+    /// `hp` at the den prompt -- `1000:dbf3`..`1000:dc63`, beat up the lout
+    /// who leaned on one of the lads. **Established from flow**
+    /// (`docs/re/den.md`, "`hp` -- `1000:dbf3`"):
+    ///
+    /// ```text
+    /// dbf3  cmp byte [0x3b78],0x1 / dbf8 jnz 0xdc63   ; the gate, AHEAD of the key
+    /// dbfa  mov di,0x3a72 / dbff mov di,0x9f82 / dc04 call 0f78:0bd8
+    /// dc09  jnz 0xdc63
+    /// dc0b  mov al,0x1 / dc0e call 0x10d14            ; FUN_1000_0d14(1)
+    /// dc11  mov byte [0x3b72],0x1                     ; the fight-accepted flag
+    /// dc1c  mov di,0x90c0                             ; `^6Это `
+    /// dc26  mov di,[0x3952] / dc2a mov cl,0x8 / dc2c shl di,cl / dc2e add di,0x2e
+    /// dc39  mov di,0x90c7                             ; ` # уровня.`
+    /// dc43  push [0x395c]                             ; the rolled level
+    /// dc53  call 0eed:01c2
+    /// dc58  mov al,0x6 / dc5b call 0x13d11            ; FUN_1000_3d11(6)
+    /// dc5e  mov byte [0x3b78],0x0                     ; the errand is consumed
+    /// ```
+    ///
+    /// The two near calls wrap: `dc0e`'s `rel16` sums to image `0x10d14`,
+    /// which is `1000:0d14` modulo 64 KiB, and `dc5b`'s to `1000:3d11`.
+    /// `dc26`..`dc2e` is `[0x3952] * 0x100 + 0x2e`, exactly the `ranks`
+    /// table `data/string_tables.json` records (base file `0x123de` =
+    /// `20ae:002e`, stride 256), which is what [`Game::rank_name`] indexes.
+    ///
+    /// **`roll_enemy(1)` is not a guess about the argument.** `1000:dc0b`
+    /// pushes 1, and [`Game::roll_enemy`] already models `param_1` at both
+    /// of its clamp sites (`1000:0da7`, `1000:0dba`): 1 clamps the class to
+    /// 7, so this errand can never roll the class-8 `Мент`.
+    ///
+    /// ## `FUN_1000_3d11`'s `param_1 = 6` is NOT modelled -- the one gap
+    ///
+    /// [`Game::run_combat`] takes no `param_1` and implements the
+    /// `param_1 = 0` path the wander's `1000:b826` uses. Two complete
+    /// sweeps over an aligned decode of the fight function's 6971 bytes
+    /// (3043 instructions, `data/den_arms.json`'s `fight_param_finding`)
+    /// bound the difference: every `[bp+0x4]` reference (exactly eight --
+    /// `1000:3d24`, `1000:5085`, `1000:5139`, `1000:51a6`, `1000:51ac`,
+    /// `1000:51f6`, `1000:51fc`, `1000:57ce`) and every `cmp al,imm8`
+    /// (exactly five, the dispatch chain `1000:3d24 mov al,[bp+0x4]`
+    /// feeds: `1000:3d27` tests 0, `1000:3d2b` tests 6, `1000:3e8d` 1,
+    /// `1000:3ead` 3, `1000:3f2b` 4). 0 and 6 take the **same** arm
+    /// `1000:3d32`, and of the seven non-load `[bp+0x4]` tests only
+    /// `1000:57ce` names 6 -- it guards `1000:57de add [0x38cb],ax` with
+    /// `ax = district*20` (`1000:57d4`..`1000:57dc`).
+    ///
+    /// So the whole difference between the call this arm makes and the one
+    /// this port performs is that one понтовость award, and **whether it is
+    /// reached is not established**: `1000:57ce` sits near the function's
+    /// end and neither its guard's context nor the `1000:3d32` arm was
+    /// decoded. Rather than invent a condition, this port runs the fight
+    /// through the unparameterised `run_combat` and registers the missing
+    /// award in `docs/re/gaps.md`, "`FUN_1000_3d11`'s `param_1` -- the den's
+    /// two call sites".
+    fn den_beat_up(
+        &mut self,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<()> {
+        // 1000:dc0b/1000:dc0e -- FUN_1000_0d14(1).
+        let enemy = self.roll_enemy(1);
+        // 1000:dc11.
+        self.fight_accepted_3b72 = true;
+        // 1000:dc1c (CS 0x90c0), 1000:dc26..1000:dc2e (the rank name),
+        // 1000:dc39 (CS 0x90c7) and 1000:dc43 (20ae:395c, the rolled
+        // level) -- one `WriteLn` at 1000:dc53.
+        term::print("^6Это ");
+        term::print(&Self::rank_name(enemy.class));
+        term::println(&text::fill(" # уровня.", &[enemy.level as i64]));
+        // 1000:dc58/1000:dc5b -- FUN_1000_3d11(6). See the doc above.
+        self.run_combat(enemy, lines)?;
+        // 1000:dc5e, AFTER the fight returns.
+        self.den_errand_1_pending = false;
+        Ok(())
+    }
+
+    /// `s` at the den prompt -- `1000:dc63`..`1000:dcba`, ask how the lads
+    /// regard you. **Established from flow** (`docs/re/den.md`, "`s` --
+    /// `1000:dc63`"):
+    ///
+    /// ```text
+    /// dc63  mov di,0x3a72 / dc68 mov di,0x9f85 / dc6d call 0f78:0bd8
+    /// dc72  jnz 0xdcba
+    /// dc74  mov di,0x9f87            ; `^4Твоя понтовость сейчас = #.`
+    /// dc79  push [0x38cb]            ; the `#`
+    /// dc89  call 0eed:01c2
+    /// dc8e  mov al,[0x3692] / dc91 xor ah,ah / dc93 mov dx,0xa / dc96 mul dx
+    /// dc98  add ax,0xa               ; district*10 + 10
+    /// dc9b  cmp ax,[0x38cb] / dc9f jnle 0xdcba
+    /// dca1  mov di,0x9fa5            ; the second line, printed at dcb5
+    /// ```
+    ///
+    /// **This arm writes nothing**, and that is a measurement rather than
+    /// an omission: `data/den_arms.json` records an absolute-write sweep
+    /// over `1000:dc63`..`1000:dcba` that finds zero stores.
+    /// `1000:dc79 push [0x38cb]` is a READ -- the `#` argument.
+    ///
+    /// The threshold arithmetic does **not** `dec ax` first, unlike all
+    /// three `[0x3695]`/`[0x369a]` blocks: it is `district*10 + 10`, not
+    /// `(district-1)*10`. `1000:dc9f jnle` skips the second line when
+    /// `district*10 + 10 > [0x38cb]`, so the line prints on `<=`.
+    fn den_regard(&self) {
+        // 1000:dc74 (CS 0x9f87) + 1000:dc79, printed by 1000:dc89.
+        term::println(&text::fill(
+            "^4Твоя понтовость сейчас = #.",
+            &[i64::from(self.pontovost_street)],
+        ));
+        // 1000:dc8e..1000:dc9f.
+        if i32::from(self.district) * 10 + 10 <= self.pontovost_street {
+            // 1000:dca1, CS 0x9fa5, printed by 1000:dcb5.
+            term::println("^0Да если чё мы за тебя впрягаемся.");
+        }
+    }
+
+    /// The `d` arm's luck roll -- `1000:dda6`..`1000:ddb3` and
+    /// `1000:dde9`..`1000:ddf1`, ONE predicate evaluated twice with the
+    /// branches permuted: `Longint([0x38a4]) < Longint(Random(district*15))`.
+    ///
+    /// **Established from flow.** `20ae:38a4` is Удача, named twice over
+    /// and neither time from an adjacent string
+    /// (`data/den_arms.json`'s `globals[]` record): it is the fourth and
+    /// last of four stat words pushed into one `WriteLn` at `1000:1baa`,
+    /// `1000:1bae`, `1000:1bb2`, `1000:1bb6`, whose format string is
+    /// assembled from `Сл:^` / `#^7 Лв:^` / `#^7 Жв:^` / `#^7 Уд:^`
+    /// (CS `0x16b7`, `0x16bc`, `0x16c5`, `0x16ce`), so the fourth argument
+    /// is the one `Уд` labels; and `1000:4a50 dec [0x38a4]` is followed
+    /// immediately, in the same basic block with no branch between, by
+    /// `1000:4a54 mov di,0x3466` pushing `^4Удача -1 `.
+    ///
+    /// **The `JL` beside the `JB` is not a slip**, and reproducing it as a
+    /// single signed or single unsigned compare would be a divergence. It
+    /// is Borland's canonical 32-bit compare -- high halves SIGNED, low
+    /// halves UNSIGNED -- and the 32-bit width comes from promoting
+    /// `Random`'s `Word` result against the `Integer` at `20ae:38a4`:
+    ///
+    /// ```text
+    /// dd9c  xor dx,dx     ; the random ZERO-extends into bx:cx
+    /// dd9e  mov cx,ax
+    /// dda0  mov bx,dx
+    /// dda2  mov ax,[0x38a4]
+    /// dda5  cwd           ; luck SIGN-extends into dx:ax
+    /// dda6  cmp dx,bx
+    /// dda8  jl 0xddb6     ; luck_hi <  random_hi (signed)   -> true
+    /// ddaa  jle 0xddaf    ; luck_hi == random_hi            -> compare lows
+    /// ddac  jmp 0xde36    ; luck_hi >  random_hi            -> false
+    /// ddaf  cmp ax,cx
+    /// ddb1  jb 0xddb6     ; luck_lo <  random_lo (UNSIGNED) -> true
+    /// ddb3  jmp 0xde36
+    /// ```
+    ///
+    /// The second copy is the same predicate with three branches permuted:
+    /// `1000:ddeb jl 0xddf3` (true), `1000:dded jnle 0xde1a` (false),
+    /// `1000:ddef cmp ax,cx` / `1000:ddf1 jnb 0xde1a` (false on `>=`, so
+    /// true by fall-through on `<`). Every one of the ten branch
+    /// instructions above is in `data/den_arms.json`'s `luck_compares[]`.
+    ///
+    /// `docs/re/wander.md`'s already-ported `1000:b5f1`..`1000:b61b` is the
+    /// same idiom, and [`Game::walk`]'s own comment records that it widens
+    /// both sides by zero-extension instead. That divergence is `walk`'s
+    /// and is left where it is; this method does not inherit it.
+    fn luck_below_random_32(luck: u16, random: u16) -> bool {
+        // `cwd` on 1000:dda5 / 1000:dde8 vs `xor dx,dx` on 1000:dd9c /
+        // 1000:dddf: only the LUCK side can be negative.
+        let luck_high: i16 = if (luck as i16) < 0 { -1 } else { 0 };
+        let random_high: i16 = 0;
+        if luck_high != random_high {
+            return luck_high < random_high; // 1000:dda8 / 1000:ddac, signed
+        }
+        luck < random // 1000:ddb1 / 1000:ddf1, unsigned
+    }
+
+    /// `d` at the den prompt -- `1000:dd32`..`1000:decd`, go on the job.
+    /// The largest arm, and the only one with wide compares or draws
+    /// (`docs/re/den.md`, "`d` -- `1000:dd32`").
+    ///
+    /// **Established from flow.**
+    ///
+    /// ```text
+    /// dd32  mov di,0x3a72 / dd37 mov di,0xa036 / dd3c call 0f78:0bd8
+    /// dd41  jz 0xdd46 / dd43 jmp 0xdecd
+    /// dd46  cmp word [0x38cb],0x64 / dd4b jnl 0xdd50 / dd4d jmp 0xdecd  ; SILENT
+    /// dd50  cmp byte [0x3b79],0x0  / dd55 jnz 0xdd5a / dd57 jmp 0xdecd  ; SILENT
+    /// dd5a  mov di,0xa038  (printed at dd6e)   ; `^0Давай быстрее..`
+    /// dd73  mov di,0xa04a  (printed at dd87)   ; `^2Ты пришел воровать деньги`
+    /// dd8c..dd97   Random(district*15)         ; draw 1
+    /// dda6..ddb3   luck < it ? 0xddb6 : 0xde36
+    /// ddb6  mov di,0xa066  (printed at ddca)   ; `^4Шухер менты!`
+    /// ddcf..ddda   Random(district*15)         ; draw 2
+    /// dde9..ddf1   luck < it ? 0xddf3 : 0xde1a
+    /// ddf3  mov al,0x2 / ddf6 call 0x10d14     ; FUN_1000_0d14(2) -- forces class 8
+    /// ddf9  mov al,0x5 / ddfc call 0x13d11     ; FUN_1000_3d11(5)
+    /// ddff  mov di,0xa075  (printed at de13)   ; `^6Пора валить!`
+    /// de1a  mov di,0xa084  (printed at de2e)   ; `^2Ты смылся от ментов.`
+    /// de36  mov di,0xa09b  (printed at de4a)   ; `^2Ты наваровал денег`
+    /// de4f..de5a   Random(district*10)         ; draw 3
+    /// de6d  add [0x38c7],ax                    ; money += district*10 + it
+    /// de71..de7c   Random(district*10)         ; draw 4
+    /// de8f  add [0x38c9],ax                    ; хлам, the same shape
+    /// de93  mov di,0x908b / de98..dea2 district*12 (printed at deaf)
+    /// deb4..debe  add [0x38ce],ax              ; xp += district*12
+    /// dec2  mov al,0x0 / dec5 call 0x12526     ; FUN_1000_2526(0), the CAPPED form
+    /// dec8  mov byte [0x3b79],0x0              ; errand two consumed
+    /// ```
+    ///
+    /// **Both gates are silent on failure** -- `dd4d` and `dd57` jump
+    /// straight to the `w` compare with nothing printed. Neither is a
+    /// refusal string this port may invent: the string sweep over the whole
+    /// handler finds none.
+    ///
+    /// **`dec8` runs on EVERY path that got past `dd55`**, both cop
+    /// outcomes included: `de18 jmp short 0xde33` and `de33 jmp 0xdec8`
+    /// carry the two cop arms there and the haul falls through into it.
+    ///
+    /// **Draw count per invocation, established from flow:** 3 on the haul
+    /// path (`dd97`, `de5a`, `de7c`) and 2 in range on either cop path
+    /// (`dd97`, `ddda`), plus whatever `1000:0d14` and `1000:3d11` spend.
+    /// Reproduced exactly here -- the `n` of each draw was re-derived with
+    /// `python3 tools/re_query.py pushed-n`, not copied from the fence.
+    ///
+    /// `dec5`'s `param_1 = 0` is the capped form (`1000:257a`), the same
+    /// one the ordinary combat path passes at `1000:5238`, which is
+    /// [`crate::progress::apply_levels`]'s `uncapped: false`. The award is
+    /// the `add` at `debe`, not an argument -- so `apply_levels` gets it as
+    /// `award` and does `p.xp += award` before the same drain.
+    ///
+    /// **`ddfc`'s `param_1 = 5` is NOT modelled.** Unlike `hp`'s 6, which
+    /// takes the same `1000:3d32` arm as 0, 5 matches none of the five
+    /// values `FUN_1000_3d11` tests and reaches the default arm
+    /// `1000:3fa7` directly -- so it SKIPS whatever `1000:3d32`..`1000:3fa7`
+    /// does, and that span was not decoded. This port runs the cop fight
+    /// through the unparameterised [`Game::run_combat`], which implements
+    /// the `param_1 = 0` path; the divergence is registered in
+    /// `docs/re/gaps.md`, "`FUN_1000_3d11`'s `param_1` -- the den's two
+    /// call sites".
+    fn den_job(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
+        // 1000:dd46 / 1000:dd4b -- signed, and silent.
+        if self.pontovost_street < 0x64 {
+            return Ok(());
+        }
+        // 1000:dd50 / 1000:dd55 -- silent.
+        if !self.den_errand_2_pending {
+            return Ok(());
+        }
+        // 1000:dd5a (CS 0xa038, printed at 1000:dd6e) and 1000:dd73
+        // (CS 0xa04a, printed at 1000:dd87).
+        term::println("^0Давай быстрее..");
+        term::println("^2Ты пришел воровать деньги");
+        // 1000:dd8c..1000:dd94 build the `n`: [0x3692] * 15.
+        let n15 = u16::from(self.district) * 15;
+        let roll = self.rng.below_at("1000:dd97", n15);
+        if Self::luck_below_random_32(self.player.luck, roll) {
+            // 1000:ddb6, CS 0xa066, printed at 1000:ddca.
+            term::println("^4Шухер менты!");
+            // 1000:ddcf..1000:ddd7 rebuild the SAME `n` from scratch.
+            let roll2 = self
+                .rng
+                .below_at("1000:ddda", u16::from(self.district) * 15);
+            if Self::luck_below_random_32(self.player.luck, roll2) {
+                // 1000:ddf3/1000:ddf6 -- param_1 = 2 forces class 8, the
+                // `Мент` of data/string_tables.json's `ranks`.
+                let cop = self.roll_enemy(2);
+                // 1000:ddf9/1000:ddfc -- param_1 = 5, see the doc above.
+                self.run_combat(cop, lines)?;
+                term::println("^6Пора валить!"); // 1000:ddff, CS 0xa075
+            } else {
+                term::println("^2Ты смылся от ментов."); // 1000:de1a, CS 0xa084
+            }
+        } else {
+            // 1000:de36, CS 0xa09b, printed at 1000:de4a.
+            term::println("^2Ты наваровал денег");
+            // 1000:de4f..1000:de6d and 1000:de71..1000:de8f: each of money
+            // and хлам gains district*10 + Random(district*10), the base
+            // recomputed from [0x3692] for every one of the four terms.
+            let base = u16::from(self.district) * 10;
+            let cash = i32::from(base) + i32::from(self.rng.below_at("1000:de5a", base));
+            self.player.money += cash;
+            let junk = base.wrapping_add(self.rng.below_at("1000:de7c", base));
+            self.player.junk = self.player.junk.wrapping_add(junk);
+            // 1000:de93 (CS 0x908b) + 1000:de98..1000:dea2, printed by
+            // 1000:deaf -- BEFORE 1000:debe credits the same amount.
+            let xp = u32::from(self.district) * 12;
+            term::println(&text::fill(
+                "^6Ты получаешь # качков опыта",
+                &[i64::from(xp)],
+            ));
+            // 1000:deb4..1000:debe then 1000:dec2/1000:dec5.
+            progress::apply_levels(
+                &mut self.progress,
+                &mut self.player,
+                &mut self.rng,
+                xp,
+                false,
+            );
+        }
+        // 1000:dec8 -- every path past 1000:dd55 reaches it.
+        self.den_errand_2_pending = false;
+        Ok(())
     }
 
     /// Everything [`crate::character_sheet::lines`] needs that is not a
@@ -6290,9 +6925,9 @@ mod tests {
         g.places.mark_found(Location::Vet);
         g.location = Location::Vet;
         g.mode = Mode::Shop(Location::Vet);
-        g.shop_turn(Location::Vet, "mar"); // must not teleport
+        g.shop_turn(Location::Vet, "mar", &mut no_input()).unwrap(); // must not teleport
         assert_eq!(g.location, Location::Vet);
-        g.shop_turn(Location::Vet, "w");
+        g.shop_turn(Location::Vet, "w", &mut no_input()).unwrap();
         assert_eq!(g.location, Location::Street);
         assert_eq!(g.mode, Mode::Street);
     }
@@ -6310,7 +6945,7 @@ mod tests {
         g.player.broken_jaw = true;
         g.player.money = 10;
         g.player.beer_dl = 4;
-        g.shop_turn(Location::Vet, "h");
+        g.shop_turn(Location::Vet, "h", &mut no_input()).unwrap();
         assert!(!g.player.broken_jaw, "vet's h must heal the jaw");
         assert_eq!(g.player.money, 7);
         assert_eq!(g.player.beer_dl, 4, "vet's h must not drink beer");
@@ -6330,7 +6965,7 @@ mod tests {
         g.mode = Mode::Shop(Location::Vet);
         g.player.broken_leg = true;
         g.player.money = 10;
-        g.shop_turn(Location::Vet, "r");
+        g.shop_turn(Location::Vet, "r", &mut no_input()).unwrap();
         assert!(!g.player.broken_leg);
         assert_eq!(g.player.money, 3);
     }
@@ -6494,7 +7129,7 @@ mod tests {
         g.location = Location::Market;
         g.player.hp = 19;
         g.player.money = 10;
-        g.shop_turn(Location::Market, "1");
+        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 8);
     }
 
@@ -6506,7 +7141,7 @@ mod tests {
             g.location = Location::Market;
             g.player.hp = 19;
             g.player.money = money;
-            g.shop_turn(Location::Market, "1");
+            g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
             assert_eq!(g.player.money, want, "money {money}");
         }
     }
@@ -6521,11 +7156,11 @@ mod tests {
         g.location = Location::Market;
         g.player.money = 1000;
         g.district = 1; // 1000:c08e is `cmp byte [0x3692],0x1`
-        g.shop_turn(Location::Market, "6");
+        g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 1000, "gated row must not be sellable yet");
         assert!(!g.wear_jacket_38b6, "1000:c0e0 must not have run");
         g.district = 2;
-        g.shop_turn(Location::Market, "6");
+        g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 1000 - 25);
         assert!(g.wear_jacket_38b6, "1000:c0e0");
     }
@@ -6547,12 +7182,14 @@ mod tests {
         // Row 7: the pistol, 150 roubles, and three cartridges with it
         // (1000:cd0a `add word [0x394f],3`).
         let mut g = shop();
-        g.shop_turn(Location::Dealers, "7");
+        g.shop_turn(Location::Dealers, "7", &mut no_input())
+            .unwrap();
         assert!(g.pistol.owned, "1000:cd05");
         assert_eq!(g.pistol.cartridges, 3);
         assert_eq!(g.player.money, 850);
         // 1000:ccdd -- buying it twice is refused and costs nothing.
-        g.shop_turn(Location::Dealers, "7");
+        g.shop_turn(Location::Dealers, "7", &mut no_input())
+            .unwrap();
         assert_eq!(g.player.money, 850, "1000:cd4c is a refusal, not a sale");
         assert_eq!(g.pistol.cartridges, 3);
 
@@ -6561,18 +7198,21 @@ mod tests {
         for (money, want) in [(149i32, false), (150, true)] {
             let mut g = shop();
             g.player.money = money;
-            g.shop_turn(Location::Dealers, "7");
+            g.shop_turn(Location::Dealers, "7", &mut no_input())
+                .unwrap();
             assert_eq!(g.pistol.owned, want, "money {money}");
         }
 
         // Row 8: five cartridges (1000:cda3), though the menu line says six,
         // and refused outright without a pistol (1000:cd7b).
         let mut g = shop();
-        g.shop_turn(Location::Dealers, "8");
+        g.shop_turn(Location::Dealers, "8", &mut no_input())
+            .unwrap();
         assert_eq!(g.pistol.cartridges, 0, "1000:cdcc -- no gun, no rounds");
         assert_eq!(g.player.money, 1_000);
         g.pistol.owned = true;
-        g.shop_turn(Location::Dealers, "8");
+        g.shop_turn(Location::Dealers, "8", &mut no_input())
+            .unwrap();
         assert_eq!(
             g.pistol.cartridges, 5,
             "the arm adds five, not the six the line promises"
@@ -6585,7 +7225,8 @@ mod tests {
             let mut g = shop();
             g.pistol.owned = owned;
             g.dealer_delivery_counter = walks;
-            g.shop_turn(Location::Dealers, "9");
+            g.shop_turn(Location::Dealers, "9", &mut no_input())
+                .unwrap();
             assert_eq!(
                 g.pistol.silencer, want,
                 "owned {owned}, delivery counter {walks}"
@@ -6614,17 +7255,20 @@ mod tests {
     #[test]
     fn the_dealers_sell_a_joint_every_time_it_is_asked_for() {
         let mut g = dealers(40);
-        g.shop_turn(Location::Dealers, "1");
+        g.shop_turn(Location::Dealers, "1", &mut no_input())
+            .unwrap();
         assert_eq!(g.player.joints, 1, "1000:c90e");
         assert_eq!(g.player.money, 25, "20ae:0b38 = 15, debit 1000:c90a");
         // No already-own test in the arm at all -- buying again works.
-        g.shop_turn(Location::Dealers, "1");
+        g.shop_turn(Location::Dealers, "1", &mut no_input())
+            .unwrap();
         assert_eq!(g.player.joints, 2, "the row is repeatable");
         assert_eq!(g.player.money, 10);
         // 1000:c8e8 is `jle`, so 15 exactly buys and 14 does not.
         for (money, want) in [(14i32, 0u16), (15, 1)] {
             let mut g = dealers(money);
-            g.shop_turn(Location::Dealers, "1");
+            g.shop_turn(Location::Dealers, "1", &mut no_input())
+                .unwrap();
             assert_eq!(g.player.joints, want, "money {money}");
             assert_eq!(g.player.money, if want == 1 { money - 15 } else { money });
         }
@@ -6635,17 +7279,20 @@ mod tests {
     #[test]
     fn the_dealers_sell_the_stolen_mobile_once() {
         let mut g = dealers(40);
-        g.shop_turn(Location::Dealers, "2");
+        g.shop_turn(Location::Dealers, "2", &mut no_input())
+            .unwrap();
         assert!(g.has_mobile, "1000:c969");
         assert_eq!(g.player.money, 10, "20ae:0b39 = 30, debit 1000:c973");
         // 1000:c93c / 1000:c941 -- the already-own refusal costs nothing.
         g.player.money = 40;
-        g.shop_turn(Location::Dealers, "2");
+        g.shop_turn(Location::Dealers, "2", &mut no_input())
+            .unwrap();
         assert_eq!(g.player.money, 40, "1000:c992 is a refusal, not a sale");
         // Too poor: 1000:c94c is `jle`, so 29 is short and 30 is enough.
         for (money, want) in [(29i32, false), (30, true)] {
             let mut g = dealers(money);
-            g.shop_turn(Location::Dealers, "2");
+            g.shop_turn(Location::Dealers, "2", &mut no_input())
+                .unwrap();
             assert_eq!(g.has_mobile, want, "money {money}");
         }
         // The effect's NUMBER, not just the flag: `1000:4ce2` puts the
@@ -6675,7 +7322,8 @@ mod tests {
             g.player.money = 100;
             let was = g.player.clone();
             g.rng.start_log();
-            g.shop_turn(Location::Dealers, "3");
+            g.shop_turn(Location::Dealers, "3", &mut no_input())
+                .unwrap();
             let log = g.rng.take_log();
             assert_eq!(log.len(), 1, "one draw per purchase, seed {seed}");
             assert_eq!(log[0].site, "1000:ca0c");
@@ -6701,7 +7349,8 @@ mod tests {
                     h.mode = Mode::Shop(Location::Dealers);
                     h.player.money = 100;
                     h.player.strength = 4;
-                    h.shop_turn(Location::Dealers, "3");
+                    h.shop_turn(Location::Dealers, "3", &mut no_input())
+                        .unwrap();
                     assert_eq!(h.player.strength, 5);
                     assert_eq!(h.player.dmg_min, was.dmg_min, "1000:ca45 is skipped");
                     assert_eq!(h.player.dmg_max, was.dmg_max + 1, "1000:ca33 is not");
@@ -6733,13 +7382,16 @@ mod tests {
         assert!(odd_case_checked, "the odd-Сила half of roll 0 was reached");
         // Repeatable -- no already-own test in the arm (1000:c9b5's span).
         let mut g = dealers(100);
-        g.shop_turn(Location::Dealers, "3");
-        g.shop_turn(Location::Dealers, "3");
+        g.shop_turn(Location::Dealers, "3", &mut no_input())
+            .unwrap();
+        g.shop_turn(Location::Dealers, "3", &mut no_input())
+            .unwrap();
         assert_eq!(g.player.money, 60, "two purchases, 20 each");
         // Too poor: 1000:c9c8 is `jle`.
         let mut g = dealers(19);
         g.rng.start_log();
-        g.shop_turn(Location::Dealers, "3");
+        g.shop_turn(Location::Dealers, "3", &mut no_input())
+            .unwrap();
         assert_eq!(g.player.money, 19);
         assert!(g.rng.take_log().is_empty(), "a refusal draws nothing");
     }
@@ -6750,16 +7402,19 @@ mod tests {
     #[test]
     fn the_dealers_ink_a_prison_tattoo_once() {
         let mut g = dealers(20);
-        g.shop_turn(Location::Dealers, "4");
+        g.shop_turn(Location::Dealers, "4", &mut no_input())
+            .unwrap();
         assert!(g.prison_tattoo, "1000:cb05");
         assert_eq!(g.player.money, 10, "20ae:0b3b = 10, debit 1000:cb0f");
         // 1000:cad8 / 1000:cadd -- the already-own refusal costs nothing.
-        g.shop_turn(Location::Dealers, "4");
+        g.shop_turn(Location::Dealers, "4", &mut no_input())
+            .unwrap();
         assert_eq!(g.player.money, 10, "1000:cb2e is a refusal, not a sale");
         // Too poor: 1000:cae8 is `jle`.
         for (money, want) in [(9i32, false), (10, true)] {
             let mut g = dealers(money);
-            g.shop_turn(Location::Dealers, "4");
+            g.shop_turn(Location::Dealers, "4", &mut no_input())
+                .unwrap();
             assert_eq!(g.prison_tattoo, want, "money {money}");
         }
     }
@@ -6770,7 +7425,8 @@ mod tests {
     fn the_dealers_sell_the_knuckles_and_the_damage_moves_by_two() {
         let mut g = dealers(40);
         let (min, max) = (g.player.dmg_min, g.player.dmg_max);
-        g.shop_turn(Location::Dealers, "5");
+        g.shop_turn(Location::Dealers, "5", &mut no_input())
+            .unwrap();
         assert!(g.weapon_kastet_38ba, "1000:cb9d");
         assert_eq!(g.player.money, 15, "20ae:0b3c = 25, debit 1000:cba7");
         assert_eq!(g.player.dmg_min, min + 2, "1000:cbab");
@@ -6778,7 +7434,8 @@ mod tests {
         // 1000:cb70 / 1000:cb75 -- the already-own refusal costs nothing and
         // does not add the damage a second time.
         g.player.money = 40;
-        g.shop_turn(Location::Dealers, "5");
+        g.shop_turn(Location::Dealers, "5", &mut no_input())
+            .unwrap();
         assert_eq!(g.player.money, 40, "1000:cbd0 is a refusal, not a sale");
         assert_eq!(g.player.dmg_max, max + 2);
         // The better-weapon gate is a short-circuit AND over 1000:cb5b,
@@ -6795,7 +7452,8 @@ mod tests {
             g.weapon_dubinka_394b = club;
             g.weapon_nozhik_38c2 = knife;
             g.weapon_tesak_394c = cleaver;
-            g.shop_turn(Location::Dealers, "5");
+            g.shop_turn(Location::Dealers, "5", &mut no_input())
+                .unwrap();
             assert_eq!(
                 g.weapon_kastet_38ba, want,
                 "club {club} knife {knife} cleaver {cleaver}"
@@ -6804,7 +7462,8 @@ mod tests {
         // Too poor: 1000:cb80 is `jle`.
         for (money, want) in [(24i32, false), (25, true)] {
             let mut g = dealers(money);
-            g.shop_turn(Location::Dealers, "5");
+            g.shop_turn(Location::Dealers, "5", &mut no_input())
+                .unwrap();
             assert_eq!(g.weapon_kastet_38ba, want, "money {money}");
         }
     }
@@ -6817,7 +7476,8 @@ mod tests {
     fn the_dealers_club_adds_no_damage_at_all_without_the_knuckles() {
         let mut g = dealers(60);
         let (min, max) = (g.player.dmg_min, g.player.dmg_max);
-        g.shop_turn(Location::Dealers, "6");
+        g.shop_turn(Location::Dealers, "6", &mut no_input())
+            .unwrap();
         assert!(g.weapon_dubinka_394b, "1000:cc56");
         assert_eq!(g.player.money, 10, "20ae:0b3d = 50, debit 1000:cc60");
         assert_eq!(g.player.dmg_min, min, "1000:cc69 skips 1000:cc6b");
@@ -6827,13 +7487,15 @@ mod tests {
         // at 1000:55e6.
         let mut g = dealers(60);
         g.weapon_kastet_38ba = true;
-        g.shop_turn(Location::Dealers, "6");
+        g.shop_turn(Location::Dealers, "6", &mut no_input())
+            .unwrap();
         assert_eq!(g.player.dmg_min, min + 2, "1000:cc6b");
         assert_eq!(g.player.dmg_max, max + 2, "1000:cc70");
 
         // 1000:cc29 / 1000:cc2e -- the already-own refusal costs nothing.
         g.player.money = 60;
-        g.shop_turn(Location::Dealers, "6");
+        g.shop_turn(Location::Dealers, "6", &mut no_input())
+            .unwrap();
         assert_eq!(g.player.money, 60, "1000:cc90 is a refusal, not a sale");
         assert_eq!(g.player.dmg_max, max + 2);
 
@@ -6847,7 +7509,8 @@ mod tests {
             let mut g = dealers(60);
             g.weapon_nozhik_38c2 = knife;
             g.weapon_tesak_394c = cleaver;
-            g.shop_turn(Location::Dealers, "6");
+            g.shop_turn(Location::Dealers, "6", &mut no_input())
+                .unwrap();
             assert_eq!(
                 g.weapon_dubinka_394b, want,
                 "knife {knife} cleaver {cleaver}"
@@ -6856,7 +7519,8 @@ mod tests {
         // Too poor: 1000:cc39 is `jle`.
         for (money, want) in [(49i32, false), (50, true)] {
             let mut g = dealers(money);
-            g.shop_turn(Location::Dealers, "6");
+            g.shop_turn(Location::Dealers, "6", &mut no_input())
+                .unwrap();
             assert_eq!(g.weapon_dubinka_394b, want, "money {money}");
         }
     }
@@ -6913,16 +7577,21 @@ mod tests {
 
         let mut g = dealers(1_000);
         assert_eq!(g.district, 1);
-        g.shop_turn(Location::Dealers, "5"); // gate district>1
+        g.shop_turn(Location::Dealers, "5", &mut no_input())
+            .unwrap(); // gate district>1
         assert!(g.weapon_kastet_38ba, "1000:cb9d fires at district 1");
-        g.shop_turn(Location::Dealers, "6"); // gate district>2
+        g.shop_turn(Location::Dealers, "6", &mut no_input())
+            .unwrap(); // gate district>2
         assert!(g.weapon_dubinka_394b, "1000:cc56 fires at district 1");
-        g.shop_turn(Location::Dealers, "7"); // gate district>3
+        g.shop_turn(Location::Dealers, "7", &mut no_input())
+            .unwrap(); // gate district>3
         assert!(g.pistol.owned, "1000:cd05 fires at district 1");
-        g.shop_turn(Location::Dealers, "8");
+        g.shop_turn(Location::Dealers, "8", &mut no_input())
+            .unwrap();
         assert_eq!(g.pistol.cartridges, 8, "1000:cda3 fires at district 1");
         g.dealer_delivery_counter = 25;
-        g.shop_turn(Location::Dealers, "9");
+        g.shop_turn(Location::Dealers, "9", &mut no_input())
+            .unwrap();
         assert!(g.pistol.silencer, "1000:ce34 fires at district 1");
         assert_eq!(g.player.money, 1_000 - 25 - 50 - 150 - 70 - 60);
     }
@@ -6944,7 +7613,7 @@ mod tests {
         let mut g = market(10);
         g.player.hp = 1;
         g.rng.start_log();
-        g.shop_turn(Location::Market, "1");
+        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
         let log = g.rng.take_log();
         assert_eq!(log.len(), 1, "1000:bdbb draws once");
         assert_eq!((log[0].site, log[0].n), ("1000:bdbb", 2));
@@ -6955,7 +7624,7 @@ mod tests {
         // The clamp: 19/20 heals to 20, never to 22 or 23.
         let mut g = market(10);
         g.player.hp = 19;
-        g.shop_turn(Location::Market, "1");
+        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
         assert_eq!(g.player.hp, 20, "1000:bdd3");
         assert_eq!(g.player.hpmax, 20);
 
@@ -6963,8 +7632,8 @@ mod tests {
         let mut g = market(10);
         g.player.hp = 1;
         g.rng.start_log();
-        g.shop_turn(Location::Market, "1");
-        g.shop_turn(Location::Market, "1");
+        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
+        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
         assert_eq!(g.rng.take_log().len(), 2, "1000:bdbb draws every purchase");
         assert_eq!(g.player.money, 6);
     }
@@ -6980,7 +7649,7 @@ mod tests {
         g.player.hp = 1;
         g.player.broken_jaw = true;
         g.rng.start_log();
-        g.shop_turn(Location::Market, "1");
+        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 10, "1000:bd63 is a refusal, not a sale");
         assert_eq!(g.player.hp, 1);
         assert!(g.rng.take_log().is_empty());
@@ -6989,7 +7658,7 @@ mod tests {
         // already at max, which is what `player()` ships.
         let mut g = market(10);
         g.rng.start_log();
-        g.shop_turn(Location::Market, "1");
+        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 10, "1000:bdf1 is a refusal, not a sale");
         assert_eq!(g.player.hp, 20);
         assert!(g.rng.take_log().is_empty());
@@ -6998,7 +7667,7 @@ mod tests {
         let mut g = market(1);
         g.player.hp = 1;
         g.rng.start_log();
-        g.shop_turn(Location::Market, "1");
+        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 1);
         assert_eq!(g.player.hp, 1);
         assert!(g.rng.take_log().is_empty());
@@ -7012,7 +7681,7 @@ mod tests {
     fn the_market_beer_counts_up_and_draws_a_die_that_changes_nothing() {
         let mut g = market(12);
         g.rng.start_log();
-        g.shop_turn(Location::Market, "2");
+        g.shop_turn(Location::Market, "2", &mut no_input()).unwrap();
         let log = g.rng.take_log();
         assert_eq!(log.len(), 1, "1000:be51 draws even though nothing reads it");
         assert_eq!((log[0].site, log[0].n), ("1000:be51", 3));
@@ -7021,7 +7690,7 @@ mod tests {
 
         // Repeatable, and each purchase draws again.
         g.rng.start_log();
-        g.shop_turn(Location::Market, "2");
+        g.shop_turn(Location::Market, "2", &mut no_input()).unwrap();
         assert_eq!(g.rng.take_log().len(), 1);
         assert_eq!(g.player.beer_dl, 2);
         assert_eq!(g.player.money, 2);
@@ -7030,7 +7699,7 @@ mod tests {
         // 1000:be42 `jmp short 0xbeb8` -- PAST 1000:beb4, so no beer.
         let mut g = market(4);
         g.rng.start_log();
-        g.shop_turn(Location::Market, "2");
+        g.shop_turn(Location::Market, "2", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 4);
         assert_eq!(g.player.beer_dl, 0, "a failed purchase adds no beer");
         assert!(g.rng.take_log().is_empty());
@@ -7041,16 +7710,16 @@ mod tests {
     #[test]
     fn the_market_sells_the_dark_glasses_exactly_once() {
         let mut g = market(25);
-        g.shop_turn(Location::Market, "3");
+        g.shop_turn(Location::Market, "3", &mut no_input()).unwrap();
         assert!(g.dark_glasses, "1000:bef6");
         assert_eq!(g.player.money, 15, "1000:bf00, price 10 at 20ae:0b30");
-        g.shop_turn(Location::Market, "3");
+        g.shop_turn(Location::Market, "3", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 15, "1000:bf1f is a refusal, not a sale");
 
         // 1000:bed9 is a `jle`: 10 exactly buys, 9 does not.
         for (money, want) in [(9i32, false), (10, true)] {
             let mut g = market(money);
-            g.shop_turn(Location::Market, "3");
+            g.shop_turn(Location::Market, "3", &mut no_input()).unwrap();
             assert_eq!(g.dark_glasses, want, "money {money}");
         }
     }
@@ -7063,31 +7732,31 @@ mod tests {
     #[test]
     fn the_market_suits_end_on_two_armour_in_either_purchase_order() {
         let mut g = market(100);
-        g.shop_turn(Location::Market, "4");
+        g.shop_turn(Location::Market, "4", &mut no_input()).unwrap();
         assert!(g.wear_suit_abibas_38b4, "1000:bf80");
         assert_eq!(g.player.armor, 1, "1000:bfa7");
-        g.shop_turn(Location::Market, "7");
+        g.shop_turn(Location::Market, "7", &mut no_input()).unwrap();
         assert!(g.wear_suit_adidas_38b7, "1000:c183");
         assert_eq!(g.player.armor, 2, "1000:c1b1, the delta, not 1000:c1b7");
         assert_eq!(g.player.money, 100 - 15 - 30);
 
         // The adidas suit alone takes the full bonus...
         let mut g = market(100);
-        g.shop_turn(Location::Market, "7");
+        g.shop_turn(Location::Market, "7", &mut no_input()).unwrap();
         assert_eq!(g.player.armor, 2, "1000:c1b7");
         // ...and row 4's better-item gate 1000:bf51 then refuses, free.
-        g.shop_turn(Location::Market, "4");
+        g.shop_turn(Location::Market, "4", &mut no_input()).unwrap();
         assert!(!g.wear_suit_abibas_38b4, "1000:bfc8 is a refusal");
         assert_eq!(g.player.money, 70);
         assert_eq!(g.player.armor, 2);
 
         // Both already-own gates: 1000:bf58 and 1000:c15b.
         let mut g = market(100);
-        g.shop_turn(Location::Market, "4");
-        g.shop_turn(Location::Market, "4");
+        g.shop_turn(Location::Market, "4", &mut no_input()).unwrap();
+        g.shop_turn(Location::Market, "4", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 85, "1000:bfad is a refusal, not a sale");
-        g.shop_turn(Location::Market, "7");
-        g.shop_turn(Location::Market, "7");
+        g.shop_turn(Location::Market, "7", &mut no_input()).unwrap();
+        g.shop_turn(Location::Market, "7", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 55, "1000:c1be is a refusal, not a sale");
         assert_eq!(g.player.armor, 2);
     }
@@ -7102,14 +7771,14 @@ mod tests {
 
         let mut g = market(100);
         g.district = 3; // 1000:c1d7 is `cmp byte [0x3692],0x2`
-        g.shop_turn(Location::Market, "5");
+        g.shop_turn(Location::Market, "5", &mut no_input()).unwrap();
         assert!(g.wear_boots_38b5, "1000:c029");
         assert_eq!(
             (g.player.dmg_min, g.player.dmg_max),
             (base_min + 1, base_max + 1),
             "1000:c050 / 1000:c054"
         );
-        g.shop_turn(Location::Market, "8");
+        g.shop_turn(Location::Market, "8", &mut no_input()).unwrap();
         assert!(g.wear_boots_pontovye_38b8, "1000:c222");
         assert_eq!(
             (g.player.dmg_min, g.player.dmg_max),
@@ -7121,30 +7790,30 @@ mod tests {
         // The better boots alone take the full +2/+2.
         let mut g = market(100);
         g.district = 3;
-        g.shop_turn(Location::Market, "8");
+        g.shop_turn(Location::Market, "8", &mut no_input()).unwrap();
         assert_eq!(
             (g.player.dmg_min, g.player.dmg_max),
             (base_min + 2, base_max + 2),
             "1000:c25a / 1000:c25f"
         );
         // Row 5's better-item gate 1000:bffa then refuses, free.
-        g.shop_turn(Location::Market, "5");
+        g.shop_turn(Location::Market, "5", &mut no_input()).unwrap();
         assert!(!g.wear_boots_38b5, "1000:c075 is a refusal");
         assert_eq!(g.player.money, 70);
         // Row 8's already-own gate 1000:c1fa.
-        g.shop_turn(Location::Market, "8");
+        g.shop_turn(Location::Market, "8", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 70, "1000:c266 is a refusal, not a sale");
 
         // Row 5's own already-own gate 1000:c001, and its `jle` at
         // 1000:c00c: 15 exactly buys, 14 does not.
         for (money, want) in [(14i32, false), (15, true)] {
             let mut g = market(money);
-            g.shop_turn(Location::Market, "5");
+            g.shop_turn(Location::Market, "5", &mut no_input()).unwrap();
             assert_eq!(g.wear_boots_38b5, want, "money {money}");
         }
         let mut g = market(100);
-        g.shop_turn(Location::Market, "5");
-        g.shop_turn(Location::Market, "5");
+        g.shop_turn(Location::Market, "5", &mut no_input()).unwrap();
+        g.shop_turn(Location::Market, "5", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 85, "1000:c05a is a refusal, not a sale");
     }
 
@@ -7155,10 +7824,10 @@ mod tests {
     fn the_market_jackets_end_on_four_armour_in_either_purchase_order() {
         let mut g = market(100);
         g.district = 4; // 1000:c27f is `cmp byte [0x3692],0x3`
-        g.shop_turn(Location::Market, "6");
+        g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
         assert!(g.wear_jacket_38b6, "1000:c0e0");
         assert_eq!(g.player.armor, 2, "1000:c107");
-        g.shop_turn(Location::Market, "9");
+        g.shop_turn(Location::Market, "9", &mut no_input()).unwrap();
         assert!(g.wear_jacket_krutaya_38b9, "1000:c2ca");
         assert_eq!(g.player.armor, 4, "1000:c2f8, the delta, not 1000:c2ff");
         assert_eq!(g.player.money, 100 - 25 - 50);
@@ -7166,27 +7835,27 @@ mod tests {
         // The better jacket alone takes the full +4.
         let mut g = market(100);
         g.district = 4;
-        g.shop_turn(Location::Market, "9");
+        g.shop_turn(Location::Market, "9", &mut no_input()).unwrap();
         assert_eq!(g.player.armor, 4, "1000:c2ff");
         // Row 6's better-item gate 1000:c0b1 then refuses, free.
-        g.shop_turn(Location::Market, "6");
+        g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
         assert!(!g.wear_jacket_38b6, "1000:c129 is a refusal");
         assert_eq!(g.player.money, 50);
         // Row 9's already-own gate 1000:c2a2.
-        g.shop_turn(Location::Market, "9");
+        g.shop_turn(Location::Market, "9", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 50, "1000:c306 is a refusal, not a sale");
 
         // Row 6's already-own gate 1000:c0b8, and its `jle` at 1000:c0c3.
         for (money, want) in [(24i32, false), (25, true)] {
             let mut g = market(money);
             g.district = 2;
-            g.shop_turn(Location::Market, "6");
+            g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
             assert_eq!(g.wear_jacket_38b6, want, "money {money}");
         }
         let mut g = market(100);
         g.district = 2;
-        g.shop_turn(Location::Market, "6");
-        g.shop_turn(Location::Market, "6");
+        g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
+        g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 75, "1000:c10e is a refusal, not a sale");
     }
 
@@ -7221,17 +7890,17 @@ mod tests {
         let mut g = market(100);
         assert_eq!(g.district, 1);
         // Row 6 IS buy-gated: 1000:c095 skips it, silently.
-        g.shop_turn(Location::Market, "6");
+        g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
         assert!(!g.wear_jacket_38b6, "1000:c08e is on the buy path");
         assert_eq!(g.player.money, 100);
         // Row 7 is NOT: 1000:c142 is reached with no district test.
-        g.shop_turn(Location::Market, "7");
+        g.shop_turn(Location::Market, "7", &mut no_input()).unwrap();
         assert!(g.wear_suit_adidas_38b7, "1000:c183 fires at district 1");
         assert_eq!(g.player.money, 70);
         assert_eq!(g.player.armor, 2, "1000:c1b7");
         // Rows 8 and 9 have matching menu and buy gates, so both stay shut.
-        g.shop_turn(Location::Market, "8");
-        g.shop_turn(Location::Market, "9");
+        g.shop_turn(Location::Market, "8", &mut no_input()).unwrap();
+        g.shop_turn(Location::Market, "9", &mut no_input()).unwrap();
         assert_eq!(
             g.player.money, 70,
             "1000:c1de and 1000:c286 skip, in silence"
@@ -7315,7 +7984,8 @@ mod tests {
         g.player.money = 1_000;
         g.player.agility = 50; // beats every Random(0x32)
         g.flag_3693 = true; // 1000:4ebc, the shooting is permitted here
-        g.shop_turn(Location::Dealers, "7");
+        g.shop_turn(Location::Dealers, "7", &mut no_input())
+            .unwrap();
         assert_eq!(g.pistol.cartridges, 3);
 
         g.mode = Mode::Street;
@@ -7464,9 +8134,11 @@ mod tests {
         g.mode = Mode::Shop(Location::Dealers);
         // Neither has a backing field yet, so the only observable effect is
         // that the keys are routed at all: they must not leave the shop.
-        g.shop_turn(Location::Dealers, "x");
+        g.shop_turn(Location::Dealers, "x", &mut no_input())
+            .unwrap();
         assert_eq!(g.mode, Mode::Shop(Location::Dealers));
-        g.shop_turn(Location::Dealers, "wes");
+        g.shop_turn(Location::Dealers, "wes", &mut no_input())
+            .unwrap();
         assert_eq!(g.mode, Mode::Shop(Location::Dealers));
     }
 
@@ -7979,7 +8651,7 @@ mod tests {
         g.district = district as u8;
         g.pontovost_street = pontovost_street;
         g.player.level = boundary_level - 1;
-        g.shop_turn(Location::Den, "a");
+        g.shop_turn(Location::Den, "a", &mut no_input()).unwrap();
         assert!(
             !g.places.is_found(Location::Dealers),
             "below the threshold, Dealers must not be revealed"
@@ -7993,7 +8665,7 @@ mod tests {
         g.district = district as u8;
         g.pontovost_street = pontovost_street;
         g.player.level = boundary_level;
-        g.shop_turn(Location::Den, "a");
+        g.shop_turn(Location::Den, "a", &mut no_input()).unwrap();
         assert!(
             g.places.is_found(Location::Dealers),
             "at the threshold, Dealers must be revealed"
@@ -8014,7 +8686,7 @@ mod tests {
         g.player.level = 40; // comfortably above the threshold at district 1
         g.places.mark_found(Location::Dealers);
         assert!(!g.places.is_found(Location::Gym));
-        g.shop_turn(Location::Den, "a");
+        g.shop_turn(Location::Den, "a", &mut no_input()).unwrap();
         assert!(
             g.places.is_found(Location::Gym),
             "Dealers set + Gym clear must still reveal Gym (the fall-through)"
@@ -8023,17 +8695,664 @@ mod tests {
 
     // The both-already-set skip (`1000:dcbf` clear + `1000:dcc6` taken) has
     // no assertable game-STATE effect once both flags are already found --
-    // `mark_found` on an already-found slot is a no-op either way -- so it
-    // cannot be checked in-process. Its only other effect is the ABSENCE of
-    // two `WriteLn`s, and `src/term.rs` writes straight to `io::stdout()`
-    // with no in-process capture. `tests/den_reveal_subprocess.rs` covers it
-    // instead, driving the real binary as a subprocess and asserting on its
-    // piped stdout, the same technique `tests/term_output.rs` already uses --
-    // an escape from "not writable" was claimed here once and was wrong; see
-    // that file's module doc for why a synthesized save is what makes the
-    // precondition (Dealers and Gym already found, threshold cleared)
-    // reachable deterministically, without depending on the wall-clock RNG
-    // seed real play would need.
+    // `mark_found` on an already-found slot is a no-op either way. Its only
+    // other effect is the ABSENCE of two `WriteLn`s.
+    // `tests/den_reveal_subprocess.rs` covers it by driving the real binary
+    // and asserting on its piped stdout, the same technique
+    // `tests/term_output.rs` uses; see that file's module doc for why a
+    // synthesized save is what makes the precondition (Dealers and Gym
+    // already found, threshold cleared) reachable deterministically, without
+    // depending on the wall-clock RNG seed real play would need. That test
+    // stays: it is the only check in the tree that the SHIPPED BINARY
+    // reaches this arm. What is no longer true is the reason once given
+    // here for it being the ONLY option -- `term::capture` (added by Task 28
+    // for the den's arms, whose `d` branches need an RNG outcome a
+    // subprocess cannot pin) now makes an in-process line assertion
+    // possible too.
+
+    // ---------------------------------------------------------------
+    // Task 28 -- the den's submenu, `1000:d802`..`1000:df06`.
+    // `docs/re/den.md` and `data/den_arms.json` are the map; every
+    // expected string below is `data/strings.json`'s own `text`, quoted at
+    // the file offset the artifact records, never retyped from a screen.
+    // ---------------------------------------------------------------
+
+    /// A den with every menu gate satisfied, at district 1.
+    fn den_game_all_gates_open() -> Game {
+        let mut g = game();
+        g.places.mark_found(Location::Den);
+        g.district = 1;
+        g.player.level = 20;
+        g.pontovost_street = 100; // >= 0x64: lines 7 and 16
+        g.den_errand_1_pending = true; // lines 6 and 13
+        g.den_errand_2_pending = true; // lines 7 and 16
+        g.player.beer_dl = 1; // line 11's colour digit
+        g.den_loan_credit = 1; // line 12's visibility
+        g
+    }
+
+    /// `1000:d8b9`..`1000:dae2` with every gate open: all twelve lines and
+    /// both blank `WriteLn`s (`1000:d8be`, `1000:d961`), in the original's
+    /// order.
+    #[test]
+    fn the_den_menu_prints_all_twelve_lines_when_every_gate_is_open() {
+        let g = den_game_all_gates_open();
+        assert!(g.den_menu_reveal_hint(), "lines 8 and 15 must be open too");
+        let out = term::capture::lines(|| g.print_den_menu());
+        assert_eq!(
+            out,
+            vec![
+                "",                                                              // 1000:d8be
+                "^6На одного пацана наехал какой-то урод",                       // CS 0x9d46
+                "^6Ты пацан нормальный. Есть дело.",                             // CS 0x9d6e
+                "^6Пацаны хотят тебе кое-чё сказать",                            // CS 0x9d90
+                "",                                                              // 1000:d961
+                "Напиши ^6w^7 чтобы уйти",                                       // CS 0x9db3
+                "Напиши ^0p^7  чтобы угостить пацанов пивом", // CS 0x9dcb + 0x9dd4
+                "Напиши ^0r^7  чтобы занять 2 рубля",         // CS 0x9dcb + 0x9df6
+                "Напиши ^6hp^7 чтобы отпинать мудака который наезжал на пацана", // CS 0x9e10
+                "Напиши ^6s^7  чтобы узнать отношение",       // CS 0x9e4e
+                "Напиши ^6a^7  чтобы спросить чё-то",         // CS 0x9e73
+                "Напиши ^6d^7 чтобы пойти на дело",           // CS 0x9e96
+            ]
+        );
+    }
+
+    /// The same block with every gate CLOSED. Five lines survive: the two
+    /// blank `WriteLn`s and the three ungated ones (10, 11, 14). Row 11 is
+    /// present but DIMMED, because `1000:d984`'s test only chooses a colour
+    /// -- it is not a visibility gate, unlike row 12's `1000:d9ec`.
+    #[test]
+    fn the_den_menu_hides_its_gated_lines_and_dims_the_beer_row() {
+        let mut g = game();
+        g.district = 1;
+        g.player.level = 0;
+        g.pontovost_street = 0;
+        g.den_errand_1_pending = false;
+        g.den_errand_2_pending = false;
+        g.player.beer_dl = 0;
+        g.den_loan_credit = 0;
+        // (0 - 5) * 5 + 0 = -25, below 0x28.
+        assert!(!g.den_menu_reveal_hint());
+        let out = term::capture::lines(|| g.print_den_menu());
+        assert_eq!(
+            out,
+            vec![
+                "",
+                "",
+                "Напиши ^6w^7 чтобы уйти",
+                "Напиши ^4p^7  чтобы угостить пацанов пивом",
+                "Напиши ^6s^7  чтобы узнать отношение",
+            ]
+        );
+    }
+
+    /// Row 12's colour is `1000:d9d9 cmp word [0x38cb],0x2` /
+    /// `1000:d9de jnl 0xd9e7` -- `>= 2` is the normal digit -- and its
+    /// visibility is the separate `1000:d9ec cmp byte [0x3e35],0x0` /
+    /// `jbe 0xda35`. Two different bytes, so they are checked apart.
+    #[test]
+    fn the_den_loan_row_dims_below_two_cred_and_vanishes_without_credit() {
+        let row = |cred: i32, credit: u8| {
+            let mut g = game();
+            g.district = 1;
+            g.pontovost_street = cred;
+            g.den_loan_credit = credit;
+            term::capture::lines(|| g.print_den_menu())
+                .into_iter()
+                .find(|l| l.contains("чтобы занять 2 рубля"))
+        };
+        assert_eq!(
+            row(2, 1).as_deref(),
+            Some("Напиши ^0r^7  чтобы занять 2 рубля"),
+            "cred == 2 is the boundary of `jnl`"
+        );
+        assert_eq!(
+            row(1, 1).as_deref(),
+            Some("Напиши ^4r^7  чтобы занять 2 рубля"),
+            "one below it dims"
+        );
+        assert_eq!(row(2, 0), None, "1000:d9ec hides the row entirely");
+    }
+
+    /// Menu lines 7 and 16 are each a CONJUNCTION of two different bytes --
+    /// `1000:d8e8`/`1000:d8ef` and `1000:dabb`/`1000:dac2` -- so each
+    /// conjunct is varied on its own here. The all-gates-closed test above
+    /// cannot separate them: it fails both at once, so dropping either
+    /// compare would still pass there.
+    #[test]
+    fn the_den_menu_conjunction_lines_need_both_of_their_bytes() {
+        let lines_for = |errand2: bool, cred: i32| {
+            let mut g = game();
+            g.district = 1;
+            g.den_errand_2_pending = errand2;
+            g.pontovost_street = cred;
+            term::capture::lines(|| g.print_den_menu())
+        };
+        let deal = "^6Ты пацан нормальный. Есть дело."; // line 7, CS 0x9d6e
+        let job = "Напиши ^6d^7 чтобы пойти на дело"; // line 16, CS 0x9e96
+        let has = |v: &[String], t: &str| v.iter().any(|l| l == t);
+
+        // Both bytes set: both lines.
+        let both = lines_for(true, 100);
+        assert!(has(&both, deal) && has(&both, job), "{both:?}");
+        // The errand alone is not enough -- 1000:d8f4 and 1000:dac0 are
+        // signed `jl`s against 0x64, so 99 is one below the boundary.
+        let no_cred = lines_for(true, 99);
+        assert!(!has(&no_cred, deal) && !has(&no_cred, job), "{no_cred:?}");
+        // The cred alone is not enough either -- 1000:d8ed and 1000:dac7.
+        let no_errand = lines_for(false, 100);
+        assert!(
+            !has(&no_errand, deal) && !has(&no_errand, job),
+            "{no_errand:?}"
+        );
+    }
+
+    /// Menu lines 6 and 13 share one byte, `1000:d8c8`/`1000:da35`, and the
+    /// `hp` ARM's own gate `1000:dbf3` reads the same one. Pinned together
+    /// so a port that offered the row without arming the arm (or the
+    /// reverse) goes red.
+    #[test]
+    fn the_den_errand_one_row_and_the_hp_arm_share_their_byte() {
+        for pending in [false, true] {
+            let mut g = game();
+            g.district = 1;
+            g.den_errand_1_pending = pending;
+            let menu = term::capture::lines(|| g.print_den_menu());
+            let has = |t: &str| menu.iter().any(|l| l == t);
+            assert_eq!(has("^6На одного пацана наехал какой-то урод"), pending);
+            assert_eq!(
+                has("Напиши ^6hp^7 чтобы отпинать мудака который наезжал на пацана"),
+                pending
+            );
+            g.rng.start_log();
+            let out = term::capture::lines(|| {
+                g.shop_turn(Location::Den, "hp", &mut input(&["run"]))
+                    .unwrap()
+            });
+            assert_eq!(
+                !out.is_empty(),
+                pending,
+                "the arm must fire exactly when the row is offered"
+            );
+            assert_eq!(!g.rng.take_log().is_empty(), pending);
+        }
+    }
+
+    /// **Controller ruling R1, measured.** Threshold blocks #1/#2
+    /// ([`Game::den_menu_reveal_hint`], `1000:d90f` / `1000:da6e`) and
+    /// block #3 ([`Game::den_reveal`], `1000:dcba`) are two predicates, and
+    /// **neither implies the other**. Both directions are driven here, with
+    /// the printed menu line checked alongside the flag, so folding the
+    /// three into one helper fails this test whichever way it is folded.
+    #[test]
+    fn the_den_menu_hint_and_the_a_arm_disagree_in_both_directions() {
+        // k = 1, cred = 38. Arm: 1*2 + 38 = 40 >= 0x28 -> fires.
+        // Menu: (1 - 5)*5 + 38 = 18 < 0x28 -> the `a` row is not offered.
+        let mut g = game();
+        g.district = 1;
+        g.player.level = 1;
+        g.pontovost_street = 38;
+        assert!(!g.den_menu_reveal_hint());
+        let menu = term::capture::lines(|| g.print_den_menu());
+        assert!(
+            !menu.iter().any(|l| l.contains("чтобы спросить")),
+            "menu line 15 must be absent: {menu:?}"
+        );
+        g.shop_turn(Location::Den, "a", &mut no_input()).unwrap();
+        assert!(
+            g.places.is_found(Location::Dealers) && g.places.is_found(Location::Gym),
+            "the `a` ARM must still fire with no menu line offering it"
+        );
+
+        // k = 13, cred = 0. Arm: 13*2 + 0 = 26 < 0x28 -> refuses.
+        // Menu: (13 - 5)*5 + 0 = 40 >= 0x28 -> the `a` row IS offered.
+        let mut g = game();
+        g.district = 1;
+        g.player.level = 13;
+        g.pontovost_street = 0;
+        assert!(g.den_menu_reveal_hint());
+        let menu = term::capture::lines(|| g.print_den_menu());
+        assert!(
+            menu.contains(&"Напиши ^6a^7  чтобы спросить чё-то".to_string()),
+            "menu line 15 must be present: {menu:?}"
+        );
+        g.shop_turn(Location::Den, "a", &mut no_input()).unwrap();
+        assert!(
+            !g.places.is_found(Location::Dealers) && !g.places.is_found(Location::Gym),
+            "the `a` ARM must refuse in silence while the menu offers it"
+        );
+    }
+
+    /// `p` -- `1000:db22`..`1000:db77`. Gate `1000:db38`, effects
+    /// `1000:db3a` and `1000:db3e`, both strings.
+    #[test]
+    fn den_p_spends_a_half_litre_and_raises_the_street_cred_by_five() {
+        let mut g = game();
+        g.player.beer_dl = 2;
+        g.pontovost_street = 7;
+        g.rng.start_log();
+        let out =
+            term::capture::lines(|| g.shop_turn(Location::Den, "p", &mut no_input()).unwrap());
+        assert_eq!(
+            out,
+            vec!["^2Ты угостил пацанов пивом. Понтовость улутшилась на 5."]
+        );
+        assert_eq!(g.player.beer_dl, 1, "1000:db3a `dec [0x38c3]`");
+        assert_eq!(g.pontovost_street, 12, "1000:db3e `add word [0x38cb],0x5`");
+        assert!(
+            g.rng.take_log().is_empty(),
+            "1000:db22..1000:db77 holds no `call 0f78:114b`"
+        );
+    }
+
+    /// The `1000:db38 jle` refusal: no beer, no effect, and the other
+    /// literal (CS `0x9efb`).
+    #[test]
+    fn den_p_refuses_without_beer_and_changes_nothing() {
+        let mut g = game();
+        g.player.beer_dl = 0;
+        g.pontovost_street = 7;
+        let out =
+            term::capture::lines(|| g.shop_turn(Location::Den, "p", &mut no_input()).unwrap());
+        assert_eq!(out, vec!["^6А нет у тебя пива."]);
+        assert_eq!(g.player.beer_dl, 0);
+        assert_eq!(g.pontovost_street, 7);
+    }
+
+    /// `r` -- `1000:db77`..`1000:dbf3`. All three effects
+    /// (`1000:db96`, `1000:db9b`, `1000:dba0`) and the confirmation.
+    #[test]
+    fn den_r_borrows_two_roubles_for_two_cred_and_one_credit() {
+        let mut g = game();
+        g.den_loan_credit = 3;
+        g.pontovost_street = 5;
+        g.player.money = 40;
+        let out =
+            term::capture::lines(|| g.shop_turn(Location::Den, "r", &mut no_input()).unwrap());
+        assert_eq!(
+            out,
+            vec!["^2Ты занял 2 рубля на пиво. Понтовость уменьшилась на 2."]
+        );
+        assert_eq!(g.player.money, 42, "1000:db96 `add word [0x38c7],0x2`");
+        assert_eq!(g.pontovost_street, 3, "1000:db9b `sub word [0x38cb],0x2`");
+        assert_eq!(g.den_loan_credit, 2, "1000:dba0 `dec [0x3e35]`");
+    }
+
+    /// The two refusals are **different strings and not interchangeable**,
+    /// and `1000:db8d` (the credit) is checked BEFORE `1000:db94` (the
+    /// cred). The third case is what pins the order: with both exhausted
+    /// the original prints the credit line, so a port that tested the cred
+    /// first would print the other one here.
+    #[test]
+    fn den_r_has_two_distinct_refusals_and_checks_the_credit_first() {
+        let refusal = |credit: u8, cred: i32| {
+            let mut g = game();
+            g.den_loan_credit = credit;
+            g.pontovost_street = cred;
+            g.player.money = 40;
+            let out =
+                term::capture::lines(|| g.shop_turn(Location::Den, "r", &mut no_input()).unwrap());
+            assert_eq!(g.player.money, 40, "a refusal must not pay out");
+            assert_eq!(g.pontovost_street, cred);
+            assert_eq!(g.den_loan_credit, credit);
+            out
+        };
+        // 1000:db8d only: credit gone, cred plentiful.
+        assert_eq!(refusal(0, 50), vec!["^6Ты уже всю мелочь выгреб!"]);
+        // 1000:db94 only: credit left, no cred. `jle` is signed, so 0 refuses.
+        assert_eq!(refusal(3, 0), vec!["^6Ты не можешь занять денег."]);
+        // Both: the credit refusal wins, because 1000:db8d comes first.
+        assert_eq!(refusal(0, 0), vec!["^6Ты уже всю мелочь выгреб!"]);
+    }
+
+    /// `s` -- `1000:dc63`..`1000:dcba`. The first line always, the second
+    /// on `district*10 + 10 <= [0x38cb]` (`1000:dc98`/`1000:dc9f`), and the
+    /// arm writes nothing at all.
+    #[test]
+    fn den_s_prints_the_cred_and_adds_the_second_line_at_the_threshold() {
+        let ask = |district: u8, cred: i32| {
+            let mut g = game();
+            g.district = district;
+            g.pontovost_street = cred;
+            g.player.money = 33;
+            g.player.beer_dl = 4;
+            g.den_loan_credit = 2;
+            g.rng.start_log();
+            let out =
+                term::capture::lines(|| g.shop_turn(Location::Den, "s", &mut no_input()).unwrap());
+            // The measured no_effect_claim over 1000:dc63..1000:dcba: the
+            // absolute-write sweep finds zero stores in the span.
+            assert_eq!(g.pontovost_street, cred);
+            assert_eq!(g.player.money, 33);
+            assert_eq!(g.player.beer_dl, 4);
+            assert_eq!(g.den_loan_credit, 2);
+            assert!(g.rng.take_log().is_empty());
+            out
+        };
+        // district 1 -> the threshold is 20.
+        assert_eq!(
+            ask(1, 20),
+            vec![
+                "^4Твоя понтовость сейчас = 20.",
+                "^0Да если чё мы за тебя впрягаемся.",
+            ]
+        );
+        assert_eq!(ask(1, 19), vec!["^4Твоя понтовость сейчас = 19."]);
+        // district 3 -> 40, so the same cred that passed at district 1 fails.
+        assert_eq!(ask(3, 20), vec!["^4Твоя понтовость сейчас = 20."]);
+        assert_eq!(
+            ask(3, 40),
+            vec![
+                "^4Твоя понтовость сейчас = 40.",
+                "^0Да если чё мы за тебя впрягаемся.",
+            ]
+        );
+    }
+
+    /// `hp` -- `1000:dbf3`'s gate stands IN FRONT of `1000:dc04`'s key
+    /// compare, so with no errand pending the token is never compared: no
+    /// output, no draw, no state change.
+    #[test]
+    fn den_hp_is_not_even_compared_without_an_errand() {
+        let mut g = game();
+        g.den_errand_1_pending = false;
+        g.rng.start_log();
+        let out =
+            term::capture::lines(|| g.shop_turn(Location::Den, "hp", &mut no_input()).unwrap());
+        assert!(
+            out.is_empty(),
+            "1000:dbf8 falls through in silence: {out:?}"
+        );
+        assert!(g.rng.take_log().is_empty(), "no opponent may be rolled");
+        assert!(!g.fight_accepted_3b72, "1000:dc11 must not run");
+    }
+
+    /// With the errand pending: `1000:dc0e` rolls with `param_1 = 1`,
+    /// `1000:dc11` sets the accept flag, `1000:dc53` announces the opponent
+    /// and `1000:dc5e` consumes the errand after the fight returns.
+    ///
+    /// The expected announcement is composed from a SECOND game on the same
+    /// seed whose only act is `roll_enemy(1)`, so the assertion pins the
+    /// rank name (`1000:dc26`..`1000:dc2e`) and the level `1000:dc43`
+    /// pushes without this test re-deriving either.
+    #[test]
+    fn den_hp_rolls_a_clamped_opponent_announces_it_and_consumes_the_errand() {
+        let mut probe = game();
+        let enemy = probe.roll_enemy(1);
+        assert!(
+            enemy.class <= 7,
+            "1000:0dad clamps param_1 == 1 below the Мент"
+        );
+        let expected = format!(
+            "^6Это {} {} уровня.",
+            Game::rank_name(enemy.class),
+            enemy.level
+        );
+
+        let mut g = game();
+        g.den_errand_1_pending = true;
+        // `run` at the fight prompt flees, which ends the fight and returns,
+        // so 1000:dc5e is reached the way the original reaches it.
+        let out = term::capture::lines(|| {
+            g.shop_turn(Location::Den, "hp", &mut input(&["run"]))
+                .unwrap()
+        });
+        assert_eq!(out.first().map(String::as_str), Some(expected.as_str()));
+        assert!(g.fight_accepted_3b72, "1000:dc11 `mov byte [0x3b72],1`");
+        assert!(
+            !g.den_errand_1_pending,
+            "1000:dc5e `mov byte [0x3b78],0`, after the fight"
+        );
+        assert_eq!(
+            g.last_enemy.as_ref().map(|e| e.class),
+            Some(enemy.class),
+            "the fight must be against the opponent 1000:dc0e rolled"
+        );
+    }
+
+    /// `d` -- both gates at `1000:dd4b` and `1000:dd55` are SILENT, and
+    /// neither spends a draw or consumes the errand.
+    #[test]
+    fn den_d_refuses_in_silence_below_a_hundred_cred_or_without_the_errand() {
+        for (cred, errand) in [(99, true), (100, false), (0, false)] {
+            let mut g = game();
+            g.district = 1;
+            g.pontovost_street = cred;
+            g.den_errand_2_pending = errand;
+            g.player.money = 5;
+            g.rng.start_log();
+            let out =
+                term::capture::lines(|| g.shop_turn(Location::Den, "d", &mut no_input()).unwrap());
+            assert!(out.is_empty(), "cred {cred}, errand {errand}: {out:?}");
+            assert!(g.rng.take_log().is_empty(), "no draw before the gates pass");
+            assert_eq!(g.den_errand_2_pending, errand, "1000:dec8 is not reached");
+            assert_eq!(g.player.money, 5);
+        }
+    }
+
+    /// `d`'s haul path: `1000:dda8`'s compare goes to `1000:de36` when luck
+    /// wins. Three draws, at `1000:dd97`, `1000:de5a` and `1000:de7c`, with
+    /// the `n` each site pushes; money and хлам each gain
+    /// `district*10 + Random(district*10)`; the xp line prints `district*12`
+    /// and `1000:debe` credits the same number.
+    ///
+    /// Luck is pinned at `0x7fff` so `Longint(luck) < Longint(Random(15))`
+    /// is false for every possible roll -- the branch is selected by the
+    /// predicate under test, not by a lucky seed.
+    #[test]
+    fn den_d_hauls_when_luck_wins_the_first_roll() {
+        let mut g = game();
+        g.district = 1;
+        g.player.luck = 0x7fff;
+        g.pontovost_street = 100;
+        g.den_errand_2_pending = true;
+        g.player.money = 0;
+        g.player.junk = 0;
+        let level_before = g.player.level;
+        let threshold_before = g.progress.threshold;
+        g.rng.start_log();
+        let out =
+            term::capture::lines(|| g.shop_turn(Location::Den, "d", &mut no_input()).unwrap());
+        let full = g.rng.take_log();
+        let log: Vec<_> = full
+            .iter()
+            .filter(|d| d.site.starts_with("1000:dd") || d.site.starts_with("1000:de"))
+            .cloned()
+            .collect();
+        assert_eq!(
+            log.iter().map(|d| (d.site, d.n)).collect::<Vec<_>>(),
+            vec![("1000:dd97", 15), ("1000:de5a", 10), ("1000:de7c", 10)],
+            "three draws in range, in order, with the `n` each site pushes"
+        );
+        assert_eq!(
+            out,
+            vec![
+                "^0Давай быстрее..".to_string(),
+                "^2Ты пришел воровать деньги".to_string(),
+                "^2Ты наваровал денег".to_string(),
+                "^6Ты получаешь 12 качков опыта".to_string(),
+            ]
+        );
+        assert_eq!(
+            g.player.money,
+            10 + i32::from(log[1].r),
+            "1000:de6d: district*10 + Random(district*10)"
+        );
+        assert_eq!(
+            g.player.junk,
+            10 + log[2].r,
+            "1000:de8f: the same shape for хлам"
+        );
+        // 1000:debe credits district*12 = 12; 1000:dec5's FUN_1000_2526(0)
+        // then drains it against the 10-point first threshold, which is why
+        // the level rises and 2 xp is left over -- and why `full` carries
+        // two extra draws at `1000:25fe`, the per-level stat rolls, that
+        // `log` filters out.
+        assert_eq!(g.player.level, level_before + 1, "1000:dec5 levelled up");
+        assert_eq!(g.progress.xp, 12 - threshold_before);
+        assert_eq!(g.progress.threshold, threshold_before + 10);
+        assert!(
+            full.len() > log.len(),
+            "the level-up spends its own draws at 1000:25fe"
+        );
+        assert!(!g.den_errand_2_pending, "1000:dec8");
+    }
+
+    /// `d` at district 3: every `n` and every award is rebuilt from
+    /// `[0x3692]`, so they all move together. Without this the district
+    /// multipliers could all be hard-coded to 1 and the test above would
+    /// still pass.
+    #[test]
+    fn den_d_scales_every_draw_and_every_award_with_the_district() {
+        let mut g = game();
+        g.district = 3;
+        g.player.luck = 0x7fff;
+        g.pontovost_street = 100;
+        g.den_errand_2_pending = true;
+        g.player.money = 0;
+        g.player.junk = 0;
+        g.rng.start_log();
+        let out =
+            term::capture::lines(|| g.shop_turn(Location::Den, "d", &mut no_input()).unwrap());
+        let log: Vec<_> = g
+            .rng
+            .take_log()
+            .into_iter()
+            .filter(|d| d.site.starts_with("1000:dd") || d.site.starts_with("1000:de"))
+            .collect();
+        assert_eq!(
+            log.iter().map(|d| (d.site, d.n)).collect::<Vec<_>>(),
+            vec![("1000:dd97", 45), ("1000:de5a", 30), ("1000:de7c", 30)]
+        );
+        assert!(out.contains(&"^6Ты получаешь 36 качков опыта".to_string()));
+        assert_eq!(g.player.money, 30 + i32::from(log[1].r));
+        assert_eq!(g.player.junk, 30 + log[2].r);
+    }
+
+    /// `d`'s "slipped away" path: luck loses `1000:dda8`'s compare and wins
+    /// `1000:dde9`'s. Seed 6 is chosen because its first two `Random(15)`
+    /// draws are 2 and 0, which with `luck == 0` is exactly
+    /// `0 < 2` then `not (0 < 0)`. Two draws in range, no fight, no money.
+    #[test]
+    fn den_d_slips_away_when_luck_loses_once_and_wins_once() {
+        let mut g = Game::new(player(), Progress::new(), 6);
+        g.district = 1;
+        g.player.luck = 0;
+        g.pontovost_street = 100;
+        g.den_errand_2_pending = true;
+        g.player.money = 0;
+        g.rng.start_log();
+        let out =
+            term::capture::lines(|| g.shop_turn(Location::Den, "d", &mut no_input()).unwrap());
+        let log = g.rng.take_log();
+        assert_eq!(
+            log.iter().map(|d| (d.site, d.n, d.r)).collect::<Vec<_>>(),
+            vec![("1000:dd97", 15, 2), ("1000:ddda", 15, 0)],
+            "two draws in range, and no third: no opponent was rolled"
+        );
+        assert_eq!(
+            out,
+            vec![
+                "^0Давай быстрее..",
+                "^2Ты пришел воровать деньги",
+                "^4Шухер менты!",
+                "^2Ты смылся от ментов.",
+            ]
+        );
+        assert_eq!(g.player.money, 0, "nothing is stolen on this path");
+        assert!(
+            !g.den_errand_2_pending,
+            "1000:dec8 runs on the cop paths too"
+        );
+    }
+
+    /// `d`'s caught path: luck loses BOTH compares. Seed 3's first two
+    /// `Random(15)` draws are 1 and 7. `1000:ddf6` rolls with
+    /// `param_1 = 2`, which `1000:0dc0` forces to class 8 -- the `Мент` --
+    /// and `1000:ddff` prints after the fight returns.
+    #[test]
+    fn den_d_fights_a_cop_when_luck_loses_twice() {
+        let mut g = Game::new(player(), Progress::new(), 3);
+        g.district = 1;
+        g.player.luck = 0;
+        g.pontovost_street = 100;
+        g.den_errand_2_pending = true;
+        g.rng.start_log();
+        let out = term::capture::lines(|| {
+            g.shop_turn(Location::Den, "d", &mut input(&["run"]))
+                .unwrap()
+        });
+        let in_range: Vec<_> = g
+            .rng
+            .take_log()
+            .into_iter()
+            .filter(|d| d.site == "1000:dd97" || d.site == "1000:ddda")
+            .map(|d| (d.site, d.n, d.r))
+            .collect();
+        assert_eq!(
+            in_range,
+            vec![("1000:dd97", 15, 1), ("1000:ddda", 15, 7)],
+            "both luck rolls lost"
+        );
+        assert_eq!(
+            g.last_enemy.as_ref().map(|e| e.class),
+            Some(8),
+            "1000:ddf6's param_1 == 2 forces the Мент"
+        );
+        assert_eq!(out.first().map(String::as_str), Some("^0Давай быстрее.."));
+        assert!(
+            out.contains(&"^4Шухер менты!".to_string()),
+            "1000:ddb6: {out:?}"
+        );
+        assert_eq!(
+            out.last().map(String::as_str),
+            Some("^6Пора валить!"),
+            "1000:ddff prints AFTER the fight: {out:?}"
+        );
+        assert!(!g.den_errand_2_pending, "1000:dec8");
+    }
+
+    /// The 32-bit compare at `1000:dda6`..`1000:ddb3`: high halves SIGNED
+    /// (`1000:dda8 jl`), low halves UNSIGNED (`1000:ddb1 jb`). The last two
+    /// cases are what a single signed 16-bit compare would get wrong -- a
+    /// luck word with bit 15 set is NEGATIVE after `cwd`, so it loses to
+    /// every random, while an unsigned 16-bit compare would have it win.
+    #[test]
+    fn the_den_luck_compare_is_signed_high_and_unsigned_low() {
+        assert!(!Game::luck_below_random_32(5, 5), "equal is not below");
+        assert!(Game::luck_below_random_32(4, 5));
+        assert!(!Game::luck_below_random_32(6, 5));
+        // 0x8000 as a Longint is -32768, below any zero-extended Word.
+        assert!(Game::luck_below_random_32(0x8000, 0));
+        assert!(Game::luck_below_random_32(0xffff, 1));
+        // Those last two are what pins the `cwd` at 1000:dda5: read as
+        // plain unsigned 16-bit words, 0x8000 and 0xffff are ABOVE 0 and 1,
+        // so a port that dropped the sign-extension would answer `false`
+        // to both and this test would go red.
+    }
+
+    /// `w` at the den leaves, via `1000:ded7`'s compare and `1000:dee1`'s
+    /// jump out. Everything else is silent and stays in the submenu --
+    /// there is no "unknown command" literal in `1000:d802`..`1000:df06`
+    /// for a bad key to print.
+    #[test]
+    fn the_den_leaves_on_w_and_is_silent_on_anything_else() {
+        let mut g = game();
+        g.places.mark_found(Location::Den);
+        g.location = Location::Den;
+        g.mode = Mode::Shop(Location::Den);
+        let out =
+            term::capture::lines(|| g.shop_turn(Location::Den, "zzz", &mut no_input()).unwrap());
+        assert!(
+            out.is_empty(),
+            "an unrecognised key prints nothing: {out:?}"
+        );
+        assert_eq!(g.mode, Mode::Shop(Location::Den));
+        g.shop_turn(Location::Den, "w", &mut no_input()).unwrap();
+        assert_eq!(g.mode, Mode::Street);
+        assert_eq!(g.location, Location::Street);
+    }
 
     /// `1000:ae13`/`1000:ae1f` via [`Game::enter_district_5`] -- reaching
     /// district 5 sets `rector_showdown`, and the flee refusal at

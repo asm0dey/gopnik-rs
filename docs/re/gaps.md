@@ -2298,3 +2298,82 @@ Task 27 changed nothing in `src/`:
   instruction boundary. Recorded in `data/den_arms.json`'s
   `known_not_boundaries`, where `tools/test_den_arms.py` asserts it really is
   not one. Not corrected in `save-format.md` — outside Task 27's range.
+
+---
+
+## Opened and closed by Task 28 (porting the den's submenu)
+
+*Cited from `src/game.rs`'s `print_den_menu`, `den_menu_reveal_hint`,
+`den_beer`, `den_borrow`, `den_beat_up`, `den_regard`, `luck_below_random_32`
+and `den_job`.*
+
+Task 28 consumed Task 27's map and ported `1000:d802`..`1000:df06` into
+`src/`. **Closed:** all twelve unported menu lines including both dimmed
+rows, threshold blocks #1 and #2 as their own predicate, and the five
+unported arms `p`, `r`, `hp`, `s`, `d` with every gate, draw, effect and
+string cited at its address. Three items below stay open.
+
+### `FUN_1000_3d11`'s `param_1` — the den's two call sites
+
+**Established from flow** (`data/den_arms.json`'s `fight_param_finding`, two
+complete sweeps over an aligned decode of the fight function's 6971 bytes /
+3043 instructions). `Game::run_combat` takes no `param_1` and implements the
+`param_1 = 0` path the wander's `1000:b826` uses. The den calls it twice with
+something else, and this port routes both through `run_combat` unchanged
+rather than omitting the fights:
+
+- **`1000:dc5b`, `param_1 = 6`** (`Game::den_beat_up`, the `hp` arm). The
+  dispatch chain `1000:3d24 mov al,[bp+0x4]` feeds tests exactly 0
+  (`1000:3d27`), 6 (`1000:3d2b`), 1 (`1000:3e8d`), 3 (`1000:3ead`) and 4
+  (`1000:3f2b`), and **0 and 6 jump to the same arm `1000:3d32`**. Of the
+  seven non-load `[bp+0x4]` references (`1000:5085`, `1000:5139`,
+  `1000:51a6`, `1000:51ac`, `1000:51f6`, `1000:51fc`, `1000:57ce`) only
+  `1000:57ce cmp byte [bp+0x4],0x6` names 6, and it guards
+  `1000:57de add [0x38cb],ax` with `ax = district*20`
+  (`1000:57d4`..`1000:57dc`) — the errand's own понтовость reward, which
+  lives inside the fight function and not in the den. **So the whole
+  divergence for `hp` is that one missing award.** Whether it is reached is
+  NOT established: neither `1000:57ce`'s guard context nor the `1000:3d32`
+  arm was decoded, so this port does not invent a condition for it.
+- **`1000:ddfc`, `param_1 = 5`** (`Game::den_job`, the cop fight). 5 matches
+  none of the five tested values and reaches the default arm `1000:3fa7`
+  directly, so it **skips** whatever `1000:3d32`..`1000:3fa7` does — the span
+  `param_1 = 0` takes and which was not decoded. This is the larger of the
+  two unknowns and it is why the arm is registered here rather than claimed
+  correct.
+
+Both join the population of "`FUN_1000_11c2` -- traced (Task 20), not ported"
+above, whose `1000:ae2d` (`param_1 = 3`) and `1000:ae39` (`param_1 = 4`) have
+the same obstacle. Closing all four is one combat-dispatch task: decode
+`1000:3d32`..`1000:3fa7`, then widen `run_combat`'s signature.
+
+### The den's `hp` arm sets `20ae:3b72` and nothing in this port reads it
+
+`1000:dc11 mov byte [0x3b72],0x1` is ported as `Game::fight_accepted_3b72`.
+`20ae:3b72` has nine accepted references image-wide, eight of them stores and
+exactly one a load, `1000:b81f` (`python3 tools/re_query.py xrefs-to
+20ae:3b72`; the census is in `data/den_arms.json`'s `globals[]`). That load is
+inside the wander, which `Game::walk` models as CONTROL FLOW — it calls
+`run_combat` where the original sets the flag and lets `1000:b81f` read it —
+so the port has no reader for the field. Carried rather than dropped, on the
+same footing as `market_ban_countdown` and `club_ban_countdown` above: the
+store is a real effect of a ported arm and deleting it would make the arm
+look like it has one effect when the original gives it two.
+
+Whether the store is observable in the ORIGINAL is not settled here either.
+`1000:b5bb mov byte [0x3b72],0x0` clears it before the wander's encounter and
+`1000:b81f` reads it after, so a value left by `1000:dc11` would have to
+survive to a `1000:b81f` that no `1000:b5bb` preceded — a path this task did
+not trace.
+
+### `20ae:3b7a`, the menu row's colour digit, is computed inline
+
+Rows 11 and 12 of the den menu write the colour digit to `20ae:3b7a`
+(`1000:d98b`/`1000:d992` and `1000:d9e0`/`1000:d9e7`) and load it back
+(`1000:d9ad`, `1000:da0a`); `Game::print_den_menu` computes it inline
+instead. **Row 12's store runs BEFORE its `1000:d9ec` visibility gate**, so
+the original writes the byte on a turn where the row is not printed. Not
+modelled, and not observable: `20ae:3b7a` has 87 image-wide references and
+every one is the same store-store-load triple (`docs/re/tables.md`'s priced
+row idiom), so no reader reaches the byte without its own writer running
+first.

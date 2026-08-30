@@ -8,8 +8,12 @@ below states its tier and cites an address, per `docs/re/METHODOLOGY.md`.
 Two blocks in range were already ported before this map existed and were
 mapped but not re-derived for editing: the district-keyed intro
 `1000:d82f`..`1000:d8b9` (`Game::print_den_intro`) and the `a` reveal
-`1000:dcba`..`1000:dd32` (`Game::den_reveal`). Everything else in range is
-unported at the time of writing.
+`1000:dcba`..`1000:dd32` (`Game::den_reveal`). Everything else in range was
+unported when this map was written; **Task 28 has since ported it** --
+see "What the port must change" at the end, which now records what each item
+became. This document is the map, not the port's status page: where the two
+could drift, `docs/re/gaps.md`'s "Opened and closed by Task 28" section is
+the one that tracks what is still open.
 
 ## Shape
 
@@ -148,7 +152,9 @@ offering it; `k = 13`, `cred = 0` satisfies #2 and not #3, so the menu offers
 `a` and the arm refuses silently. Folding the three into one helper changes
 behaviour either way.
 
-`Game::den_reveal` implements #3 and is correct for #3. #1 and #2 are unported.
+`Game::den_reveal` implements #3 and is correct for #3. #1 and #2 are
+`Game::den_menu_reveal_hint`, ported by Task 28 as a SEPARATE method for
+exactly this reason.
 
 ## The menu, `1000:d816`..`1000:dae2`
 
@@ -594,20 +600,37 @@ exit key and not the den's own.
 `^4Тебя мудака такого туда не пустят - поднимай понтовость` (CS `0xa0b0`) and
 falls into `1000:defc`. No `ReadLn` happens and the submenu is never entered.
 
-## What the port must change
+## What the port must change — and what Task 28 changed
 
-1. **Six more keys.** `Game::shop_turn` recognises exactly one den key, `a`.
+Written as a brief for the porting task; each item now carries what it
+became, so a reader of this map is not left believing the port still has
+the shape it had when the map was written.
+`grep -n 'fn den_' src/game.rs` is what recomputes the second half of each.
+
+1. **Six more keys.** `Game::shop_turn` recognised exactly one den key, `a`.
    Established at compare addresses: `p` (`1000:db2c`), `r` (`1000:db81`),
    `hp` (`1000:dc04`), `s` (`1000:dc6d`), `d` (`1000:dd3c`), `w`
    (`1000:ded7`).
+   **DONE:** `Game::den_beer`, `den_borrow`, `den_beat_up`, `den_regard`,
+   `den_job`, and `w` through the shared `Command::Walk` arm.
 2. **Twelve more menu lines.** `1000:d8b9` onward is unported;
    `Game::print_den_intro`'s own doc already says so. Four of them are gated
    and two are colour-dimmed.
+   **DONE:** `Game::print_den_menu`, called from `print_shop_intro` right
+   after `print_den_intro` — the two are one straight-line run in the
+   original with no branch between them, and both blank `WriteLn`s
+   (`1000:d8be`, `1000:d961`) are reproduced.
 3. **Do not factor the three threshold blocks together.** See above. #1 and #2
    are one predicate, #3 is another, and `Game::den_reveal` already has #3
    right.
+   **DONE:** #1/#2 are `Game::den_menu_reveal_hint`, a second method, and
+   `the_den_menu_hint_and_the_a_arm_disagree_in_both_directions` drives a
+   state satisfying each while failing the other — so folding them fails the
+   test whichever way it is folded.
 4. **`p` and `r` port directly** — plain state edits with no call out.
-5. **`s` ports directly** and writes nothing.
+   **DONE.** `r`'s two refusals are kept distinct and in the original's
+   order.
+5. **`s` ports directly** and writes nothing. **DONE.**
 6. **`hp` and the `d` arm's cop branch are BLOCKED.** Both call `1000:3d11`
    with a `param_1` the port does not model — 6 and 5. `Game::run_combat`
    models no `param_1` at all and `docs/re/gaps.md` already records that as
@@ -615,7 +638,17 @@ falls into `1000:defc`. No `ReadLn` happens and the submenu is never entered.
    specially; `param_1 = 5` is not, but it still reaches a different arm than
    the port's own `0`. The rest of `d` — both luck compares, the haul, the
    xp, `1000:2526` — has no such obstacle.
+   **PARTLY DONE, and the residue is registered.** Both arms are ported in
+   full, gates and strings included, and both dispatch the fight through the
+   unparameterised `Game::run_combat` rather than being left out. The two
+   unmodelled arguments are `docs/re/gaps.md`'s "`FUN_1000_3d11`'s `param_1`
+   — the den's two call sites", which names what each one costs: for 6, only
+   `1000:57ce`'s `add [0x38cb],ax`; for 5, the undecoded
+   `1000:3d32`..`1000:3fa7`.
 7. **The den does not trim its input.** See "The input read" above.
+   **UNCHANGED:** `Game::shop_turn` still trims, and the den joins
+   `docs/re/gaps.md`'s trimmed-prompt population rather than getting a
+   location-specific exception.
 8. **An unrecognised key is silent, and the menu prints once.** Both shapes
    are already right in the port: `Game::enter_shop` prints the intro and then
    sets `Mode::Shop(loc)`, and the per-line `Game::shop_turn` ignores anything
@@ -623,6 +656,8 @@ falls into `1000:defc`. No `ReadLn` happens and the submenu is never entered.
    `grep -n 'fn shop_turn' src/game.rs`). Recorded so the porting task neither
    adds a refusal line the original has no string for, nor moves the twelve
    new menu lines into the per-turn path.
+   **HELD:** the menu went into `print_shop_intro`, not `shop_turn`, and no
+   refusal line was invented.
 
 ### Nothing here is unreachable for want of a setter
 

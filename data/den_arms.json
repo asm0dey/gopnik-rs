@@ -1,5 +1,5 @@
 {
- "note": "The den (`pr`) handler of `orig/g.exe`, `1000:d802`..`1000:df06` -- from the `pr` verb compare to the `kl` verb compare -- mapped by Task 27 from an aligned decode, never from a screen. Prose twin: `docs/re/den.md`; re-derived from `orig/g.exe` by `tools/test_den_arms.py`. COVERAGE BOUNDARY: this artifact covers exactly the half-open image range `1000:d802`..`1000:df06` and nothing else. The four sweeps in `tools/test_den_arms.py` (strings, branches, draws, writes) are SET EQUALITIES over that range, so an omitted entry reds the test -- but they say nothing about the three routines the handler CALLS (`1000:0d14` the opponent roll, `1000:3d11` the fight, `1000:2526` the level-up), whose own bodies were not decoded for this task except for the one bounded `[bp+0x4]` sweep recorded under `calls_out`. Two blocks in range were already ported before this map existed and were mapped but not re-derived-for-editing: the district-keyed intro `1000:d82f`..`1000:d8b9` (`Game::print_den_intro`) and the `a` reveal `1000:dcba`..`1000:dd32` (`Game::den_reveal`). Everything else in range is unported at the time of writing.",
+ "note": "The den (`pr`) handler of `orig/g.exe`, `1000:d802`..`1000:df06` -- from the `pr` verb compare to the `kl` verb compare -- mapped by Task 27 from an aligned decode, never from a screen. Prose twin: `docs/re/den.md`; re-derived from `orig/g.exe` by `tools/test_den_arms.py`. COVERAGE BOUNDARY: this artifact covers exactly the half-open image range `1000:d802`..`1000:df06` and nothing else. The four sweeps in `tools/test_den_arms.py` (strings, branches, draws, writes) are SET EQUALITIES over that range, so an omitted entry reds the test -- but they say nothing about the three routines the handler CALLS (`1000:0d14` the opponent roll, `1000:3d11` the fight, `1000:2526` the level-up), whose own bodies were not decoded for this task except for the one bounded `[bp+0x4]` sweep recorded under `calls_out`. Two blocks in range were already ported before this map existed and were mapped but not re-derived-for-editing: the district-keyed intro `1000:d82f`..`1000:d8b9` (`Game::print_den_intro`) and the `a` reveal `1000:dcba`..`1000:dd32` (`Game::den_reveal`). Everything else in range was unported when this artifact was written and was ported by Task 28; this artifact records the ORIGINAL, so its port-status remarks are dated as of Task 27 and `docs/re/gaps.md`'s Opened-and-closed-by-Task-28 section is the authority on what is still open.",
  "address_forms": "`1000:xxxx` is a Ghidra label (Form A of `docs/re/METHODOLOGY.md`) and, because the game's code segment is the load base, its OFF is also the image offset. `20ae:xxxx` is DGROUP. `0eed:` and `0f78:` are Form B runtime segments. `cs_offset` is the image offset of a Pascal shortstring's LENGTH byte -- the exact immediate of the `mov di,imm16` that pushes it -- and `file_offset` is that plus the 0x18d0-byte MZ header, which is what `data/strings.json` keys on.",
  "handler": "pr",
  "range": {
@@ -330,7 +330,7 @@
    ],
    "strings": [],
    "effects": [],
-   "note": "A bare Pascal `WriteLn` on the output `Text` at `20ae:3fcc` -- one blank line, no literal. NOT ported."
+   "note": "A bare Pascal `WriteLn` on the output `Text` at `20ae:3fcc` -- one blank line, no literal. Ported by Task 28 (`Game::print_den_menu`)."
   },
   {
    "index": 6,
@@ -860,7 +860,7 @@
      "text": "add ax,[0x38cb]"
     }
    ],
-   "note": "The shared prefix is `cmp byte [0x3695],0` / `jz +7` / `cmp byte [0x369a],0` / `jnz <far>`: the skip happens only when Dealers is SET **and** Gym is SET. Dealers clear takes the `jz` past the Gym test entirely. Gates menu line 8. UNPORTED."
+   "note": "The shared prefix is `cmp byte [0x3695],0` / `jz +7` / `cmp byte [0x369a],0` / `jnz <far>`: the skip happens only when Dealers is SET **and** Gym is SET. Dealers clear takes the `jz` past the Gym test entirely. Gates menu line 8. Ported by Task 28 as `Game::den_menu_reveal_hint`, deliberately NOT shared with block #3."
   },
   {
    "index": 1,
@@ -939,7 +939,7 @@
      "text": "add ax,[0x38cb]"
     }
    ],
-   "note": "The shared prefix is `cmp byte [0x3695],0` / `jz +7` / `cmp byte [0x369a],0` / `jnz <far>`: the skip happens only when Dealers is SET **and** Gym is SET. Dealers clear takes the `jz` past the Gym test entirely. Gates menu line 15. UNPORTED. BYTE-IDENTICAL to block #1, displacements included."
+   "note": "The shared prefix is `cmp byte [0x3695],0` / `jz +7` / `cmp byte [0x369a],0` / `jnz <far>`: the skip happens only when Dealers is SET **and** Gym is SET. Dealers clear takes the `jz` past the Gym test entirely. Gates menu line 15. Ported by Task 28 as `Game::den_menu_reveal_hint`, the same method as block #1 and NOT the one block #3 uses. BYTE-IDENTICAL to block #1, displacements included."
   },
   {
    "index": 2,
@@ -3038,7 +3038,7 @@
   },
   {
    "n": 2,
-   "what": "The whole one-shot menu `1000:d816`..`1000:dabb` is unported past `1000:d8b9`; `Game::print_den_intro`'s own doc already says so. Eleven more lines, four of them gated and two of them dimmed by a colour digit.",
+   "what": "The whole one-shot menu `1000:d816`..`1000:dabb` was unported past `1000:d8b9` as of Task 27. Eleven more lines, four of them gated and two of them dimmed by a colour digit. Ported by Task 28 as `Game::print_den_menu`.",
    "blocked": false
   },
   {

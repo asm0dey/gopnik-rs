@@ -69,14 +69,88 @@ fn write_out(s: &str) {
 /// Write one line of game text to stdout, with `^N` markup rendered as
 /// colour when the destination can display it and stripped when it cannot.
 pub fn println(src: &str) {
+    #[cfg(test)]
+    if capture::push(src, true) {
+        return;
+    }
     write_out(&rendered(src));
     write_out("\n");
 }
 
 /// Same, without the trailing newline (for prompts). Flushes.
 pub fn print(src: &str) {
+    #[cfg(test)]
+    if capture::push(src, false) {
+        return;
+    }
     write_out(&rendered(src));
     let _ = io::stdout().flush();
+}
+
+/// Test-only output capture.
+///
+/// `println`/`print` write straight to `io::stdout()`, which is why
+/// `tests/den_reveal_subprocess.rs` had to spawn the real binary to assert
+/// on a *printed line* rather than on game state. That is the right harness
+/// for "what does the shipped binary do", but it cannot reach a branch whose
+/// precondition needs a specific RNG outcome -- and the den's `d` arm
+/// (`1000:dd32`..`1000:decd`) has three such branches. This seam exists so a
+/// unit test can assert the exact lines an arm emits.
+///
+/// It captures the **source** string, before `rendered` applies the colour
+/// policy, so an assertion compares against the literal quoted from
+/// `data/strings.json` and does not change meaning with `NO_COLOR`,
+/// `CLICOLOR_FORCE` or whether stdout is a tty.
+#[cfg(test)]
+pub mod capture {
+    use std::cell::RefCell;
+
+    thread_local! {
+        static SINK: RefCell<Option<String>> = const { RefCell::new(None) };
+    }
+
+    /// Appends to the active sink and reports whether one was active. When
+    /// none is, the caller falls through to the real stdout write.
+    pub(super) fn push(src: &str, newline: bool) -> bool {
+        SINK.with(|s| match s.borrow_mut().as_mut() {
+            Some(buf) => {
+                buf.push_str(src);
+                if newline {
+                    buf.push('\n');
+                }
+                true
+            }
+            None => false,
+        })
+    }
+
+    /// Clears the sink on drop, so a panicking assertion inside `lines`
+    /// cannot leave capture armed for the next test on this thread.
+    struct Guard;
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            SINK.with(|s| *s.borrow_mut() = None);
+        }
+    }
+
+    /// Runs `f` with output captured and returns the lines it wrote, split
+    /// on `\n`. A trailing `print` with no newline still yields its own
+    /// entry; a run that wrote nothing yields an empty `Vec`.
+    pub fn lines(f: impl FnOnce()) -> Vec<String> {
+        SINK.with(|s| *s.borrow_mut() = Some(String::new()));
+        let _guard = Guard;
+        f();
+        let text = SINK.with(|s| s.borrow().clone()).unwrap_or_default();
+        if text.is_empty() {
+            return Vec::new();
+        }
+        text.strip_suffix('\n')
+            .unwrap_or(&text)
+            .split('\n')
+            .map(str::to_string)
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -123,5 +197,43 @@ mod tests {
         let _lock = COLOR_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _guard = OverrideGuard::new(false);
         assert_eq!(rendered("^4x"), text::strip("^4x"));
+    }
+
+    /// The capture seam every den-arm line assertion in `crate::game` rests
+    /// on. Three properties it has to have for those to mean what they say:
+    /// a `print` and the `println` after it are ONE line (which is how
+    /// `1000:dc1c`/`1000:dc39`'s two-`print`-then-`println` announcement is
+    /// asserted), an empty `println` is a line and not nothing, and the
+    /// markup survives -- capture takes the SOURCE, so the assertions
+    /// compare against `data/strings.json`'s own bytes whatever the ambient
+    /// colour policy is.
+    #[test]
+    fn capture_joins_a_print_into_the_line_that_follows_it() {
+        let out = capture::lines(|| {
+            println("^2first");
+            print("^6a ");
+            print("b ");
+            println("c");
+            println("");
+        });
+        assert_eq!(out, vec!["^2first", "^6a b c", ""]);
+        assert!(capture::lines(|| {}).is_empty());
+    }
+
+    /// A panic inside the captured closure must not leave the sink armed
+    /// for the next test on this thread -- otherwise one failing assertion
+    /// would silently swallow another test's output.
+    #[test]
+    fn capture_disarms_itself_when_the_closure_panics() {
+        let panicked = std::panic::catch_unwind(|| {
+            capture::lines(|| {
+                println("swallowed");
+                panic!("deliberate");
+            })
+        });
+        assert!(panicked.is_err());
+        // If the guard had not fired, this would capture nothing at all.
+        let out = capture::lines(|| println("visible"));
+        assert_eq!(out, vec!["visible"]);
     }
 }
