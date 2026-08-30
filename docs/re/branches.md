@@ -485,7 +485,7 @@ own columns when Ghidra last ran (`82a08d8`); the table below is recomputed from
 the shipped tree, and the block under *Recomputation* prints it. Quote the
 command, not the cell.
 
-After Task 28: 838 game branches; **424 touched (50.6%)**; 414 with no citation
+After Task 30: 838 game branches; **449 touched (53.6%)**; 389 with no citation
 at the branch or its guard. The recent history, each figure from the block under
 *Recomputation* run against a `git worktree` of that commit: `3981f74` (before
 Task 22) 280 (33.4%); `e657bbe` (Task 22 ported) 305 (36.4%); `19a1a34`
@@ -494,7 +494,12 @@ Task 22) 280 (33.4%); `e657bbe` (Task 22 ported) 305 (36.4%); `19a1a34`
 by nothing at all; Task 26 (`mar` rows 1-9 ported) 388 (46.3%), all of the +40
 in `1000:ab59` (148 → 188); `629e56a` (Task 27, the den's submenu MAPPED)
 **still 388** — the same nothing an RE-only task moved at Task 25, measured
-again; Task 28 (the den's submenu ported) 424 (50.6%).
+again; Task 28 (the den's submenu ported) 424 (50.6%); `ccbccf7` and `e6b62eb`
+(Task 29, the dealers' SELL path MAPPED) **still 424** — a third time, and here
+it needed no worktree measurement at all: neither commit touches a path in
+`port_citation_sources` (`src/**/*.rs`, `data/command_dispatch.json`), so the
+scan's whole input is byte-identical; Task 30 (the sell path ported) 449
+(53.6%).
 
 **Task 28's +36 splits across two functions.** `1000:ab59` goes 188 → 214
 (+26, the den's own gates and arms) and `1000:3d11` goes 96 → 106 (+10, from
@@ -516,10 +521,29 @@ and *citing a branch* the paragraph above is about. (The two `1000:ab59` and
 | `1000:0d14` | 11 (unchanged) | 53 → 58 |
 | `1000:2526` | 9 (unchanged) | 51 → 54 |
 
+**Task 30's +25 lands in one function**, `1000:ab59` (214 → **239**), and its
+`citations` column goes 1360 → 1522. The +25 is the whole of the dealers' sell
+path: `1000:ce76`..`1000:d383` holds 26 game branches, of which exactly one
+(`1000:ce8c`, guarded by `1000:ce87`) was already touched — `src/model.rs`'s
+`Fighter::junk` doc cited the guard. Every other function's `touched` column is
+unchanged: `1000:3d11` 106, `1000:1a03` 54, `1000:6a0d` 15, `1000:29c4` 2,
+`1000:0d14` 11, `1000:2526` 9, `1000:7c67` 12, `1000:1348` 1, and the last
+seven 0. Exactly one other function's `citations` moved — `1000:3d11`
+660 → **663**, the three victory-block and loot-arm addresses
+(`1000:523e`/`1000:524f`/`1000:5251` and `1000:573e`) the sell arms' doc
+comments name — and its `touched` did not, which is the address-versus-branch
+gap again.
+
+**One cell above does not reproduce, and is recorded rather than overwritten.**
+The Task 28 table says `1000:2526` went `51 → 54`; the *Recomputation* block
+prints **55** for that function both at `e6b62eb` (before Task 30) and at this
+tree, and Task 30 changed it by zero. The discrepancy is one citation site and
+predates Task 30.
+
 **The per-entry table below is Task 26's and is NOT recomputed here.** Every
-cell Task 28 changed is in the table just above; the rest of the columns are
-byte-for-byte what the *Recomputation* block prints at this tree. Quote the
-command, not the cell.
+cell Tasks 28 and 30 changed is in the two blocks just above; the rest of the
+columns are byte-for-byte what the *Recomputation* block prints at this tree.
+Quote the command, not the cell.
 
 **Over the whole shop-arms branch the figure is +83, and it does NOT all land
 in one function.** `bfad0b4` → `e4e929b` is 305 → 388, splitting **+81 in
@@ -713,18 +737,23 @@ for s in spans[:12]:
 EOF
 ```
 
-At Task 26's tree that prints, verbatim, the numbers this document's tables
-carry:
+At Task 30's tree that prints, verbatim, the numbers this document's tables
+carry. Task 30 ported the dealers' sell path, which is why
+`1000:ced9..1000:d382` -- the 24-branch span that headed this ranking at
+Task 26 -- is gone from it entirely: all 26 game branches in
+`1000:ce76`..`1000:d383` are now cited, so no span survives there. The Task 24
+and Task 26 totals this block used to print are in the history sentence above,
+and in `docs/superpowers/RESUME.md`'s measured-history table:
 
 ```
-game branches 838 | touched 388 (46.3%) | uncited 450
-1000:ab59    bytes 17143 branches 406 touched 188 citations 1136
-1000:3d11    bytes  6971 branches 224 touched  96 citations 630
-1000:1a03    bytes  2700 branches  83 touched  54 citations 174
-1000:6a0d    bytes  2527 branches  33 touched  15 citations 158
+game branches 838 | touched 449 (53.6%) | uncited 389
+1000:ab59    bytes 17143 branches 406 touched 239 citations 1522
+1000:3d11    bytes  6971 branches 224 touched 106 citations 663
+1000:1a03    bytes  2700 branches  83 touched  54 citations 176
+1000:6a0d    bytes  2527 branches  33 touched  15 citations 159
 1000:29c4    bytes   666 branches  19 touched   2 citations  26
-1000:0d14    bytes  1196 branches  17 touched  11 citations  53
-1000:2526    bytes   929 branches  17 touched   9 citations  51
+1000:0d14    bytes  1196 branches  17 touched  11 citations  58
+1000:2526    bytes   929 branches  17 touched   9 citations  55
 1000:7c67    bytes  1612 branches  16 touched  12 citations  39
 1000:1348    bytes   791 branches  11 touched   1 citations  18
 1000:0aec    bytes   552 branches   5 touched   0 citations   0
@@ -734,19 +763,19 @@ game branches 838 | touched 388 (46.3%) | uncited 450
 1000:5f55    bytes  1000 branches   1 touched   0 citations   4
 1000:02c2    bytes   508 branches   0 touched   0 citations   0
 1000:0acc    bytes    15 branches   0 touched   0 citations   0
-421 spans hold 698 of the 838
-   24  1000:ced9..1000:d382     1000:ab59       1194 bytes
-   22  1000:d8c9..1000:dc0d     1000:ab59        837 bytes
+430 spans hold 647 of the 838
    21  1000:e590..1000:e947     1000:ab59        952 bytes
    17  1000:4169..1000:43f5     1000:3d11        653 bytes
-   10  1000:3d12..1000:3dc6     1000:3d11        181 bytes
-    9  1000:dd33..1000:ddf5     1000:ab59        195 bytes
     9  1000:dfcc..1000:e180     1000:ab59        437 bytes
+    8  1000:3d33..1000:3dc6     1000:3d11        148 bytes
     8  1000:ea95..1000:ec81     1000:ab59        493 bytes
     6  1000:1e07..1000:1e34     1000:1a03         46 bytes
     6  1000:e23f..1000:e36c     1000:ab59        302 bytes
     5  1000:0aec..1000:0d13     1000:0aec        552 bytes
     5  1000:2bc0..1000:2c52     1000:29c4        147 bytes
+    5  1000:b35d..1000:b392     1000:ab59         54 bytes
+    5  1000:b3dc..1000:b464     1000:ab59        137 bytes
+    5  1000:d5da..1000:d6c9     1000:ab59        240 bytes
 ```
 
 At `e657bbe` — and unchanged by the fix wave that followed it, which added no

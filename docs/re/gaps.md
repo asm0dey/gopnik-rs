@@ -1695,19 +1695,23 @@ points at this entry.
   full, the cosmetic draw skipped, the hp clamp deleted, the menu filter
   deleted. `docs/re/shop-arms.md`'s closing section has the table.
 
-  **`bmar`'s `x`/`wes` sell arms are mapped but NOT ported — Task 29.**
-  `1000:ce76`..`1000:d383`, 580 instructions: the `x` junk arm and six
-  sequential `wes` offers, in `docs/re/shop-arms.md`'s third part and under
-  `data/shop_arms.json`'s `sell` key. `Game::sell_junk` and
-  `Game::sell_items` are still hardcoded refusals that read no state at all
-  (`grep -n 'fn sell_junk\|fn sell_items' src/game.rs`), so every one of the
-  following is a live divergence until Task 30 lands:
+  **`bmar`'s `x`/`wes` sell arms — mapped by Task 29, PORTED by Task 30, so
+  this entry is CLOSED.** `1000:ce76`..`1000:d383`, 580 instructions: the `x`
+  junk arm and six sequential `wes` offers, in `docs/re/shop-arms.md`'s third
+  part and under `data/shop_arms.json`'s `sell` key. `Game::sell_junk` and
+  `Game::sell_items` were hardcoded refusals that read no state at all; each
+  refusal is now the *else* of its recovered gate. The six bullets below are
+  what the port had to reproduce, and each is now pinned by a `#[test]` in
+  `src/game.rs`; the whole range's 26 game branches are cited from `src/`
+  (`docs/re/branches.md`, *Recomputation → Coverage*: 424 → 449):
 
   * **`x` credits the junk one-for-one and zeroes it** (`1000:ce8e`
     `mov ax,[0x38c9]`, `1000:ce91 add [0x38c7],ax`, `1000:ce97`
     `mov [0x38c9],ax`) whenever `20ae:38c9` is positive; there is no rate,
-    no `Random` and no number in either printed line. The port refuses
-    unconditionally.
+    no `Random` and no number in either printed line. `1000:ce87` is a
+    SIGNED word compare, so `Game::sell_junk` reads `player.junk as i16` --
+    a `u16` word with the top bit set takes the `1000:ce8c jle` refusal too,
+    which `dealers_x_refuses_a_junk_word_whose_top_bit_is_set` pins.
   * **`wes` offers six sales**, each gated on owning the LESSER rung of a
     ladder while owning a better one — `20ae:38b4` needs `20ae:38b7`,
     `20ae:38b5` needs `20ae:38b8`, `20ae:38b6` needs `20ae:38b9`, and the
@@ -1725,9 +1729,24 @@ points at this entry.
   * **`^6У тебя нет неужных вещей.` means `nothing was OFFERED`**, gated on
     the `0xff` sentinel at `1000:d33a`, not on whether anything was sold.
 
-  `sell_junk`'s doc comment still says the player's junk always stays 0 and
-  cites this file for it; the entry above records that Task 13 falsified
-  that, so the comment is stale as well as the behaviour.
+  `sell_junk`'s doc comment used to say the player's junk always stays 0 and
+  cited this file for it; Task 13 falsified that, and Task 30 deleted the
+  claim rather than leaving it beside the working arm.
+
+  **One divergence the port keeps here**, and it is not new: the six `wes`
+  answers are `.trim()`ed before the `y` compare, while `1000:cf6d` and its
+  five twins hand the raw `20ae:3a72` buffer to `0f78:0bd8`, which compares
+  the shortstring length byte too — so `" y"` sells here and refuses there.
+  These six reads join the population of this file's trimmed-prompt entry.
+  A second, smaller one: EOF on a sell prompt ends the run, because the
+  original blocks in `ReadLn` and a line-based port has no such state.
+
+  **What Task 30 did NOT do**, stated so the next task does not assume it:
+  it did not re-map anything. Every address it cites comes from Task 29's
+  `data/shop_arms.json`, and the six roll sites plus four `WriteLn` sites
+  were re-checked against `orig/g.exe` with
+  `python3 tools/re_query.py is-call-site` / `pushed-n` / `resolve` before
+  being written into `src/`.
 
   **What Task 26 did NOT close, and what it found.** The armour-flag
   divergence above is now reachable from play as well as from a load, and is

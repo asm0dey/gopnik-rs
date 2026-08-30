@@ -454,10 +454,11 @@ is the one failure mode a replay cannot see.
 
 ## How much is actually traced
 
-**381 of 838 game branches (45.5%)** have their branch address or guard cited
-anywhere in `docs/re/*.md`, measured after Task 26 with the snippet below.
+**446 of 838 game branches (53.2%)** have their branch address or guard cited
+anywhere in `docs/re/*.md`, measured after Task 30 with the snippet below.
 (This line read `296 / 838 (35.3%)`, measured after Task 19, until Task 26
-re-ran it.)
+re-ran it to `381`; Tasks 27 and 29 took it to 430 and 446, and Tasks 28 and 30
+-- both ports -- moved it by +3 and 0.)
 
 This file previously said `134 / 838` here and `157/838` further down, both
 stale, and both left standing through a whole session because the instruction
@@ -483,7 +484,12 @@ the rate rather than trust a number:
 | `2460184` | after Task 24's fix wave | 339/838 |
 | `7b04cdf` | Task 25 mapped (`mar` rows 1-9) | **381/838** |
 | `768a85e` | after Task 25's fix wave | 381/838 |
-| — | Task 26 ported (`mar` rows 1-9) | 381/838 |
+| `7695ef9` | Task 26 ported (`mar` rows 1-9) | 381/838 |
+| `629e56a` | Task 27 mapped (the den's submenu) | **430/838** |
+| `c5f1f2e` | Task 28 ported (the den's submenu) | **433/838** |
+| `ccbccf7` | Task 29 mapped (the dealers' sell path) | **446/838** |
+| `e6b62eb` | after Task 29's fix wave | 446/838 |
+| — | Task 30 ported (the dealers' sell path) | 446/838 |
 
 **Both metrics, side by side, across the same four tasks** — because between
 them they are the cleanest demonstration in this file of what each one
@@ -498,14 +504,37 @@ for the right, `data/branches.json`'s `port_touched` over `src/**/*.rs` and
 | `e657bbe` | Task 22 (port) | 302/838 | 305/838 |
 | `19a1a34` | Task 24 (port, `bmar` rows 1-6) | 339/838 | **348/838** |
 | `7b04cdf` | Task 25 (RE, `mar` rows 1-9) | **381/838** | 348/838 |
-| — | Task 26 (port, `mar` rows 1-9) | 381/838 | **388/838** |
+| `7695ef9` | Task 26 (port, `mar` rows 1-9) | 381/838 | **388/838** |
+| `629e56a` | Task 27 (RE, the den's submenu) | **430/838** | 388/838 |
+| `c5f1f2e` | Task 28 (port, the den's submenu) | 433/838 | **424/838** |
+| `e6b62eb` | Task 29 (RE, the dealers' sell path) | **446/838** | 424/838 |
+| — | Task 30 (port, the dealers' sell path) | 446/838 | **449/838** |
 
-Read the two middle rows together. **Task 25 moved the documents metric by +42
+Read the alternating rows together. **Task 25 moved the documents metric by +42
 and the port metric by exactly 0**; **Task 26 moved the port metric by +40 and
 the documents metric by exactly 0.** One task wrote a map and shipped no
 behaviour; the next shipped the behaviour and wrote no new addresses into
 `docs/`, because the map already held them all. Neither number on its own says
 which task moved the game.
+
+The pattern repeats twice more, and the two later pairs are cleaner than the
+first. **Task 27 moved documents +49 and the port 0; Task 29 moved documents
++13 and the port 0.** For Task 29 that is not even a measurement: neither of its
+commits touches a path in `data/branches.json`'s `port_citation_sources`
+(`src/**/*.rs`, `data/command_dispatch.json`), so the scan's entire input is
+byte-identical and the figure cannot have moved. **Task 30 moved the port +25
+and documents by exactly 0** — its `docs/` edits are prose about a range whose
+addresses `docs/re/shop-arms.md` already carried, which is what a port task's
+documents row should look like.
+
+Task 28 is the one row where both columns moved (documents +3, port +36). The
++3 is exactly three branches — `1000:57b4`, `1000:57bb` and `1000:57c2` — and
+all three entered through `docs/re/gaps.md`, not through a new map section;
+that is the set difference between the two commits' cited-address sets, not an
+inference from the totals. Method for both columns is unchanged: the left is the
+`docs/re/*.md` glob snippet below, the right the block in `docs/re/branches.md`
+under *Recomputation → Coverage*, each run over `git show <rev>:<file>` for the
+commit named.
 
 **Two cautions on the first table above** -- the long `cited` history, not the
 four-row side-by-side that Task 26 inserted between it and this paragraph.
@@ -518,7 +547,8 @@ globs `docs/re/*.md` and nothing else, so it rises when a document is written
 and barely moves when the port advances — Task 22 ported a 2700-byte function
 and moved it by **one**. The metric that tracks the port is
 `data/branches.json`'s `port_touched` over `src/`, which went 280 → 305 across
-the same range and 305 → 388 across Tasks 23-26; see `docs/re/branches.md`
+the same range, 305 → 388 across Tasks 23-26 and 388 → 449 across Tasks 27-30;
+see `docs/re/branches.md`
 under *Recomputation → Coverage*.
 
 The whole of Tasks 13-review and 14 moved it by **zero**; Task 15's +3 are the

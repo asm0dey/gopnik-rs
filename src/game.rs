@@ -1027,8 +1027,20 @@ impl Game {
             Command::Joint => self.smoke(Joint::Street),
             Command::Drink => self.beer(Beer::One),
             Command::BingeDrink => self.beer(Beer::Binge),
-            Command::SellJunk => self.sell_junk(),
-            Command::SellItems => self.sell_items(),
+            // `x` and `wes` are DEALERS sub-verbs, not street verbs, so the
+            // street prompt takes the same silent `1000:ee01 jmp 0xab75` an
+            // unmatched line takes. Neither is in
+            // `data/command_dispatch.json`'s confirmed chain, and the only
+            // `mov di,0x96ce` / `mov di,0x970a` in the image are
+            // `1000:ce7b` and `1000:ced3`, both inside the `bmar` handler
+            // (byte scan of `bf ce 96` and `bf 0a 97` over `orig/g.exe`, one
+            // hit each, at file `0xE74B` and `0xE7A3` -- a byte scan, so it
+            // covers only the `mov di,imm16` encoding). An earlier revision
+            // called `Game::sell_junk` here, which made the refusal line --
+            // and, once the arm was real, the sale itself -- reachable from
+            // the street, where the original has no such verb.
+            // `Game::shop_turn` is the only route to those two arms.
+            Command::SellJunk | Command::SellItems => {}
             // An unmatched line writes nothing at all: the last compare in
             // the chain (`exit`/`e`, 1000:edfa) falls through to
             // `jmp 0xab75` at 1000:ee01, straight back to the top of the
@@ -1776,8 +1788,13 @@ impl Game {
         match (loc, key.as_str()) {
             (Location::Vet, "h") => self.heal_jaw(),
             (Location::Vet, "r") => self.heal_leg(),
+            // 1000:ce80 against CS 0x96ce (`x`); 1000:ce85 misses straight
+            // into the `wes` compare below, so a line that reaches the junk
+            // arm also runs it -- and then misses on the buffer `x`.
             (Location::Dealers, "x") => self.sell_junk(),
-            (Location::Dealers, "wes") => self.sell_items(),
+            // 1000:ced8 against CS 0x970a (`wes`); 1000:cedd is the hit, the
+            // inverted pair over `1000:cedf jmp 0xd36d`.
+            (Location::Dealers, "wes") => return self.sell_items(lines),
             // 1000:db2c, key literal CS 0x9ec1.
             (Location::Den, "p") => self.den_beer(),
             // 1000:db81, key literal CS 0x9a50.
@@ -3710,21 +3727,326 @@ impl Game {
         ]
     }
 
-    /// `x` at the dealers: sell junk. `crate::model::Fighter::junk` exists
-    /// and is rolled onto a defeated enemy (`roll_enemy`), but combat
-    /// victory never awards it to the player -- `Game::run_combat` does not
-    /// yet reproduce `1000:523e`..`1000:5251` (see `docs/re/gaps.md`). The
-    /// player's `junk` therefore always stays at 0, so the "nothing to
-    /// sell" branch is always true (`^4Тебе нечего спихнуть.`, file
-    /// `0xAFC2`).
-    fn sell_junk(&self) {
-        term::println("^4Тебе нечего спихнуть.");
+    /// `x` at the dealers -- `1000:ce76`..`1000:cece`, sell the Хлам.
+    ///
+    /// **Established from flow** (`docs/re/shop-arms.md`, "`x` -- sell the
+    /// Хлам"; re-decoded for this task with
+    /// `python3 tools/re_query.py resolve 1000:ce76 -n 200 -i 60`, the two
+    /// rigidly repeated `push cs`/`push di` and `xor ax,ax`/`push ax` shapes
+    /// dropped):
+    ///
+    /// ```text
+    /// ce76  mov di,0x3a72 / ce7b mov di,0x96ce  ; the buffer, the `x` token
+    /// ce80  call 0f78:0bd8 / ce85 jnz 0xcece    ; miss -> the `wes` compare
+    /// ce87  cmp word [0x38c9],0x0
+    /// ce8c  jle 0xceb5                          ; SIGNED: 0 and below refuse
+    /// ce8e  mov ax,[0x38c9]
+    /// ce91  add [0x38c7],ax                     ; money += the WHOLE Хлам
+    /// ce95  xor ax,ax / ce97 mov [0x38c9],ax    ; Хлам := 0
+    /// ce9a  mov di,0x96d0 / ceae call 0eed:01c2
+    /// ceb3  jmp short 0xcece
+    /// ceb5  mov di,0x96f2 / cec9 call 0eed:01c2
+    /// ```
+    ///
+    /// **There is no rate.** Nothing stands between the load at `1000:ce8e`
+    /// and the add at `1000:ce91`; an aligned decode of the whole span holds
+    /// no `mul`, `imul`, `div`, `idiv`, shift or `Random` call, and its
+    /// complete write set is those two stores
+    /// (`data/shop_arms.json`, `sell.junk_arm.rate_finding`). Neither line
+    /// names a number -- both `WriteLn`s carry five zeroed format words.
+    ///
+    /// An earlier revision of this doc justified a hardcoded refusal here by
+    /// claiming the player's `junk` always stays 0. Task 13 falsified that:
+    /// [`Game::claim_spoils`] reproduces `1000:523e`..`1000:5251`, whose
+    /// `1000:524f` `add [0x38c9],ax` credits the winner. The claim is
+    /// deleted rather than left standing beside working code.
+    fn sell_junk(&mut self) {
+        // 1000:ce87 is `83 3e c9 38 00` and 1000:ce8c is a `jle`, so the
+        // word is read SIGNED. `Fighter::junk` is a `u16` over the same 16
+        // bits, so this cast is what keeps a 0x8000..0xffff word refusing
+        // here exactly as the original does.
+        if (self.player.junk as i16) <= 0 {
+            // CS 0x96f2, file 0xAFC2; pushed 1000:ceb5, printed 1000:cec9.
+            term::println("^4Тебе нечего спихнуть.");
+            return;
+        }
+        // 1000:ce8e / 1000:ce91 -- the whole word, one for one.
+        self.player.money += i32::from(self.player.junk);
+        // 1000:ce95 / 1000:ce97.
+        self.player.junk = 0;
+        // CS 0x96d0, file 0xAFA0; pushed 1000:ce9a, printed 1000:ceae.
+        term::println("^6Барыги дали тебе денег за хлам.");
     }
 
-    /// `wes` at the dealers: sell unneeded items. Same gap as
-    /// [`Game::sell_junk`] (`^6У тебя нет неужных вещей.`, file `0xB1AE`).
-    fn sell_items(&self) {
-        term::println("^6У тебя нет неужных вещей.");
+    /// The middle every one of the six `wes` arms shares: the prompt, the
+    /// `ReadLn`, the refund roll and the `y` compare. Arm 1's addresses are
+    /// the ones named below; the other five repeat the shape with their own
+    /// `roll_site`, `base` and `span` (see [`Game::sell_items`]).
+    ///
+    /// ```text
+    /// cf14  mov di,0x973c / cf28 call 0eed:0000  ; the prompt, NO newline
+    /// cf2d  mov di,0x3ecc / cf32 mov di,0x3a72 / cf37 mov ax,0xff
+    /// cf3b  call 0f78:06c6 / cf40 call 0f78:059d / cf45 call 0f78:0291
+    /// cf4a  mov di,0x3a72 / cf4f call 0eed:0216  ; lower-case the answer
+    /// cf54  mov ax,0x5 / cf58 call 0f78:114b     ; Random(5)
+    /// cf5d  add ax,0x8 / cf60 mov [0x3e33],al    ; the refund, STORED HERE
+    /// cf63  mov di,0x3a72 / cf68 mov di,0x8323 / cf6d call 0f78:0bd8
+    /// cf72  jnz 0xcf9c                           ; declined -> the next arm
+    /// ```
+    ///
+    /// **The draw is spent even when the player declines.** The store at
+    /// `1000:cf60` precedes the compare at `1000:cf6d` in every arm
+    /// (`1000:d015` before `1000:d022`, `1000:d0ca` before `1000:d0d7`,
+    /// `1000:d18d` before `1000:d19a`, `1000:d249` before `1000:d256`,
+    /// `1000:d2fe` before `1000:d30b`), so the roll comes first and the
+    /// question second. Returning the refund alongside the answer is what
+    /// keeps that order un-reorderable here.
+    ///
+    /// `None` is EOF on the read. The original blocks in `ReadLn`; a
+    /// line-based port has no such state, and every other `lines.next()` in
+    /// this file ends the run the same way.
+    fn sell_offer(
+        rng: &mut Rng,
+        roll_site: &'static str,
+        base: u16,
+        span: u16,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<Option<(bool, i32)>> {
+        // CS 0x973c, file 0xB00C -- the same literal in all six arms
+        // (pushed 1000:cf14, 1000:cfc9, 1000:d07e, 1000:d141, 1000:d1fd,
+        // 1000:d2b2), written by the no-newline `0eed:0000`.
+        term::print("^0Продать вещи\\");
+        let Some(line) = lines.next() else {
+            return Ok(None);
+        };
+        let answer = line?;
+        // The roll, AFTER the read and BEFORE the compare.
+        let refund = i32::from(base + rng.below_at(roll_site, span));
+        // 1000:cf4f `call 0eed:0216` folds only `A`..`Z`, so `Y` sells;
+        // `eq_ignore_ascii_case` is that same ASCII-only fold. The `.trim()`
+        // is the port addition `docs/re/gaps.md`'s trimmed-prompt entry
+        // already owns -- the original hands the raw buffer to
+        // `0f78:0bd8`, which compares the shortstring's length byte too.
+        Ok(Some((answer.trim().eq_ignore_ascii_case("y"), refund)))
+    }
+
+    /// `wes` at the dealers -- `1000:cece`..`1000:d383`, six sequential
+    /// offers. **Established from flow** (`docs/re/shop-arms.md`, "`wes` --
+    /// six sequential offers"; `data/shop_arms.json`'s `sell.arms`).
+    ///
+    /// It is **six** arms, not seven: `1000:ce85 jnz 0xcece` is the `x`
+    /// compare's miss branch, not an arm opener.
+    ///
+    /// The gate is `own && (any strictly better rung owned)` -- an
+    /// own-plus-REPLACEMENT pairing, not own-plus-equipped; there is no
+    /// equipped bit in the image. The three armour arms take one required
+    /// flag, the weapon arms a short-circuit `or` over three, two and one.
+    /// `20ae:394c` (тесак) is never sellable: its only image-wide writer is
+    /// the loot arm at `1000:573e`.
+    ///
+    /// **The arms are not exclusive.** Each confirmation `WriteLn` is
+    /// immediately followed by the next arm's own-flag test, so one `wes`
+    /// can sell up to six items and read up to six lines.
+    ///
+    /// **Nothing is unwound.** No arm subtracts the sold item's stat bonus
+    /// and none clears the better item's flag: the armour byte `20ae:38b2`
+    /// and the damage words `20ae:38a8`/`20ae:38aa` are not among the
+    /// thirteen DGROUP addresses the whole range references. Reproduced,
+    /// not fixed.
+    ///
+    /// **The refund is the arm's own pair of immediates**, never the buy
+    /// price -- 8+R(5), 8+R(5), 13+R(8), 13+R(8), 25+R(15), 38+R(23). No
+    /// price table is referenced anywhere in the range.
+    fn sell_items(
+        &mut self,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<()> {
+        // 1000:cee2 `mov byte [0x3e33],0xff` -- the sell-price scratch byte
+        // set to its sentinel before any gate is tested. The tail at
+        // 1000:d33a compares it back against 0xff, and no roll can produce
+        // that value (the largest refund is 38 + 22 = 60), so "still 0xff"
+        // is exactly "no arm was OFFERED" and this bool carries the same
+        // information.
+        let mut offered = false;
+
+        // Arm 1, костюм Abibas. Own gate 1000:cee7 `cmp byte [0x38b4],0x0`
+        // / 1000:ceec `jnz 0xcef1`, miss `1000:ceee jmp 0xcf9c`; ladder gate
+        // 1000:cef1 `cmp byte [0x38b7],0x0` / 1000:cef6 `jnz 0xcefb`, miss
+        // `1000:cef8 jmp 0xcf9c`. Both misses are silent.
+        if self.wear_suit_abibas_38b4 && self.wear_suit_adidas_38b7 {
+            offered = true;
+            // CS 0x970e, file 0xAFDE; pushed 1000:cefb, printed 1000:cf0f.
+            term::println("^2У тебя есть ненужный костюм хочешь продать?");
+            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, "1000:cf58", 8, 5, lines)?
+            else {
+                self.running = false;
+                return Ok(());
+            };
+            // 1000:cf6d against CS 0x8323 (`y`); 1000:cf72 declines to the
+            // next arm's own-flag test.
+            if yes {
+                // CS 0x974c, file 0xB01C; pushed 1000:cf81, printed
+                // 1000:cf97. The `#` is 1000:cf86 `mov al,[0x3e33]`.
+                self.wear_suit_abibas_38b4 = false; // 1000:cf74
+                self.player.money += refund; // 1000:cf79 / 1000:cf7c / 1000:cf7d
+                term::println(&text::fill(
+                    "^2Ты продал костюм за #.",
+                    &[i64::from(refund)],
+                ));
+            }
+        }
+
+        // Arm 2, Бутсы. Own gate 1000:cf9c / 1000:cfa1, miss
+        // `1000:cfa3 jmp 0xd051`; ladder gate 1000:cfa6 `cmp byte
+        // [0x38b8],0x0` / 1000:cfab, miss `1000:cfad jmp 0xd051`.
+        if self.wear_boots_38b5 && self.wear_boots_pontovye_38b8 {
+            offered = true;
+            // CS 0x9765, file 0xB035; pushed 1000:cfb0, printed 1000:cfc4.
+            term::println("^2У тебя есть ненужные кроссовки хочешь продать?");
+            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, "1000:d00d", 8, 5, lines)?
+            else {
+                self.running = false;
+                return Ok(());
+            };
+            // 1000:d022; 1000:d027 declines to 1000:d051.
+            if yes {
+                // CS 0x9796, file 0xB066; pushed 1000:d036, printed
+                // 1000:d04c; the `#` is 1000:d03b.
+                self.wear_boots_38b5 = false; // 1000:d029
+                self.player.money += refund; // 1000:d032
+                term::println(&text::fill(
+                    "^2Ты продал кроссовки за #.",
+                    &[i64::from(refund)],
+                ));
+            }
+        }
+
+        // Arm 3, Кожанка. Own gate 1000:d051 / 1000:d056, miss
+        // `1000:d058 jmp 0xd106`; ladder gate 1000:d05b `cmp byte
+        // [0x38b9],0x0` / 1000:d060, miss `1000:d062 jmp 0xd106`.
+        if self.wear_jacket_38b6 && self.wear_jacket_krutaya_38b9 {
+            offered = true;
+            // CS 0x97b2, file 0xB082; pushed 1000:d065, printed 1000:d079.
+            term::println("^2У тебя есть ненужная кожанка хочешь продать?");
+            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, "1000:d0c2", 13, 8, lines)?
+            else {
+                self.running = false;
+                return Ok(());
+            };
+            // 1000:d0d7; 1000:d0dc declines to 1000:d106.
+            if yes {
+                // CS 0x97e1, file 0xB0B1; pushed 1000:d0eb, printed
+                // 1000:d101; the `#` is 1000:d0f0.
+                self.wear_jacket_38b6 = false; // 1000:d0de
+                self.player.money += refund; // 1000:d0e7
+                term::println(&text::fill(
+                    "^2Ты продал кожанку за #.",
+                    &[i64::from(refund)],
+                ));
+            }
+        }
+
+        // Arm 4, Кастет. Own gate 1000:d106 / 1000:d10b, miss
+        // `1000:d10d jmp 0xd1c9`; then a three-conjunct short-circuit `or`,
+        // each conjunct's `jnz` jumping FORWARD to the offer at 1000:d128 --
+        // 1000:d110 `cmp byte [0x394b],0x0` / 1000:d115, 1000:d117
+        // `cmp byte [0x38c2],0x0` / 1000:d11c, 1000:d11e
+        // `cmp byte [0x394c],0x0` / 1000:d123 -- with the all-clear miss at
+        // `1000:d125 jmp 0xd1c9`.
+        if self.weapon_kastet_38ba
+            && (self.weapon_dubinka_394b || self.weapon_nozhik_38c2 || self.weapon_tesak_394c)
+        {
+            offered = true;
+            // CS 0x97fb, file 0xB0CB; pushed 1000:d128, printed 1000:d13c.
+            term::println("^2У тебя есть кастет, а это отстой хочешь продать?");
+            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, "1000:d185", 13, 8, lines)?
+            else {
+                self.running = false;
+                return Ok(());
+            };
+            // 1000:d19a; 1000:d19f declines to 1000:d1c9.
+            if yes {
+                // CS 0x982e, file 0xB0FE; pushed 1000:d1ae, printed
+                // 1000:d1c4; the `#` is 1000:d1b3.
+                self.weapon_kastet_38ba = false; // 1000:d1a1
+                self.player.money += refund; // 1000:d1aa
+                term::println(&text::fill(
+                    "^2Ты продал кастет за #.",
+                    &[i64::from(refund)],
+                ));
+            }
+        }
+
+        // Arm 5, Дубинка. Own gate 1000:d1c9 / 1000:d1ce, miss
+        // `1000:d1d0 jmp 0xd285`; two conjuncts, 1000:d1d3
+        // `cmp byte [0x38c2],0x0` / 1000:d1d8 and 1000:d1da
+        // `cmp byte [0x394c],0x0` / 1000:d1df, miss `1000:d1e1 jmp 0xd285`.
+        if self.weapon_dubinka_394b && (self.weapon_nozhik_38c2 || self.weapon_tesak_394c) {
+            offered = true;
+            // CS 0x9847, file 0xB117; pushed 1000:d1e4, printed 1000:d1f8.
+            term::println("^2У тебя есть дубинка - барахло - хочешь продать?");
+            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, "1000:d241", 25, 15, lines)?
+            else {
+                self.running = false;
+                return Ok(());
+            };
+            // 1000:d256; 1000:d25b declines to 1000:d285.
+            if yes {
+                // CS 0x9879, file 0xB149; pushed 1000:d26a, printed
+                // 1000:d280; the `#` is 1000:d26f.
+                self.weapon_dubinka_394b = false; // 1000:d25d
+                self.player.money += refund; // 1000:d266
+                term::println(&text::fill(
+                    "^2Ты продал дубинку за #.",
+                    &[i64::from(refund)],
+                ));
+            }
+        }
+
+        // Arm 6, ножик. Own gate 1000:d285 / 1000:d28a, miss
+        // `1000:d28c jmp 0xd33a`; one conjunct, 1000:d28f
+        // `cmp byte [0x394c],0x0` / 1000:d294, miss `1000:d296 jmp 0xd33a`.
+        if self.weapon_nozhik_38c2 && self.weapon_tesak_394c {
+            offered = true;
+            // The e in тeсак is a Latin e in the binary; transcribed as is.
+            // CS 0x9893, file 0xB163; pushed 1000:d299, printed 1000:d2ad.
+            term::println("^2У тебя есть ножик и тeсак, хочешь продать ножик?");
+            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, "1000:d2f6", 38, 23, lines)?
+            else {
+                self.running = false;
+                return Ok(());
+            };
+            // 1000:d30b; 1000:d310 declines to the tail at 1000:d33a.
+            if yes {
+                // CS 0x98c6, file 0xB196; pushed 1000:d31f, printed
+                // 1000:d335; the `#` is 1000:d324.
+                self.weapon_nozhik_38c2 = false; // 1000:d312
+                self.player.money += refund; // 1000:d31b
+                term::println(&text::fill("^2Ты продал ножик за #.", &[i64::from(refund)]));
+            }
+        }
+
+        // 1000:d33a `cmp byte [0x3e33],0xff` / 1000:d33f `jnz 0xd35a`. The
+        // line means "nothing was OFFERED", not "nothing was sold":
+        // declining every offer leaves the scratch byte holding that arm's
+        // roll and suppresses it.
+        if !offered {
+            // CS 0x98de, file 0xB1AE; pushed 1000:d341, printed 1000:d355.
+            term::println("^6У тебя нет неужных вещей.");
+        }
+
+        // 1000:d35a..1000:d368 assigns the one-character literal CS 0x98fa
+        // (file 0xB1CA) over the shared buffer 20ae:3a72 through
+        // `0f78:0b01`. The handler's own exit compare at 1000:d377 reads
+        // that same buffer against the shared exit token `w` (CS 0x848e),
+        // so it can never match on the `wes` path.
+        // 1000:d37c therefore falls to `1000:d37e jmp 0xc88e`, the dealers'
+        // PROMPT push -- not the menu, and not the way out. Answering `w`
+        // to a sell offer does NOT leave the dealers. This port reaches the
+        // same place structurally: the answer is consumed by
+        // [`Game::sell_offer`] and never reaches `Game::shop_turn`'s exit
+        // arm, so `self.mode` is untouched on every path out of here.
+        Ok(())
     }
 
     /// `h` at the vet: 3 rubles to fix a broken jaw.
@@ -8159,18 +8481,615 @@ mod tests {
         g.inspect_enemy();
     }
 
+    /// Every flag the six `wes` arms gate on, set -- so all six are offered.
+    fn all_sellable(g: &mut Game) {
+        g.wear_suit_abibas_38b4 = true; // 20ae:38b4
+        g.wear_suit_adidas_38b7 = true; // 20ae:38b7
+        g.wear_boots_38b5 = true; // 20ae:38b5
+        g.wear_boots_pontovye_38b8 = true; // 20ae:38b8
+        g.wear_jacket_38b6 = true; // 20ae:38b6
+        g.wear_jacket_krutaya_38b9 = true; // 20ae:38b9
+        g.weapon_kastet_38ba = true; // 20ae:38ba
+        g.weapon_dubinka_394b = true; // 20ae:394b
+        g.weapon_nozhik_38c2 = true; // 20ae:38c2
+        g.weapon_tesak_394c = true; // 20ae:394c
+    }
+
+    /// The `x` arm's sale: `1000:ce8e` loads the whole Хлам word,
+    /// `1000:ce91` adds it to the money ONE FOR ONE and `1000:ce97` zeroes
+    /// it. The delta is asserted as a number so a rate or a multiplier
+    /// creeping in fails here.
+    #[test]
+    fn dealers_x_credits_the_whole_junk_word_one_for_one_and_zeroes_it() {
+        let mut g = dealers(7);
+        g.player.junk = 23;
+        g.rng.start_log();
+        let out = term::capture::lines(|| {
+            g.shop_turn(Location::Dealers, "x", &mut no_input())
+                .unwrap();
+        });
+        // CS 0x96d0, file 0xAFA0 -- and no `#` in it: five zeroed format
+        // words at 1000:ce9f..1000:cead.
+        assert_eq!(out, vec!["^6Барыги дали тебе денег за хлам."]);
+        assert_eq!(g.player.money, 30, "1000:ce91 -- 7 + 23, no rate");
+        assert_eq!(g.player.junk, 0, "1000:ce97");
+        assert!(
+            g.rng.take_log().is_empty(),
+            "1000:ce76..1000:cece holds no `call 0f78:114b`"
+        );
+        // 1000:ceb3 lands on the `wes` compare, which misses on `x`; the
+        // handler cannot leave the shop from here.
+        assert_eq!(g.mode, Mode::Shop(Location::Dealers));
+    }
+
+    /// The `1000:ce8c jle` refusal: CS 0x96f2 and nothing else changes.
+    #[test]
+    fn dealers_x_refuses_with_no_junk_and_changes_nothing() {
+        let mut g = dealers(7);
+        g.player.junk = 0;
+        let out = term::capture::lines(|| {
+            g.shop_turn(Location::Dealers, "x", &mut no_input())
+                .unwrap();
+        });
+        assert_eq!(out, vec!["^4Тебе нечего спихнуть."]);
+        assert_eq!(g.player.money, 7);
+        assert_eq!(g.player.junk, 0);
+    }
+
+    /// `1000:ce87` is `83 3e c9 38 00` and `1000:ce8c` is a `jle`, so the
+    /// word is read SIGNED: a Хлам word with the top bit set refuses too.
+    /// Without the `as i16` in `Game::sell_junk` this sells 32768 roubles'
+    /// worth.
+    #[test]
+    fn dealers_x_refuses_a_junk_word_whose_top_bit_is_set() {
+        let mut g = dealers(7);
+        g.player.junk = 0x8000;
+        let out = term::capture::lines(|| {
+            g.shop_turn(Location::Dealers, "x", &mut no_input())
+                .unwrap();
+        });
+        assert_eq!(out, vec!["^4Тебе нечего спихнуть."]);
+        assert_eq!(g.player.money, 7, "1000:ce8c takes the refusal");
+        assert_eq!(g.player.junk, 0x8000);
+    }
+
+    /// One `wes` arm's expectations, so the six can be driven from a table
+    /// instead of six near-identical test bodies.
+    struct SellArmCase {
+        /// The flags that make this arm -- and only this arm -- offered.
+        set: fn(&mut Game),
+        /// The lesser rung the arm sells; must be clear afterwards.
+        sold: fn(&Game) -> bool,
+        /// The better rung that made the offer; must still be set (nothing
+        /// clears the BETTER item's flag -- `sell.no_stat_subtraction_finding`).
+        better: fn(&Game) -> bool,
+        offer: &'static str,
+        /// The `call 0f78:114b` this arm's refund is drawn at.
+        site: &'static str,
+        /// The `add ax,imm` base and the `Random` span, both immediates.
+        base: i32,
+        span: u16,
+        confirm: &'static str,
+    }
+
+    /// The six arms in `1000:cee7`, `1000:cf9c`, `1000:d051`, `1000:d106`,
+    /// `1000:d1c9` and `1000:d285` order.
+    const SELL_ARMS: [SellArmCase; 6] = [
+        SellArmCase {
+            set: |g| {
+                g.wear_suit_abibas_38b4 = true;
+                g.wear_suit_adidas_38b7 = true;
+            },
+            sold: |g| g.wear_suit_abibas_38b4,
+            better: |g| g.wear_suit_adidas_38b7,
+            offer: "^2У тебя есть ненужный костюм хочешь продать?",
+            site: "1000:cf58",
+            base: 8,
+            span: 5,
+            confirm: "^2Ты продал костюм за #.",
+        },
+        SellArmCase {
+            set: |g| {
+                g.wear_boots_38b5 = true;
+                g.wear_boots_pontovye_38b8 = true;
+            },
+            sold: |g| g.wear_boots_38b5,
+            better: |g| g.wear_boots_pontovye_38b8,
+            offer: "^2У тебя есть ненужные кроссовки хочешь продать?",
+            site: "1000:d00d",
+            base: 8,
+            span: 5,
+            confirm: "^2Ты продал кроссовки за #.",
+        },
+        SellArmCase {
+            set: |g| {
+                g.wear_jacket_38b6 = true;
+                g.wear_jacket_krutaya_38b9 = true;
+            },
+            sold: |g| g.wear_jacket_38b6,
+            better: |g| g.wear_jacket_krutaya_38b9,
+            offer: "^2У тебя есть ненужная кожанка хочешь продать?",
+            site: "1000:d0c2",
+            base: 13,
+            span: 8,
+            confirm: "^2Ты продал кожанку за #.",
+        },
+        SellArmCase {
+            set: |g| {
+                g.weapon_kastet_38ba = true;
+                g.weapon_dubinka_394b = true;
+            },
+            sold: |g| g.weapon_kastet_38ba,
+            better: |g| g.weapon_dubinka_394b,
+            offer: "^2У тебя есть кастет, а это отстой хочешь продать?",
+            site: "1000:d185",
+            base: 13,
+            span: 8,
+            confirm: "^2Ты продал кастет за #.",
+        },
+        SellArmCase {
+            set: |g| {
+                g.weapon_dubinka_394b = true;
+                g.weapon_nozhik_38c2 = true;
+            },
+            sold: |g| g.weapon_dubinka_394b,
+            better: |g| g.weapon_nozhik_38c2,
+            offer: "^2У тебя есть дубинка - барахло - хочешь продать?",
+            site: "1000:d241",
+            base: 25,
+            span: 15,
+            confirm: "^2Ты продал дубинку за #.",
+        },
+        SellArmCase {
+            set: |g| {
+                g.weapon_nozhik_38c2 = true;
+                g.weapon_tesak_394c = true;
+            },
+            sold: |g| g.weapon_nozhik_38c2,
+            better: |g| g.weapon_tesak_394c,
+            offer: "^2У тебя есть ножик и тeсак, хочешь продать ножик?",
+            site: "1000:d2f6",
+            base: 38,
+            span: 23,
+            confirm: "^2Ты продал ножик за #.",
+        },
+    ];
+
+    /// Each arm alone: its gate, its offer, its draw site and both of its
+    /// immediates, its flag clear, its confirmation, and the money delta as
+    /// a number.
+    ///
+    /// The delta is checked twice and neither check subsumes the other: it
+    /// must equal `base + r` for the value actually drawn at this arm's own
+    /// `call 0f78:114b` (so a wrong base, or a refund read from the buy
+    /// price, fails), and it must lie in `base..base+span` (so a wrong span
+    /// fails). Arm 4 at 13..21 and the row-5 buy price of 25 are different
+    /// numbers, which is the point of the refund finding.
+    #[test]
+    fn each_wes_arm_sells_its_own_item_for_its_own_two_immediates() {
+        for (n, a) in SELL_ARMS.iter().enumerate() {
+            let mut g = dealers(100);
+            (a.set)(&mut g);
+            g.rng.start_log();
+            let out = term::capture::lines(|| {
+                g.shop_turn(Location::Dealers, "wes", &mut input(&["y"]))
+                    .unwrap();
+            });
+            let log = g.rng.take_log();
+            assert_eq!(log.len(), 1, "arm {} takes exactly one draw", n + 1);
+            assert_eq!(log[0].site, a.site, "arm {}", n + 1);
+            assert_eq!(log[0].n, a.span, "arm {} `Random(n)`", n + 1);
+            let delta = g.player.money - 100;
+            assert_eq!(
+                delta,
+                a.base + i32::from(log[0].r),
+                "arm {} credits base + the drawn value",
+                n + 1
+            );
+            assert!(
+                (a.base..a.base + i32::from(a.span)).contains(&delta),
+                "arm {} refund {} outside {}..{}",
+                n + 1,
+                delta,
+                a.base,
+                a.base + i32::from(a.span)
+            );
+            assert!(!(a.sold)(&g), "arm {} clears the lesser rung", n + 1);
+            assert!((a.better)(&g), "arm {} leaves the better rung set", n + 1);
+            // The offer is a `WriteLn`; the `^0Продать вещи\` prompt is a
+            // no-newline `0eed:0000` Write, so it joins the confirmation.
+            assert_eq!(
+                out,
+                vec![
+                    a.offer.to_string(),
+                    format!(
+                        "^0Продать вещи\\{}",
+                        text::fill(a.confirm, &[i64::from(delta)])
+                    ),
+                ],
+                "arm {}",
+                n + 1
+            );
+        }
+    }
+
+    /// Each arm's own-flag gate: with the better rung set but the lesser one
+    /// clear, the arm is silent and the tail's no-offer line prints instead.
+    /// `1000:ceec`, `1000:cfa1`, `1000:d056`, `1000:d10b`, `1000:d1ce` and
+    /// `1000:d28a`.
+    #[test]
+    fn no_wes_arm_is_offered_without_the_lesser_rung() {
+        for (n, a) in SELL_ARMS.iter().enumerate() {
+            let mut g = dealers(100);
+            (a.set)(&mut g);
+            // Clear the lesser rung, keep the better one.
+            match n {
+                0 => g.wear_suit_abibas_38b4 = false,
+                1 => g.wear_boots_38b5 = false,
+                2 => g.wear_jacket_38b6 = false,
+                3 => g.weapon_kastet_38ba = false,
+                4 => g.weapon_dubinka_394b = false,
+                _ => g.weapon_nozhik_38c2 = false,
+            }
+            g.rng.start_log();
+            let out = term::capture::lines(|| {
+                g.shop_turn(Location::Dealers, "wes", &mut input(&["y"]))
+                    .unwrap();
+            });
+            assert_eq!(out, vec!["^6У тебя нет неужных вещей."], "arm {}", n + 1);
+            assert_eq!(g.player.money, 100, "arm {}", n + 1);
+            assert!(g.rng.take_log().is_empty(), "arm {} takes no draw", n + 1);
+        }
+    }
+
+    /// The ladder gate: the arm is offered only when a strictly BETTER rung
+    /// is owned. With the lesser rung alone, every arm is silent --
+    /// `1000:cef6`, `1000:cfab`, `1000:d060`, `1000:d123`, `1000:d1df` and
+    /// `1000:d294` are the last conjunct of each, and all of them miss.
+    #[test]
+    fn no_wes_arm_is_offered_without_a_better_rung() {
+        for (n, flag) in [
+            (
+                0usize,
+                (|g: &mut Game| g.wear_suit_abibas_38b4 = true) as fn(&mut Game),
+            ),
+            (1, |g: &mut Game| g.wear_boots_38b5 = true),
+            (2, |g: &mut Game| g.wear_jacket_38b6 = true),
+            (3, |g: &mut Game| g.weapon_kastet_38ba = true),
+            (4, |g: &mut Game| g.weapon_dubinka_394b = true),
+            (5, |g: &mut Game| g.weapon_nozhik_38c2 = true),
+        ] {
+            let mut g = dealers(100);
+            flag(&mut g);
+            g.rng.start_log();
+            let out = term::capture::lines(|| {
+                g.shop_turn(Location::Dealers, "wes", &mut input(&["y"]))
+                    .unwrap();
+            });
+            assert_eq!(out, vec!["^6У тебя нет неужных вещей."], "arm {}", n + 1);
+            assert_eq!(g.player.money, 100, "arm {}", n + 1);
+            assert!(g.rng.take_log().is_empty(), "arm {} takes no draw", n + 1);
+        }
+    }
+
+    /// Arm 4's ladder is a three-conjunct short-circuit `or` -- `1000:d110`
+    /// (`20ae:394b`), `1000:d117` (`20ae:38c2`) and `1000:d11e`
+    /// (`20ae:394c`), each `jnz` jumping forward to the offer at
+    /// `1000:d128`. Any ONE of the three offers the кастет.
+    #[test]
+    fn the_knuckles_arm_is_offered_by_any_one_of_its_three_better_rungs() {
+        for (which, set) in [
+            (
+                "20ae:394b",
+                (|g: &mut Game| g.weapon_dubinka_394b = true) as fn(&mut Game),
+            ),
+            ("20ae:38c2", |g: &mut Game| g.weapon_nozhik_38c2 = true),
+            ("20ae:394c", |g: &mut Game| g.weapon_tesak_394c = true),
+        ] {
+            let mut g = dealers(0);
+            g.weapon_kastet_38ba = true;
+            set(&mut g);
+            g.rng.start_log();
+            let out = term::capture::lines(|| {
+                g.shop_turn(Location::Dealers, "wes", &mut input(&["y"]))
+                    .unwrap();
+            });
+            assert_eq!(
+                out[0], "^2У тебя есть кастет, а это отстой хочешь продать?",
+                "{which}"
+            );
+            let log = g.rng.take_log();
+            assert_eq!(log.len(), 1, "{which} -- only arm 4 is offered");
+            assert_eq!(log[0].site, "1000:d185", "{which}");
+            assert_eq!(g.player.money, 13 + i32::from(log[0].r), "{which}");
+            assert!(!g.weapon_kastet_38ba, "1000:d1a1, {which}");
+        }
+    }
+
+    /// The тесак is never sellable: no arm's own flag is `20ae:394c`, whose
+    /// only image-wide writer is the loot arm at `1000:573e`. Selling
+    /// everything the six arms offer leaves it set -- and one `wes` sells up
+    /// to six items, because each confirmation `WriteLn` falls straight into
+    /// the next arm's own-flag test.
+    #[test]
+    fn one_wes_sells_all_six_items_and_never_the_cleaver() {
+        let mut g = dealers(0);
+        all_sellable(&mut g);
+        g.rng.start_log();
+        let out = term::capture::lines(|| {
+            g.shop_turn(
+                Location::Dealers,
+                "wes",
+                &mut input(&["y", "y", "y", "y", "y", "y"]),
+            )
+            .unwrap();
+        });
+        let log = g.rng.take_log();
+        let sites: Vec<&str> = log.iter().map(|d| d.site).collect();
+        assert_eq!(
+            sites,
+            vec![
+                "1000:cf58",
+                "1000:d00d",
+                "1000:d0c2",
+                "1000:d185",
+                "1000:d241",
+                "1000:d2f6",
+            ]
+        );
+        let expect: i32 = [8, 8, 13, 13, 25, 38]
+            .iter()
+            .zip(&log)
+            .map(|(b, d)| b + i32::from(d.r))
+            .sum();
+        assert_eq!(g.player.money, expect, "six credits, no rate anywhere");
+        // 105 = 8+8+13+13+25+38, the six bases. `Random(n)` returns
+        // 0..n-1, so the six maxima are 4+4+7+7+14+22 = 58 and the envelope
+        // is 105..=163.
+        assert!(
+            (105..=163).contains(&g.player.money),
+            "money {} outside the six arms' envelope",
+            g.player.money
+        );
+        // The six lesser rungs are cleared (1000:cf74, 1000:d029,
+        // 1000:d0de, 1000:d1a1, 1000:d25d, 1000:d312) ...
+        assert!(!g.wear_suit_abibas_38b4);
+        assert!(!g.wear_boots_38b5);
+        assert!(!g.wear_jacket_38b6);
+        assert!(!g.weapon_kastet_38ba);
+        assert!(!g.weapon_dubinka_394b);
+        assert!(!g.weapon_nozhik_38c2);
+        // ... and no better rung is: nothing in the range writes them.
+        assert!(g.wear_suit_adidas_38b7);
+        assert!(g.wear_boots_pontovye_38b8);
+        assert!(g.wear_jacket_krutaya_38b9);
+        assert!(g.weapon_tesak_394c, "20ae:394c is never sellable");
+        // Six offers, then the joined prompt+confirmation of each.
+        assert_eq!(out.len(), 12, "{out:?}");
+        // The tail's no-offer line is NOT among them.
+        assert!(
+            !out.iter()
+                .any(|l| l.contains("^6У тебя нет неужных вещей.")),
+            "{out:?}"
+        );
+    }
+
+    /// **The draw is spent even when the player declines.** In every arm the
+    /// store into `20ae:3e33` (`1000:cf60`, `1000:d015`, `1000:d0ca`,
+    /// `1000:d18d`, `1000:d249`, `1000:d2fe`) precedes the `y` compare
+    /// (`1000:cf6d`, `1000:d022`, `1000:d0d7`, `1000:d19a`, `1000:d256`,
+    /// `1000:d30b`), so refusing all six still advances the RNG stream by
+    /// six. Nothing else in this suite catches a port that rolls only on
+    /// acceptance: every other test answers `y`.
+    #[test]
+    fn declining_every_wes_offer_still_spends_all_six_draws() {
+        let mut g = dealers(100);
+        all_sellable(&mut g);
+        g.rng.start_log();
+        let out = term::capture::lines(|| {
+            g.shop_turn(
+                Location::Dealers,
+                "wes",
+                &mut input(&["n", "n", "n", "n", "n", "n"]),
+            )
+            .unwrap();
+        });
+        let log = g.rng.take_log();
+        let sites: Vec<&str> = log.iter().map(|d| d.site).collect();
+        assert_eq!(
+            sites,
+            vec![
+                "1000:cf58",
+                "1000:d00d",
+                "1000:d0c2",
+                "1000:d185",
+                "1000:d241",
+                "1000:d2f6",
+            ],
+            "the store at 1000:cf60 precedes the compare at 1000:cf6d"
+        );
+        assert_eq!(g.player.money, 100, "1000:cf72 and its five twins");
+        assert!(g.wear_suit_abibas_38b4, "1000:cf74 is not reached");
+        assert!(g.weapon_nozhik_38c2, "1000:d312 is not reached");
+        // Six offers, each declined -- so no confirmation follows, and the
+        // no-newline prompt joins the NEXT arm's offer instead. The
+        // no-offer line is absent: 1000:d33a sees the sixth roll, not the
+        // 0xff sentinel, so 1000:d33f jumps past 1000:d341.
+        assert_eq!(
+            out,
+            vec![
+                "^2У тебя есть ненужный костюм хочешь продать?",
+                "^0Продать вещи\\^2У тебя есть ненужные кроссовки хочешь продать?",
+                "^0Продать вещи\\^2У тебя есть ненужная кожанка хочешь продать?",
+                "^0Продать вещи\\^2У тебя есть кастет, а это отстой хочешь продать?",
+                "^0Продать вещи\\^2У тебя есть дубинка - барахло - хочешь продать?",
+                "^0Продать вещи\\^2У тебя есть ножик и тeсак, хочешь продать ножик?",
+                "^0Продать вещи\\",
+            ]
+        );
+    }
+
+    /// The same draw-before-the-question order, isolated to one arm: a
+    /// single declined offer still spends exactly one draw at that arm's
+    /// own site, and still suppresses the no-offer line (`1000:d33a` sees
+    /// the roll, so `1000:d33f` jumps past `1000:d341`).
+    #[test]
+    fn a_single_declined_offer_spends_its_draw_and_suppresses_the_tail_line() {
+        let mut g = dealers(100);
+        g.wear_suit_abibas_38b4 = true;
+        g.wear_suit_adidas_38b7 = true;
+        g.rng.start_log();
+        let out = term::capture::lines(|| {
+            g.shop_turn(Location::Dealers, "wes", &mut input(&["n"]))
+                .unwrap();
+        });
+        let log = g.rng.take_log();
+        assert_eq!(log.len(), 1);
+        assert_eq!(log[0].site, "1000:cf58");
+        assert_eq!(log[0].n, 5);
+        assert_eq!(g.player.money, 100);
+        assert!(g.wear_suit_abibas_38b4);
+        assert_eq!(
+            out,
+            vec![
+                "^2У тебя есть ненужный костюм хочешь продать?",
+                "^0Продать вещи\\"
+            ]
+        );
+    }
+
+    /// `1000:d33a` / `1000:d33f`: the no-offer line prints only when no arm
+    /// was reached at all, and it takes no draw.
+    #[test]
+    fn wes_with_nothing_sellable_prints_the_no_offer_line() {
+        let mut g = dealers(100);
+        g.rng.start_log();
+        let out = term::capture::lines(|| {
+            g.shop_turn(Location::Dealers, "wes", &mut no_input())
+                .unwrap();
+        });
+        assert_eq!(out, vec!["^6У тебя нет неужных вещей."]);
+        assert_eq!(g.player.money, 100);
+        assert!(g.rng.take_log().is_empty());
+        assert_eq!(g.mode, Mode::Shop(Location::Dealers));
+    }
+
+    /// `1000:cf4f call 0eed:0216` folds `A`..`Z` before the compare at
+    /// `1000:cf6d`, so `Y` sells.
+    #[test]
+    fn an_upper_case_y_sells() {
+        let mut g = dealers(0);
+        g.wear_suit_abibas_38b4 = true;
+        g.wear_suit_adidas_38b7 = true;
+        g.rng.start_log();
+        term::capture::lines(|| {
+            g.shop_turn(Location::Dealers, "wes", &mut input(&["Y"]))
+                .unwrap();
+        });
+        let log = g.rng.take_log();
+        assert_eq!(g.player.money, 8 + i32::from(log[0].r));
+        assert!(!g.wear_suit_abibas_38b4);
+    }
+
+    /// `1000:d35a`..`1000:d368` overwrite the shared buffer `20ae:3a72` with
+    /// the one-character literal CS 0x98fa BEFORE the handler's exit compare
+    /// at `1000:d377` reads it, so answering `w` to a sell offer cannot
+    /// leave the dealers -- `1000:d37c` falls to `1000:d37e jmp 0xc88e`, the
+    /// prompt push. Without that assign the answer would still be in the
+    /// buffer and `w` would walk out.
+    #[test]
+    fn answering_w_to_a_sell_offer_does_not_leave_the_dealers() {
+        let mut g = dealers(0);
+        all_sellable(&mut g);
+        term::capture::lines(|| {
+            g.shop_turn(
+                Location::Dealers,
+                "wes",
+                &mut input(&["w", "w", "w", "w", "w", "w"]),
+            )
+            .unwrap();
+        });
+        assert_eq!(g.mode, Mode::Shop(Location::Dealers));
+        assert_eq!(g.location, Location::Dealers);
+        assert_eq!(g.player.money, 0, "`w` is not `y`");
+    }
+
+    /// Nothing is unwound on a sale: no arm subtracts the sold item's stat
+    /// bonus. The armour byte `20ae:38b2` and the damage words `20ae:38a8`
+    /// and `20ae:38aa` are not among the thirteen DGROUP addresses
+    /// `1000:ce76`..`1000:d383` references at all. Reproduced, not fixed.
+    #[test]
+    fn selling_everything_subtracts_no_armour_and_no_damage() {
+        let mut g = dealers(0);
+        all_sellable(&mut g);
+        g.player.armor = 11;
+        g.player.dmg_min = 4;
+        g.player.dmg_max = 9;
+        term::capture::lines(|| {
+            g.shop_turn(
+                Location::Dealers,
+                "wes",
+                &mut input(&["y", "y", "y", "y", "y", "y"]),
+            )
+            .unwrap();
+        });
+        assert_eq!(g.player.armor, 11);
+        assert_eq!(g.player.dmg_min, 4);
+        assert_eq!(g.player.dmg_max, 9);
+    }
+
+    /// EOF on a sell prompt ends the run rather than reading as "not `y`" --
+    /// the same port decision `Game::mage` and `Game::district_advance`
+    /// already take, and not a property of the original, which blocks in
+    /// `ReadLn`.
+    #[test]
+    fn eof_on_a_sell_prompt_ends_the_run() {
+        let mut g = dealers(0);
+        all_sellable(&mut g);
+        term::capture::lines(|| {
+            g.shop_turn(Location::Dealers, "wes", &mut no_input())
+                .unwrap();
+        });
+        assert!(!g.running);
+        assert_eq!(g.player.money, 0);
+        assert!(g.wear_suit_abibas_38b4, "1000:cf74 is not reached");
+    }
+
+    /// `x` and `wes` are dealers' sub-verbs (`1000:ce7b`, `1000:ced3`), not
+    /// street verbs: neither is in `data/command_dispatch.json`'s confirmed
+    /// chain, so the street prompt takes the silent `1000:ee01 jmp 0xab75`.
+    /// Before this task `Game::dispatch` called the two arms, which would
+    /// now sell from the street.
+    #[test]
+    fn the_street_prompt_has_no_x_and_no_wes() {
+        let mut g = game();
+        g.player.junk = 40;
+        g.player.money = 3;
+        all_sellable(&mut g);
+        let out = term::capture::lines(|| {
+            g.dispatch(Command::SellJunk, &mut no_input()).unwrap();
+            g.dispatch(Command::SellItems, &mut input(&["y"])).unwrap();
+        });
+        assert!(out.is_empty(), "{out:?}");
+        assert_eq!(g.player.junk, 40);
+        assert_eq!(g.player.money, 3);
+        assert!(g.wear_suit_abibas_38b4);
+    }
+
     #[test]
     fn sell_junk_and_sell_items_are_the_dealers_own_keys() {
-        let mut g = game();
-        g.location = Location::Dealers;
-        g.mode = Mode::Shop(Location::Dealers);
-        // Neither has a backing field yet, so the only observable effect is
-        // that the keys are routed at all: they must not leave the shop.
-        g.shop_turn(Location::Dealers, "x", &mut no_input())
-            .unwrap();
+        let mut g = dealers(0);
+        // 1000:ce80 and 1000:ced8 are the two token compares; neither arm
+        // can leave the shop (1000:d377 can never match on either path).
+        term::capture::lines(|| {
+            g.shop_turn(Location::Dealers, "x", &mut no_input())
+                .unwrap();
+        });
         assert_eq!(g.mode, Mode::Shop(Location::Dealers));
-        g.shop_turn(Location::Dealers, "wes", &mut no_input())
-            .unwrap();
+        term::capture::lines(|| {
+            g.shop_turn(Location::Dealers, "wes", &mut no_input())
+                .unwrap();
+        });
         assert_eq!(g.mode, Mode::Shop(Location::Dealers));
     }
 
