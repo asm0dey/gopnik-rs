@@ -495,14 +495,28 @@ and confirmation lines, and the globals it writes -- is a separate map.
 (`grep -n 'fn buy_dealer_row' src/game.rs`), which is what `buy_pistol_row`
 was renamed to when Task 24 grew it;
 **`bmar` rows 1-6 are `docs/re/shop-arms.md` and `data/shop_arms.json`**, with
-`python3 tools/test_shop_arms.py` re-deriving both from `orig/g.exe`. The nine
-`mar` arms are not mapped.
+`python3 tools/test_shop_arms.py` re-deriving both from `orig/g.exe`. **The
+nine `mar` arms are the second half of that same file** (*`mar` rows 1-9: the
+purchase arms*) and the `mar` key of that same artifact, mapped by Task 25 over
+`1000:bd48`..`1000:c31f`.
 
-One finding from there belongs here, because it qualifies the `gate` column
-above: for `bmar`, that column is a **menu-print** gate and nothing more. The
-row-1..6 arms carry no district test at all -- `1000:c68d` and `1000:c6f1`
-skip the row-5 and row-6 *listings*, and the buy path never reads
-`20ae:3692` -- so a row the menu did not print is still buyable.
+Findings from there belong here, because they qualify the `gate` column above,
+and **the two shops qualify it differently -- do not consult the column
+uniformly on the buy path.**
+
+For `bmar` that column is a **menu-print** gate and nothing more. The row-1..6
+arms carry no district test at all -- `1000:c68d` and `1000:c6f1` skip the
+row-5 and row-6 *listings*, and the buy path never reads `20ae:3692` -- so a
+row the menu did not print is still buyable.
+
+For `mar` it is **both**, for three of the four rows it marks, and a menu gate
+only for the fourth. `1000:c08e`, `1000:c1d7` and `1000:c27f` sit on the BUY
+path in front of rows 6, 8 and 9, so those three really are unreachable below
+their district (silently -- they print nothing). Row 7 has no buy gate: the
+menu gate `1000:bb80` covers rows 6 *and* 7, while only row 6's arm is gated,
+so `mar` row 7 is the `bmar` trap in the other direction -- listed nowhere at
+district 1 and sold anyway. That divergence is the one Task 26 has to
+reproduce; `docs/re/shop-arms.md` has the measurement.
 
 ---
 

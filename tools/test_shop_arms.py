@@ -15,13 +15,20 @@ site?"):
   * **identity** -- the instruction decoded there says what the artifact says
     it says.
 
-Six claims here are not restatements of a decode and get their own checks,
+Eight claims here are not restatements of a decode and get their own checks,
 because each is the kind of thing that reads authoritative and is easy to get
-wrong.  Four of them are INVENTORY claims, and every one of those is asserted
+wrong.  SIX of them are INVENTORY claims, and every one of those is asserted
 by SET EQUALITY against a sweep of the binary -- never by checking that the
-listed entries hold up.  That distinction is the whole point: fix round 1
-found this file shipping an inventory of two district gates where the binary
-has five, and every listed entry checked out.
+listed entries hold up.  That distinction is the whole point: Task 23's fix
+round 1 found this file shipping an inventory of two district gates where the
+binary has five, and every listed entry checked out.  Task 25's found four
+more inventories that were factually complete and guarded by nothing, which is
+the same defect one review earlier.
+
+A sweep is also only as good as its RANGE.  `check_sweep_start` pins each
+district sweep to its handler's own verb compare, because
+`sweep_start < first_arm` alone let Task 25's review narrow `mar`'s range past
+two of its six gates with both district tests still green.
 
   * **`strings[]` is complete.**  Every `mov di,imm16` inside a row's span that
     is followed by `push cs` / `push di` -- the CS-literal push idiom -- must be
@@ -51,6 +58,15 @@ has five, and every listed entry checked out.
     gate covers is measured too (the price-byte operands inside the gate's own
     listed range), and cross-checked against `data/shops.json`, which already
     owns the menu half.
+  * **`effects[]` is complete.**  Every instruction in a row's span that
+    touches an absolute-memory operand must fall in a WRITE bucket or a READ
+    bucket -- an unclassified one fails loudly -- and the WRITE bucket must
+    equal `effects[]`.  Two `mar` claims are about the whole set rather than
+    the listed entries: row 2's `Random(3)` "changes no state at all", and
+    "no global a `mar` arm writes is write-only".
+  * **`roll[]` is complete.**  The five-byte `Random` far-call signature is
+    swept over each span, because a draw nobody recorded still advances the
+    RNG stream and would desynchronise every trace after it.
   * **the club-without-knuckles bug.**  `1000:cc69`'s not-taken path must reach
     the confirmation push with no `add` on it, while the loot arm's
     `1000:55d8` -- the same guard on the same flag, granting the same item --
@@ -84,6 +100,32 @@ DOC = REPO / "docs" / "re" / "shop-arms.md"
 #: across the image -- `docs/re/tables.md`'s "Other price sources" already owns
 #: that population, so `globals[]` does not restate it per row.
 MONEY = "20ae:38c7"
+
+#: The `Random` far call, `call 0f78:114b`, by its exact five bytes.  Used to
+#: sweep a span for draws rather than to confirm the recorded ones decode.
+RANDOM_CALL = b"\x9a\x4b\x11\x78\x0f"
+
+#: How an instruction that WRITES an absolute-memory operand decodes, and how
+#: one that only READS one does.  `tools/dis16.py` carries no read/write flag,
+#: so the classification is by decoded text -- and it is the mnemonic that
+#: decides, never operand order: `cmp byte [0x38b0],0x1` puts memory first and
+#: writes nothing.  The two buckets are asserted EXHAUSTIVE over each span, so
+#: a write shape neither describes fails the sweep instead of vanishing from
+#: it.  The eleven forms these fifteen spans actually contain are
+#: `add [N],ax`, `add byte [N],N`, `add word [N],N`, `inc [N]`, `mov [N],ax`,
+#: `mov byte [N],N`, `sub [N],ax` (writes) and `cmp ax,[N]`,
+#: `cmp byte [N],N`, `mov al,[N]`, `mov ax,[N]` (reads).  `xchg` is excluded
+#: from the READ bucket on purpose: `xchg ax,[0x..]` puts memory SECOND and
+#: still writes it, so rather than let it pass as a read it is left
+#: unclassified, which fails the sweep instead of silently shrinking it.
+WRITES_ABS_MEM = re.compile(
+    r"^(mov|add|sub|adc|sbb|and|or|xor|inc|dec|neg|not"
+    r"|shl|shr|sar|rol|ror|rcl|rcr|xchg)\s+"
+    r"(byte |word |dword )?\[0x[0-9a-f]+\]")
+READS_ABS_MEM = re.compile(
+    r"^(cmp|test)\s+(byte |word |dword )?\[0x[0-9a-f]+\]"
+    r"|^(?!xchg\b)[a-z]{2,5}\s+[a-z]{2,3},"
+    r"(byte |word |dword )?\[0x[0-9a-f]+\]")
 
 #: Addresses the prose names that are deliberately NOT instruction boundaries.
 #: Empty here on purpose: every address `docs/re/shop-arms.md` cites -- the
@@ -187,6 +229,28 @@ class ArmsTest(unittest.TestCase):
                     yield from rec(v, "%s[%d]" % (path, i))
         return list(rec(self.art, "$"))
 
+    def check_sweep_start(self, start, handler):
+        """A district sweep must begin at its handler's own verb compare.
+
+        `assertLess(sweep_start, first_arm)` alone lets the range be narrowed
+        past the menu gates without going red -- Task 25's review moved
+        `mar`'s start from `1000:b94a` to `1000:bb80`, skipping two of the six
+        gates, and both district tests still passed.  `shop_tag_at` is the anchor the
+        artifact already carried and nothing asserted; it is decode-checked
+        here so it cannot itself drift.
+        """
+        self.assertEqual(
+            start, handler["shop_tag_at"],
+            "the %s district sweep starts at %s, not at the handler's own "
+            "verb compare %s -- a sweep whose range can be narrowed does not "
+            "establish completeness"
+            % (handler["shop"], start, handler["shop_tag_at"]))
+        tag = self.at(handler["shop_tag_at"])
+        self.assertEqual(
+            tag.raw, b"\x9a\xd8\x0b\x78\x0f",
+            "%s: shop_tag_at %s decodes %s, not the `call 0f78:0bd8` verb "
+            "compare" % (handler["shop"], handler["shop_tag_at"], tag.text))
+
     def branch_target(self, ins):
         """The image offset a decoded near/short branch jumps to."""
         m = re.search(r"0x([0-9a-f]+)$", ins.text)
@@ -288,13 +352,12 @@ class ArmsTest(unittest.TestCase):
         for h in self.handlers():
             rows = h["rows"]
             for a, b in zip(rows, rows[1:]):
-                miss = self.check_insn(a["miss_branch"], "row %s" % a["key"])
+                self.check_insn(a["miss_branch"], "row %s" % a["key"])
                 self.assertEqual(
                     a["miss_branch"]["target"], b["span"]["start"],
                     "%s row %s's miss branch does not hand off to row %s"
                     % (h["shop"], a["key"], b["key"]))
                 self.assertEqual(a["span"]["end"], b["span"]["start"])
-                del miss
             # the last row hands off to a setup that belongs to the NEXT
             # thing in the handler, and the literal that setup pushes is what
             # bounds this range on the right without assuming it.
@@ -407,6 +470,7 @@ class ArmsTest(unittest.TestCase):
         # artifact shipped two of the five and called them "the two district
         # gates that exist in this handler".
         sw = f["district_gates_sweep_range"]
+        self.check_sweep_start(sw["start"], self.bmar())
         slo = addrmod.image_off_of_citation(sw["start"])
         shi = addrmod.image_off_of_citation(sw["end"])
         self.assertLess(slo, lo, "the sweep range must start before the arms")
@@ -605,6 +669,106 @@ class ArmsTest(unittest.TestCase):
                     self.check_insn(e["guard"], "row %s guard" % r["key"])
                     self.check_insn(e["guard_branch"],
                                     "row %s guard branch" % r["key"])
+
+    def test_the_recorded_effects_are_every_write_in_the_arm(self):
+        """`effects[]` completeness, measured -- the `gates[]` sweep's twin.
+
+        `test_every_effect_writes_the_dgroup_address_it_names` above checks
+        every RECORDED effect and can never notice a write the artifact left
+        out.  That is the Task-23 inventory shape, and two `mar` claims rest on
+        it: row 2's `Random(3)` "changes no state at all", and "no global a
+        `mar` arm writes is write-only" -- both are statements about the WHOLE
+        set of writes in a span.
+
+        `tools/dis16.py` carries no read/write flag, so the classification is
+        by decoded text, and it is made honest two ways rather than trusted:
+
+        * every instruction in the span that touches an absolute-memory
+          operand must fall in the WRITE bucket or the READ bucket -- an
+          unclassified one fails loudly, so a write shape the regex does not
+          describe cannot be silently dropped.  `cmp byte [0x..],imm` is why
+          "memory operand first" alone is not the rule: it puts memory first
+          and writes nothing.
+        * every RECORDED effect must itself land in the WRITE bucket, so a
+          bucket that stopped matching real writes reds here too.
+        """
+        total = 0
+        for r in self.rows():
+            lo, hi = self.span(r)
+            written, read, unclassified = set(), set(), []
+            for i in dis16.decode_run(self.img, lo, hi):
+                if "[0x" not in i.text:
+                    continue
+                cit = "1000:%04x" % i.off
+                if WRITES_ABS_MEM.match(i.text):
+                    written.add(cit)
+                elif READS_ABS_MEM.match(i.text):
+                    read.add(cit)
+                else:
+                    unclassified.append("%s %s" % (cit, i.text))
+            self.assertEqual(
+                unclassified, [],
+                "%s row %s: %r touches absolute memory and is neither a "
+                "recognised write nor a recognised read, so the sweep below "
+                "cannot claim to have seen every write"
+                % (r["shop"], r["key"], unclassified))
+            self.assertTrue(
+                read,
+                "%s row %s: every instruction touching absolute memory in "
+                "this span landed in the WRITE bucket and none in the READ "
+                "one -- at minimum the affordability test's `cmp ax,[0x38c7]` "
+                "reads, so the two buckets are not partitioning anything"
+                % (r["shop"], r["key"]))
+            recorded = {e["addr"] for e in r["effects"]}
+            self.assertEqual(
+                written, recorded,
+                "%s row %s: the absolute memory writes inside %s..%s are %r, "
+                "the artifact records %r -- `effects[]` is not complete"
+                % (r["shop"], r["key"], r["span"]["start"], r["span"]["end"],
+                   sorted(written), sorted(recorded)))
+            for e in r["effects"]:
+                self.assertRegex(
+                    self.at(e["addr"]).text, WRITES_ABS_MEM,
+                    "%s row %s: the recorded effect %s does not match the "
+                    "WRITE bucket the sweep uses, so the bucket and the "
+                    "artifact disagree about what a write is"
+                    % (r["shop"], r["key"], e["addr"]))
+            total += len(written)
+        self.assertEqual(
+            total, 56,
+            "the fifteen arms hold %d absolute memory writes, not the 56 this "
+            "inventory was built over (25 in the six `bmar` arms, 31 in the "
+            "nine `mar` ones)" % total)
+
+    def test_the_recorded_rolls_are_every_random_call_in_the_arm(self):
+        """`roll[]` completeness, measured over the `Random` call signature.
+
+        `docs/re/shop-arms.md`'s directive for Task 26 says a port that skips
+        one of these desynchronises every RNG trace after it, which is a claim
+        about the WHOLE set of draws in each arm.  Checking the recorded ones
+        decode cannot establish that; sweeping the five-byte far-call
+        signature can.
+        """
+        found = 0
+        for r in self.rows():
+            lo, hi = self.span(r)
+            swept = {"1000:%04x" % i.off
+                     for i in dis16.decode_run(self.img, lo, hi)
+                     if i.raw == RANDOM_CALL}
+            roll = r.get("roll")
+            recorded = {roll["call"]["addr"]} if roll else set()
+            self.assertEqual(
+                swept, recorded,
+                "%s row %s: the `Random` call sites inside %s..%s are %r, the "
+                "artifact records %r -- an unrecorded draw still advances the "
+                "RNG stream"
+                % (r["shop"], r["key"], r["span"]["start"], r["span"]["end"],
+                   sorted(swept), sorted(recorded)))
+            found += len(swept)
+        self.assertEqual(
+            found, 3,
+            "the fifteen arms hold %d `Random` draws, not the 3 this "
+            "inventory was built over (bmar row 3, mar rows 1 and 2)" % found)
 
     def test_the_globals_an_arm_writes_are_read_elsewhere(self):
         """Brief item 6, recomputed: a flag nothing reads is a finding."""
@@ -829,6 +993,7 @@ class ArmsTest(unittest.TestCase):
             "records %r as the buy-path gates"
             % (sorted(hits(run)), sorted(buy)))
         sw = f["sweep_range"]
+        self.check_sweep_start(sw["start"], self.mar())
         slo = addrmod.image_off_of_citation(sw["start"])
         shi = addrmod.image_off_of_citation(sw["end"])
         self.assertLess(slo, lo, "the sweep must start before the arms")
@@ -1140,6 +1305,12 @@ class ProseTest(unittest.TestCase):
 
     The artifact half is checked above; the prose is where a wrong address
     actually propagates, because that is what the next task reads.
+
+    Both surfaces of the file are covered, not just one: `strip_fences` has to
+    remove the fenced blocks before the inline-code scan can pair backticks at
+    all, so the fenced disassembly is collected separately in `setUpClass` and
+    fed through the same matcher.  Until Task 25's fix round that left nine
+    fences and 45 instruction lines unchecked.
     """
 
     @classmethod
@@ -1149,8 +1320,21 @@ class ProseTest(unittest.TestCase):
         cls.aligned = aligned_boundaries(cls.img, cls.branches)
         cls.art = json.loads(ART.read_text(encoding="utf-8"))
         cls.shops = json.loads(SHOPS.read_text(encoding="utf-8"))
-        cls.md = strip_fences(DOC.read_text(encoding="utf-8"))
+        raw = DOC.read_text(encoding="utf-8")
+        cls.md = strip_fences(raw)
         cls.spans = inline_spans(cls.md)
+        # `strip_fences` exists so the single-backtick pairing cannot
+        # desynchronise, but it also hides every pasted disassembly BLOCK from
+        # the two checks below -- nine fences carrying 45 `1000:xxxx <insn>`
+        # lines in this file.  So the fenced lines are collected separately
+        # and fed through the same matcher.  The trailing `; ...` comment some
+        # of them carry is stripped; continuation lines that name no address
+        # (`push ds / push di`, `...`) simply do not match and are skipped by
+        # the caller, exactly as a non-matching inline span is.
+        cls.fenced = [re.sub(r"\s*;.*$", "", ln).strip()
+                      for blk in re.findall(r"^```.*?^```", raw,
+                                            re.S | re.M)
+                      for ln in blk.split("\n")]
 
     def cs_literal(self, off):
         n = self.img[off]
@@ -1190,23 +1374,46 @@ class ProseTest(unittest.TestCase):
             "offset, not an address" % bad)
 
     def test_every_prose_instruction_says_what_the_binary_says(self):
-        checked = 0
-        for span in self.spans:
-            m = re.match(r"^(1000:[0-9a-f]{4})\s+([a-z].*)$", span)
-            if not m:
-                continue
-            cit, text = m.groups()
-            self.assertIn(cit, self.aligned, "%r: not a boundary" % span)
-            checked += 1
-            self.assertEqual(
-                self.aligned[cit].text, text,
-                "docs/re/shop-arms.md writes `%s %s`, but tools/dis16.py "
-                "decodes %r there" % (cit, text, self.aligned[cit].text))
+        checked = self._check_instruction_lines(self.spans, "inline span")
         self.assertGreaterEqual(
             checked, 25,
             "only %d `1000:xxxx <instruction>` spans found in the prose; the "
             "pattern has drifted and this test is checking almost nothing"
             % checked)
+
+    def test_every_instruction_inside_a_fence_says_what_the_binary_says(self):
+        """The fenced blocks, which `strip_fences` hides from the scan above.
+
+        Nine fences in this file hold pasted disassembly -- the two
+        better-weapon conjunctions, the four effect blocks, the loot-arm
+        counter-example and the three `mar` upgrade splits.  Every one of
+        those lines is a claim about the binary, and until this test existed
+        none of them was checked: `bugs[].where.delta_rejoins` covers three of
+        the seventeen `mar` ones and nothing covered the rest.
+        """
+        checked = self._check_instruction_lines(self.fenced, "fenced line")
+        self.assertGreaterEqual(
+            checked, 40,
+            "only %d `1000:xxxx <instruction>` lines found inside fences; "
+            "either the fences were rewritten or the comment stripping "
+            "broke, and this test is checking almost nothing" % checked)
+
+    def _check_instruction_lines(self, lines, what):
+        checked = 0
+        for line in lines:
+            m = re.match(r"^(1000:[0-9a-f]{4})\s+([a-z].*)$", line)
+            if not m:
+                continue
+            cit, text = m.groups()
+            self.assertIn(cit, self.aligned,
+                          "%s %r: not a boundary" % (what, line))
+            checked += 1
+            self.assertEqual(
+                self.aligned[cit].text, text,
+                "docs/re/shop-arms.md writes `%s %s` in a %s, but "
+                "tools/dis16.py decodes %r there"
+                % (cit, text, what, self.aligned[cit].text))
+        return checked
 
     def test_every_prose_literal_comes_out_of_the_binary(self):
         offs = [int(m.group(1), 16)

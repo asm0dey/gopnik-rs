@@ -1213,6 +1213,57 @@
       "ArmsTest.test_the_mar_upgrade_rows_grant_the_delta_not_the_bonus"
     ],
     "expect": "does not sit between the delta arm"
+  },
+  {
+    "label": "mar-arms-effects-completeness",
+    "defends": "effects[] is the WHOLE set of absolute memory writes in an arm's span, swept and asserted set-equal -- not just a list whose entries decode.  Two mar claims are statements about that whole set: row 2's Random(3) `changes no state at all`, and `no global a mar arm writes is write-only`.  Fix round 1 promoted this because the inventory was factually complete and held by nothing.  The perturbation points row 4's armour write at row 7's, which decodes to the SAME instruction (`inc [0x38b2]`) at a real boundary, so the identity walk still passes and only the span membership is wrong.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["mar", "rows", 3, "effects", 2, "addr"],
+      "from": "1000:bfa7",
+      "to": "1000:c1b1"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_the_recorded_effects_are_every_write_in_the_arm"
+    ],
+    "expect": "the absolute memory writes inside"
+  },
+  {
+    "label": "mar-arms-random-site-completeness",
+    "defends": "Every `Random` draw an arm makes advances the RNG stream whether or not its result is used -- mar row 2's is purely cosmetic and still moves it -- so `docs/re/shop-arms.md`'s Task-26 directive rests on the recorded draws being ALL of them.  The guard sweeps the five-byte `9a 4b 11 78 0f` far-call signature over each span instead of confirming the recorded ones decode.  The perturbation points row 2's call at bmar row 3's, which is the same five bytes at a real boundary but outside the span.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["mar", "rows", 1, "roll", "call", "addr"],
+      "from": "1000:be51",
+      "to": "1000:ca0c"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_the_recorded_rolls_are_every_random_call_in_the_arm"
+    ],
+    "expect": "the `Random` call sites inside"
+  },
+  {
+    "label": "mar-arms-district-sweep-start-is-anchored",
+    "defends": "A completeness sweep is only as good as its RANGE.  Both district tests used to assert nothing stronger than `sweep_start < first_arm`, and fix round 1 narrowed mar's start from 1000:b94a to 1000:bb80 -- skipping two of the six gates -- with both tests still green.  The start is now pinned to the handler's own verb compare, which the artifact already carried as `shop_tag_at` and nothing asserted.  The perturbation is exactly that narrowing, to a real instruction boundary that is still before the arms.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["mar", "district_finding", "sweep_range", "start"],
+      "from": "1000:b94a",
+      "to": "1000:bb80"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "ArmsTest.test_the_mar_district_gates_are_every_district_operand_in_the_handler"
+    ],
+    "expect": "not at the handler's own"
   }
  ]
 }
