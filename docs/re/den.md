@@ -27,10 +27,11 @@ exactly:
 | `1000:dee3`..`1000:defc` | the not-discovered refusal |
 | `1000:defc`..`1000:df06` | the `kl` verb's own setup — the right boundary |
 
-The right edge is not a number picked to fit: `1000:defc` is where **both**
-den exits land (`1000:dee1 jmp short 0xdefc` from the `w` arm and the
-refusal's own fall-through), and `1000:df06` is the `kl` compare
-(`call 0f78:0bd8` against `kl`, CS `0xa0ea`).
+The right edge is not a number picked to fit: `1000:defc` is where both den
+exits land (`1000:dee1 jmp short 0xdefc` from the `w` arm, and the
+not-discovered refusal's own fall-through out of `1000:def7`) and also where
+the `pr` verb's own miss goes (`1000:d809 jmp 0xdefc`); `1000:df06` is the
+`kl` compare (`call 0f78:0bd8` against `kl`, CS `0xa0ea`).
 
 ### It is a loop with a one-shot preamble
 
@@ -89,6 +90,7 @@ each, displacements included. Block #3 (`1000:dcba`) is 43 bytes.
 1000:d916  cmp byte [0x369a],0x0
 1000:d91b  jnz 0xd95c
 1000:d91d  mov al,[0x3692]
+1000:d920  xor ah,ah
 1000:d922  dec ax
 1000:d923  mov dx,0xa
 1000:d926  mul dx
@@ -111,6 +113,7 @@ each, displacements included. Block #3 (`1000:dcba`) is 43 bytes.
 1000:dcc1  cmp byte [0x369a],0x0
 1000:dcc6  jnz 0xdd32
 1000:dcc8  mov al,[0x3692]
+1000:dccb  xor ah,ah
 1000:dccd  dec ax
 1000:dcce  mov dx,0xa
 1000:dcd1  mul dx
@@ -178,9 +181,12 @@ prefix are ported; the rest are not.
 1000:d98b  mov byte [0x3b7a],0x34
 1000:d990  jmp short 0xd997
 1000:d992  mov byte [0x3b7a],0x30
+1000:d997  lea di,[bp-0x200]
 1000:d99d  mov di,0x9dcb
 1000:d9a2  call 0xf78:0xae7
+1000:d9a7  lea di,[bp-0x100]
 1000:d9ad  mov al,[0x3b7a]
+1000:d9b0  push ax
 1000:d9b1  call 0xf78:0xc03
 1000:d9b6  call 0xf78:0xb66
 1000:d9bb  mov di,0x9dd4
@@ -201,6 +207,18 @@ is written even on a turn where the row is not printed.
 
 ## The arms
 
+**A note on every fence in this document.** They are the aligned decode with
+exactly two rigidly repeated shapes dropped, and nothing else: the
+`push cs` / `push di` (or `push ds` / `push di`, or `push ss` / `push di`)
+that follows every `mov di,imm16` or `lea di,[bp-N]`, and the five
+`xor ax,ax` / `push ax` pairs that precede every `call 0eed:0x1c2` — the
+`WriteLn` format-spec words. A `push ax` that pushes a VALUE is kept, because
+it is the argument. The one exception is the `param_1` chain under "The
+`param_1` dispatch behind item 6", which is a skeleton of five links and says
+so there. `tools/test_den_arms.py` re-decodes every line of every fence, and
+sweeps the COMPLETE decode besides, so an instruction dropped from a fence
+would still show up as an unaccounted branch, string, draw or write.
+
 ### `p` — `1000:db22`, treat the lads to beer
 
 **Established from flow.**
@@ -215,6 +233,7 @@ is written even on a turn where the row is not printed.
 1000:db3a  dec [0x38c3]
 1000:db3e  add word [0x38cb],0x5
 1000:db43  mov di,0x9ec3
+1000:db57  call 0xeed:0x1c2
 1000:db5c  jmp short 0xdb77
 1000:db5e  mov di,0x9efb
 ```
@@ -244,8 +263,10 @@ nothing one-shot is consumed.
 1000:db9b  sub word [0x38cb],0x2
 1000:dba0  dec [0x3e35]
 1000:dba4  mov di,0x9f10
+1000:dbb8  call 0xeed:0x1c2
 1000:dbbd  jmp short 0xdbd8
 1000:dbbf  mov di,0x9f49
+1000:dbd3  call 0xeed:0x1c2
 1000:dbd8  jmp short 0xdbf3
 1000:dbda  mov di,0x9f66
 ```
@@ -277,8 +298,10 @@ against `hp` (CS `0x9f82`), on the den's own buffer `20ae:3a72`.
 1000:dc04  call 0xf78:0xbd8
 1000:dc09  jnz 0xdc63
 1000:dc0b  mov al,0x1
+1000:dc0d  push ax
 1000:dc0e  call 0x10d14
 1000:dc11  mov byte [0x3b72],0x1
+1000:dc16  lea di,[bp-0x100]
 1000:dc1c  mov di,0x90c0
 1000:dc21  call 0xf78:0xae7
 1000:dc26  mov di,[0x3952]
@@ -289,7 +312,9 @@ against `hp` (CS `0x9f82`), on the den's own buffer `20ae:3a72`.
 1000:dc39  mov di,0x90c7
 1000:dc3e  call 0xf78:0xb66
 1000:dc43  push [0x395c]
+1000:dc53  call 0xeed:0x1c2
 1000:dc58  mov al,0x6
+1000:dc5a  push ax
 1000:dc5b  call 0x13d11
 1000:dc5e  mov byte [0x3b78],0x0
 ```
@@ -326,6 +351,7 @@ Two effects: `1000:dc11` sets the fight-accepted flag `20ae:3b72` and
 1000:dc79  push [0x38cb]
 1000:dc89  call 0xeed:0x1c2
 1000:dc8e  mov al,[0x3692]
+1000:dc91  xor ah,ah
 1000:dc93  mov dx,0xa
 1000:dc96  mul dx
 1000:dc98  add ax,0xa
@@ -373,6 +399,7 @@ compares or draws.
 1000:dd55  jnz 0xdd5a
 1000:dd57  jmp 0xdecd
 1000:dd5a  mov di,0xa038
+1000:dd6e  call 0xeed:0x1c2
 1000:dd73  mov di,0xa04a
 ```
 
@@ -384,8 +411,10 @@ pending. Then it prints `^0Давай быстрее..` (CS `0xa038`) and
 
 ```
 1000:dd8c  mov al,[0x3692]
+1000:dd8f  xor ah,ah
 1000:dd91  mov dx,0xf
 1000:dd94  mul dx
+1000:dd96  push ax
 1000:dd97  call 0xf78:0x114b
 1000:dd9c  xor dx,dx
 1000:dd9e  mov cx,ax
@@ -417,10 +446,14 @@ The second compare has the same predicate and the branches permuted again:
 
 ```
 1000:ddcf  mov al,[0x3692]
+1000:ddd2  xor ah,ah
 1000:ddd4  mov dx,0xf
 1000:ddd7  mul dx
+1000:ddd9  push ax
 1000:ddda  call 0xf78:0x114b
 1000:dddf  xor dx,dx
+1000:dde1  mov cx,ax
+1000:dde3  mov bx,dx
 1000:dde5  mov ax,[0x38a4]
 1000:dde8  cwd
 1000:dde9  cmp dx,bx
@@ -436,12 +469,16 @@ The second compare has the same predicate and the branches permuted again:
 
 ```
 1000:ddf3  mov al,0x2
+1000:ddf5  push ax
 1000:ddf6  call 0x10d14
 1000:ddf9  mov al,0x5
+1000:ddfb  push ax
 1000:ddfc  call 0x13d11
 1000:ddff  mov di,0xa075
+1000:de13  call 0xeed:0x1c2
 1000:de18  jmp short 0xde33
 1000:de1a  mov di,0xa084
+1000:de2e  call 0xeed:0x1c2
 1000:de33  jmp 0xdec8
 ```
 
@@ -456,18 +493,47 @@ The second compare has the same predicate and the branches permuted again:
 
 ```
 1000:de36  mov di,0xa09b
+1000:de4a  call 0xeed:0x1c2
+1000:de4f  mov al,[0x3692]
+1000:de52  xor ah,ah
 1000:de54  mov dx,0xa
+1000:de57  mul dx
+1000:de59  push ax
 1000:de5a  call 0xf78:0x114b
 1000:de5f  mov cx,ax
+1000:de61  mov al,[0x3692]
+1000:de64  xor ah,ah
+1000:de66  mov dx,0xa
+1000:de69  mul dx
 1000:de6b  add ax,cx
 1000:de6d  add [0x38c7],ax
+1000:de71  mov al,[0x3692]
+1000:de74  xor ah,ah
+1000:de76  mov dx,0xa
+1000:de79  mul dx
+1000:de7b  push ax
 1000:de7c  call 0xf78:0x114b
+1000:de81  mov cx,ax
+1000:de83  mov al,[0x3692]
+1000:de86  xor ah,ah
+1000:de88  mov dx,0xa
+1000:de8b  mul dx
 1000:de8d  add ax,cx
 1000:de8f  add [0x38c9],ax
 1000:de93  mov di,0x908b
+1000:de98  mov al,[0x3692]
+1000:de9b  xor ah,ah
 1000:de9d  mov dx,0xc
+1000:dea0  mul dx
+1000:dea2  push ax
+1000:deaf  call 0xeed:0x1c2
+1000:deb4  mov al,[0x3692]
+1000:deb7  xor ah,ah
+1000:deb9  mov dx,0xc
+1000:debc  mul dx
 1000:debe  add [0x38ce],ax
 1000:dec2  mov al,0x0
+1000:dec4  push ax
 1000:dec5  call 0x12526
 1000:dec8  mov byte [0x3b79],0x0
 ```
@@ -557,7 +623,9 @@ There are exactly eight: `1000:3d24 mov al,[bp+0x4]`, `1000:5085`,
 to stop there.** `1000:3d24` copies the parameter into `al`, and the actual
 dispatch is a chain of REGISTER compares no `[bp+0x4]` scan can see. So the
 second sweep collects every `cmp al,imm8` in the body. There are exactly
-five, and all five are that chain:
+five, and all five are that chain. The listing below is a SKELETON, not a
+contiguous run — it shows the five links and the load that feeds them, and
+skips the arm each link jumps into:
 
 ```
 1000:3d24  mov al,[bp+0x4]
