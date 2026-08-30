@@ -591,9 +591,13 @@ falls into `1000:defc`. No `ReadLn` happens and the submenu is never entered.
    the port's own `0`. The rest of `d` — both luck compares, the haul, the
    xp, `1000:2526` — has no such obstacle.
 7. **The den does not trim its input.** See "The input read" above.
-8. **An unrecognised key is silent.** `Game::shop_turn` already behaves this
-   way; recorded so the porting task does not add a refusal line the original
-   has no string for.
+8. **An unrecognised key is silent, and the menu prints once.** Both shapes
+   are already right in the port: `Game::enter_shop` prints the intro and then
+   sets `Mode::Shop(loc)`, and the per-line `Game::shop_turn` ignores anything
+   it does not recognise (`grep -n 'fn enter_shop' src/game.rs` and
+   `grep -n 'fn shop_turn' src/game.rs`). Recorded so the porting task neither
+   adds a refusal line the original has no string for, nor moves the twelve
+   new menu lines into the per-turn path.
 
 ### Nothing here is unreachable for want of a setter
 
