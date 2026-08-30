@@ -430,7 +430,7 @@ add that carry into the *magnitude*, before the sign is applied at
   `20ae:38c7` and `20ae:38c9` against the guest's own memory. That is also
   what makes `Fighter::junk` non-zero, so the dealers' sell-junk branch is no
   longer always the one taken. Task 29 mapped that branch
-  (`1000:ce76`..`1000:cece`) and it is still unported — see the `bmar`
+  (`1000:ce76`..`1000:cece`) and Task 30 ported it — see the `bmar`
   sell-arm entry below.
 
 ### Wander buckets 1 and 4 — their text is still not modelled
@@ -1081,6 +1081,74 @@ changes what those nine input paths accept and belongs with a task that can
 test all of them; doing it only at the autosave would make this port
 self-inconsistent for no gain. Recorded so the divergence is in one place
 instead of nine scattered comments.
+
+## Понтовость is a 16-bit `word` in the original and an `i32` here
+
+*Cited from `src/game.rs`'s `Game::pontovost_street` field and every site
+`grep -n 'pontovost_street' src/game.rs` returns.*
+
+**Established from flow.** `20ae:38cb` is a Pascal `Integer` — a signed
+16-bit word — and every absolute-operand reference to it in the image is a
+`word`-width operation:
+
+```
+$ python3 tools/re_query.py xrefs-to 20ae:38cb --json | python3 -c "import json,sys; s=json.load(sys.stdin)['scan']; print(s['raw_hits'],'raw,',len(s['accepted']),'accepted,',len(s['discarded']),'discarded')"
+23 raw, 23 accepted, 0 discarded
+```
+
+Every one of the 23 is `cmp word [0x38cb],imm`, `add word [0x38cb],imm`,
+`sub word [0x38cb],imm`, `add [0x38cb],ax`, `sub [0x38cb],ax`,
+`mov ax,[0x38cb]`, `mov [0x38cb],ax`, `add ax,[0x38cb]`, `cmp ax,[0x38cb]`
+or `push [0x38cb]` — no byte-width form appears. Drop the `-c` filter to
+print each accepted hit with its instruction text. **The limit of that
+scan:** it accepts only aligned absolute-operand encodings, so it cannot rule
+out a reference made through a register-held pointer. It is a census of the
+addressing form, not a proof that nothing else touches the word.
+
+**The port carries it as `i32`, so it does not wrap where the original
+does.** `Game::pontovost_street` is `pub pontovost_street: i32`, and every
+arm that adds to or subtracts from it does so in `i32`. Five of the den's own
+sites, each re-derived from an aligned instruction start:
+
+| original | what | port |
+|---|---|---|
+| `1000:db3e` `add word [0x38cb],0x5` | the beer arm's award | `Game::den_beer` |
+| `1000:db8f` `cmp word [0x38cb],0x0` (`1000:db94 jle`) | the borrow arm's gate | `Game::den_borrow` |
+| `1000:db9b` `sub word [0x38cb],0x2` | the borrow arm's charge | `Game::den_borrow` |
+| `1000:dc9b` `cmp ax,[0x38cb]` (`1000:dc9f jnle`) | the regard arm's second line | `Game::den_regard` |
+| `1000:dd46` `cmp word [0x38cb],0x64` (`1000:dd4b jnl`) | the job arm's gate | `Game::den_job` |
+
+`Game::den_menu_reveal_hint`'s doc is the only place in `src/` that recorded
+the widening before this entry, for its own `1000:d93a add ax,[0x38cb]` block
+(it names `Game::den_reveal`'s `1000:dcdc` as doing the same, but
+`den_reveal`'s own doc says nothing about it). One local remark under nine
+other sites is why this is written down as a class.
+
+**Where the divergence is observable, and where it is not.** In `ax`, the
+original's arithmetic wraps at `0x7fff`/`-0x8000` and its `jle`/`jnl`/`jnle`
+branches read the wrapped value; this port's does not, so a понтовость large
+enough to overflow a signed word takes a different branch here. It is also
+**not** carried faithfully across a save: `Game::to_save` writes
+`street_cred: self.pontovost_street as i16` (`grep -n 'street_cred:'
+src/persist.rs`), which truncates rather than wraps at each arithmetic step —
+so the port and the original can disagree without either ever reporting an
+error.
+
+**Unverified: whether any reachable play sequence gets there.** Several of
+the 23 sites add an unbounded `ax` rather than an immediate — `1000:5291`
+(the post-kill award), `1000:821a` (the church) and `1000:57de` (the
+`param_1 = 6` residue this port does not run) — so no immediate bounds the
+per-turn gain, and the repeatable `+5` at `1000:db3e` is bounded only by the
+number of half-litres. Nobody has computed how many turns it takes to cross
+`0x7fff`, and the largest value any shipped save carries is SAVE_R5's 1508
+(`tests/save_load.rs::save_r5_loads_the_character_the_shipped_bytes_describe`).
+Settling this needs a bound on the per-turn award, not a play session.
+
+**Not fixed here.** Narrowing the field to `i16` is a one-line change, but
+every arithmetic site would then have to reproduce the original's wrap
+explicitly rather than getting Rust's panic-in-debug/wrap-in-release default,
+and the five den sites above are only part of the population. Recorded so the
+divergence is in one place instead of two doc comments.
 
 ## `FUN_1000_11c2` -- traced (Task 20), not ported
 
@@ -2326,6 +2394,11 @@ decided rather than established.
 ## Opened by Task 27 (mapping the den's submenu)
 
 *Cited from `docs/re/den.md` and `data/den_arms.json`.*
+
+**Read this section as of Task 27, not as of HEAD.** It records what the map
+left open when it was written; the "Opened and closed by Task 28" section
+immediately below is the one that says what is still open. Every "not
+dispatched" and "not printed" below was closed by Task 28.
 
 `docs/re/den.md` maps `1000:d802`..`1000:df06` — the whole `pr` handler — and
 `tools/test_den_arms.py` re-derives every address and every string in

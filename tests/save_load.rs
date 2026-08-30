@@ -818,6 +818,152 @@ fn every_in_record_address_named_in_game_rs_is_persisted() {
     }
 }
 
+/// `struct Game`'s fields, as `(name, doc block)`, parsed out of
+/// `src/game.rs`.
+///
+/// Every non-empty line of that struct's body is either a `///` doc line or a
+/// field declaration -- asserted below, so a future field written in some
+/// other shape (an attribute, a multi-line type) stops this parser loudly
+/// instead of being skipped.
+fn game_fields(game_rs: &str) -> Vec<(String, String)> {
+    let from = game_rs.find("pub struct Game {").expect("struct Game");
+    let rest = &game_rs[from..];
+    let end = from + rest.find("\n}\n").expect("end of struct Game");
+    let body = &game_rs[from + "pub struct Game {".len()..end];
+
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut doc = String::new();
+    for line in body.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if let Some(rest) = t.strip_prefix("///") {
+            doc.push_str(rest);
+            doc.push('\n');
+            continue;
+        }
+        let decl = t.strip_prefix("pub ").unwrap_or(t);
+        let name: String = decl
+            .chars()
+            .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
+            .collect();
+        assert!(
+            !name.is_empty() && decl[name.len()..].starts_with(':'),
+            "struct Game holds a line this parser does not understand, so it \
+             would silently drop the field it belongs to: {line:?}"
+        );
+        out.push((name, std::mem::take(&mut doc)));
+    }
+    out
+}
+
+/// The other half of the inventory, and the one that was missing: every
+/// `struct Game` field whose doc names a `20ae:` address must be accounted
+/// for on exactly one side of the record -- either persisted by
+/// `Game::to_save`, or listed in the out-of-record table in its doc.
+///
+/// `every_in_record_address_named_in_game_rs_is_persisted` filters to
+/// `(lo..hi)`, so it can only ever see the persisted half. That is why Task
+/// 28 could add `Game::fight_accepted_3b72` (`20ae:3b72`, above `0x3951`)
+/// with no row and pass every gate: the table claimed to enumerate "every
+/// other global this port carries" and no assertion read it.
+///
+/// **The rule, exactly.** A field is *persisted* if at least one `20ae:`
+/// address its doc names lies inside the record AND is cited in
+/// `to_save`'s body. Otherwise it must be named as `Game::<field>` in
+/// `to_save`'s doc comment above that body. A field is keyed by NAME, not by
+/// address, because a field's doc may legitimately discuss addresses that are
+/// not its own -- `Game::market_ban_countdown`'s doc opens on `20ae:3b74`,
+/// the theft scratch word, precisely to record that it needs no field. An
+/// address-keyed rule would demand a table row for it.
+///
+/// **Stated limit.** A field whose doc names no `20ae:` address at all is out
+/// of scope here: nothing mechanical distinguishes a guest global from a
+/// port-only one (`mode`, `fight_log`, `running`) once the address is absent.
+/// The positive control below pins the population this does cover, so a
+/// change that empties the scan -- a renamed struct, a reformatted doc -- is
+/// red rather than vacuously green.
+#[test]
+fn every_game_field_is_either_persisted_or_named_out_of_record() {
+    let game_rs = std::fs::read_to_string(root().join("src").join("game.rs")).unwrap();
+    let persist_rs = std::fs::read_to_string(root().join("src").join("persist.rs")).unwrap();
+    let doc_from = persist_rs
+        .find("What is deliberately NOT here")
+        .expect("the table");
+    let body_from = persist_rs.find("pub fn to_save").expect("to_save");
+    let body_to = persist_rs.find("pub fn from_save").expect("from_save");
+    assert!(doc_from < body_from && body_from < body_to);
+    // The markdown table ROWS only, not the prose around them: this test's
+    // own bullet in that doc names `Game::fight_accepted_3b72`, and a slice
+    // that swallowed it would let the row be deleted and still pass -- the
+    // check-that-cannot-fail, reintroduced by the fix for one.
+    let table: String = persist_rs[doc_from..body_from]
+        .lines()
+        .filter(|l| l.trim_start().starts_with("/// |"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        table.lines().count() >= 10,
+        "the out-of-record table has {} rows; the slice has stopped finding it",
+        table.lines().count()
+    );
+    let to_save_body = &persist_rs[body_from..body_to];
+
+    let lo = gopnik::save::RECORD_BASE;
+    let hi = lo + SIZE;
+    let mut checked = 0;
+    for (name, doc) in game_fields(&game_rs) {
+        let mut addrs: Vec<usize> = Vec::new();
+        let mut i = 0;
+        while let Some(k) = doc[i..].find("20ae:") {
+            let at = i + k + 5;
+            i = at;
+            // `get`, not a slice: a doc could write `20ae:` before a
+            // non-ASCII character and an index slice would panic on the char
+            // boundary instead of skipping a non-address.
+            let Some(hex) = doc.get(at..at + 4) else {
+                continue;
+            };
+            if let Ok(off) = usize::from_str_radix(hex, 16) {
+                addrs.push(off);
+            }
+        }
+        if addrs.is_empty() {
+            continue;
+        }
+        checked += 1;
+        let persisted = addrs
+            .iter()
+            .any(|off| (lo..hi).contains(off) && to_save_body.contains(&format!("20ae:{off:04x}")));
+        if persisted {
+            continue;
+        }
+        assert!(
+            table.contains(&format!("Game::{name}")),
+            "`Game::{name}` names {} but `Game::to_save` neither persists it nor \
+             lists it in the out-of-record table -- so the table's claim to \
+             enumerate every other global this port carries is false",
+            addrs
+                .iter()
+                .map(|o| format!("20ae:{o:04x}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    // Positive control: the rule above is vacuous if the parse found nothing.
+    // 32 of `struct Game`'s 43 fields name at least one `20ae:` address. The
+    // eleven that do not are the composites and the port-only bookkeeping --
+    // `player`, `progress`, `places`, `district`, `rng`, `location`,
+    // `save_dir`, `mode`, `fight_log`, `last_enemy`, `running` -- which is
+    // the limit stated above, made countable.
+    assert!(
+        checked >= 30,
+        "only {checked} fields carry a 20ae: address; the scan has stopped \
+         seeing struct Game"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // The load path's DECISIONS, as opposed to its data transformations.
 //

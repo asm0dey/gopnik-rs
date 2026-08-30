@@ -2144,6 +2144,72 @@
       "TrimInventoryTest.test_the_counts_the_entry_states_are_what_src_holds"
     ],
     "expect": "says 9 call sites and 6 prose lines"
+  },
+  {
+    "label": "sell-arm-immediates-come-from-the-artifact",
+    "defends": "The whole-branch review's I1.  src/game.rs's each_wes_arm_sells_its_own_item_for_its_own_two_immediates used to follow `delta == base + r` with `(base..base+span).contains(&delta)` and a doc comment claiming neither check subsumed the other.  It did: Rng::below_at computes `((r * n) >> 32) as u16`, which is `< n` by construction, so given `log[0].n == span` the range assertion could not fail -- the tautological comparison presented as verification that docs/re/METHODOLOGY.md names.  The replacement compares the test table's site, base and span against data/shop_arms.json's sell.arms[].roll, which tools/test_shop_arms.py re-derives from orig/g.exe, so the arm's payout is chained to the binary's own immediates.  Moving arm 1's `add ax,0x8` base off 8 must redden it.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "sell",
+        "arms",
+        0,
+        "roll",
+        "base"
+      ],
+      "from": 8,
+      "to": 9
+    },
+    "test": [
+      "cargo",
+      "test",
+      "--lib",
+      "each_wes_arm_sells_its_own_item_for_its_own_two_immediates"
+    ],
+    "expect": "immediates disagree with data/shop_arms.json's roll"
+  },
+  {
+    "label": "all-six-sell-credits-come-from-the-artifact",
+    "defends": "The second instance of I1, in one_wes_sells_all_six_items_and_never_the_cleaver: an exact `assert_eq!(money, expect)` was followed by `(105..=163).contains(&money)`, which cannot fail once `expect` is the sum of the same six bases and every drawn `r < n`.  The envelope is gone and the six sites and six bases now come from data/shop_arms.json's sell.arms[].roll rather than from literals restating the table above them.  Moving arm 3's `add ax,0xd` base off 13 must redden the exact sum.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "sell",
+        "arms",
+        2,
+        "roll",
+        "base"
+      ],
+      "from": 13,
+      "to": 14
+    },
+    "test": [
+      "cargo",
+      "test",
+      "--lib",
+      "one_wes_sells_all_six_items_and_never_the_cleaver"
+    ],
+    "expect": "six credits, no rate anywhere"
+  },
+  {
+    "label": "out-of-record-inventory-is-guarded",
+    "defends": "The whole-branch review's I2.  src/persist.rs's `What is deliberately NOT here` table claims to enumerate every global this port carries that sits OUTSIDE the 20ae:369c..20ae:3951 record, and it went stale: Task 28 added Game::fight_accepted_3b72 (20ae:3b72, above 0x3951) and no row.  The only guard, every_in_record_address_named_in_game_rs_is_persisted, filters to (lo..hi) and structurally cannot see that half -- the `inventory whose completeness claim stopped the next search` defect docs/re/METHODOLOGY.md names.  every_game_field_is_either_persisted_or_named_out_of_record walks struct Game's own field list and requires each field whose doc names a 20ae: address to be persisted by to_save OR named in the table.  Renaming the row's field must redden it -- which also proves the table slice reads the markdown rows and not this test's own prose mention of the same field.",
+    "artifact": "src/persist.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "/// | [`Game::fight_accepted_3b72`] | `20ae:3b72` | above `3951` |",
+      "to": "/// | [`Game::den_loan_credit`] | `20ae:3b72` | above `3951` |"
+    },
+    "test": [
+      "cargo",
+      "test",
+      "--test",
+      "save_load",
+      "every_game_field_is_either_persisted_or_named_out_of_record"
+    ],
+    "expect": "neither persists it nor lists it in the out-of-record table"
   }
  ]
 }

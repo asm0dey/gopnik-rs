@@ -486,7 +486,18 @@ the shipped tree, and the block under *Recomputation* prints it. Quote the
 command, not the cell.
 
 After Task 30: 838 game branches; **449 touched (53.6%)**; 389 with no citation
-at the branch or its guard. The recent history, each figure from the block under
+at the branch or its guard. **Ten of this branch's +61 are branches the port
+explicitly does NOT implement** — the `FUN_1000_3d11` `param_1` residue that
+`Game::den_beat_up`'s and `Game::den_job`'s doc comments enumerate precisely
+to say so. That is the over-reporting failure direction above, at ~16% of the
++61, and it belongs at the headline rather than only in Task 28's paragraph
+below: `1000:3d29`, `1000:3d2d`, `1000:3e8f`, `1000:3eaf`, `1000:3f2d`,
+`1000:513d`, `1000:51b0`, `1000:51fa`, `1000:5200` and `1000:57d2`, of which
+three (`3d29`, `3d2d`, `57d2`) are cited at the branch address itself and
+seven only through their guard. Recomputed by running the *Recomputation →
+Coverage* block's citation index over `git show 629e56a:<file>` and
+`git show df6ea39:<file>` and differencing `hit()` per branch in
+`1000:3d11`. The recent history, each figure from the block under
 *Recomputation* run against a `git worktree` of that commit: `3981f74` (before
 Task 22) 280 (33.4%); `e657bbe` (Task 22 ported) 305 (36.4%); `19a1a34`
 (Task 24, `bmar` rows 1-6 ported) 348 (41.5%); `7b04cdf` and `768a85e`
@@ -525,7 +536,16 @@ and *citing a branch* the paragraph above is about. (The two `1000:ab59` and
 `citations` column goes 1360 → 1522. The +25 is the whole of the dealers' sell
 path: `1000:ce76`..`1000:d383` holds 26 game branches, of which exactly one
 (`1000:ce8c`, guarded by `1000:ce87`) was already touched — `src/model.rs`'s
-`Fighter::junk` doc cited the guard. Every other function's `touched` column is
+`Fighter::junk` doc cited the guard. (**1522 was the figure at `df6ea39`.**
+The whole-branch fix wave moved it to **1523**, which is what the block below
+now prints — F1 took `src/commands.rs`'s in-range citing lines 37 → 44 by
+tracing `SellJunk`/`SellItems` to `1000:ce80` and `1000:ced8`, and I1 took
+`src/game.rs`'s 1381 → 1375 by replacing the six literal roll sites in
+`one_wes_sells_all_six_items_and_never_the_cleaver` with the same six read
+out of `data/shop_arms.json`. Per-file, recomputed by running the
+*Recomputation* block's citation index against the working tree and against
+`git show df6ea39:<file>`. `touched` did not move either way: every address
+involved is inside the already-cited sell range.) Every other function's `touched` column is
 unchanged: `1000:3d11` 106, `1000:1a03` 54, `1000:6a0d` 15, `1000:29c4` 2,
 `1000:0d14` 11, `1000:2526` 9, `1000:7c67` 12, `1000:1348` 1, and the last
 seven 0. Exactly one other function's `citations` moved — `1000:3d11`
@@ -747,7 +767,7 @@ and in `docs/superpowers/RESUME.md`'s measured-history table:
 
 ```
 game branches 838 | touched 449 (53.6%) | uncited 389
-1000:ab59    bytes 17143 branches 406 touched 239 citations 1522
+1000:ab59    bytes 17143 branches 406 touched 239 citations 1523
 1000:3d11    bytes  6971 branches 224 touched 106 citations 663
 1000:1a03    bytes  2700 branches  83 touched  54 citations 176
 1000:6a0d    bytes  2527 branches  33 touched  15 citations 159

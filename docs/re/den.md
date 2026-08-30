@@ -613,8 +613,8 @@ the shape it had when the map was written.
    (`1000:ded7`).
    **DONE:** `Game::den_beer`, `den_borrow`, `den_beat_up`, `den_regard`,
    `den_job`, and `w` through the shared `Command::Walk` arm.
-2. **Twelve more menu lines.** `1000:d8b9` onward is unported;
-   `Game::print_den_intro`'s own doc already says so. Four of them are gated
+2. **Twelve more menu lines.** `1000:d8b9` onward was unported;
+   `Game::print_den_intro`'s own doc already said so. Four of them are gated
    and two are colour-dimmed.
    **DONE:** `Game::print_den_menu`, called from `print_shop_intro` right
    after `print_den_intro` — the two are one straight-line run in the

@@ -111,8 +111,10 @@
 //!   confirmed there is no typed save verb.
 //! * `f`/`k` were swapped in the brief; `k` fights, `f` shoots (see table).
 //! * `x` is not `Quit`; `e`/`exit` are (confirmed dispatcher entries; `x` is
-//!   `bmar`-specific junk-selling, corroboration only, see [`Command::SellJunk`]).
-//! * `wes` is not `Weapon`; it sells items at `bmar` (corroboration only).
+//!   `bmar`-specific junk-selling, **established from flow** at its own
+//!   `1000:ce80` compare, see [`Command::SellJunk`]).
+//! * `wes` is not `Weapon`; it sells items at `bmar`, likewise established
+//!   from flow at `1000:ced8`.
 //! * `hp` is not a global health command -- its only occurrence in
 //!   `data/strings.json` is inside `pr`'s own submenu; not in this table at
 //!   all, so it falls through to `Unknown("hp")` at the top level, which is
@@ -188,12 +190,26 @@ pub enum Command {
     /// `fight`. Confirmed dispatcher entry at `1000:d7d8` whose handler
     /// prints a deprecation message pointing at `w`, not a fight action.
     LegacyFight,
-    /// `x` at the dealers (sell junk). Not found in the dispatch chain;
-    /// corroborated only by `bmar`'s own submenu text (`data/strings.json`
-    /// file `0xAA58`: `"Здесь можно толкнуть хлам(x)"`).
+    /// `x` at the dealers (sell junk). Not in `entry`'s `DS:3972` chain --
+    /// **established from flow**, at `1000:ce80`, where the `bmar` handler
+    /// calls the shortstring compare `FUN_1f78_0bd8` on the sub-prompt
+    /// buffer `DS:3a72` against token CS `0x96ce`, and `1000:ce85 jnz 0xcece`
+    /// is the miss. `bmar`'s own submenu text (`data/strings.json` file
+    /// `0xAA58`: `"Здесь можно толкнуть хлам(x)"`) now corroborates that
+    /// traced compare instead of standing alone.
+    ///
+    /// `Game::shop_turn` is the **only** route to this arm: the street
+    /// prompt's own arm for it does nothing (`grep -n 'Command::SellJunk |
+    /// Command::SellItems' src/game.rs`), because the original's street
+    /// dispatcher never compares the token at all.
     SellJunk,
-    /// `wes` at the dealers (sell items). Same corroboration level as
-    /// `SellJunk` (file `0xAA8A`).
+    /// `wes` at the dealers (sell items). Same tier and same shape as
+    /// [`Command::SellJunk`]: **established from flow** at `1000:ced8`, the
+    /// `FUN_1f78_0bd8` call on `DS:3a72` against token CS `0x970a`, with
+    /// `1000:cedd jz 0xcee2` entering the six sequential offers and
+    /// `1000:cedf jmp 0xd36d` leaving on a miss. Submenu text file `0xAA8A`
+    /// corroborates. Reached only through `Game::shop_turn`, never from the
+    /// street.
     SellItems,
     /// Any line the dispatcher's compare chain does not match. The original
     /// writes nothing for these (`1000:ee01` `jmp 0xab75`, straight back to

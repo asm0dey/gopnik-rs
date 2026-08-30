@@ -8655,18 +8655,67 @@ mod tests {
         },
     ];
 
+    /// `data/shop_arms.json`'s `sell.arms[].roll`, as
+    /// `(call.addr, base, n)` per arm. That block is re-derived from
+    /// `orig/g.exe` by `tools/test_shop_arms.py` — `roll.call.addr` is the
+    /// `call 0f78:114b`, `roll.n` the `mov ax,imm` before it and
+    /// `roll.base` the `add ax,imm` after it — so reading it here binds the
+    /// table above to the binary instead of to a second transcription of
+    /// itself.
+    fn sell_roll_immediates_from_artifact() -> Vec<(String, i32, u16)> {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/data/shop_arms.json");
+        let bytes = std::fs::read(path).expect("read data/shop_arms.json");
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("parse");
+        v["sell"]["arms"]
+            .as_array()
+            .expect("data/shop_arms.json sell.arms")
+            .iter()
+            .map(|a| {
+                let r = &a["roll"];
+                (
+                    r["call"]["addr"]
+                        .as_str()
+                        .expect("roll.call.addr")
+                        .to_string(),
+                    r["base"].as_i64().expect("roll.base") as i32,
+                    r["n"].as_u64().expect("roll.n") as u16,
+                )
+            })
+            .collect()
+    }
+
     /// Each arm alone: its gate, its offer, its draw site and both of its
     /// immediates, its flag clear, its confirmation, and the money delta as
     /// a number.
     ///
-    /// The delta is checked twice and neither check subsumes the other: it
-    /// must equal `base + r` for the value actually drawn at this arm's own
-    /// `call 0f78:114b` (so a wrong base, or a refund read from the buy
-    /// price, fails), and it must lie in `base..base+span` (so a wrong span
-    /// fails). Arm 4 at 13..21 and the row-5 buy price of 25 are different
-    /// numbers, which is the point of the refund finding.
+    /// The delta must equal `base + r` for the value actually drawn at this
+    /// arm's own `call 0f78:114b`, so a wrong base — or a refund read from
+    /// the buy price — fails. Arm 4 at 13..21 and the row-5 buy price of 25
+    /// are different numbers, which is the point of the refund finding.
+    ///
+    /// A previous revision followed that with
+    /// `(base..base+span).contains(&delta)` and called the two checks
+    /// independent. They are not: `Rng::below_at` computes
+    /// `((r * n) >> 32) as u16`, which is `< n` by construction, so given
+    /// `log[0].n == a.span` and `delta == a.base + r` the range assertion
+    /// holds unconditionally — the tautology
+    /// `docs/re/METHODOLOGY.md` names. What replaces it is a check that can
+    /// fail: `site`, `base` and `span` are compared against
+    /// `data/shop_arms.json`'s `sell.arms[].roll`, which
+    /// `tools/test_shop_arms.py` re-derives from `orig/g.exe`. Chained with
+    /// the three assertions above it, that pins the number the port pays out
+    /// to the immediates the binary actually holds. Mutation case
+    /// `sell-arm-immediates-come-from-the-artifact`.
     #[test]
     fn each_wes_arm_sells_its_own_item_for_its_own_two_immediates() {
+        let artifact = sell_roll_immediates_from_artifact();
+        assert_eq!(
+            artifact.len(),
+            SELL_ARMS.len(),
+            "data/shop_arms.json records {} sell arms, the table has {}",
+            artifact.len(),
+            SELL_ARMS.len()
+        );
         for (n, a) in SELL_ARMS.iter().enumerate() {
             let mut g = dealers(100);
             (a.set)(&mut g);
@@ -8686,13 +8735,12 @@ mod tests {
                 "arm {} credits base + the drawn value",
                 n + 1
             );
-            assert!(
-                (a.base..a.base + i32::from(a.span)).contains(&delta),
-                "arm {} refund {} outside {}..{}",
-                n + 1,
-                delta,
-                a.base,
-                a.base + i32::from(a.span)
+            let (site, base, span) = &artifact[n];
+            assert_eq!(
+                (a.site, a.base, a.span),
+                (site.as_str(), *base, *span),
+                "arm {} immediates disagree with data/shop_arms.json's roll",
+                n + 1
             );
             assert!(!(a.sold)(&g), "arm {} clears the lesser rung", n + 1);
             assert!((a.better)(&g), "arm {} leaves the better rung set", n + 1);
@@ -8811,8 +8859,19 @@ mod tests {
     /// everything the six arms offer leaves it set -- and one `wes` sells up
     /// to six items, because each confirmation `WriteLn` falls straight into
     /// the next arm's own-flag test.
+    ///
+    /// The six sites and the six bases come from
+    /// `data/shop_arms.json`'s `sell.arms[].roll`, not from literals here: a
+    /// previous revision followed the exact `assert_eq!(money, expect)` with
+    /// `(105..=163).contains(&money)`, which cannot fail once `expect` is
+    /// the sum of the same six bases and every `r < n`. Same tautology as in
+    /// `each_wes_arm_sells_its_own_item_for_its_own_two_immediates`, same
+    /// replacement: bind the constants to the artifact instead of restating
+    /// them.
     #[test]
     fn one_wes_sells_all_six_items_and_never_the_cleaver() {
+        let artifact = sell_roll_immediates_from_artifact();
+        assert_eq!(artifact.len(), 6, "data/shop_arms.json sell.arms");
         let mut g = dealers(0);
         all_sellable(&mut g);
         g.rng.start_log();
@@ -8826,31 +8885,14 @@ mod tests {
         });
         let log = g.rng.take_log();
         let sites: Vec<&str> = log.iter().map(|d| d.site).collect();
-        assert_eq!(
-            sites,
-            vec![
-                "1000:cf58",
-                "1000:d00d",
-                "1000:d0c2",
-                "1000:d185",
-                "1000:d241",
-                "1000:d2f6",
-            ]
-        );
-        let expect: i32 = [8, 8, 13, 13, 25, 38]
+        let want_sites: Vec<&str> = artifact.iter().map(|(s, _, _)| s.as_str()).collect();
+        assert_eq!(sites, want_sites, "six draws, in data/shop_arms.json order");
+        let expect: i32 = artifact
             .iter()
             .zip(&log)
-            .map(|(b, d)| b + i32::from(d.r))
+            .map(|((_, b, _), d)| b + i32::from(d.r))
             .sum();
         assert_eq!(g.player.money, expect, "six credits, no rate anywhere");
-        // 105 = 8+8+13+13+25+38, the six bases. `Random(n)` returns
-        // 0..n-1, so the six maxima are 4+4+7+7+14+22 = 58 and the envelope
-        // is 105..=163.
-        assert!(
-            (105..=163).contains(&g.player.money),
-            "money {} outside the six arms' envelope",
-            g.player.money
-        );
         // The six lesser rungs are cleared (1000:cf74, 1000:d029,
         // 1000:d0de, 1000:d1a1, 1000:d25d, 1000:d312) ...
         assert!(!g.wear_suit_abibas_38b4);

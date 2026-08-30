@@ -230,6 +230,7 @@ impl Game {
     /// | field | address | side of the record |
     /// |---|---|---|
     /// | [`Game::flag_3693`] | `20ae:3693` | below `369c` |
+    /// | [`Game::fight_accepted_3b72`] | `20ae:3b72` | above `3951` |
     /// | [`Game::market_ban_countdown`] | `20ae:3b76` | above `3951` |
     /// | [`Game::club_ban_countdown`] | `20ae:3b77` | above |
     /// | [`Game::den_errand_1_pending`] | `20ae:3b78` | above |
@@ -240,12 +241,23 @@ impl Game {
     /// | [`Game::district`] | `20ae:3692` | below -- the load path takes it from the slot digit (`1000:6bf9`) |
     /// | [`Game::places`] | `20ae:3694`..`369a` | below -- `places.sav`, seven separate byte writes |
     ///
-    /// `tests/save_load.rs::every_in_record_address_named_in_game_rs_is_persisted`
-    /// is the executable form of that claim: it re-derives the set of
-    /// `20ae:` addresses `src/game.rs`'s field docs name, keeps the ones
-    /// inside the record, and requires each to be cited here. Adding a
-    /// `Game` field for an in-record byte and forgetting to persist it fails
-    /// that test rather than silently losing the byte.
+    /// Two tests in `tests/save_load.rs` are the executable form of that
+    /// claim, one per direction, because either alone leaves half the
+    /// inventory unguarded:
+    ///
+    /// * `every_in_record_address_named_in_game_rs_is_persisted` re-derives
+    ///   the set of `20ae:` addresses `src/game.rs` names, keeps the ones
+    ///   inside the record, and requires each to be cited here. Adding a
+    ///   `Game` field for an in-record byte and forgetting to persist it
+    ///   fails that test rather than silently losing the byte.
+    /// * `every_game_field_is_either_persisted_or_named_out_of_record` walks
+    ///   `struct Game`'s own field list and requires every field whose doc
+    ///   names a `20ae:` address to be accounted for on ONE of the two
+    ///   sides. The table above was written as complete and then went
+    ///   stale — Task 28 added [`Game::fight_accepted_3b72`], above `3951`,
+    ///   and no row — because the in-record test filters to `(lo..hi)` and
+    ///   structurally cannot see this half. Its limit is stated in its own
+    ///   doc.
     pub fn to_save(&self) -> Save {
         let p = &self.player;
         let mut save = Save::blank();
