@@ -1005,7 +1005,7 @@ port-side inventory is a **command**, not a pasted listing:
 $ grep -rn '\.trim()' src/*.rs | grep -v 'trim_end_matches\|trim_start_matches'
 ```
 
-**Thirteen hits: nine call sites and four lines of prose about them.** Run it
+**Sixteen hits: ten call sites and six lines of prose about them.** Run it
 and the counts are what to check, not the line numbers.
 
 | where | what it normalises |
@@ -1017,12 +1017,36 @@ and the counts are what to check, not the line numbers.
 | `Game::walk` | the encounter accept's `y` |
 | `Game::mage` | the mage's `y` |
 | `Game::wander_girl` | wander bucket 2's `y` |
+| `Game::sell_offer` | the six `wes` sell offers' `y` (`1000:cf6d` and its five twins) |
 | `Game::run_combat` | combat's `run` (`1000:48e1`) |
 | `Game::run_combat` | combat's `e` (`1000:4c56`) |
 
-The four prose hits are the autosave comment that points at this section, and
-three in `Game::rename`'s neighbourhood saying it must **not** trim — the
-next paragraph is what those are about.
+The six prose hits are the autosave comment that points at this section,
+`Game::sell_offer`'s own comment saying the same, one in
+`Game::den_menu_reveal_hint` about `Game::shop_turn`'s key trim, and three in
+`Game::rename`'s neighbourhood saying it must **not** trim — the next
+paragraph is what those are about.
+
+**This listing has now gone stale four times, and the fourth is why it is now
+GUARDED rather than merely recomputable.** Task 30 added the tenth call site
+(`Game::sell_offer`) and its own new text elsewhere in this file said the six
+`wes` reads "join the population of this entry" — while the population here
+still said nine. The prose count was separately already wrong before that: the
+command printed 14 hits at `e6b62eb`, so "four lines of prose" had been five
+since some earlier task. Turning the pasted listing into a command (below) made
+the numbers *recomputable*; it did not make anything *recompute* them, which is
+the "inventory whose completeness claim stopped the next search" defect
+`docs/re/METHODOLOGY.md` names.
+
+What catches the next drift is
+`tools/test_string_citations.py`'s `TrimInventoryTest`, which reruns the
+command's filter over `src/*.rs`, splits the hits into call sites and prose,
+and requires **both** counts *and* the table's `where` column above to match
+what `src/` actually holds. It fails from either side: adding a `.trim()`
+without adding a row, or editing a number here without touching `src/`. Run it
+with `python3 tools/test_string_citations.py TrimInventoryTest`; the mutation
+case `trim-inventory-counts-are-checked` in `tools/mutations.json` is the
+receipt that it can go red.
 
 **This block used to paste the grep's output verbatim, and that is why it is
 now a command.** The listing went stale three times in three consecutive

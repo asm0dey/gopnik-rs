@@ -3718,42 +3718,42 @@
     "what_the_port_must_change": [
       {
         "n": 1,
-        "what": "`Game::sell_junk` is a hardcoded `^4Тебе нечего спихнуть.` and must become the real arm: refuse only when Хлам <= 0 (`1000:ce87` is a SIGNED word compare), otherwise add the whole junk word to the money ONE-FOR-ONE and zero it (`1000:ce8e`..`1000:ce9a`, the same exclusive-end convention every `span` in this file uses -- `1000:ce9a` is the confirmation push, and `1000:ce97 mov [0x38c9],ax` is the last instruction inside), then print CS 0x96d0 with no number in it.",
+        "what": "DONE by Task 30, in `Game::sell_junk`. It WAS a hardcoded `^4Тебе нечего спихнуть.` and had to become the real arm: refuse only when Хлам <= 0 (`1000:ce87` is a SIGNED word compare), otherwise add the whole junk word to the money ONE-FOR-ONE and zero it (`1000:ce8e`..`1000:ce9a`, the same exclusive-end convention every `span` in this file uses -- `1000:ce9a` is the confirmation push, and `1000:ce97 mov [0x38c9],ax` is the last instruction inside), then print CS 0x96d0 with no number in it.",
         "blocked": false
       },
       {
         "n": 2,
-        "what": "`Game::sell_items` is a hardcoded `^6У тебя нет неужных вещей.` and must become six sequential offers. They are NOT exclusive: an accepted arm falls straight through to the next arm's gate, so one `wes` can sell up to six items and read up to six lines.",
+        "what": "DONE by Task 30, in `Game::sell_items`. It WAS a hardcoded `^6У тебя нет неужных вещей.` and had to become six sequential offers. They are NOT exclusive: an accepted arm falls straight through to the next arm's gate, so one `wes` can sell up to six items and read up to six lines.",
         "blocked": false
       },
       {
         "n": 3,
-        "what": "Each arm's refund is `base + Random(n)` with the arm's own two immediates (8+R(5), 8+R(5), 13+R(8), 13+R(8), 25+R(15), 38+R(23)) -- never the buy price. The draw is spent even when the player declines.",
+        "what": "DONE by Task 30, in `Game::sell_offer`'s two immediate parameters. Each arm's refund is `base + Random(n)` with the arm's own two immediates (8+R(5), 8+R(5), 13+R(8), 13+R(8), 25+R(15), 38+R(23)) -- never the buy price. The draw is spent even when the player declines.",
         "blocked": false
       },
       {
         "n": 4,
-        "what": "The gate is `own && (any better rung owned)`, short-circuit. The three armour arms have one required flag; the weapon arms have three, two and one.",
+        "what": "DONE by Task 30, as the six `if` conditions of `Game::sell_items`. The gate is `own && (any better rung owned)`, short-circuit. The three armour arms have one required flag; the weapon arms have three, two and one.",
         "blocked": false
       },
       {
         "n": 5,
-        "what": "Nothing is subtracted from armour or damage on a sale, and nothing clears the BETTER item's flag. Reproduce.",
+        "what": "DONE by Task 30 -- no sell arm touches armour or damage. Nothing is subtracted from armour or damage on a sale, and nothing clears the BETTER item's flag. Reproduce.",
         "blocked": false
       },
       {
         "n": 6,
-        "what": "The `^6У тебя нет неужных вещей.` line is gated on the 0xff sentinel, i.e. on whether any arm was OFFERED. Declining every offer must NOT print it.",
+        "what": "DONE by Task 30, as the `offered` bool set at each gate. The `^6У тебя нет неужных вещей.` line is gated on the 0xff sentinel, i.e. on whether any arm was OFFERED. Declining every offer must NOT print it.",
         "blocked": false
       },
       {
         "n": 7,
-        "what": "The answer is compared against `y` after `0eed:0216` lower-cases it, so `Y` sells and anything else declines. The original does not trim; `docs/re/gaps.md`'s trimmed-prompt entry already owns that divergence and these six reads join its population.",
+        "what": "DONE by Task 30, as `answer.trim().eq_ignore_ascii_case(\"y\")`. The answer is compared against `y` after `0eed:0216` lower-cases it, so `Y` sells and anything else declines. The original does not trim; `docs/re/gaps.md`'s trimmed-prompt entry already owns that divergence and these six reads join its population.",
         "blocked": false
       },
       {
         "n": 8,
-        "what": "Both verbs return to the `^0Барыги\\` prompt at `1000:c88e`, which reprints the prompt and NOT the menu. `wes` reaches it unconditionally because `1000:d35a` overwrites the buffer first; `x` reaches it because `x` is not `w`.",
+        "what": "DONE by Task 30 -- `Game::shop_turn` returns without touching `self.mode`. Both verbs return to the `^0Барыги\\` prompt at `1000:c88e`, which reprints the prompt and NOT the menu. `wes` reaches it unconditionally because `1000:d35a` overwrites the buffer first; `x` reaches it because `x` is not `w`.",
         "blocked": false
       }
     ]

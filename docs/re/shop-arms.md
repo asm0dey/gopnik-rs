@@ -1275,15 +1275,21 @@ location's exit key, not the dealers' own.
 
 ---
 
-## What the port must change — for Task 30
+## What the port had to change — done by Task 30
 
-`Game::sell_junk` and `Game::sell_items` are both hardcoded refusals
-(`grep -n 'fn sell_junk\|fn sell_items' src/game.rs` finds them). Neither
-reads any state. `sell_junk`'s doc comment justifies the stub by claiming the
-player's junk always stays 0; `docs/re/gaps.md` records that Task 13
-falsified that when `Game::claim_spoils` started reproducing the victory
-block at `1000:523e`, whose `1000:524f add [0x38c9],ax` is what makes the
-player's junk non-zero.
+**This section was written as a directive, before any of it was done. All
+eight items are now landed**, and each is annotated below with where it lives
+in `src/`. `Game::sell_junk` and `Game::sell_items` were hardcoded refusals
+that read no state; each refusal line is now the *else* of its recovered gate,
+and the six `wes` arms sit behind a shared `Game::sell_offer`
+(`grep -n 'fn sell_junk\|fn sell_offer\|fn sell_items' src/game.rs` finds all
+three). `sell_junk`'s doc comment used to justify the stub by claiming the
+player's junk always stays 0; Task 13 had already falsified that when
+`Game::claim_spoils` started reproducing the victory block at `1000:523e`,
+whose `1000:524f add [0x38c9],ax` is what makes the player's junk non-zero,
+and Task 30 deleted the claim rather than leaving it beside working code.
+
+The eight items, as written then:
 
 1. **`x`.** Refuse only when Хлам <= 0 (a signed compare). Otherwise add the
    whole junk word to the money one-for-one, zero it, and print CS `0x96d0`
@@ -1304,3 +1310,31 @@ player's junk non-zero.
    these six reads join its population.
 8. **Both verbs return to the prompt**, not to the menu, and neither can leave
    the shop.
+
+### How each landed
+
+| # | where in `src/` | falsified by |
+|---|---|---|
+| 1 | `Game::sell_junk`, `(self.player.junk as i16) <= 0` then the one-for-one add | `dealers_x_credits_the_whole_junk_word_one_for_one_and_zeroes_it` asserts money 7 + Хлам 23 → 30 and an empty draw log; `dealers_x_refuses_with_no_junk_and_changes_nothing` and `dealers_x_refuses_a_junk_word_whose_top_bit_is_set` take the `1000:ce8c` refusal |
+| 2 | `Game::sell_items`, six `if` blocks in table order, each calling `Game::sell_offer` with its own roll site and immediates | `each_wes_arm_sells_its_own_item_for_its_own_two_immediates` — per arm: one draw, at that arm's site, with that arm's `n`, and both output lines exact |
+| 3 | the six blocks are sequential, not an `else` chain | `one_wes_sells_all_six_items_and_never_the_cleaver` — six draws in site order, six flags cleared, twelve lines |
+| 4 | `Game::sell_offer(rng, roll_site, base, span, lines)`; the refund is returned WITH the answer, so a caller cannot roll only on acceptance | delta asserted twice — `== base + the drawn value` and `in base..base+span`; `declining_every_wes_offer_still_spends_all_six_draws` and `a_single_declined_offer_spends_its_draw_and_suppresses_the_tail_line` pin the decline half |
+| 5 | no arm touches `armor`, `dmg_min`, `dmg_max` or a better rung | `selling_everything_subtracts_no_armour_and_no_damage`; the better-rung half is asserted per arm and again in the all-six test, including `20ae:394c` |
+| 6 | a local `offered` bool set at the GATE, mirroring `1000:cee2`'s sentinel | `wes_with_nothing_sellable_prints_the_no_offer_line` prints it; both decline tests assert it is absent |
+| 7 | `answer.trim().eq_ignore_ascii_case("y")` | `an_upper_case_y_sells`; the `.trim()` half is the divergence `docs/re/gaps.md` owns |
+| 8 | `Game::shop_turn` returns without touching `self.mode` on either verb | `answering_w_to_a_sell_offer_does_not_leave_the_dealers`, six `w` answers, mode and location unchanged |
+
+Two things outside the eight, both done in the same commit. `Game::dispatch`'s
+`Command::SellJunk` / `Command::SellItems` arms called these two handlers from
+the STREET prompt, where the original has no such verb — the image's only
+`mov di,0x96ce` and `mov di,0x970a` are `1000:ce7b` and `1000:ced3`, both
+inside this handler — so both arms are now the silent `1000:ee01 jmp 0xab75`
+an unmatched line takes (`the_street_prompt_has_no_x_and_no_wes`). And EOF on
+a sell prompt ends the run rather than reading as "not `y`", the port decision
+`Game::mage` and `Game::district_advance` already take
+(`eof_on_a_sell_prompt_ends_the_run`).
+
+**Coverage.** `1000:ce76`..`1000:d383` holds 26 game branches, of which one
+(`1000:ce8c`, via its guard) was already cited by `src/model.rs`. The other 25
+were cited by this port: `port_touched` 424/838 → 449/838, recomputed with the
+block in `docs/re/branches.md` under *Recomputation → Coverage*.

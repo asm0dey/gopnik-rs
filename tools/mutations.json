@@ -2128,6 +2128,22 @@
       "ProseTest.test_the_selltest_count_this_file_advertises_is_the_real_one"
     ],
     "expect": "unittest.TestLoader finds"
+  },
+  {
+    "label": "trim-inventory-counts-are-checked",
+    "defends": "docs/re/gaps.md's trimmed-prompt inventory went stale FOUR times -- three as a pasted grep listing whose line numbers shifted, and once more after it became a command, when Task 30 added `Game::sell_offer` as the tenth call site and updated nothing.  Making the numbers recomputable did not make anything recompute them, which is the `inventory whose completeness claim stopped the next search` defect docs/re/METHODOLOGY.md names.  TrimInventoryTest reruns the entry's own filter over src/*.rs and compares BOTH the counts in its sentence and the `where` column of its table.  This case perturbs the DOCUMENT side; the src side was checked by hand the same way -- one extra `.trim()` in src/text.rs reddens both of the test's assertions.",
+    "artifact": "docs/re/gaps.md",
+    "mutate": {
+      "op": "text-replace",
+      "from": "**Sixteen hits: ten call sites and six lines of prose about them.**",
+      "to": "**Fifteen hits: nine call sites and six lines of prose about them.**"
+    },
+    "test": [
+      "python3",
+      "tools/test_string_citations.py",
+      "TrimInventoryTest.test_the_counts_the_entry_states_are_what_src_holds"
+    ],
+    "expect": "says 9 call sites and 6 prose lines"
   }
  ]
 }

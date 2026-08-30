@@ -283,5 +283,133 @@ class StringCitationTest(unittest.TestCase):
             self.assertTrue(got.startswith(want), (hex(off), got[:40]))
 
 
+#: `docs/re/gaps.md`'s trimmed-prompt entry publishes this command instead of
+#: a pasted listing. `TrimInventoryTest` reruns its filter.
+TRIM_GREP = re.compile(r"\.trim\(\)")
+TRIM_NOT = re.compile(r"trim_end_matches|trim_start_matches")
+#: A line is PROSE when the `.trim()` sits inside a `//` or `///` comment.
+TRIM_COMMENT = re.compile(r"^\s*//")
+#: `fn foo(` / `pub fn foo(` at any indent -- enough to name the enclosing
+#: item for every hit in `src/*.rs`; there are no nested `fn`s among them.
+TRIM_FN = re.compile(r"^\s*(?:pub\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)")
+
+#: The entry writes its counts as English words, so read them as written.
+WORDS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+         "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+         "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+         "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+         "nineteen": 19, "twenty": 20}
+
+TRIM_SENTENCE = re.compile(
+    r"\*\*([A-Za-z]+) hits: ([A-Za-z]+) call sites and ([A-Za-z]+) lines of "
+    r"prose about them\.\*\*")
+
+#: One table row: `| `Game::foo` | ... |`, taking the LAST backticked span of
+#: the first cell (`` `main.rs`'s `read_number` `` names two).
+TRIM_ROW = re.compile(r"^\|\s*(.+?)\s*\|\s*(.+?)\s*\|$")
+BACKTICKED = re.compile(r"`([^`]+)`")
+
+
+def trim_hits():
+    """(call_sites, prose) as [(rel, lineno, enclosing fn name)] each."""
+    calls, prose = [], []
+    for path in sorted((ROOT / "src").glob("*.rs")):
+        fn = None
+        for i, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), 1):
+            m = TRIM_FN.match(line)
+            if m:
+                fn = m.group(1)
+            if not TRIM_GREP.search(line) or TRIM_NOT.search(line):
+                continue
+            rec = ("src/" + path.name, i, fn)
+            (prose if TRIM_COMMENT.match(line) else calls).append(rec)
+    return calls, prose
+
+
+class TrimInventoryTest(unittest.TestCase):
+    """`docs/re/gaps.md`'s trimmed-prompt inventory, recomputed from `src/`.
+
+    That entry lists every place the port `.trim()`s a line the original
+    hands to `0f78:0bd8` unmodified -- the divergence itself is recorded
+    there, not here. The listing has gone stale FOUR times: three while it
+    was a pasted `grep` output whose line numbers shifted, and once more
+    after it became a command, when Task 30 added `Game::sell_offer` as the
+    tenth call site and updated nothing. Making the numbers recomputable did
+    not make anything recompute them.
+
+    So this does. It is two-sided on purpose: the counts in the entry's
+    sentence AND the `where` column of its table are both compared against
+    what `src/*.rs` holds, so it fails whether the code moves or the document
+    does. It lives in this file rather than in a new sibling because this is
+    already the tree's `src/`-versus-a-document scanner -- see the module
+    docstring; `re_derive.py` is its opposite number for `docs/re/*.md`.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.gaps = (ROOT / "docs/re/gaps.md").read_text(encoding="utf-8")
+        cls.calls, cls.prose = trim_hits()
+
+    def sentence(self):
+        m = TRIM_SENTENCE.search(self.gaps)
+        self.assertIsNotNone(
+            m, "docs/re/gaps.md no longer carries the trimmed-prompt entry's "
+               "`**N hits: M call sites and K lines of prose about them.**` "
+               "sentence -- this guard cannot check a listing it cannot find")
+        try:
+            return tuple(WORDS[w.lower()] for w in m.groups())
+        except KeyError as e:
+            self.fail("the entry writes a number word this guard does not "
+                      "know: %s" % e)
+
+    def table_rows(self):
+        """The `where` column, as bare fn names, in the entry's own order."""
+        start = self.gaps.index("| where | what it normalises |")
+        rows = []
+        for line in self.gaps[start:].splitlines()[2:]:
+            m = TRIM_ROW.match(line)
+            if not m:
+                break
+            spans = BACKTICKED.findall(m.group(1))
+            self.assertTrue(spans, "table row names nothing: %r" % line)
+            rows.append(spans[-1].split("::")[-1])
+        return rows
+
+    def test_the_counts_the_entry_states_are_what_src_holds(self):
+        total, calls, prose = self.sentence()
+        self.assertEqual(
+            (len(self.calls), len(self.prose)), (calls, prose),
+            "docs/re/gaps.md says %d call sites and %d prose lines; "
+            "`grep -rn '.trim()' src/*.rs` minus the two `trim_*_matches` "
+            "forms holds %d and %d.\ncall sites: %r\nprose: %r"
+            % (calls, prose, len(self.calls), len(self.prose),
+               self.calls, self.prose))
+        self.assertEqual(
+            total, calls + prose,
+            "the entry's own total does not equal its own two parts")
+
+    def test_the_table_lists_exactly_the_call_sites(self):
+        want = sorted(fn for _, _, fn in self.calls)
+        self.assertNotIn(
+            None, want,
+            "a `.trim()` call site sits outside any `fn` -- the row name "
+            "cannot be derived: %r" % self.calls)
+        self.assertEqual(
+            sorted(self.table_rows()), want,
+            "docs/re/gaps.md's trimmed-prompt table and `src/*.rs` disagree "
+            "about WHICH functions trim.\ntable: %r\nsrc:   %r"
+            % (sorted(self.table_rows()), want))
+
+    def test_the_recomputation_is_not_vacuous(self):
+        """A guard that found nothing would pass both tests above silently."""
+        self.assertGreater(len(self.calls), 5)
+        self.assertGreater(len(self.prose), 0)
+        self.assertIn(
+            "sell_offer", [fn for _, _, fn in self.calls],
+            "the Task 30 call site this guard was written for is gone; if "
+            "that is deliberate, drop its row from docs/re/gaps.md too")
+
+
 if __name__ == "__main__":
     unittest.main()
