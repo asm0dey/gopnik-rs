@@ -485,18 +485,24 @@ own columns when Ghidra last ran (`82a08d8`); the table below is recomputed from
 the shipped tree, and the block under *Recomputation* prints it. Quote the
 command, not the cell.
 
-At `e657bbe`: 838 game branches; **305 touched (36.4%)**; 533 with no citation
-at the branch or its guard. At `3981f74`, the commit before Task 22: 280 (33.4%)
-— the port of `FUN_1000_1a03` is the whole of the +25. The frozen columns inside
+After Task 26: 838 game branches; **388 touched (46.3%)**; 450 with no citation
+at the branch or its guard. The recent history, each figure from the block under
+*Recomputation* run against a `git worktree` of that commit: `3981f74` (before
+Task 22) 280 (33.4%); `e657bbe` (Task 22 ported) 305 (36.4%); `19a1a34`
+(Task 24, `bmar` rows 1-6 ported) 348 (41.5%); `7b04cdf` and `768a85e`
+(Task 25, `mar` rows 1-9 MAPPED) **still 348** — an RE task moves this metric
+by nothing at all; Task 26 (`mar` rows 1-9 ported) 388 (46.3%). All of the +40
+is `1000:ab59`, which goes 148 → 188. The frozen columns inside
 `data/branches.json` still say 84 (10.0%), which was true at `82a08d8` and is
 what this paragraph printed, unrecomputed, for four tasks. `docs/re/*.md` is
-deliberately excluded from the scan: documented is not ported.
+deliberately excluded from the scan: documented is not ported — which is
+exactly what the two Task 25 rows above demonstrate.
 
 | entry | bytes | branches | touched | citations | note |
 |-------|------:|---------:|--------:|----------:|------|
-| `1000:ab59` `entry` | 17143 | 406 | 107 | 626 | the top-level body; most of the game |
-| `1000:3d11` | 6971 | 224 | 94 | 611 | combat (identified in `docs/re/combat.md`) |
-| `1000:1a03` | 2700 | 83 | 54 | 170 | the character sheet — ported in Task 22, `src/character_sheet.rs` |
+| `1000:ab59` `entry` | 17143 | 406 | 188 | 1113 | the top-level body; most of the game |
+| `1000:3d11` | 6971 | 224 | 96 | 630 | combat (identified in `docs/re/combat.md`) |
+| `1000:1a03` | 2700 | 83 | 54 | 174 | the character sheet — ported in Task 22, `src/character_sheet.rs` |
 | `1000:6a0d` | 2527 | 33 | 15 | 158 | |
 | `1000:29c4` | 666 | 19 | 2 | 26 | |
 | `1000:0d14` | 1196 | 17 | 11 | 53 | rolls the enemy (`src/game.rs`) |
@@ -529,10 +535,17 @@ the caller, so it stays an inference.
 
 **Revision-bound, exactly like the totals above.** A span is cut by every port
 citation that lands in it, so porting a function does not remove one span — it
-shatters it into many small ones. At `e657bbe`, 416 spans hold 767 of the 838
-game branches (at `82a08d8`, when `data/branches.json` was generated, 191 spans
-held 822; the `uncited_spans` array in that file still says so). The top 12
-below is recomputed from the shipped tree by the block under *Recomputation*.
+shatters it into many small ones. After Task 26, 421 spans hold 698 of the 838
+game branches (at `e657bbe`, 416 spans held 767; at `82a08d8`, when
+`data/branches.json` was generated, 191 spans held 822 and the `uncited_spans`
+array in that file still says so). **More spans, fewer branches in them** is
+what porting looks like on this metric. The top 12 below is recomputed from the
+shipped tree by the block under *Recomputation*.
+
+The three largest spans in the `e657bbe` ranking — `1000:c53b..1000:cb04` (30
+branches), `1000:bd22..1000:bf7f` (17) and `1000:cb06..1000:ccd7` (13) — are
+the two shops' menu and purchase blocks, and all three are gone from the top 12
+after Tasks 24 and 26.
 
 The `strings loaded inside` column is recomputed the same way, and by the method
 the previous revision claimed and did not ship: decode the enclosing function
@@ -546,32 +559,34 @@ not a traced dispatch.
 
 | rank | span | function | bytes | branches | strings loaded inside suggest |
 |-----:|------|----------|------:|---------:|-------------------------------|
-| 1 | `1000:c53b`..`1000:cb04` | `entry` | 1482 | 30 | the dealers' shop menu — `#^7 руб. Косяк`, `#^7 руб. Краденый мобильник(Подмога быстрее приходит)` (34 string loads) |
-| 2 | `1000:ced9`..`1000:d382` | `entry` | 1194 | 24 | selling back to the dealers — `^2У тебя есть ненужный костюм хочешь продать?`, `^2Ты продал костюм за #.` (20) |
-| 3 | `1000:d8c9`..`1000:dc0d` | `entry` | 837 | 22 | the den — `^6Пацаны хотят тебе кое-чё сказать`, `^6Ты пацан нормальный. Есть дело.` (21) |
-| 4 | `1000:e590`..`1000:e947` | `entry` | 952 | 21 | the gym — `^0Качалка\`, `20^7  прокачать пресс(Броня +1)` (26) |
-| 5 | `1000:4169`..`1000:43f5` | `FUN_1000_3d11` | 653 | 17 | combat, the crowd lines — `Зрители:^6Врежь ему!` (20) |
-| 6 | `1000:bd22`..`1000:bf7f` | `entry` | 606 | 17 | eating — `^4Ты не можешь хавать из-за сломаной челюсти.`, `^4Чёрт, бабок даже на жратву не хватает.` (16) |
-| 7 | `1000:cb06`..`1000:ccd7` | `entry` | 466 | 13 | more of the dealers' body — `^2Чистый зек.`, `^6Сделать, конечно, можно но толку не будет.` (13) |
-| 8 | `1000:3d12`..`1000:3dc6` | `FUN_1000_3d11` | 181 | 10 | the combat opening — `Слышь Вась..`, `^4Пацан ты из какого района?` (4) |
-| 9 | `1000:dd33`..`1000:ddf5` | `entry` | 195 | 9 | stealing — `^2Ты пришел воровать деньги`, `^0Давай быстрее..` (4) |
-| 10 | `1000:dfcc`..`1000:e180` | `entry` | 437 | 9 | the club — `^0Клуб\`, `22^7  разузнать приемы мухлёжников(Удача +1)` (9) |
-| 11 | `1000:ea95`..`1000:ec81` | `entry` | 493 | 8 | the help text — `Напиши: ^6mar^7  чтобы идти на рынок` (18) |
-| 12 | `1000:1e07`..`1000:1e34` | `FUN_1000_1a03` | 46 | 6 | inside the weapon line's seven-way disjunction; loads no strings |
+| 1 | `1000:ced9`..`1000:d382` | `entry` | 1194 | 24 | selling back to the dealers — `^2У тебя есть ненужный костюм хочешь продать?`, `^0Продать вещи\` (20 string loads) |
+| 2 | `1000:d8c9`..`1000:dc0d` | `entry` | 837 | 22 | the den — `^6На одного пацана наехал какой-то урод`, `^6Ты пацан нормальный. Есть дело.` (21) |
+| 3 | `1000:e590`..`1000:e947` | `entry` | 952 | 21 | the gym — `20^7  прокачать пресс(Броня +1)` (26) |
+| 4 | `1000:4169`..`1000:43f5` | `FUN_1000_3d11` | 653 | 17 | combat, the crowd lines — `Зрители:^6Врежь ему!` (20) |
+| 5 | `1000:3d12`..`1000:3dc6` | `FUN_1000_3d11` | 181 | 10 | the combat opening — `Слышь Вась..`, `^4А чё ваще?` (4) |
+| 6 | `1000:dd33`..`1000:ddf5` | `entry` | 195 | 9 | stealing — `^0Давай быстрее..` (4) |
+| 7 | `1000:dfcc`..`1000:e180` | `entry` | 437 | 9 | the club — `22^7  разузнать приемы мухлёжников(Удача +1)` (9) |
+| 8 | `1000:ea95`..`1000:ec81` | `entry` | 493 | 8 | the help text — `Напиши: ^6mar^7  чтобы идти на рынок` (18) |
+| 9 | `1000:1e07`..`1000:1e34` | `FUN_1000_1a03` | 46 | 6 | inside the weapon line's seven-way disjunction; loads no strings |
+| 10 | `1000:e23f`..`1000:e36c` | `entry` | 302 | 6 | the club's price check — `^6Не хватает денег - надо #.` (9) |
+| 11 | `1000:0aec`..`1000:0d13` | `1000:0aec` | 552 | 5 | loads only the six two- and three-character fragments `Ы ^`, `С^`, `У^`, `П^`, `Е^`, `Р ^` (6) |
+| 12 | `1000:2bc0`..`1000:2c52` | `FUN_1000_29c4` | 147 | 5 | beer — `^2Пиво прибавляет #з. Здоровья:#/#. Осталось #.#л. пива`, `^4Кончилось пиво` (3) |
 
-Next after those: `1000:e23f`..`1000:e36c` (6, the club's price check — `^6Не
-хватает денег - надо #.`), `1000:0aec`..`1000:0d13` (5, loads only the six
-two- and three-character fragments `Ы ^`, `С^`, `У^`, `П^`, `Е^`, `Р ^`),
-`1000:2bc0`..`1000:2c52` (5, beer — `^4Кончилось пиво`),
-`1000:3dc8`..`1000:3fa6` (5, combat — `^4Я МАНЬЯК!!!`).
+**Three spans left this table between `e657bbe` and Task 26**, and they are
+the whole of the two shops: `1000:c53b`..`1000:cb04` (rank 1, 30 branches,
+the dealers' menu and rows 1-6), `1000:bd22`..`1000:bf7f` (rank 6, 17, the
+market's menu and rows 1-4) and `1000:cb06`..`1000:ccd7` (rank 7, 13, the rest
+of the dealers' body). Tasks 24 and 26 shattered all three with per-arm
+citations. Next after the twelve above: `1000:3dc8`..`1000:3fa6` (5, combat —
+`^4Я МАНЬЯК!!!`).
 
-Defensible order of work, from this table alone: the **dealers' shop body**
-(`1000:c53b`..`1000:cb04`, 30 branches), then its sell path
-(`1000:ced9`..`1000:d382`, 24), then den / gym / eating as a block of location
-menus. The status screen, which headed this list for four tasks, is off it:
+Defensible order of work, from this table alone: the **dealers' sell path**
+(`1000:ced9`..`1000:d382`, 24 branches — the `x`/`wes` arms `docs/re/gaps.md`
+still lists as open), then the den and the gym as a block of location menus.
+The status screen, which headed this list for four tasks, is off it:
 `FUN_1000_1a03` is ported (`src/character_sheet.rs`, Task 22), 54 of its 83
-branches touched across 170 citation sites, and its largest remaining uncited
-span is rank 12 at six branches.
+branches touched across 174 citation sites, and its largest remaining uncited
+span is rank 9 at six branches.
 
 ## Recomputation, from the shipped artifacts
 
@@ -660,8 +675,44 @@ for s in spans[:12]:
 EOF
 ```
 
+At Task 26's tree that prints, verbatim, the numbers this document's tables
+carry:
+
+```
+game branches 838 | touched 388 (46.3%) | uncited 450
+1000:ab59    bytes 17143 branches 406 touched 188 citations 1113
+1000:3d11    bytes  6971 branches 224 touched  96 citations 630
+1000:1a03    bytes  2700 branches  83 touched  54 citations 174
+1000:6a0d    bytes  2527 branches  33 touched  15 citations 158
+1000:29c4    bytes   666 branches  19 touched   2 citations  26
+1000:0d14    bytes  1196 branches  17 touched  11 citations  53
+1000:2526    bytes   929 branches  17 touched   9 citations  51
+1000:7c67    bytes  1612 branches  16 touched  12 citations  39
+1000:1348    bytes   791 branches  11 touched   1 citations  18
+1000:0aec    bytes   552 branches   5 touched   0 citations   0
+1000:074b    bytes   896 branches   2 touched   0 citations   4
+1000:11c2    bytes   178 branches   2 touched   0 citations   1
+1000:7538    bytes   580 branches   2 touched   0 citations  29
+1000:5f55    bytes  1000 branches   1 touched   0 citations   4
+1000:02c2    bytes   508 branches   0 touched   0 citations   0
+1000:0acc    bytes    15 branches   0 touched   0 citations   0
+421 spans hold 698 of the 838
+   24  1000:ced9..1000:d382     1000:ab59       1194 bytes
+   22  1000:d8c9..1000:dc0d     1000:ab59        837 bytes
+   21  1000:e590..1000:e947     1000:ab59        952 bytes
+   17  1000:4169..1000:43f5     1000:3d11        653 bytes
+   10  1000:3d12..1000:3dc6     1000:3d11        181 bytes
+    9  1000:dd33..1000:ddf5     1000:ab59        195 bytes
+    9  1000:dfcc..1000:e180     1000:ab59        437 bytes
+    8  1000:ea95..1000:ec81     1000:ab59        493 bytes
+    6  1000:1e07..1000:1e34     1000:1a03         46 bytes
+    6  1000:e23f..1000:e36c     1000:ab59        302 bytes
+    5  1000:0aec..1000:0d13     1000:0aec        552 bytes
+    5  1000:2bc0..1000:2c52     1000:29c4        147 bytes
+```
+
 At `e657bbe` — and unchanged by the fix wave that followed it, which added no
-`SEG:OFF` citation to `src/` — that prints, verbatim:
+`SEG:OFF` citation to `src/` — it printed, verbatim:
 
 ```
 game branches 838 | touched 305 (36.4%) | uncited 533

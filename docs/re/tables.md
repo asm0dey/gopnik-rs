@@ -515,8 +515,12 @@ path in front of rows 6, 8 and 9, so those three really are unreachable below
 their district (silently -- they print nothing). Row 7 has no buy gate: the
 menu gate `1000:bb80` covers rows 6 *and* 7, while only row 6's arm is gated,
 so `mar` row 7 is the `bmar` trap in the other direction -- listed nowhere at
-district 1 and sold anyway. That divergence is the one Task 26 has to
-reproduce; `docs/re/shop-arms.md` has the measurement.
+district 1 and sold anyway. **Task 26 reproduced that divergence rather than
+fixing it**: `Game::buy_market_row`'s row 7 carries no district test, and rows
+6, 8 and 9 carry their own immediates. Neither shop's buy path reads this
+column any more -- `grep -n 'self.gate_open' src/game.rs` finds one call site,
+the menu filter. `docs/re/shop-arms.md` has the measurement and the mutations
+that were observed red.
 
 ---
 

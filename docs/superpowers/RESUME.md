@@ -454,8 +454,10 @@ is the one failure mode a replay cannot see.
 
 ## How much is actually traced
 
-**296 of 838 game branches (35.3%)** have their branch address or guard cited
-anywhere in `docs/re/*.md`, measured after Task 19 with the snippet below.
+**381 of 838 game branches (45.5%)** have their branch address or guard cited
+anywhere in `docs/re/*.md`, measured after Task 26 with the snippet below.
+(This line read `296 / 838 (35.3%)`, measured after Task 19, until Task 26
+re-ran it.)
 
 This file previously said `134 / 838` here and `157/838` further down, both
 stale, and both left standing through a whole session because the instruction
@@ -477,6 +479,33 @@ the rate rather than trust a number:
 | `3981f74` | Task 21 complete (the district-advance autosave) | 301/838 |
 | `e657bbe` | Task 22 ported (`FUN_1000_1a03`) | 302/838 |
 | — | after Task 22's whole-branch fix wave | 302/838 |
+| `19a1a34` | Task 24 ported (`bmar` rows 1-6) | **339/838** |
+| `2460184` | after Task 24's fix wave | 339/838 |
+| `7b04cdf` | Task 25 mapped (`mar` rows 1-9) | **381/838** |
+| `768a85e` | after Task 25's fix wave | 381/838 |
+| — | Task 26 ported (`mar` rows 1-9) | 381/838 |
+
+**Both metrics, side by side, across the same four tasks** — because between
+them they are the cleanest demonstration in this file of what each one
+measures. Method for the left column is the `docs/re/*.md` glob snippet below;
+for the right, `data/branches.json`'s `port_touched` over `src/**/*.rs` and
+`data/command_dispatch.json`, recomputed with the block in
+`docs/re/branches.md` under *Recomputation → Coverage*. Both were run against a
+`git worktree` of each commit, never against the live tree.
+
+| commit | what it was | `docs/re/*.md` cited | `port_touched` |
+|---|---|---|---|
+| `e657bbe` | Task 22 (port) | 302/838 | 305/838 |
+| `19a1a34` | Task 24 (port, `bmar` rows 1-6) | 339/838 | **348/838** |
+| `7b04cdf` | Task 25 (RE, `mar` rows 1-9) | **381/838** | 348/838 |
+| — | Task 26 (port, `mar` rows 1-9) | 381/838 | **388/838** |
+
+Read the two middle rows together. **Task 25 moved the documents metric by +42
+and the port metric by exactly 0**; **Task 26 moved the port metric by +40 and
+the documents metric by exactly 0.** One task wrote a map and shipped no
+behaviour; the next shipped the behaviour and wrote no new addresses into
+`docs/`, because the map already held them all. Neither number on its own says
+which task moved the game.
 
 **Two cautions on the four rows above.** First, the `296/838` row does not
 reproduce: the snippet below prints `298` at `9837b74` and at every Task-19
@@ -487,7 +516,8 @@ globs `docs/re/*.md` and nothing else, so it rises when a document is written
 and barely moves when the port advances — Task 22 ported a 2700-byte function
 and moved it by **one**. The metric that tracks the port is
 `data/branches.json`'s `port_touched` over `src/`, which went 280 → 305 across
-the same range; see `docs/re/branches.md` under *Recomputation → Coverage*.
+the same range and 305 → 388 across Tasks 23-26; see `docs/re/branches.md`
+under *Recomputation → Coverage*.
 
 The whole of Tasks 13-review and 14 moved it by **zero**; Task 15's +3 are the
 addresses its equivalence proofs had to cite. That is the cost of a session
@@ -552,18 +582,20 @@ Two functions hold 75% of all game branches:
 
 | branches | touched | function |
 |---:|---:|---|
-| 406 | 107 | `1000:ab59` — main loop + command dispatch |
-| 224 | 94 | `1000:3d11` — combat; its dispatcher half mapped in Task 17 |
+| 406 | 188 | `1000:ab59` — main loop + command dispatch |
+| 224 | 96 | `1000:3d11` — combat; its dispatcher half mapped in Task 17 |
 | 83 | 54 | `1000:1a03` — the character sheet, mapped in Task 16 |
 | 11 | 1 | `1000:1348` — the ENEMY's sheet, the `sv` handler, mapped in Task 17 |
 
 The `touched` column used to be `cited`, counted by the same `docs/re/*.md`
 text glob as the table above it (93 / 95 / 50 / 7) — a different, stale
 metric from a different commit. It is replaced here with
-`data/branches.json`'s `port_touched` per function, recomputed at `HEAD`
-(`f0efc63`) with the exact per-entry columns `docs/re/branches.md`'s
+`data/branches.json`'s `port_touched` per function, recomputed at `HEAD` with
+the exact per-entry columns `docs/re/branches.md`'s
 *Recomputation, from the shipped artifacts → Coverage* block prints, so the
-two documents agree by construction:
+two documents agree by construction. The numbers above are Task 26's tree; at
+`f0efc63` the same block printed 107 / 94 / 54 / 1, and Tasks 24 and 26 are
+where `1000:ab59` went 107 → 148 → 188:
 
 ```bash
 python3 - <<'EOF'
@@ -586,9 +618,9 @@ for e in ('1000:ab59', '1000:3d11', '1000:1a03', '1000:1348'):
 EOF
 ```
 
-prints `1000:ab59 touched 107`, `1000:3d11 touched 94`, `1000:1a03 touched 54`,
+prints `1000:ab59 touched 188`, `1000:3d11 touched 96`, `1000:1a03 touched 54`,
 `1000:1348 touched 1` — identical to the same four rows in
-`docs/re/branches.md`'s validated block. The metric still undercounts (a
+`docs/re/branches.md`'s recomputation block, run against the same tree. The metric still undercounts (a
 function can be understood without every `jz` being cited) and a citation is
 not comprehension; re-run the block above to track it.
 

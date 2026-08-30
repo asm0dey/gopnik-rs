@@ -842,13 +842,17 @@ the counts. So there is no flag here the port can set and forget.
 
 ---
 
-## What the port must change — the directive for Task 26
+## What the port had to change — done by Task 26
 
-**This section is a directive, not a record: at the time it was written none
-of it was done.** Read it with `Game::shop_action` in `src/game.rs`, whose
-`mar` path still debits `row.price`, echoes the **menu** line, and consults
-`Game::gate_open` before selling. For the nine `mar` rows that is wrong in six
-ways:
+**This section was written as a directive, before any of it was done. All six
+items are now landed**; each is annotated below with where it lives in `src/`.
+The nine `mar` arms are `Game::buy_market_row`
+(`grep -n 'fn buy_market_row' src/game.rs`), built on the same
+`Game::buy_after_gates` the dealers' nine use, and `Game::shop_action` no
+longer has a generic "debit and echo the menu line" path at all — the original
+has none, and that echo was the port's own invention.
+
+The six items, as written then:
 
 1. **Give each row its own arm**, the way `Game::buy_dealer_row` gives the
    dealers theirs — gates in image order (better-item, then already-own, then
@@ -881,3 +885,40 @@ Closing 4 also closes the divergence `docs/re/gaps.md` records under "The four
 armour flags are carried but the gym's `abs` ignores them": until a `mar`
 purchase can set `20ae:38b4`, `20ae:38b6`, `20ae:38b7` and `20ae:38b9`, only a
 loaded `.SAV` can reach it.
+
+### How each landed, and what was observed red
+
+| # | where in `src/` | falsified by |
+|---|---|---|
+| 1 | `Game::buy_market_row`, nine arms over `Game::buy_after_gates` | `every_market_row_has_an_arm_of_its_own` |
+| 2 | the three `below_district` gates in rows 6, 8 and 9; row 7 has none, and no `mar` arm reads `row.gate` | `the_market_sells_row_7_off_a_menu_that_never_listed_it` — observed red against a tree with a `district <= 1` gate added to row 7 (2 tests red) |
+| 3 | those three gates are `(refuse, None)`, the silent form `bmar` row 9 already used | same test: at district 1, typing `6` moves neither money nor flag |
+| 4 | each arm's effect closure | one `#[test]` per row pair, asserting the changed NUMBER |
+| 5 | `rng.below_at("1000:bdbb", 2)` and `rng.below_at("1000:be51", 3)` | `the_market_beer_counts_up_and_draws_a_die_that_changes_nothing` — observed red against a tree with the cosmetic draw replaced by a constant |
+| 6 | `if has_abibas { 1 } else { 2 }`, `if has_boots { 1 } else { 2 }`, `if has_jacket { 2 } else { 4 }` | the three `..._in_either_purchase_order` tests — observed red against a tree applying the full bonus unconditionally (3 tests red) |
+
+Two more mutations were run and both went red: deleting the hp clamp at
+`1000:bdd3` (1 test), and deleting the district filter from
+`Game::listed_rows`, the MENU half (2 tests, one of them the dealers'). The
+menu assertion goes through `Game::listed_rows` itself rather than a copy of
+the predicate, which is what makes the second of those falsifiable — the
+mistake Task 24's review caught.
+
+**What `cargo test` cannot check here.** `crate::term` has no capture hook, so
+no test transcribes a refusal literal or observes the ORDER the gates are
+tested in. Every refusal assertion above is "the money did not move and the
+flag did not change", which a wrong-but-refusing arm would also satisfy. The
+literals themselves are checked only against `data/strings.json` by
+`tools/test_shop_arms.py`, off the binary, not against what the port prints.
+
+### One thing found while doing it, outside the nine arms
+
+`bmar` row 7's menu line carries **three** `#` placeholders, not one:
+`1000:c7a1 mov al,[0xb3e]` pushes the price, then `1000:c7a7 mov ax,0x14` and
+`1000:c7ab mov ax,0x1e` push 20 and 30, so the line reads `урон(20-30)`. The
+port was printing bare `#`s there, the same defect as `mar` row 2's `Пиво(#з)`
+that this task was sent to fix; it is fixed in the same function
+(`Game::row_fill_values`). **The 30 is the original's own off-by-one and is
+reproduced, not corrected**: the shot the row advertises rolls
+`20 + Random(10)` (`1000:4f14 mov ax,0xa`, `1000:4f1d add ax,0x14`), so its
+real range is 20..=29 while its menu line says 20-30.
