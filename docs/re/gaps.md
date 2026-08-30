@@ -429,7 +429,9 @@ add that carry into the *magnitude*, before the sign is applied at
   fights, all won, `SAVE_R2` loaded — asserts the resulting `20ae:38c3`,
   `20ae:38c7` and `20ae:38c9` against the guest's own memory. That is also
   what makes `Fighter::junk` non-zero, so the dealers' sell-junk branch is no
-  longer always the one taken.
+  longer always the one taken. Task 29 mapped that branch
+  (`1000:ce76`..`1000:cece`) and it is still unported — see the `bmar`
+  sell-arm entry below.
 
 ### Wander buckets 1 and 4 — their text is still not modelled
 
@@ -1693,7 +1695,39 @@ points at this entry.
   full, the cosmetic draw skipped, the hp clamp deleted, the menu filter
   deleted. `docs/re/shop-arms.md`'s closing section has the table.
 
-  **Still open:** `bmar`'s `x`/`wes` arms.
+  **`bmar`'s `x`/`wes` sell arms are mapped but NOT ported — Task 29.**
+  `1000:ce76`..`1000:d383`, 580 instructions: the `x` junk arm and six
+  sequential `wes` offers, in `docs/re/shop-arms.md`'s third part and under
+  `data/shop_arms.json`'s `sell` key. `Game::sell_junk` and
+  `Game::sell_items` are still hardcoded refusals that read no state at all
+  (`grep -n 'fn sell_junk\|fn sell_items' src/game.rs`), so every one of the
+  following is a live divergence until Task 30 lands:
+
+  * **`x` credits the junk one-for-one and zeroes it** (`1000:ce8e`
+    `mov ax,[0x38c9]`, `1000:ce91 add [0x38c7],ax`, `1000:ce97`
+    `mov [0x38c9],ax`) whenever `20ae:38c9` is positive; there is no rate,
+    no `Random` and no number in either printed line. The port refuses
+    unconditionally.
+  * **`wes` offers six sales**, each gated on owning the LESSER rung of a
+    ladder while owning a better one — `20ae:38b4` needs `20ae:38b7`,
+    `20ae:38b5` needs `20ae:38b8`, `20ae:38b6` needs `20ae:38b9`, and the
+    three weapon arms need any higher rung. The top rung `20ae:394c` is
+    never sellable.
+  * **The refund is the arm's own two immediates**, `8 + Random(5)`,
+    `8 + Random(5)`, `13 + Random(8)`, `13 + Random(8)`, `25 + Random(15)`
+    and `38 + Random(23)` — never the buy price. Nothing in the range reads
+    a price byte.
+  * **The draw is spent even when the offer is declined** (the store into
+    `20ae:3e33` precedes the yes/no compare in all six arms), so a port that
+    rolls only on acceptance desynchronises every later RNG trace.
+  * **Nothing is unwound on a sale** — no arm touches `20ae:38b2`,
+    `20ae:38a8` or `20ae:38aa`.
+  * **`^6У тебя нет неужных вещей.` means `nothing was OFFERED`**, gated on
+    the `0xff` sentinel at `1000:d33a`, not on whether anything was sold.
+
+  `sell_junk`'s doc comment still says the player's junk always stays 0 and
+  cites this file for it; the entry above records that Task 13 falsified
+  that, so the comment is stale as well as the behaviour.
 
   **What Task 26 did NOT close, and what it found.** The armour-flag
   divergence above is now reachable from play as well as from a load, and is

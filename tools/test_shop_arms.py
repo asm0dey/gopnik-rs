@@ -140,7 +140,15 @@ def data_off(cit):
     return addrmod.image_off_of_citation(cit)
 
 
-class ArmsTest(unittest.TestCase):
+class _ArtifactBase(unittest.TestCase):
+    """Fixtures and helpers shared by `ArmsTest` and `SellTest`.
+
+    Carries no tests of its own: `SellTest` needs the same aligned-boundary
+    map, the same decode-check and the same `xrefs-to` cache, and inheriting
+    them from `ArmsTest` would re-run all of `ArmsTest`'s cases a second time
+    under a second name.
+    """
+
     @classmethod
     def setUpClass(cls):
         cls.img = load_image()
@@ -259,6 +267,24 @@ class ArmsTest(unittest.TestCase):
         assert m is not None          # the unittest assert above already
         return int(m.group(1), 16)    # raised; this is for the type checker
 
+    def near_branch_target(self, ins):
+        """The image offset a decoded near/short branch jumps to, from BYTES.
+
+        `branch_target` reads the rendered text, which only exists for the
+        branches `tools/dis16.py` renders; this walks the `rel8`/`rel16`
+        operand instead, so it can be run over a whole function.
+        """
+        for o in ins.operands:
+            if o.kind == "rel8":
+                d = o.value - 0x100 if o.value > 0x7f else o.value
+                return (ins.end + d) & 0xffff
+            if o.kind == "rel16":
+                d = o.value - 0x10000 if o.value > 0x7fff else o.value
+                return (ins.end + d) & 0xffff
+        return None
+
+
+class ArmsTest(_ArtifactBase):
     # ------------------------------------------------------------------ tests
     def test_every_cited_instruction_decodes_to_what_the_artifact_says(self):
         seen = self.insn_records()
@@ -1300,6 +1326,729 @@ class ArmsTest(unittest.TestCase):
                         "jumps over")
 
 
+class SellTest(_ArtifactBase):
+    """`data/shop_arms.json`'s `sell` block, Task 29's half of the handler.
+
+    The purchase tests above take their rows from `handlers()`; the sell path
+    is not a row -- it has no key, no price byte and no affordability test --
+    so it gets its own class rather than being forced into `rows()`.  What it
+    keeps is the SHAPE of the checks: every completeness claim is asserted by
+    SET EQUALITY against a sweep of `orig/g.exe` over the whole recorded
+    range, never by checking that the listed entries hold up.
+
+    Six sweeps, all over `1000:ce76`..`1000:d383`:
+
+      * **the spans tile the range.**  Every other sweep here is per-range and
+        would still pass if an arm's span silently overlapped its neighbour,
+        so the eleven spans are asserted to tile with no gap and no overlap
+        and to sum to `sweeps.instructions`.
+      * **`gates[]` is complete.**  Every conditional branch in the range must
+        be named -- as a gate branch, a conjunct branch, a decline branch, the
+        junk arm's miss or gate, the `wes` hit branch, the sentinel branch or
+        the exit branch.  All twelve gates in this range are SILENT (they
+        print nothing), so the strings sweep cannot catch an omitted one.
+      * **`strings[]` is complete.**  Set equality against every
+        `mov di,imm` / `push cs` / `push di` in the range.
+      * **`effects[]` is complete.**  The same WRITE/READ bucket partition the
+        purchase sweep uses, over the whole range.
+      * **`roll[]` is complete**, and each `n` and `base` is RE-DERIVED --
+        the `n` by `re_query.pushed_n` walking back from the call, the base by
+        decoding the `add ax,imm` -- rather than read out of the artifact.
+        This is what the refund finding rests on.
+      * **the DGROUP set is complete.**  `sweeps.dgroup_addresses` is set-equal
+        to every direct-memory operand value in the range, and that is what
+        makes "no price byte is read" and "no stat global is written"
+        measurements rather than lists that stopped being written.  Both
+        negatives are cross-checked by a raw byte-pair count so they do not
+        rest on the decoder alone.
+
+    Plus the two claims that are not sweeps: the range's right-hand end is
+    established by scanning every near branch in `entry` for one that targets
+    `1000:d383`, and the ten item flags' NAMES are re-derived from the
+    character sheet's own guard and label push rather than borrowed from
+    `docs/re/character-sheet.md`.
+    """
+
+    #: `bmar`'s price table (`20ae:0b38`..`20ae:0b40`), `mar`'s
+    #: (`20ae:0b2e`..`20ae:0b36`), and the three stat globals a sale might
+    #: plausibly have unwound.  None may appear in the sell range.
+    PRICE_BYTES = tuple(range(0x0b2e, 0x0b41))
+    STAT_GLOBALS = (0x38b2, 0x38a8, 0x38aa)
+
+    def sell(self):
+        return self.art["sell"]
+
+    def sell_range(self):
+        s = self.sell()["range"]
+        return (addrmod.image_off_of_citation(s["start"]),
+                addrmod.image_off_of_citation(s["end"]))
+
+    def sell_run(self):
+        lo, hi = self.sell_range()
+        return dis16.decode_run(self.img, lo, hi)
+
+    def ordered_spans(self):
+        """The eleven spans, in address order, with the node that owns each."""
+        s = self.sell()
+        out = [("junk_arm", s["junk_arm"]["span"]),
+               ("wes_dispatch", s["wes_dispatch"]["span"]),
+               ("prologue", {"start": s["prologue"]["addr"],
+                             "end": s["arms"][0]["span"]["start"]})]
+        out += [("arm %d" % a["n"], a["span"]) for a in s["arms"]]
+        out.append(("tail", s["tail"]["span"]))
+        return out
+
+    # ------------------------------------------------------------- the range
+    def test_the_sell_spans_tile_the_range_with_no_gap_and_no_overlap(self):
+        s = self.sell()
+        lo, hi = self.sell_range()
+        spans = self.ordered_spans()
+        cursor = lo
+        total = 0
+        for name, sp in spans:
+            start = addrmod.image_off_of_citation(sp["start"])
+            end = addrmod.image_off_of_citation(sp["end"])
+            self.assertEqual(
+                start, cursor,
+                "sell span %s starts at %s, but the previous span ended at "
+                "1000:%04x -- the spans do not tile, so every per-range sweep "
+                "below could be measuring a different set of bytes than the "
+                "per-span records claim" % (name, sp["start"], cursor))
+            self.at(sp["start"])
+            self.assertGreater(end, start, "sell span %s is empty" % name)
+            total += len(dis16.decode_run(self.img, start, end))
+            cursor = end
+        self.assertEqual(cursor, hi,
+                         "the sell spans end at 1000:%04x, the recorded range "
+                         "at %s" % (cursor, s["range"]["end"]))
+        self.assertEqual(
+            s["sweeps"]["range"],
+            {"start": s["range"]["start"], "end": s["range"]["end"]},
+            "`sweeps.range` is not the range the rest of the block "
+            "describes, so every count under it could have been measured "
+            "somewhere else")
+        run = self.sell_run()
+        ds_push = sum(1 for n, i in enumerate(run[:-2])
+                      if i.raw[:1] == b"\xbf"
+                      and run[n + 1].text == "push ds"
+                      and run[n + 2].text == "push di")
+        self.assertEqual(
+            ds_push, s["sweeps"]["ds_pointer_pushes"],
+            "the range pushes %d DGROUP pointers, `sweeps` says %d -- the "
+            "count is what separates the CS-literal pushes the strings sweep "
+            "measures from the buffer pushes it must ignore"
+            % (ds_push, s["sweeps"]["ds_pointer_pushes"]))
+        self.assertEqual(
+            total, s["sweeps"]["instructions"],
+            "the eleven spans hold %d instructions, `sweeps.instructions` "
+            "says %d" % (total, s["sweeps"]["instructions"]))
+        self.assertEqual(
+            len(self.sell_run()), s["sweeps"]["instructions"],
+            "one aligned decode of the whole range yields %d instructions, "
+            "`sweeps.instructions` says %d"
+            % (len(self.sell_run()), s["sweeps"]["instructions"]))
+
+    def test_the_sell_range_ends_where_the_artifact_says_it_does(self):
+        """A bound is not an inventory -- so the end is MEASURED.
+
+        Task 28 shipped a residue documented as ending 282 bytes past the
+        arm's real end, because the interval was taken from a brief instead of
+        from the branch graph.  Here the whole `entry` function is decoded as
+        one aligned run and every near branch in it is checked for a target of
+        `1000:d383`: exactly one exists, and it is outside the handler, so
+        `1000:d381` is the sell path's last instruction.
+        """
+        s = self.sell()
+        rng = s["range"]
+        last = self.check_insn(rng["last_instruction"], "sell range end")
+        end = addrmod.image_off_of_citation(rng["end"])
+        self.assertEqual(last.end, end,
+                         "%s does not end where the range does"
+                         % rng["last_instruction"]["addr"])
+        ent = [f for f in self.branches["functions"] if f["name"] == "entry"][0]
+        lo = addrmod.image_off_of_citation(ent["entry"])
+        run = dis16.decode_run(self.img, lo, lo + ent["size"])
+        self.assertGreater(len(run), 7000,
+                           "the `entry` decode yielded only %d instructions; "
+                           "a scan that covers almost nothing must not pass"
+                           % len(run))
+        start = addrmod.image_off_of_citation(rng["start"])
+        into_end, into_start = [], []
+        for i in run:
+            tgt = self.near_branch_target(i)
+            if tgt == end:
+                into_end.append("1000:%04x" % i.off)
+            elif tgt == start:
+                into_start.append("1000:%04x" % i.off)
+        self.assertEqual(
+            into_end, ["1000:c4cf"],
+            "the near branches in `entry` that target %s are %r -- the "
+            "artifact's claim that the sell path stops before it rests on "
+            "there being exactly one, outside the handler"
+            % (rng["end"], into_end))
+        for e in rng["entered_from"]:
+            self.check_insn(e, "sell range entry edge")
+        recorded = [e["addr"] for e in rng["entered_from"]]
+        self.assertEqual(
+            sorted(into_start), sorted(a for a in recorded
+                                       if a != "1000:ce71"),
+            "the near branches into %s are %r; `range.entered_from` records "
+            "%r besides the fall-through"
+            % (rng["start"], sorted(into_start),
+               sorted(a for a in recorded if a != "1000:ce71")))
+        self.assertIn("1000:ce71", recorded)
+        self.assertEqual(
+            self.at("1000:ce71").end, start,
+            "1000:ce71 is recorded as falling through into the sell path but "
+            "does not end where it starts")
+
+    # ------------------------------------------------------------ the sweeps
+    def named_conditional_branches(self):
+        s = self.sell()
+        named = set()
+        for a in s["arms"]:
+            for g in a["gates"]:
+                if "branch" in g:
+                    named.add(g["branch"]["addr"])
+                for c in g.get("conjuncts", []):
+                    named.add(c["branch"]["addr"])
+            named.add(a["answer"]["decline_branch"]["addr"])
+        j = s["junk_arm"]
+        named.add(j["miss_branch"]["addr"])
+        for g in j["gates"]:
+            named.add(g["branch"]["addr"])
+        named.add(s["wes_dispatch"]["hit_branch"]["addr"])
+        named.add(s["tail"]["sentinel_branch"]["addr"])
+        named.add(s["tail"]["exit_compare"]["leave_branch"]["addr"])
+        return named
+
+    def test_the_recorded_gates_are_every_conditional_branch_in_the_range(self):
+        s = self.sell()
+        swept = {"1000:%04x" % i.off for i in self.sell_run()
+                 if 0x70 <= i.raw[0] <= 0x7F
+                 or (i.raw[0] == 0x0F and 0x80 <= i.raw[1] <= 0x8F)
+                 or i.raw[0] in (0xE0, 0xE1, 0xE2, 0xE3)}
+        named = self.named_conditional_branches()
+        for a in sorted(named):
+            self.assertNotIn(self.at(a).raw[0], (0xEB, 0xE9),
+                             "%s is recorded as a conditional branch but "
+                             "decodes as an unconditional jump" % a)
+        self.assertEqual(
+            swept, named,
+            "the conditional branches inside %s..%s are %r, the artifact "
+            "accounts for %r -- an unrecorded branch is an unrecorded gate, "
+            "and every gate in this range is SILENT, so the strings sweep "
+            "cannot catch it" % (s["range"]["start"], s["range"]["end"],
+                                 sorted(swept), sorted(named)))
+        self.assertEqual(
+            len(swept), s["sweeps"]["conditional_branches"],
+            "the range holds %d conditional branches, `sweeps` says %d"
+            % (len(swept), s["sweeps"]["conditional_branches"]))
+
+    def recorded_literal_pushes(self):
+        """Every CS-literal push address the `sell` block names."""
+        def walk(node):
+            if isinstance(node, dict):
+                if isinstance(node.get("cs_offset"), str) \
+                        and isinstance(node.get("push"), dict):
+                    yield node["push"]["addr"], node["cs_offset"]
+                for v in node.values():
+                    yield from walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    yield from walk(v)
+        lo, hi = self.sell_range()
+        return {a: c for a, c in walk(self.sell())
+                if lo <= addrmod.image_off_of_citation(a) < hi}
+
+    def test_the_recorded_strings_are_every_cs_literal_the_range_pushes(self):
+        s = self.sell()
+        run = self.sell_run()
+        pushed = {}
+        for n, ins in enumerate(run[:-2]):
+            if ins.raw[:1] != b"\xbf":
+                continue
+            if run[n + 1].text != "push cs" or run[n + 2].text != "push di":
+                continue                # `push ds` -> the DGROUP buffers
+            pushed["1000:%04x" % ins.off] = "0x%04x" % int(
+                ins.text.split(",")[1], 16)
+        recorded = self.recorded_literal_pushes()
+        self.assertEqual(
+            pushed, recorded,
+            "the CS literals actually pushed inside %s..%s are %r, the "
+            "artifact records %r -- `strings[]` is not complete"
+            % (s["range"]["start"], s["range"]["end"],
+               sorted(pushed.items()), sorted(recorded.items())))
+        self.assertEqual(len(pushed), s["sweeps"]["cs_literal_pushes"],
+                         "the range pushes %d CS literals, `sweeps` says %d"
+                         % (len(pushed), s["sweeps"]["cs_literal_pushes"]))
+
+    def recorded_effects(self):
+        s = self.sell()
+        out = {}
+        for a in s["arms"]:
+            for e in a["effects"]:
+                out[e["addr"]] = e
+        for e in s["junk_arm"]["effects"]:
+            out[e["addr"]] = e
+        out[s["prologue"]["addr"]] = s["prologue"]
+        return out
+
+    def test_the_recorded_effects_are_every_absolute_write_in_the_range(self):
+        s = self.sell()
+        written, read, unclassified = set(), set(), []
+        for i in self.sell_run():
+            if "[0x" not in i.text:
+                continue
+            cit = "1000:%04x" % i.off
+            if WRITES_ABS_MEM.match(i.text):
+                written.add(cit)
+            elif READS_ABS_MEM.match(i.text):
+                read.add(cit)
+            else:
+                unclassified.append("%s %s" % (cit, i.text))
+        self.assertEqual(unclassified, [],
+                         "%r touches absolute memory and is neither a "
+                         "recognised write nor a recognised read" % unclassified)
+        self.assertTrue(read, "no READ landed in the read bucket, so the two "
+                              "buckets are not partitioning anything")
+        recorded = self.recorded_effects()
+        self.assertEqual(
+            written, set(recorded),
+            "the absolute memory writes inside %s..%s are %r, the artifact "
+            "records %r -- `effects[]` is not complete"
+            % (s["range"]["start"], s["range"]["end"],
+               sorted(written), sorted(recorded)))
+        for a, e in recorded.items():
+            self.assertRegex(self.at(a).text, WRITES_ABS_MEM)
+            self.assertIn("0x%x" % int(e["ds"].split(":")[1], 16),
+                          self.at(a).text,
+                          "%s does not write %s" % (a, e["ds"]))
+        self.assertEqual(len(written), s["sweeps"]["absolute_memory_writes"],
+                         "the range holds %d absolute writes, `sweeps` says %d"
+                         % (len(written), s["sweeps"]["absolute_memory_writes"]))
+
+    def test_the_recorded_rolls_are_every_random_call_and_each_n_is_rederived(self):
+        """The refund finding's foundation, measured twice.
+
+        A draw nobody recorded still advances the RNG stream; and an `n` or a
+        base read out of the artifact would make the refund table a copy of
+        itself.  So the sites come from the five-byte signature sweep and the
+        two constants come from the binary -- `re_query.pushed_n` for the `n`,
+        the decoded `add ax,imm` for the base.
+        """
+        s = self.sell()
+        swept = {"1000:%04x" % i.off for i in self.sell_run()
+                 if i.raw == RANDOM_CALL}
+        recorded = {a["roll"]["call"]["addr"] for a in s["arms"]}
+        self.assertIsNone(s["junk_arm"]["roll"],
+                          "the junk arm is recorded as drawing; the sweep "
+                          "below is what decides that")
+        self.assertEqual(
+            swept, recorded,
+            "the `Random` call sites inside %s..%s are %r, the artifact "
+            "records %r" % (s["range"]["start"], s["range"]["end"],
+                            sorted(swept), sorted(recorded)))
+        self.assertEqual(len(swept), s["sweeps"]["random_call_sites"],
+                         "the range holds %d draws, `sweeps` says %d"
+                         % (len(swept), s["sweeps"]["random_call_sites"]))
+        for a in s["arms"]:
+            roll = a["roll"]
+            got = re_query.pushed_n(self.prog, roll["call"]["addr"])
+            self.assertEqual(
+                got["n"], roll["n"],
+                "arm %d: the idiom before %s pushes %r, the artifact records "
+                "%r" % (a["n"], roll["call"]["addr"], got["n"], roll["n"]))
+            add = self.check_insn(roll["base_add"], "arm %d base" % a["n"])
+            self.assertEqual(
+                add.text, "add ax,0x%x" % roll["base"],
+                "arm %d: the base add at %s is %r, the artifact records %d"
+                % (a["n"], roll["base_add"]["addr"], add.text, roll["base"]))
+            self.assertEqual(roll["refund"],
+                             "%d + Random(%d)" % (roll["base"], roll["n"]))
+            self.assertEqual(roll["refund_min"], roll["base"])
+            self.assertEqual(roll["refund_max"], roll["base"] + roll["n"] - 1)
+        # and the same table, restated in `refund_finding`, must not drift
+        for rec, a in zip(s["refund_finding"]["per_arm"], s["arms"]):
+            self.assertEqual(rec["call"], a["roll"]["call"])
+            self.assertEqual(rec["refund"], a["roll"]["refund"])
+            self.assertEqual(rec["refund_min"], a["roll"]["refund_min"])
+            self.assertEqual(rec["refund_max"], a["roll"]["refund_max"])
+            self.assertEqual(rec["buy_price"], a["buy_price"])
+
+    def test_the_range_reads_no_price_byte_and_writes_no_stat_global(self):
+        """The two negatives the refund finding and the no-unwind finding rest
+        on, each measured by the decoder AND by a raw byte scan.
+
+        `sweeps.dgroup_addresses` is asserted SET-EQUAL to every direct-memory
+        operand value in the range, so the two `assertNotIn`s below are
+        statements about the complete set rather than about a list someone
+        stopped writing.
+        """
+        s = self.sell()
+        lo, hi = self.sell_range()
+        seen = sorted({o.value for i in self.sell_run() for o in i.operands
+                       if o.kind in ("disp16", "moffs16")})
+        recorded = [int(x, 16) for x in s["sweeps"]["dgroup_addresses"]]
+        self.assertEqual(
+            seen, recorded,
+            "the DGROUP addresses the range references are %r, `sweeps` "
+            "records %r" % (["0x%04x" % v for v in seen],
+                            s["sweeps"]["dgroup_addresses"]))
+        raw = self.img[lo:hi]
+        for v in self.PRICE_BYTES + self.STAT_GLOBALS:
+            self.assertNotIn(
+                v, seen,
+                "0x%04x is referenced inside the sell range, so `the refund "
+                "is not read from a price` / `nothing is unwound` is false"
+                % v)
+            self.assertNotIn(
+                v.to_bytes(2, "little"), raw,
+                "the operand bytes of 0x%04x occur inside %s..%s, so the "
+                "negative above rests on the decoder alone"
+                % (v, s["range"]["start"], s["range"]["end"]))
+        self.assertIn(0x38c7, seen, "the money is not referenced in the sell "
+                                    "range at all, so this sweep is not "
+                                    "looking at the sell path")
+
+    # ------------------------------------------------------- the flow claims
+    def test_each_gate_branch_lands_where_the_flow_claim_needs_it(self):
+        """The `own && (any better rung)` shape, as branch TARGETS.
+
+        Every claim about the gate is a claim about where a branch goes, so
+        each target is decoded and compared against the address the shape
+        requires: the own-branch reaches the first conjunct, every conjunct
+        reaches the offer, and every miss reaches the NEXT arm's span start.
+        """
+        s = self.sell()
+        nxt = [a["span"]["start"] for a in s["arms"][1:]] \
+            + [s["tail"]["span"]["start"]]
+        for a, after in zip(s["arms"], nxt):
+            own = [g for g in a["gates"] if g["kind"] == "own"][0]
+            lad = [g for g in a["gates"] if g["kind"] == "ladder"][0]
+            offer = [x for x in a["strings"] if x["role"] == "offer"][0]
+            self.assertEqual(
+                "1000:%04x" % self.branch_target(self.at(own["branch"]["addr"])),
+                lad["conjuncts"][0]["test"]["addr"],
+                "arm %d: the own-flag branch does not reach the first "
+                "required-flag test" % a["n"])
+            for c in lad["conjuncts"]:
+                self.assertEqual(
+                    "1000:%04x" % self.branch_target(
+                        self.at(c["branch"]["addr"])),
+                    offer["push"]["addr"],
+                    "arm %d: the %s conjunct does not jump forward to the "
+                    "offer, so the gate is not a short-circuit `or`"
+                    % (a["n"], c["ds"]))
+            for g in a["gates"]:
+                self.assertEqual(
+                    "1000:%04x" % self.branch_target(
+                        self.at(g["miss"]["addr"])), after,
+                    "arm %d: gate %r's miss does not reach the next arm"
+                    % (a["n"], g["name"]))
+                self.assertTrue(g["silent"])
+            self.assertEqual(
+                "1000:%04x" % self.branch_target(
+                    self.at(a["answer"]["decline_branch"]["addr"])), after,
+                "arm %d: declining does not reach the next arm" % a["n"])
+            self.assertEqual(
+                {c["ds"] for c in lad["conjuncts"]},
+                set(a["requires_any_of"]),
+                "arm %d: `requires_any_of` and the conjuncts disagree" % a["n"])
+
+    def test_an_accepted_arm_falls_straight_into_the_next_arms_gate(self):
+        """`wes` is six sequential offers, not a six-way choice.
+
+        The claim is that ONE `wes` can sell up to six items, and it rests on
+        there being no jump between an arm's confirmation and the next arm's
+        first gate.  So the instruction after each confirmation `WriteLn` is
+        decoded and must BE the next arm's own-flag test.
+        """
+        s = self.sell()
+        nxt = [a["gates"][0]["test"]["addr"] for a in s["arms"][1:]] \
+            + [s["tail"]["sentinel_test"]["addr"]]
+        for a, after in zip(s["arms"], nxt):
+            conf = [x for x in a["strings"]
+                    if x["role"] == "confirmation"][0]
+            write = self.at(conf["write"]["addr"])
+            self.assertEqual(
+                "1000:%04x" % write.end, after,
+                "arm %d: the instruction after its confirmation is not %s, "
+                "so the arms are not sequential" % (a["n"], after))
+
+    def test_every_arm_rolls_and_stores_before_it_asks(self):
+        """`sentinel_finding` and `the_draw_is_spent_either_way`, as ORDER.
+
+        Both claims are about the position of `mov [0x3e33],al` relative to
+        the yes/no compare; a port that rolls on acceptance would satisfy
+        every other check here.
+        """
+        s = self.sell()
+        pro = addrmod.image_off_of_citation(s["prologue"]["addr"])
+        for a in s["arms"]:
+            store = addrmod.image_off_of_citation(a["roll"]["store"]["addr"])
+            call = addrmod.image_off_of_citation(a["roll"]["call"]["addr"])
+            cmp_ = addrmod.image_off_of_citation(
+                a["answer"]["compare"]["addr"])
+            read = addrmod.image_off_of_citation(
+                a["read"]["read_string"]["addr"])
+            self.assertLess(pro, call, "arm %d rolls before the sentinel is "
+                                       "set" % a["n"])
+            self.assertLess(read, call,
+                            "arm %d draws before it reads the answer" % a["n"])
+            self.assertLess(store, cmp_,
+                            "arm %d stores its roll AFTER the yes/no compare, "
+                            "so declining would leave the sentinel intact and "
+                            "`sentinel_finding` would be false" % a["n"])
+        self.check_insn(s["sentinel_finding"]["where"]["test"], "sentinel")
+        self.assertEqual(s["sentinel_finding"]["where"]["test"]["text"],
+                         "cmp byte [0x3e33],0xff")
+        self.assertEqual(s["prologue"]["text"], "mov byte [0x3e33],0xff")
+
+    def test_the_junk_credit_carries_no_rate(self):
+        """`x`'s central question: is the junk scaled before it is credited?
+
+        Answered over the whole junk span rather than at the two addresses --
+        a shift, a multiply or a divide anywhere in it would be a rate.
+        """
+        j = self.sell()["junk_arm"]
+        lo = addrmod.image_off_of_citation(j["span"]["start"])
+        hi = addrmod.image_off_of_citation(j["span"]["end"])
+        run = dis16.decode_run(self.img, lo, hi)
+        gate = addrmod.image_off_of_citation(j["gates"][0]["test"]["addr"])
+        after = addrmod.image_off_of_citation(j["strings"][0]["push"]["addr"])
+        seq = [i.text for i in run if gate <= i.off < after]
+        self.assertEqual(
+            seq, j["rate_finding"]["sequence"],
+            "the junk arm's gate-to-store path in orig/g.exe is %r, the "
+            "artifact records %r -- the one-for-one claim is exactly the "
+            "absence of anything between the load and the add"
+            % (seq, j["rate_finding"]["sequence"]))
+        scaled = [i.text for i in run
+                  if re.match(r"^(mul|imul|div|idiv|shl|shr|sar|sal|rol|ror)\b",
+                              i.text)]
+        self.assertEqual(scaled, [],
+                         "the junk arm contains %r, so a rate stands between "
+                         "the junk count and the credit" % scaled)
+        self.assertEqual(
+            {"1000:%04x" % i.off for i in run if i.raw == RANDOM_CALL}, set(),
+            "the junk arm draws, so the refund is not the raw count")
+        # and the refusal really is where the gate's branch lands
+        gate0 = j["gates"][0]
+        refusal = [x for x in j["strings"]
+                   if x["cs_offset"] == gate0["refusal_cs_offset"]][0]
+        self.assertEqual(
+            "1000:%04x" % self.branch_target(self.at(gate0["branch"]["addr"])),
+            refusal["push"]["addr"],
+            "the junk gate's branch does not land on the push of %s, so the "
+            "refusal is attributed to the wrong path"
+            % gate0["refusal_cs_offset"])
+
+    def test_the_tail_overwrites_the_buffer_so_the_wes_path_always_loops(self):
+        """`buffer_overwrite_finding`, as the DIFFERENCE between two literals.
+
+        The `w` compare at the handler's exit reads the same buffer each arm's
+        ReadLn wrote.  What makes the `wes` path unconditional is that the
+        assign at `1000:d368` puts a literal there that is NOT `w` -- so both
+        literals are decoded and asserted different, and the assign is
+        asserted to precede the compare.
+        """
+        t = self.sell()["tail"]
+        assign = t["buffer_reset"]
+        exit_ = t["exit_compare"]
+        self.assertEqual(assign["dest_push"]["text"], "mov di,0x3a72")
+        self.assertEqual(exit_["buffer_push"]["text"], "mov di,0x3a72")
+        self.assertNotEqual(
+            assign["literal"]["text"], exit_["literal"]["text"],
+            "the tail assigns the very literal the exit compare tests, so the "
+            "`wes` path would LEAVE the shop rather than loop")
+        self.assertLess(
+            addrmod.image_off_of_citation(assign["call"]["addr"]),
+            addrmod.image_off_of_citation(exit_["compare"]["addr"]),
+            "the assign does not precede the exit compare")
+        self.assertEqual(
+            "1000:%04x" % self.branch_target(
+                self.at(exit_["leave_branch"]["addr"])),
+            exit_["leave"]["addr"])
+        self.assertEqual(
+            "1000:%04x" % self.branch_target(self.at(exit_["leave"]["addr"])),
+            exit_["leave_target"])
+        self.assertEqual(
+            "1000:%04x" % self.branch_target(
+                self.at(exit_["loop_back"]["addr"])), exit_["loop_target"],
+            "%s does not loop back to the recorded prompt push %s"
+            % (exit_["loop_back"]["addr"], exit_["loop_target"]))
+        # and the `wes` miss reaches the exit compare WITHOUT the assign
+        self.assertEqual(
+            "1000:%04x" % self.branch_target(
+                self.at(self.sell()["wes_dispatch"]["miss_branch"]["addr"])),
+            exit_["buffer_push"]["addr"],
+            "the `wes` miss does not land past the buffer assign, so an "
+            "unrecognised key would have its line overwritten too")
+
+    # ---------------------------------------------------------- the globals
+    def test_the_item_flag_names_come_from_the_character_sheets_own_lines(self):
+        """Task 27's review turned on exactly this: a `named_from` that was
+        never re-derived.  Each of the ten item flags is named from the sheet
+        line that prints it, and both halves -- the guard that tests the flag
+        and the push of the label -- are decoded here out of `orig/g.exe`.
+        """
+        checked = 0
+        for g in self.sell()["globals"]:
+            if "sheet_label" not in g or g["ds"] == "20ae:38c9":
+                continue
+            guard, push = g["evidence"][0], g["evidence"][1]
+            self.check_insn(guard, "%s sheet guard" % g["ds"])
+            self.assertEqual(
+                guard["text"],
+                "cmp byte [0x%x],0x0" % int(g["ds"].split(":")[1], 16),
+                "%s: the recorded sheet guard does not test that flag"
+                % g["ds"])
+            self.check_insn(push, "%s sheet label push" % g["ds"])
+            self.assertEqual(
+                push["text"], "mov di,%s" % g["sheet_label"]["cs_offset"],
+                "%s: the sheet label push at %s does not push CS %s, so the "
+                "name is attributed to the wrong line"
+                % (g["ds"], push["addr"], g["sheet_label"]["cs_offset"]))
+            self.assertEqual(
+                self.cs_literal(g["sheet_label"]["cs_offset"]),
+                g["sheet_label"]["text"],
+                "%s: CS %s does not hold the recorded label"
+                % (g["ds"], g["sheet_label"]["cs_offset"]))
+            checked += 1
+        self.assertEqual(checked, 10,
+                         "only %d of the ten item flags carry a re-derived "
+                         "sheet name" % checked)
+
+    def test_the_sell_global_census_is_what_xrefs_to_reports(self):
+        lo, hi = self.sell_range()
+        store = re.compile(r"^(mov|inc|dec|add|sub|xchg)\s+"
+                           r"(byte |word |dword )?\[0x[0-9a-f]+\]")
+        touched = {"0x%04x" % o.value for i in self.sell_run()
+                   for o in i.operands if o.kind in ("disp16", "moffs16")}
+        recorded_ds = {g["ds"] for g in self.sell()["globals"]}
+        self.assertEqual(
+            recorded_ds | {MONEY},
+            {"20ae:" + t[2:] for t in touched},
+            "`globals[]` plus the money is not the set of DGROUP addresses "
+            "the range touches")
+        for g in self.sell()["globals"]:
+            x = g["xrefs"]
+            scan = self.xrefs(g["ds"])
+            acc = scan["accepted"]
+            inside = [a for a in acc
+                      if lo <= int(a["image_off"], 16) < hi]
+            self.assertEqual(scan["raw_hits"], x["raw_hits"],
+                             "%s: %d raw hits, artifact says %d"
+                             % (g["ds"], scan["raw_hits"], x["raw_hits"]))
+            self.assertEqual(len(acc), x["accepted"],
+                             "%s: %d accepted, artifact says %d"
+                             % (g["ds"], len(acc), x["accepted"]))
+            self.assertEqual(len(scan["discarded"]), x["discarded"],
+                             "%s: %d discarded, artifact says %d"
+                             % (g["ds"], len(scan["discarded"]),
+                                x["discarded"]))
+            self.assertEqual([d["why"] for d in scan["discarded"]],
+                             x["discarded_why"])
+            self.assertEqual(len(inside), x["refs_in_range"],
+                             "%s: %d references in the sell range, artifact "
+                             "says %d" % (g["ds"], len(inside),
+                                          x["refs_in_range"]))
+            self.assertEqual(len(acc) - len(inside), x["refs_outside_range"])
+            self.assertEqual(
+                sorted(a["at"] for a in acc if store.match(a["text"])),
+                x["writers_image_wide"],
+                "%s: the image-wide writer set is not what the artifact "
+                "records -- `ladder_finding.why_not_equipped` rests on it"
+                % g["ds"])
+            self.assertEqual(x["command"],
+                             "python3 tools/re_query.py xrefs-to %s" % g["ds"])
+
+    def test_the_top_rung_is_never_cleared_and_the_scratch_byte_is_private(self):
+        """The two claims that are about a set being EMPTY.
+
+        `20ae:394c` (Тесак) is the rung nothing sells, and `20ae:3e33` is the
+        byte nothing outside this range reads -- which is what lets it be
+        named from its own use rather than borrowed from a neighbour.
+        """
+        s = self.sell()
+        by = {g["ds"]: g for g in s["globals"]}
+        lo, hi = self.sell_range()
+        cleaver = [a for a in self.xrefs("20ae:394c")["accepted"]
+                   if lo <= int(a["image_off"], 16) < hi
+                   and a["text"].startswith("mov ")]
+        self.assertEqual(cleaver, [],
+                         "20ae:394c is written inside the sell range, so the "
+                         "cleaver IS sellable and the ladder finding is wrong")
+        self.assertEqual(by["20ae:394c"]["xrefs"]["writers_image_wide"],
+                         ["1000:573e"])
+        self.assertEqual(
+            by["20ae:3e33"]["xrefs"]["refs_outside_range"], 0,
+            "20ae:3e33 is referenced outside the sell range, so it is not "
+            "the private scratch byte its `named_from` says it is")
+        for ds in ("20ae:38b7", "20ae:38b8", "20ae:38b9"):
+            self.assertEqual(
+                len(by[ds]["xrefs"]["writers_image_wide"]), 1,
+                "%s has more than one image-wide writer, so it could be an "
+                "equipped bit after all" % ds)
+
+    def test_the_ladders_are_the_arms_own_flags(self):
+        """`ladder_finding.ladders[]` must be a view of the arms, not prose.
+
+        The whole finding is that an arm sells a rung and needs a HIGHER one,
+        so each ladder's `sellable` list has to be exactly the own-flags of
+        the arms whose rung it holds, and each arm's required flags have to be
+        rungs of its own ladder and strictly above it.
+        """
+        s = self.sell()
+        arms = {a["own_flag"]: a for a in s["arms"]}
+        seen = set()
+        for lad in s["ladder_finding"]["ladders"]:
+            rungs = lad["rungs"]
+            self.assertEqual(
+                lad["sellable"], [r for r in rungs if r in arms],
+                "ladder %r: `sellable` is not the rungs an arm actually "
+                "clears" % lad["ladder"])
+            for i, r in enumerate(rungs):
+                a = arms.get(r)
+                if a is None:
+                    continue
+                self.assertEqual(
+                    a["requires_any_of"], rungs[i + 1:],
+                    "the arm that sells %s requires %r, but the rungs above "
+                    "it on the %r ladder are %r"
+                    % (r, a["requires_any_of"], lad["ladder"], rungs[i + 1:]))
+            seen.update(rungs)
+        self.assertEqual(
+            seen, {g["ds"] for g in s["globals"]
+                   if g["ds"] not in ("20ae:38c9", "20ae:3e33")},
+            "the ladders do not cover every item flag the range touches")
+
+    def test_the_arithmetic_coincidence_is_stated_as_a_coincidence(self):
+        """The one place this map states a numeric relation.
+
+        The base happens to equal `(price + 1) div 2` for all five priced arms
+        and the maximum happens to equal `price * 4 div 5` for four of them.
+        Both halves are recomputed here so the table cannot drift into
+        claiming a formula the binary does not contain.
+        """
+        f = self.sell()["refund_finding"]["arithmetic_coincidence"]
+        rows = f["table"]
+        self.assertEqual(len(rows), 5, "there are five priced sell arms")
+        halves = [r["base"] == (r["price"] + 1) // 2 for r in rows]
+        fifths = [r["max"] == r["price"] * 4 // 5 for r in rows]
+        self.assertEqual(halves, [True] * 5,
+                         "the `(price + 1) div 2` half of the coincidence no "
+                         "longer holds for every priced arm: %r" % rows)
+        self.assertEqual(
+            sum(fifths), 4,
+            "the coincidence text says four of five maxima are `price * 4 "
+            "div 5`; the table gives %d" % sum(fifths))
+        self.assertFalse(
+            fifths[4],
+            "arm 5 (Дубинка) is the one the text names as the exception")
+
+
 class ProseTest(unittest.TestCase):
     """`docs/re/shop-arms.md` re-derived from `orig/g.exe`.
 
@@ -1321,6 +2070,7 @@ class ProseTest(unittest.TestCase):
         cls.art = json.loads(ART.read_text(encoding="utf-8"))
         cls.shops = json.loads(SHOPS.read_text(encoding="utf-8"))
         raw = DOC.read_text(encoding="utf-8")
+        cls.raw = raw
         cls.md = strip_fences(raw)
         cls.spans = inline_spans(cls.md)
         # `strip_fences` exists so the single-backtick pairing cannot
@@ -1456,6 +2206,53 @@ class ProseTest(unittest.TestCase):
                     s["cs_offset"], self.md,
                     "%s row %s: the prose does not carry CS %s"
                     % (r["shop"], r["key"], s["cs_offset"]))
+
+    def test_the_prose_and_the_artifact_agree_on_the_sell_path(self):
+        """The two-places rule for Task 29's half.
+
+        The addresses Task 30 will actually type -- each arm's gate, its
+        draw, the flag it clears and the credit -- plus every literal, plus
+        the four range anchors the extent claim rests on.
+
+        This one searches the RAW file, not `strip_fences`'s output: half the
+        sell path's addresses are quoted inside fenced disassembly, and those
+        lines carry their own identity check in
+        `test_every_instruction_inside_a_fence_says_what_the_binary_says`.
+        """
+        s = self.art["sell"]
+        for a in s["arms"]:
+            for cit in (a["span"]["start"], a["roll"]["call"]["addr"],
+                        a["clear_addr"], a["credit_addr"]):
+                self.assertIn(
+                    cit, self.raw,
+                    "docs/re/shop-arms.md never names %s, which "
+                    "data/shop_arms.json records for sell arm %d"
+                    % (cit, a["n"]))
+            for x in a["strings"]:
+                self.assertIn(x["cs_offset"], self.raw,
+                              "sell arm %d: the prose does not carry CS %s"
+                              % (a["n"], x["cs_offset"]))
+            self.assertIn(a["roll"]["refund"], self.raw,
+                          "the prose does not state sell arm %d's refund %r"
+                          % (a["n"], a["roll"]["refund"]))
+        j = s["junk_arm"]
+        for cit in (j["compare"]["addr"], j["gates"][0]["branch"]["addr"],
+                    j["effects"][0]["addr"], j["effects"][1]["addr"]):
+            self.assertIn(cit, self.raw,
+                          "the prose never names %s from the junk arm" % cit)
+        for cit in (s["range"]["start"], s["range"]["end"],
+                    s["range"]["last_instruction"]["addr"], "1000:c4cf"):
+            self.assertIn(cit, self.raw,
+                          "the prose never names %s, which the extent claim "
+                          "rests on" % cit)
+        self.assertIn(str(s["sweeps"]["instructions"]), self.raw,
+                      "the prose does not state the range's instruction "
+                      "count, so its span claim rests on nothing")
+        for e in s["tail"]["strings"] + [s["tail"]["buffer_reset"]["literal"],
+                                         s["tail"]["exit_compare"]["literal"]]:
+            self.assertIn(e["cs_offset"], self.raw,
+                          "the prose does not carry the tail literal CS %s"
+                          % e["cs_offset"])
 
 
 if __name__ == "__main__":

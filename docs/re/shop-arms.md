@@ -13,26 +13,33 @@ every literal in both this file and the artifact out of `orig/g.exe`, so
 neither can drift from the binary.
 
 **Artifact coverage boundary — read this before trusting a sweep.**
-`data/shop_arms.json` holds **15 rows**: `bmar` 1–6 (this file's first half,
-Task 23) and `mar` 1–9 (its second half, Task 25). **`bmar` rows 7, 8 and 9 are
-NOT in it.** They were mapped by Task 18, before the artifact existed, and Task
-24 re-homed their port into `Game::buy_dealer_row` alongside rows 1–6 without
-widening the artifact. The consequence is precise and easy to misread: the four
-binary-swept completeness tests in `tools/test_shop_arms.py` — `gates[]`,
-`strings[]`, `roll[]` and `effects[]` — reach **all nine `mar` rows and only
-six of the nine `bmar` rows**, so `src/` carries claims about `bmar` 7–9 that
-no sweep here covers. The final whole-branch review swept that gap by hand and
-found nothing wrong, which is why this is a coverage note and not a defect.
-The same asymmetry shows in `tools/mutations.json`: `mar-arms-effects-completeness`,
+`data/shop_arms.json` holds **15 PURCHASE rows** — `bmar` 1–6 (this file's
+first half, Task 23) and `mar` 1–9 (its second half, Task 25) — and, since
+Task 29, the dealers' **SELL path** under its own `sell` key (this file's
+third part). It is no longer a buy-only artifact. **`bmar` PURCHASE rows 7, 8
+and 9 are still NOT in it.** They were mapped by Task 18, before the artifact
+existed, and Task 24 re-homed their port into `Game::buy_dealer_row` alongside
+rows 1–6 without widening the artifact. The consequence is precise and easy to
+misread: the four binary-swept completeness tests over `rows` in
+`tools/test_shop_arms.py` — `gates[]`, `strings[]`, `roll[]` and `effects[]` —
+reach **all nine `mar` rows and only six of the nine `bmar` rows**, so `src/`
+carries claims about `bmar` 7–9 that no sweep here covers. Those four sweeps
+say nothing at all about the sell path either: it carries its own six sweeps
+under `sell.sweeps` and its own sixteen cases in `SellTest`. The final
+whole-branch review swept the purchase gap by hand and found nothing wrong,
+which is why this is a coverage note and not a defect. The same asymmetry shows
+in `tools/mutations.json`: `mar-arms-effects-completeness`,
 `mar-arms-random-site-completeness` and `mar-arms-district-sweep-start-is-anchored`
-have no `bmar` twin. Widening the artifact to `bmar` 7–9 is new RE scope and is
-deliberately not done here.
+have no `bmar` twin. Widening the artifact to `bmar` PURCHASE 7–9 is new RE
+scope and is deliberately not done here.
 
 **The market's nine arms are the second half of this file** — see *`mar` rows
 1–9: the purchase arms* below, mapped by Task 25 over its own range
 (`1000:b94a`..`1000:c4be`). The two shops were measured separately and neither
 half's findings are inferred from the other's; where they differ, they differ
-loudly.
+loudly. **The dealers' SELL path is the third** — see *The dealers' sell path:
+`x` and `wes`* at the end, mapped by Task 29 over `1000:ce76`..`1000:d383`,
+which begins exactly where `bmar` row 9's arm ends.
 
 Every claim below is **established from flow** unless it says otherwise. The
 range decoded is `1000:c8ce`..`1000:ccc4` — the row-1 setup to the row-7
@@ -942,3 +949,356 @@ that this task was sent to fix; it is fixed in the same function
 reproduced, not corrected**: the shot the row advertises rolls
 `20 + Random(10)` (`1000:4f14 mov ax,0xa`, `1000:4f1d add ax,0x14`), so its
 real range is 20..=29 while its menu line says 20-30.
+
+---
+---
+
+# The dealers' sell path: `x` and `wes`
+
+**Scope.** The other half of the same handler. The nine purchase arms end at
+`1000:ce76`, which is where the `x` sub-verb's six-instruction setup begins;
+from there to `1000:d381` is the sell path, and `1000:d381 jmp short 0xd39c`
+is its last instruction. Mapped by Task 29.
+
+**Machine-readable twin:** the `sell` key of `data/shop_arms.json`.
+**Re-derivation:** `python3 tools/test_shop_arms.py SellTest` — sixteen cases,
+six of them set-equality sweeps over the whole range.
+
+Every claim below is **established from flow** unless it says otherwise. The
+range decoded is `1000:ce76`..`1000:d383` as one aligned run of **580
+instructions**; its eleven spans are asserted to tile that range with no gap
+and no overlap, so a per-span record cannot describe bytes a per-range sweep
+never saw.
+
+**A note on every fence below.** They are the aligned decode with exactly two
+rigidly repeated shapes dropped, and nothing else: the `push cs` / `push di`
+(or `push ds` / `push di`) that follows every `mov di,imm16`, and the five
+`xor ax,ax` / `push ax` pairs that precede every `call 0eed:0x1c2`. A
+`push ax` that pushes a VALUE is kept, because it is the argument.
+
+---
+
+## Where the range ends, measured rather than assumed
+
+Task 28 shipped a residue whose documented interval ran 282 bytes past the
+arm's real end, because the interval came from a brief instead of from the
+branch graph. So this one is measured: the whole `entry` function decodes as
+one aligned run of **7742 instructions** from `1000:ab59` (17143 bytes,
+`data/branches.json`'s own figure for the function), and
+inside it exactly one near branch targets `1000:d383` — `1000:c4cf`, the
+`bmar` discovery-flag refusal, which is not in this handler's body at all. The
+block that begins at `1000:d383` is therefore not part of this range; the next
+address either exit reaches is `1000:d39c`, the `rep` compare's setup, whose
+compare is `1000:d3a6`.
+
+Five edges enter the range, all of them row 9's: `1000:cdf6` (the key compare
+missed), `1000:cdfe` (no pistol), `1000:ce05` (the delivery counter is not
+25), `1000:ce5b` (the purchase tail) and the fall-through past the already-own
+refusal's `WriteLn` at `1000:ce71`.
+
+---
+
+## `x` — sell the Хлам, `1000:ce76`..`1000:cece`
+
+```
+1000:ce76  mov di,0x3a72        ; the typed line
+1000:ce7b  mov di,0x96ce        ; the literal `x`
+1000:ce80  call 0xf78:0xbd8
+1000:ce85  jnz 0xcece           ; -> the `wes` setup
+1000:ce87  cmp word [0x38c9],0x0
+1000:ce8c  jle 0xceb5           ; -> the refusal
+1000:ce8e  mov ax,[0x38c9]
+1000:ce91  add [0x38c7],ax
+1000:ce95  xor ax,ax
+1000:ce97  mov [0x38c9],ax
+1000:ce9a  mov di,0x96d0
+1000:ceae  call 0xeed:0x1c2
+1000:ceb3  jmp short 0xcece
+1000:ceb5  mov di,0x96f2
+1000:cec9  call 0xeed:0x1c2
+```
+
+**There is no rate.** The junk word `20ae:38c9` is added to the money
+`20ae:38c7` one-for-one and then zeroed; nothing stands between the load and
+the add. That is measured over the whole span rather than at the two
+addresses: an aligned decode of `1000:ce76`..`1000:cece` contains no `mul`,
+`imul`, `div`, `idiv` or shift of any kind, and no `Random` call.
+
+`1000:ce87` is a **signed word** compare (`83 3e` with a `jle`), so the sale
+needs `Хлам > 0` and a negative count would take the refusal too. The
+character sheet prints the same word as `Хлам #` — its guard is the identical
+`1000:246a cmp word [0x38c9],0x0` and `1000:2476 push [0x38c9]` is the value.
+
+**Neither line names a number.** `^6Барыги дали тебе денег за хлам.`
+(CS `0x96d0`) and `^4Тебе нечего спихнуть.` (CS `0x96f2`) are both written
+with five zero format words, so the player is never told how much the junk
+fetched.
+
+Both paths land on `1000:cece`, the `wes` setup — the sold path by
+`1000:ceb3 jmp short 0xcece`, the refused path by falling through the
+`WriteLn` at `1000:cec9`. So typing `x` also runs the `wes` compare, which
+then misses on the buffer `x`.
+
+---
+
+## `wes` — six sequential offers, `1000:cece`..`1000:d33a`
+
+```
+1000:cece  mov di,0x3a72
+1000:ced3  mov di,0x970a        ; the literal `wes`
+1000:ced8  call 0xf78:0xbd8
+1000:cedd  jz 0xcee2
+1000:cedf  jmp 0xd36d           ; -> the handler's exit compare
+1000:cee2  mov byte [0x3e33],0xff
+```
+
+`1000:cee2` sets the sell-price scratch byte to its `0xff` sentinel before any
+gate is tested. All twenty of `20ae:3e33`'s image-wide references
+(`python3 tools/re_query.py xrefs-to 20ae:3e33`, 20 raw, 20 accepted, 0
+discarded) are inside this range, so the byte is private to `wes` and is named
+from its own use rather than from a neighbour.
+
+### The shape all six arms share
+
+```
+1000:cee7  cmp byte [0x38b4],0x0    ; own the LESSER item?
+1000:ceec  jnz 0xcef1
+1000:ceee  jmp 0xcf9c               ; -> the next arm
+1000:cef1  cmp byte [0x38b7],0x0    ; own a BETTER one?
+1000:cef6  jnz 0xcefb
+1000:cef8  jmp 0xcf9c               ; -> the next arm
+1000:cefb  mov di,0x970e            ; the offer, WriteLn
+1000:cf0f  call 0xeed:0x1c2
+1000:cf14  mov di,0x973c            ; the prompt, Write -- no newline
+1000:cf28  call 0xeed:0x0
+1000:cf2d  mov di,0x3ecc
+1000:cf32  mov di,0x3a72
+1000:cf37  mov ax,0xff
+1000:cf3b  call 0xf78:0x6c6
+1000:cf40  call 0xf78:0x59d
+1000:cf45  call 0xf78:0x291
+1000:cf4a  mov di,0x3a72
+1000:cf4f  call 0xeed:0x216         ; lower-case the answer
+1000:cf54  mov ax,0x5
+1000:cf58  call 0xf78:0x114b        ; Random(5)
+1000:cf5d  add ax,0x8
+1000:cf60  mov [0x3e33],al          ; the refund -- rolled after the READ,
+                                    ; before the COMPARE
+1000:cf63  mov di,0x3a72
+1000:cf68  mov di,0x8323            ; the literal `y`
+1000:cf6d  call 0xf78:0xbd8
+1000:cf72  jnz 0xcf9c               ; declined -> the next arm
+1000:cf74  mov byte [0x38b4],0x0
+1000:cf79  mov al,[0x3e33]
+1000:cf7c  cbw
+1000:cf7d  add [0x38c7],ax
+1000:cf81  mov di,0x974c
+1000:cf86  mov al,[0x3e33]          ; the `#` of the confirmation
+1000:cf97  call 0xeed:0x1c2
+```
+
+That is arm 1 in full; the other five differ only in their flags, their two
+roll constants and their three literals. The read is the same
+`0f78:06c6` / `0f78:059d` / `0f78:0291` triple `docs/re/rtl.md` names as a
+Pascal `ReadLn`, into `20ae:3a72` — **the same buffer the `^0Барыги\` prompt
+read into at `1000:c8b5`**, which is what the tail at `1000:d35a` exists to
+undo.
+
+### The six arms
+
+| arm | sells | own flag | offered when also | refund | buy price |
+|---|---|---|---|---|---|
+| 1 | suit | `20ae:38b4` | `20ae:38b7` | `8 + Random(5)` = 8..12 | 15 |
+| 2 | boots | `20ae:38b5` | `20ae:38b8` | `8 + Random(5)` = 8..12 | 15 |
+| 3 | jacket | `20ae:38b6` | `20ae:38b9` | `13 + Random(8)` = 13..20 | 25 |
+| 4 | knuckles | `20ae:38ba` | `20ae:394b` or `20ae:38c2` or `20ae:394c` | `13 + Random(8)` = 13..20 | 25 |
+| 5 | club | `20ae:394b` | `20ae:38c2` or `20ae:394c` | `25 + Random(15)` = 25..39 | 50 |
+| 6 | knife | `20ae:38c2` | `20ae:394c` | `38 + Random(23)` = 38..60 | — |
+
+| arm | gate at | roll at | clears at | credits at | offer | confirmation |
+|---|---|---|---|---|---|---|
+| 1 | `1000:cee7` | `1000:cf58` | `1000:cf74` | `1000:cf7d` | CS `0x970e` | CS `0x974c` |
+| 2 | `1000:cf9c` | `1000:d00d` | `1000:d029` | `1000:d032` | CS `0x9765` | CS `0x9796` |
+| 3 | `1000:d051` | `1000:d0c2` | `1000:d0de` | `1000:d0e7` | CS `0x97b2` | CS `0x97e1` |
+| 4 | `1000:d106` | `1000:d185` | `1000:d1a1` | `1000:d1aa` | CS `0x97fb` | CS `0x982e` |
+| 5 | `1000:d1c9` | `1000:d241` | `1000:d25d` | `1000:d266` | CS `0x9847` | CS `0x9879` |
+| 6 | `1000:d285` | `1000:d2f6` | `1000:d312` | `1000:d31b` | CS `0x9893` | CS `0x98c6` |
+
+Each arm's answer compare is against `y` (CS `0x8323`) at `1000:cf6d`,
+`1000:d022`, `1000:d0d7`, `1000:d19a`, `1000:d256` and `1000:d30b`, and each
+declines to the next arm's own-flag test. Every arm's prompt is the same
+`^0Продать вещи\` (CS `0x973c`).
+
+The literals, in order: `^2У тебя есть ненужный костюм хочешь продать?`
+(CS `0x970e`) / `^2Ты продал костюм за #.` (CS `0x974c`);
+`^2У тебя есть ненужные кроссовки хочешь продать?` (CS `0x9765`) /
+`^2Ты продал кроссовки за #.` (CS `0x9796`);
+`^2У тебя есть ненужная кожанка хочешь продать?` (CS `0x97b2`) /
+`^2Ты продал кожанку за #.` (CS `0x97e1`);
+`^2У тебя есть кастет, а это отстой хочешь продать?` (CS `0x97fb`) /
+`^2Ты продал кастет за #.` (CS `0x982e`);
+`^2У тебя есть дубинка - барахло - хочешь продать?` (CS `0x9847`) /
+`^2Ты продал дубинку за #.` (CS `0x9879`);
+`^2У тебя есть ножик и тeсак, хочешь продать ножик?` (CS `0x9893`) /
+`^2Ты продал ножик за #.` (CS `0x98c6`). The `e` in the sixth offer's
+`тeсак` is a Latin `e` in the binary; it is quoted here exactly.
+
+---
+
+## The refund — the finding this map exists for
+
+**It is not the buy price, and it is not a fraction of the buy price.** Every
+arm rolls its own `base + Random(n)` from two immediates:
+
+```
+1000:d2f2  mov ax,0x17
+1000:d2f6  call 0xf78:0x114b
+1000:d2fb  add ax,0x26
+1000:d2fe  mov [0x3e33],al
+```
+
+Nothing in the range reads a price. The aligned decode of
+`1000:ce76`..`1000:d383` references exactly **thirteen** distinct DGROUP
+addresses — `0x38b4`..`0x38ba`, `0x38c2`, `0x38c7`, `0x38c9`, `0x394b`,
+`0x394c`, `0x3e33` — and neither `bmar`'s price table `20ae:0b38`..`20ae:0b40`
+nor `mar`'s `20ae:0b2e`..`20ae:0b36` is among them. That negative — and
+finding 2 below, which is the same shape — is cross-checked by a raw
+byte-pair scan of the same range for each of the twenty-two operands
+involved, so neither rests on the decoder alone.
+
+**An arithmetic coincidence, recorded so nobody "tidies" it into a formula.**
+For the five arms whose item has a shop price the base equals
+`(price + 1) div 2` in all five, and the maximum equals `price * 4 div 5` in
+four of them — arm 5 tops out at 39 where `50 * 4 div 5` is 40. Both sides are
+immediates; nothing computes either.
+
+**The player agrees before being told the price.** Each arm's offer is written
+with five zero format words, and the roll happens *after* the `ReadLn`. Only
+the confirmation carries a value — the `mov al,[0x3e33]` at `1000:cf86`,
+`1000:d03b`, `1000:d0f0`, `1000:d1b3`, `1000:d26f` and `1000:d324` is what
+fills its `#`.
+
+**The draw is spent either way.** In all six arms the store into `20ae:3e33`
+precedes the yes/no compare, so an offer that is declined has still advanced
+the RNG stream. One `wes` can spend up to six draws and read up to six lines.
+
+---
+
+## Three more findings — reproduce, do not fix
+
+### 1. The flag pairing is own-plus-replacement, not own-plus-equipped
+
+Each arm sells the LESSER rung of a ladder and is offered only when a
+strictly better rung on the same ladder is owned. There is no equipped bit
+anywhere: each of the ten item flags' complete image-wide writer set is a
+purchase arm, a combat loot arm or one of these six sell arms, with nothing
+left over to be an equipped bit. In flag order they are `1000:bf80` and
+`1000:cf74`; `1000:c029` and `1000:d029`; `1000:c0e0` and `1000:d0de`;
+`1000:c183`; `1000:c222`; `1000:c2ca`; `1000:5541`, `1000:cb9d` and
+`1000:d1a1`; `1000:5698` and `1000:d312`; `1000:55a7`, `1000:cc56` and
+`1000:d25d`; and `1000:573e`. So `20ae:38b7`, `20ae:38b8` and `20ae:38b9` are
+each written by exactly **one** site image-wide — their own `mar` purchase —
+and the top weapon rung `20ae:394c` is never cleared by anything: its only
+image-wide writer is the loot arm at `1000:573e`, so the cleaver cannot be
+sold. `SellTest` re-derives all twenty writer addresses from
+`re_query.xrefs_to` rather than reading them here.
+
+The three armour arms take one required flag; the weapon arms take a
+short-circuit `or` over every higher rung — three conjuncts, then two, then
+one. The buy path's better-weapon refusals at `1000:cb5b` and `1000:cc18` are
+`and`s over the same flags: opposite sense, same population.
+
+### 2. Nothing is unwound on a sale
+
+No sell arm subtracts the stat bonus the sold item granted, and none clears
+the better item's flag. The armour byte `20ae:38b2` and the damage words
+`20ae:38a8` / `20ae:38aa` are not in the thirteen-address set above at all.
+
+This is probably not a bug: the purchase side is upgrade-DELTA shaped —
+`mar` rows 7, 8 and 9 add only the difference when the lesser item is already
+owned (`1000:c1af`, `1000:c24e`, `1000:c2f6`), and the knife's loot arm reads
+the club flag at `1000:56bc` the same way — so selling the lesser rung should
+leave the total at the better rung's full bonus. This map did not measure the
+loot arms, so it records the negative and the cross-reference and claims
+nothing about the totals. The gym's recompute is unaffected either way: its
+first and third subtractions (`1000:e3aa`, `1000:e3c8`) fire only when the
+BETTER flag is clear, and a sell arm can clear a lesser flag only when the
+better one is set — so neither subtraction was applying before the sale
+either.
+
+### 3. The "nothing to sell" line means "nothing was OFFERED"
+
+```
+1000:d33a  cmp byte [0x3e33],0xff
+1000:d33f  jnz 0xd35a
+1000:d341  mov di,0x98de
+1000:d355  call 0xeed:0x1c2
+```
+
+Because every arm stores its roll *before* the yes/no compare, being offered
+one sale and declining it leaves `20ae:3e33` holding that roll — so
+`^6У тебя нет неужных вещей.` (CS `0x98de`) is suppressed and the player is
+told nothing at all. Only reaching the tail with no arm ever entered prints
+it.
+
+---
+
+## The tail, and why `wes` always returns to the prompt
+
+```
+1000:d35a  mov di,0x98fa        ; the one-character literal ` `
+1000:d35f  mov di,0x3a72
+1000:d364  mov ax,0xff
+1000:d368  call 0xf78:0xb01     ; rtl_str_assign_max
+1000:d36d  mov di,0x3a72
+1000:d372  mov di,0x848e        ; the literal `w`
+1000:d377  call 0xf78:0xbd8
+1000:d37c  jz 0xd381
+1000:d37e  jmp 0xc88e           ; -> the `^0Барыги\` prompt push
+1000:d381  jmp short 0xd39c     ; -> past the handler, the `rep` setup
+```
+
+`1000:d377` is the whole handler's exit test, and it reads `20ae:3a72` — the
+buffer each `wes` arm's own `ReadLn` just overwrote. Without the assign at
+`1000:d368`, answering `w` to `^0Продать вещи\` would leave the dealers. The
+assign puts ` ` (CS `0x98fa`) there instead, so the `wes` path reaches
+`1000:d37e` unconditionally.
+
+The `x` path does not go through the assign: `1000:cedf jmp 0xd36d` lands past
+it, so a line that reached the `x` arm still holds `x` at the exit compare —
+and `x` is not `w` either. `1000:c88e` is the PROMPT push, not the menu, so a
+re-prompt does not reprint the nine menu lines. The `w` literal CS `0x848e` is
+shared by nine push sites image-wide (`data/den_arms.json`); it is every
+location's exit key, not the dealers' own.
+
+---
+
+## What the port must change — for Task 30
+
+`Game::sell_junk` and `Game::sell_items` are both hardcoded refusals
+(`grep -n 'fn sell_junk\|fn sell_items' src/game.rs` finds them). Neither
+reads any state. `sell_junk`'s doc comment justifies the stub by claiming the
+player's junk always stays 0; `docs/re/gaps.md` records that Task 13
+falsified that when `Game::claim_spoils` started reproducing the victory
+block at `1000:523e`, whose `1000:524f add [0x38c9],ax` is what makes the
+player's junk non-zero.
+
+1. **`x`.** Refuse only when Хлам <= 0 (a signed compare). Otherwise add the
+   whole junk word to the money one-for-one, zero it, and print CS `0x96d0`
+   with no number in it.
+2. **`wes`.** Six offers in the table's order, each with its own gate, its own
+   `ReadLn`, its own roll and its own two literals.
+3. **They are not exclusive.** An accepted arm falls straight into the next
+   arm's own-flag test — the instruction after each confirmation `WriteLn` IS
+   that test — so one `wes` can sell up to six items.
+4. **The refund is the arm's own two immediates**, never the buy price, and
+   the draw is spent even when the player declines.
+5. **Subtract nothing** on a sale, and do not clear the better item's flag.
+6. **Gate the "nothing to sell" line on whether any arm was OFFERED**, not on
+   whether anything was sold.
+7. **The answer is lower-cased, not trimmed** (`0eed:0216` walks the string
+   and only folds `A`..`Z`), so `Y` sells. `Game::shop_turn` trims;
+   `docs/re/gaps.md`'s trimmed-prompt entry already owns that divergence and
+   these six reads join its population.
+8. **Both verbs return to the prompt**, not to the menu, and neither can leave
+   the shop.

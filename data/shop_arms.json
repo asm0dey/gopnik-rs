@@ -1,5 +1,5 @@
 {
-  "note": "The `bmar` (Барыги) PURCHASE arms for menu rows 1..6 -- what happens after the row key is typed at the `^0Барыги\\` prompt, not what the menu prints. The menu half is `data/shops.json` / `docs/re/tables.md` §2; rows 7..9 were mapped by Task 18. All nine `bmar` arms are ported and live in `Game::buy_dealer_row` (Task 24; `Game::buy_pistol_row` was that function's name until it grew rows 1..6, and nothing answers to it now). Prose twin: `docs/re/shop-arms.md`. Re-derived from `orig/g.exe` by `tools/test_shop_arms.py`; nothing here was read off a screen. The `mar` (Базар) shop's nine arms are the sibling block under the top-level `mar` key, mapped by Task 25; the two were measured over their own ranges and neither's findings were inferred from the other's. COVERAGE BOUNDARY: this artifact holds 15 rows -- `bmar` 1..6 plus `mar` 1..9 -- and `bmar` rows 7, 8 and 9 are NOT in it. They were mapped by Task 18 before this file existed, and Task 24 re-homed their port into `Game::buy_dealer_row` without widening it. So the four binary-swept completeness tests (gates, strings, roll, effects) reach all nine `mar` rows and only six of the nine `bmar` rows; a sweep here is not a statement about all eighteen. The final whole-branch review swept the gap by hand and found nothing wrong. Widening to `bmar` 7..9 is new RE scope, deliberately not done.",
+  "note": "The `bmar` (Барыги) PURCHASE arms for menu rows 1..6 -- what happens after the row key is typed at the `^0Барыги\\` prompt, not what the menu prints. The menu half is `data/shops.json` / `docs/re/tables.md` §2; rows 7..9 were mapped by Task 18. All nine `bmar` arms are ported and live in `Game::buy_dealer_row` (Task 24; `Game::buy_pistol_row` was that function's name until it grew rows 1..6, and nothing answers to it now). Prose twin: `docs/re/shop-arms.md`. Re-derived from `orig/g.exe` by `tools/test_shop_arms.py`; nothing here was read off a screen. The `mar` (Базар) shop's nine arms are the sibling block under the top-level `mar` key, mapped by Task 25; the two were measured over their own ranges and neither's findings were inferred from the other's. COVERAGE BOUNDARY (amended by Task 29 -- this file is NO LONGER buy-only): it now holds 15 PURCHASE rows -- `bmar` 1..6 plus `mar` 1..9 -- and, under the top-level `sell` key, the `bmar` SELL path: the `x` junk arm and the six `wes` arms over `1000:ce76`..`1000:d383`. `bmar` PURCHASE rows 7, 8 and 9 are still NOT in it. They were mapped by Task 18 before this file existed, and Task 24 re-homed their port into `Game::buy_dealer_row` without widening it. So the four binary-swept completeness tests over `rows` (gates, strings, roll, effects) reach all nine `mar` rows and only six of the nine `bmar` rows; a sweep over `rows` is not a statement about all eighteen, and it says nothing at all about `sell`, which carries its OWN sweeps under `sell.sweeps` and its own tests in `tools/test_shop_arms.py` (`SellTest`). The final whole-branch review swept the purchase gap by hand and found nothing wrong. Widening to `bmar` PURCHASE 7..9 is new RE scope, deliberately not done.",
   "address_forms": "`1000:xxxx` is a Ghidra label (Form A of `docs/re/METHODOLOGY.md`) and, because the game's code segment is the load base, its OFF is also the image offset. `20ae:xxxx` is DGROUP. `cs_offset` is the image offset of a Pascal shortstring's LENGTH byte -- the exact immediate of the `mov di,imm16` that pushes it -- and `file_offset` is that plus the 0x18d0-byte MZ header, which is what `data/strings.json` keys on.",
   "globals_exclude": "20ae:38c7, the player's money, is written by every arm and referenced 107 times across the image; `docs/re/tables.md` \u00a7 \"Other price sources\" already owns that population, so `globals[]` does not restate it per row.",
   "shop": "bmar",
@@ -1275,6 +1275,2486 @@
         "claim": "Rows 7, 8 and 9 each test the LESSER item's flag and grant only the DIFFERENCE when it is already owned: adidas +1 instead of +2 (guard 1000:c1aa, branch 1000:c1af), the better boots +1/+1 instead of +2/+2 (1000:c249 / 1000:c24e), the better jacket +2 instead of +4 (1000:c2f1 / 1000:c2f6). So the armour or damage a player ends up with is the same whichever order the two rows are bought in. Not a bug; recorded because reproducing it needs the guard, not just the add -- an arm that always added the full bonus would double-count the upgrade. CORROBORATION, not part of this task's decode: the gym's armour-scratch recompute subtracts exactly those totals (1 for 20ae:38b4 alone, 2 for 20ae:38b7, 2 for 20ae:38b6 alone, 4 for 20ae:38b9), which `docs/re/gaps.md` already established from 1000:e3a4..1000:e3e2 and which nothing here re-derives.",
         "where": {"guards": ["1000:c1aa", "1000:c249", "1000:c2f1"], "guard_branches": ["1000:c1af", "1000:c24e", "1000:c2f6"], "delta_rejoins": [{"addr": "1000:c1b5", "text": "jmp short 0xc1bc"}, {"addr": "1000:c258", "text": "jmp short 0xc264"}, {"addr": "1000:c2fd", "text": "jmp short 0xc304"}], "delta_rejoins_note": "The unconditional jump that carries the DELTA arm past the full-bonus arm, one per row. Recorded because `docs/re/shop-arms.md` shows these three splits as fenced code blocks and the prose checker strips fences, so their identity is checked here instead."},
         "port_directive": "Reproduce."
+      }
+    ]
+  },
+  "sell": {
+    "note": "The `bmar` (Барыги) SELL path -- the `x` and `wes` sub-verbs, mapped by Task 29 over `1000:ce76`..`1000:d383`. This is the other half of the same handler `rows` and `mar` map: the nine purchase arms end at `1000:ce76`, where the `x` setup begins. Prose twin: the third part of `docs/re/shop-arms.md`, headed `The dealers' sell path`. Re-derived from `orig/g.exe` by `tools/test_shop_arms.py`; nothing here was read off a screen.",
+    "shop": "bmar",
+    "range": {
+      "start": "1000:ce76",
+      "end": "1000:d383",
+      "last_instruction": {
+        "addr": "1000:d381",
+        "text": "jmp short 0xd39c"
+      },
+      "how_the_end_was_established": "Not by taking the brief's bound. The whole `entry` function decodes as one aligned run of 7742 instructions from `1000:ab59` (17143 bytes, `data/branches.json`'s own figure), and inside it exactly one near branch targets `1000:d383` -- `1000:c4cf`, the `bmar` discovery-flag refusal, which is outside this handler's body. So `1000:d381` is the sell path's last instruction and the block that begins at `1000:d383` is not part of this range. `1000:d39c` is the `rep` compare's setup and `1000:d3a6` its compare.",
+      "entered_from": [
+        {
+          "addr": "1000:cdf6",
+          "text": "jmp 0xce76",
+          "what": "row 9's key compare missed -- the inverted pair `1000:cdf4 jz 0xcdf9` over this jump"
+        },
+        {
+          "addr": "1000:cdfe",
+          "text": "jz 0xce76",
+          "what": "row 9's no-pistol gate (`1000:cdf9 cmp byte [0x394d],0x0`)"
+        },
+        {
+          "addr": "1000:ce05",
+          "text": "jnz 0xce76",
+          "what": "row 9's delivery-counter gate (`1000:ce00 cmp byte [0x3e32],0x19`)"
+        },
+        {
+          "addr": "1000:ce5b",
+          "text": "jmp short 0xce76",
+          "what": "row 9's purchase tail"
+        },
+        {
+          "addr": "1000:ce71",
+          "text": "call 0xeed:0x1c2",
+          "what": "row 9's already-own refusal `WriteLn` falls through"
+        }
+      ]
+    },
+    "junk_arm": {
+      "verb": "x",
+      "span": {
+        "start": "1000:ce76",
+        "end": "1000:cece"
+      },
+      "buffer_push": {
+        "addr": "1000:ce76",
+        "text": "mov di,0x3a72"
+      },
+      "key_literal": {
+        "cs_offset": "0x96ce",
+        "file_offset": "0xaf9e",
+        "text": "x",
+        "push": {
+          "addr": "1000:ce7b",
+          "text": "mov di,0x96ce"
+        }
+      },
+      "compare": {
+        "addr": "1000:ce80",
+        "text": "call 0xf78:0xbd8"
+      },
+      "miss_branch": {
+        "addr": "1000:ce85",
+        "text": "jnz 0xcece"
+      },
+      "gates": [
+        {
+          "name": "have-junk",
+          "kind": "have",
+          "sense": "sell iff Хлам > 0 -- a SIGNED word compare, so a negative count would take the refusal too",
+          "test": {
+            "addr": "1000:ce87",
+            "text": "cmp word [0x38c9],0x0"
+          },
+          "branch": {
+            "addr": "1000:ce8c",
+            "text": "jle 0xceb5"
+          },
+          "refusal_cs_offset": "0x96f2"
+        }
+      ],
+      "effects": [
+        {
+          "addr": "1000:ce91",
+          "text": "add [0x38c7],ax",
+          "ds": "20ae:38c7",
+          "role": "credit -- the WHOLE Хлам word, loaded at 1000:ce8e",
+          "condition": "Хлам > 0"
+        },
+        {
+          "addr": "1000:ce97",
+          "text": "mov [0x38c9],ax",
+          "ds": "20ae:38c9",
+          "role": "Хлам := 0 (the `xor ax,ax` at 1000:ce95)",
+          "condition": "Хлам > 0"
+        }
+      ],
+      "strings": [
+        {
+          "cs_offset": "0x96d0",
+          "file_offset": "0xafa0",
+          "text": "^6Барыги дали тебе денег за хлам.",
+          "push": {
+            "addr": "1000:ce9a",
+            "text": "mov di,0x96d0"
+          },
+          "role": "confirmation",
+          "write": {
+            "addr": "1000:ceae",
+            "text": "call 0xeed:0x1c2"
+          }
+        },
+        {
+          "cs_offset": "0x96f2",
+          "file_offset": "0xafc2",
+          "text": "^4Тебе нечего спихнуть.",
+          "push": {
+            "addr": "1000:ceb5",
+            "text": "mov di,0x96f2"
+          },
+          "role": "refusal",
+          "write": {
+            "addr": "1000:cec9",
+            "text": "call 0xeed:0x1c2"
+          }
+        }
+      ],
+      "rate_finding": {
+        "tier": "flow",
+        "claim": "The junk is credited ONE-FOR-ONE. No rate, multiplier, shift or divide stands between the load and the add.",
+        "method": "The six instructions from the gate at `1000:ce87` to the confirmation push at `1000:ce9a` are the whole path from the test to the store, and they are recorded verbatim in `sequence` below so the claim is a comparison against the binary rather than a sentence. The span's `Random` sweep is empty, an aligned decode of it contains no multiply, divide or shift, and its complete write set is the two effects above.",
+        "sequence": [
+          "cmp word [0x38c9],0x0",
+          "jle 0xceb5",
+          "mov ax,[0x38c9]",
+          "add [0x38c7],ax",
+          "xor ax,ax",
+          "mov [0x38c9],ax"
+        ]
+      },
+      "roll": null,
+      "amount_is_not_printed": {
+        "tier": "flow",
+        "claim": "The confirmation names no number: the `WriteLn` at `1000:ceae` is preceded by five `xor ax,ax` / `push ax` pairs, so all five format words are zero."
+      },
+      "falls_through_to": "1000:cece",
+      "fall_through_note": "Both the sold path (`1000:ceb3 jmp short 0xcece`) and the refusal path (fall-through past the `WriteLn` at `1000:cec9`) reach the `wes` compare, which then misses on the buffer `x`."
+    },
+    "wes_dispatch": {
+      "verb": "wes",
+      "span": {
+        "start": "1000:cece",
+        "end": "1000:cee2"
+      },
+      "buffer_push": {
+        "addr": "1000:cece",
+        "text": "mov di,0x3a72"
+      },
+      "key_literal": {
+        "cs_offset": "0x970a",
+        "file_offset": "0xafda",
+        "text": "wes",
+        "push": {
+          "addr": "1000:ced3",
+          "text": "mov di,0x970a"
+        }
+      },
+      "compare": {
+        "addr": "1000:ced8",
+        "text": "call 0xf78:0xbd8"
+      },
+      "hit_branch": {
+        "addr": "1000:cedd",
+        "text": "jz 0xcee2"
+      },
+      "miss_branch": {
+        "addr": "1000:cedf",
+        "text": "jmp 0xd36d"
+      },
+      "note": "The miss is the inverted pair `1000:cedd jz 0xcee2` over `1000:cedf jmp 0xd36d` -- it skips the whole sell block and lands on the handler's shared exit compare with the typed line intact."
+    },
+    "prologue": {
+      "addr": "1000:cee2",
+      "text": "mov byte [0x3e33],0xff",
+      "ds": "20ae:3e33",
+      "role": "the sell-price scratch byte, set to the 0xff sentinel before any gate is tested",
+      "consumed_at": "1000:d33a"
+    },
+    "arms": [
+      {
+        "n": 1,
+        "item": "костюм Abibas",
+        "own_flag": "20ae:38b4",
+        "requires_any_of": [
+          "20ae:38b7"
+        ],
+        "span": {
+          "start": "1000:cee7",
+          "end": "1000:cf9c"
+        },
+        "gates": [
+          {
+            "name": "own",
+            "kind": "own",
+            "sense": "the arm is offered only when [20ae:38b4] != 0",
+            "test": {
+              "addr": "1000:cee7",
+              "text": "cmp byte [0x38b4],0x0"
+            },
+            "branch": {
+              "addr": "1000:ceec",
+              "text": "jnz 0xcef1"
+            },
+            "miss": {
+              "addr": "1000:ceee",
+              "text": "jmp 0xcf9c"
+            },
+            "silent": true
+          },
+          {
+            "name": "better-owned",
+            "kind": "ladder",
+            "sense": "the arm is offered only when at least ONE of [20ae:38b7] is != 0 -- a short-circuit Pascal `or`, each conjunct's branch jumping FORWARD to the offer",
+            "conjuncts": [
+              {
+                "ds": "20ae:38b7",
+                "test": {
+                  "addr": "1000:cef1",
+                  "text": "cmp byte [0x38b7],0x0"
+                },
+                "branch": {
+                  "addr": "1000:cef6",
+                  "text": "jnz 0xcefb"
+                }
+              }
+            ],
+            "miss": {
+              "addr": "1000:cef8",
+              "text": "jmp 0xcf9c"
+            },
+            "silent": true
+          }
+        ],
+        "strings": [
+          {
+            "cs_offset": "0x970e",
+            "file_offset": "0xafde",
+            "text": "^2У тебя есть ненужный костюм хочешь продать?",
+            "push": {
+              "addr": "1000:cefb",
+              "text": "mov di,0x970e"
+            },
+            "role": "offer",
+            "write": {
+              "addr": "1000:cf0f",
+              "text": "call 0xeed:0x1c2"
+            }
+          },
+          {
+            "cs_offset": "0x973c",
+            "file_offset": "0xb00c",
+            "text": "^0Продать вещи\\",
+            "push": {
+              "addr": "1000:cf14",
+              "text": "mov di,0x973c"
+            },
+            "role": "prompt",
+            "write": {
+              "addr": "1000:cf28",
+              "text": "call 0xeed:0x0"
+            }
+          },
+          {
+            "cs_offset": "0x974c",
+            "file_offset": "0xb01c",
+            "text": "^2Ты продал костюм за #.",
+            "push": {
+              "addr": "1000:cf81",
+              "text": "mov di,0x974c"
+            },
+            "role": "confirmation",
+            "write": {
+              "addr": "1000:cf97",
+              "text": "call 0xeed:0x1c2"
+            },
+            "value_push": {
+              "addr": "1000:cf86",
+              "text": "mov al,[0x3e33]"
+            }
+          }
+        ],
+        "read": {
+          "input_text_push": {
+            "addr": "1000:cf2d",
+            "text": "mov di,0x3ecc"
+          },
+          "buffer_push": {
+            "addr": "1000:cf32",
+            "text": "mov di,0x3a72"
+          },
+          "max_length": {
+            "addr": "1000:cf37",
+            "text": "mov ax,0xff"
+          },
+          "read_string": {
+            "addr": "1000:cf3b",
+            "text": "call 0xf78:0x6c6"
+          },
+          "readln": {
+            "addr": "1000:cf40",
+            "text": "call 0xf78:0x59d"
+          },
+          "io_check": {
+            "addr": "1000:cf45",
+            "text": "call 0xf78:0x291"
+          },
+          "case_fold_buffer_push": {
+            "addr": "1000:cf4a",
+            "text": "mov di,0x3a72"
+          },
+          "case_fold": {
+            "addr": "1000:cf4f",
+            "text": "call 0xeed:0x216"
+          },
+          "buffer": "20ae:3a72",
+          "shop_prompt_read": {
+            "addr": "1000:c8b5",
+            "text": "call 0xf78:0x6c6"
+          },
+          "note": "the SAME buffer the `^0Барыги\\` prompt's own ReadLn wrote, so the answer overwrites the shop's command line -- which is what `1000:d35a` exists to undo"
+        },
+        "roll": {
+          "n_push": {
+            "addr": "1000:cf54",
+            "text": "mov ax,0x5"
+          },
+          "call": {
+            "addr": "1000:cf58",
+            "text": "call 0xf78:0x114b"
+          },
+          "base_add": {
+            "addr": "1000:cf5d",
+            "text": "add ax,0x8"
+          },
+          "store": {
+            "addr": "1000:cf60",
+            "text": "mov [0x3e33],al"
+          },
+          "n": 5,
+          "base": 8,
+          "refund": "8 + Random(5)",
+          "refund_min": 8,
+          "refund_max": 12,
+          "pushed_n_command": "python3 tools/re_query.py pushed-n 1000:cf58",
+          "unconditional": "the draw is made before the yes/no compare at 1000:cf6d, so every arm the gates let through spends one draw whether or not the player sells"
+        },
+        "answer": {
+          "buffer_push": {
+            "addr": "1000:cf63",
+            "text": "mov di,0x3a72"
+          },
+          "literal": {
+            "cs_offset": "0x8323",
+            "file_offset": "0x9bf3",
+            "text": "y",
+            "push": {
+              "addr": "1000:cf68",
+              "text": "mov di,0x8323"
+            },
+            "role": "accept token"
+          },
+          "compare": {
+            "addr": "1000:cf6d",
+            "text": "call 0xf78:0xbd8"
+          },
+          "decline_branch": {
+            "addr": "1000:cf72",
+            "text": "jnz 0xcf9c"
+          },
+          "sense": "sell iff the case-folded line equals `y`"
+        },
+        "effects": [
+          {
+            "addr": "1000:cf60",
+            "text": "mov [0x3e33],al",
+            "ds": "20ae:3e33",
+            "role": "the rolled refund, into the sell-price scratch byte",
+            "condition": null
+          },
+          {
+            "addr": "1000:cf74",
+            "text": "mov byte [0x38b4],0x0",
+            "ds": "20ae:38b4",
+            "role": "костюм Abibas no longer owned",
+            "condition": "the answer was `y`"
+          },
+          {
+            "addr": "1000:cf7d",
+            "text": "add [0x38c7],ax",
+            "ds": "20ae:38c7",
+            "role": "credit -- the refund, read back at 1000:cf79 and sign-extended by the `cbw` at 1000:cf7c",
+            "condition": "the answer was `y`"
+          }
+        ],
+        "credit_addr": "1000:cf7d",
+        "clear_addr": "1000:cf74",
+        "buy_price": 15,
+        "buy_price_where": "`mar` row 4 (`20ae:0b31`)"
+      },
+      {
+        "n": 2,
+        "item": "Бутсы",
+        "own_flag": "20ae:38b5",
+        "requires_any_of": [
+          "20ae:38b8"
+        ],
+        "span": {
+          "start": "1000:cf9c",
+          "end": "1000:d051"
+        },
+        "gates": [
+          {
+            "name": "own",
+            "kind": "own",
+            "sense": "the arm is offered only when [20ae:38b5] != 0",
+            "test": {
+              "addr": "1000:cf9c",
+              "text": "cmp byte [0x38b5],0x0"
+            },
+            "branch": {
+              "addr": "1000:cfa1",
+              "text": "jnz 0xcfa6"
+            },
+            "miss": {
+              "addr": "1000:cfa3",
+              "text": "jmp 0xd051"
+            },
+            "silent": true
+          },
+          {
+            "name": "better-owned",
+            "kind": "ladder",
+            "sense": "the arm is offered only when at least ONE of [20ae:38b8] is != 0 -- a short-circuit Pascal `or`, each conjunct's branch jumping FORWARD to the offer",
+            "conjuncts": [
+              {
+                "ds": "20ae:38b8",
+                "test": {
+                  "addr": "1000:cfa6",
+                  "text": "cmp byte [0x38b8],0x0"
+                },
+                "branch": {
+                  "addr": "1000:cfab",
+                  "text": "jnz 0xcfb0"
+                }
+              }
+            ],
+            "miss": {
+              "addr": "1000:cfad",
+              "text": "jmp 0xd051"
+            },
+            "silent": true
+          }
+        ],
+        "strings": [
+          {
+            "cs_offset": "0x9765",
+            "file_offset": "0xb035",
+            "text": "^2У тебя есть ненужные кроссовки хочешь продать?",
+            "push": {
+              "addr": "1000:cfb0",
+              "text": "mov di,0x9765"
+            },
+            "role": "offer",
+            "write": {
+              "addr": "1000:cfc4",
+              "text": "call 0xeed:0x1c2"
+            }
+          },
+          {
+            "cs_offset": "0x973c",
+            "file_offset": "0xb00c",
+            "text": "^0Продать вещи\\",
+            "push": {
+              "addr": "1000:cfc9",
+              "text": "mov di,0x973c"
+            },
+            "role": "prompt",
+            "write": {
+              "addr": "1000:cfdd",
+              "text": "call 0xeed:0x0"
+            }
+          },
+          {
+            "cs_offset": "0x9796",
+            "file_offset": "0xb066",
+            "text": "^2Ты продал кроссовки за #.",
+            "push": {
+              "addr": "1000:d036",
+              "text": "mov di,0x9796"
+            },
+            "role": "confirmation",
+            "write": {
+              "addr": "1000:d04c",
+              "text": "call 0xeed:0x1c2"
+            },
+            "value_push": {
+              "addr": "1000:d03b",
+              "text": "mov al,[0x3e33]"
+            }
+          }
+        ],
+        "read": {
+          "input_text_push": {
+            "addr": "1000:cfe2",
+            "text": "mov di,0x3ecc"
+          },
+          "buffer_push": {
+            "addr": "1000:cfe7",
+            "text": "mov di,0x3a72"
+          },
+          "max_length": {
+            "addr": "1000:cfec",
+            "text": "mov ax,0xff"
+          },
+          "read_string": {
+            "addr": "1000:cff0",
+            "text": "call 0xf78:0x6c6"
+          },
+          "readln": {
+            "addr": "1000:cff5",
+            "text": "call 0xf78:0x59d"
+          },
+          "io_check": {
+            "addr": "1000:cffa",
+            "text": "call 0xf78:0x291"
+          },
+          "case_fold_buffer_push": {
+            "addr": "1000:cfff",
+            "text": "mov di,0x3a72"
+          },
+          "case_fold": {
+            "addr": "1000:d004",
+            "text": "call 0xeed:0x216"
+          },
+          "buffer": "20ae:3a72",
+          "shop_prompt_read": {
+            "addr": "1000:c8b5",
+            "text": "call 0xf78:0x6c6"
+          },
+          "note": "the SAME buffer the `^0Барыги\\` prompt's own ReadLn wrote, so the answer overwrites the shop's command line -- which is what `1000:d35a` exists to undo"
+        },
+        "roll": {
+          "n_push": {
+            "addr": "1000:d009",
+            "text": "mov ax,0x5"
+          },
+          "call": {
+            "addr": "1000:d00d",
+            "text": "call 0xf78:0x114b"
+          },
+          "base_add": {
+            "addr": "1000:d012",
+            "text": "add ax,0x8"
+          },
+          "store": {
+            "addr": "1000:d015",
+            "text": "mov [0x3e33],al"
+          },
+          "n": 5,
+          "base": 8,
+          "refund": "8 + Random(5)",
+          "refund_min": 8,
+          "refund_max": 12,
+          "pushed_n_command": "python3 tools/re_query.py pushed-n 1000:d00d",
+          "unconditional": "the draw is made before the yes/no compare at 1000:d022, so every arm the gates let through spends one draw whether or not the player sells"
+        },
+        "answer": {
+          "buffer_push": {
+            "addr": "1000:d018",
+            "text": "mov di,0x3a72"
+          },
+          "literal": {
+            "cs_offset": "0x8323",
+            "file_offset": "0x9bf3",
+            "text": "y",
+            "push": {
+              "addr": "1000:d01d",
+              "text": "mov di,0x8323"
+            },
+            "role": "accept token"
+          },
+          "compare": {
+            "addr": "1000:d022",
+            "text": "call 0xf78:0xbd8"
+          },
+          "decline_branch": {
+            "addr": "1000:d027",
+            "text": "jnz 0xd051"
+          },
+          "sense": "sell iff the case-folded line equals `y`"
+        },
+        "effects": [
+          {
+            "addr": "1000:d015",
+            "text": "mov [0x3e33],al",
+            "ds": "20ae:3e33",
+            "role": "the rolled refund, into the sell-price scratch byte",
+            "condition": null
+          },
+          {
+            "addr": "1000:d029",
+            "text": "mov byte [0x38b5],0x0",
+            "ds": "20ae:38b5",
+            "role": "Бутсы no longer owned",
+            "condition": "the answer was `y`"
+          },
+          {
+            "addr": "1000:d032",
+            "text": "add [0x38c7],ax",
+            "ds": "20ae:38c7",
+            "role": "credit -- the refund, read back at 1000:d02e and sign-extended by the `cbw` at 1000:d031",
+            "condition": "the answer was `y`"
+          }
+        ],
+        "credit_addr": "1000:d032",
+        "clear_addr": "1000:d029",
+        "buy_price": 15,
+        "buy_price_where": "`mar` row 5 (`20ae:0b32`)"
+      },
+      {
+        "n": 3,
+        "item": "Кожанка",
+        "own_flag": "20ae:38b6",
+        "requires_any_of": [
+          "20ae:38b9"
+        ],
+        "span": {
+          "start": "1000:d051",
+          "end": "1000:d106"
+        },
+        "gates": [
+          {
+            "name": "own",
+            "kind": "own",
+            "sense": "the arm is offered only when [20ae:38b6] != 0",
+            "test": {
+              "addr": "1000:d051",
+              "text": "cmp byte [0x38b6],0x0"
+            },
+            "branch": {
+              "addr": "1000:d056",
+              "text": "jnz 0xd05b"
+            },
+            "miss": {
+              "addr": "1000:d058",
+              "text": "jmp 0xd106"
+            },
+            "silent": true
+          },
+          {
+            "name": "better-owned",
+            "kind": "ladder",
+            "sense": "the arm is offered only when at least ONE of [20ae:38b9] is != 0 -- a short-circuit Pascal `or`, each conjunct's branch jumping FORWARD to the offer",
+            "conjuncts": [
+              {
+                "ds": "20ae:38b9",
+                "test": {
+                  "addr": "1000:d05b",
+                  "text": "cmp byte [0x38b9],0x0"
+                },
+                "branch": {
+                  "addr": "1000:d060",
+                  "text": "jnz 0xd065"
+                }
+              }
+            ],
+            "miss": {
+              "addr": "1000:d062",
+              "text": "jmp 0xd106"
+            },
+            "silent": true
+          }
+        ],
+        "strings": [
+          {
+            "cs_offset": "0x97b2",
+            "file_offset": "0xb082",
+            "text": "^2У тебя есть ненужная кожанка хочешь продать?",
+            "push": {
+              "addr": "1000:d065",
+              "text": "mov di,0x97b2"
+            },
+            "role": "offer",
+            "write": {
+              "addr": "1000:d079",
+              "text": "call 0xeed:0x1c2"
+            }
+          },
+          {
+            "cs_offset": "0x973c",
+            "file_offset": "0xb00c",
+            "text": "^0Продать вещи\\",
+            "push": {
+              "addr": "1000:d07e",
+              "text": "mov di,0x973c"
+            },
+            "role": "prompt",
+            "write": {
+              "addr": "1000:d092",
+              "text": "call 0xeed:0x0"
+            }
+          },
+          {
+            "cs_offset": "0x97e1",
+            "file_offset": "0xb0b1",
+            "text": "^2Ты продал кожанку за #.",
+            "push": {
+              "addr": "1000:d0eb",
+              "text": "mov di,0x97e1"
+            },
+            "role": "confirmation",
+            "write": {
+              "addr": "1000:d101",
+              "text": "call 0xeed:0x1c2"
+            },
+            "value_push": {
+              "addr": "1000:d0f0",
+              "text": "mov al,[0x3e33]"
+            }
+          }
+        ],
+        "read": {
+          "input_text_push": {
+            "addr": "1000:d097",
+            "text": "mov di,0x3ecc"
+          },
+          "buffer_push": {
+            "addr": "1000:d09c",
+            "text": "mov di,0x3a72"
+          },
+          "max_length": {
+            "addr": "1000:d0a1",
+            "text": "mov ax,0xff"
+          },
+          "read_string": {
+            "addr": "1000:d0a5",
+            "text": "call 0xf78:0x6c6"
+          },
+          "readln": {
+            "addr": "1000:d0aa",
+            "text": "call 0xf78:0x59d"
+          },
+          "io_check": {
+            "addr": "1000:d0af",
+            "text": "call 0xf78:0x291"
+          },
+          "case_fold_buffer_push": {
+            "addr": "1000:d0b4",
+            "text": "mov di,0x3a72"
+          },
+          "case_fold": {
+            "addr": "1000:d0b9",
+            "text": "call 0xeed:0x216"
+          },
+          "buffer": "20ae:3a72",
+          "shop_prompt_read": {
+            "addr": "1000:c8b5",
+            "text": "call 0xf78:0x6c6"
+          },
+          "note": "the SAME buffer the `^0Барыги\\` prompt's own ReadLn wrote, so the answer overwrites the shop's command line -- which is what `1000:d35a` exists to undo"
+        },
+        "roll": {
+          "n_push": {
+            "addr": "1000:d0be",
+            "text": "mov ax,0x8"
+          },
+          "call": {
+            "addr": "1000:d0c2",
+            "text": "call 0xf78:0x114b"
+          },
+          "base_add": {
+            "addr": "1000:d0c7",
+            "text": "add ax,0xd"
+          },
+          "store": {
+            "addr": "1000:d0ca",
+            "text": "mov [0x3e33],al"
+          },
+          "n": 8,
+          "base": 13,
+          "refund": "13 + Random(8)",
+          "refund_min": 13,
+          "refund_max": 20,
+          "pushed_n_command": "python3 tools/re_query.py pushed-n 1000:d0c2",
+          "unconditional": "the draw is made before the yes/no compare at 1000:d0d7, so every arm the gates let through spends one draw whether or not the player sells"
+        },
+        "answer": {
+          "buffer_push": {
+            "addr": "1000:d0cd",
+            "text": "mov di,0x3a72"
+          },
+          "literal": {
+            "cs_offset": "0x8323",
+            "file_offset": "0x9bf3",
+            "text": "y",
+            "push": {
+              "addr": "1000:d0d2",
+              "text": "mov di,0x8323"
+            },
+            "role": "accept token"
+          },
+          "compare": {
+            "addr": "1000:d0d7",
+            "text": "call 0xf78:0xbd8"
+          },
+          "decline_branch": {
+            "addr": "1000:d0dc",
+            "text": "jnz 0xd106"
+          },
+          "sense": "sell iff the case-folded line equals `y`"
+        },
+        "effects": [
+          {
+            "addr": "1000:d0ca",
+            "text": "mov [0x3e33],al",
+            "ds": "20ae:3e33",
+            "role": "the rolled refund, into the sell-price scratch byte",
+            "condition": null
+          },
+          {
+            "addr": "1000:d0de",
+            "text": "mov byte [0x38b6],0x0",
+            "ds": "20ae:38b6",
+            "role": "Кожанка no longer owned",
+            "condition": "the answer was `y`"
+          },
+          {
+            "addr": "1000:d0e7",
+            "text": "add [0x38c7],ax",
+            "ds": "20ae:38c7",
+            "role": "credit -- the refund, read back at 1000:d0e3 and sign-extended by the `cbw` at 1000:d0e6",
+            "condition": "the answer was `y`"
+          }
+        ],
+        "credit_addr": "1000:d0e7",
+        "clear_addr": "1000:d0de",
+        "buy_price": 25,
+        "buy_price_where": "`mar` row 6 (`20ae:0b33`)"
+      },
+      {
+        "n": 4,
+        "item": "Кастет",
+        "own_flag": "20ae:38ba",
+        "requires_any_of": [
+          "20ae:394b",
+          "20ae:38c2",
+          "20ae:394c"
+        ],
+        "span": {
+          "start": "1000:d106",
+          "end": "1000:d1c9"
+        },
+        "gates": [
+          {
+            "name": "own",
+            "kind": "own",
+            "sense": "the arm is offered only when [20ae:38ba] != 0",
+            "test": {
+              "addr": "1000:d106",
+              "text": "cmp byte [0x38ba],0x0"
+            },
+            "branch": {
+              "addr": "1000:d10b",
+              "text": "jnz 0xd110"
+            },
+            "miss": {
+              "addr": "1000:d10d",
+              "text": "jmp 0xd1c9"
+            },
+            "silent": true
+          },
+          {
+            "name": "better-owned",
+            "kind": "ladder",
+            "sense": "the arm is offered only when at least ONE of [20ae:394b], [20ae:38c2], [20ae:394c] is != 0 -- a short-circuit Pascal `or`, each conjunct's branch jumping FORWARD to the offer",
+            "conjuncts": [
+              {
+                "ds": "20ae:394b",
+                "test": {
+                  "addr": "1000:d110",
+                  "text": "cmp byte [0x394b],0x0"
+                },
+                "branch": {
+                  "addr": "1000:d115",
+                  "text": "jnz 0xd128"
+                }
+              },
+              {
+                "ds": "20ae:38c2",
+                "test": {
+                  "addr": "1000:d117",
+                  "text": "cmp byte [0x38c2],0x0"
+                },
+                "branch": {
+                  "addr": "1000:d11c",
+                  "text": "jnz 0xd128"
+                }
+              },
+              {
+                "ds": "20ae:394c",
+                "test": {
+                  "addr": "1000:d11e",
+                  "text": "cmp byte [0x394c],0x0"
+                },
+                "branch": {
+                  "addr": "1000:d123",
+                  "text": "jnz 0xd128"
+                }
+              }
+            ],
+            "miss": {
+              "addr": "1000:d125",
+              "text": "jmp 0xd1c9"
+            },
+            "silent": true
+          }
+        ],
+        "strings": [
+          {
+            "cs_offset": "0x97fb",
+            "file_offset": "0xb0cb",
+            "text": "^2У тебя есть кастет, а это отстой хочешь продать?",
+            "push": {
+              "addr": "1000:d128",
+              "text": "mov di,0x97fb"
+            },
+            "role": "offer",
+            "write": {
+              "addr": "1000:d13c",
+              "text": "call 0xeed:0x1c2"
+            }
+          },
+          {
+            "cs_offset": "0x973c",
+            "file_offset": "0xb00c",
+            "text": "^0Продать вещи\\",
+            "push": {
+              "addr": "1000:d141",
+              "text": "mov di,0x973c"
+            },
+            "role": "prompt",
+            "write": {
+              "addr": "1000:d155",
+              "text": "call 0xeed:0x0"
+            }
+          },
+          {
+            "cs_offset": "0x982e",
+            "file_offset": "0xb0fe",
+            "text": "^2Ты продал кастет за #.",
+            "push": {
+              "addr": "1000:d1ae",
+              "text": "mov di,0x982e"
+            },
+            "role": "confirmation",
+            "write": {
+              "addr": "1000:d1c4",
+              "text": "call 0xeed:0x1c2"
+            },
+            "value_push": {
+              "addr": "1000:d1b3",
+              "text": "mov al,[0x3e33]"
+            }
+          }
+        ],
+        "read": {
+          "input_text_push": {
+            "addr": "1000:d15a",
+            "text": "mov di,0x3ecc"
+          },
+          "buffer_push": {
+            "addr": "1000:d15f",
+            "text": "mov di,0x3a72"
+          },
+          "max_length": {
+            "addr": "1000:d164",
+            "text": "mov ax,0xff"
+          },
+          "read_string": {
+            "addr": "1000:d168",
+            "text": "call 0xf78:0x6c6"
+          },
+          "readln": {
+            "addr": "1000:d16d",
+            "text": "call 0xf78:0x59d"
+          },
+          "io_check": {
+            "addr": "1000:d172",
+            "text": "call 0xf78:0x291"
+          },
+          "case_fold_buffer_push": {
+            "addr": "1000:d177",
+            "text": "mov di,0x3a72"
+          },
+          "case_fold": {
+            "addr": "1000:d17c",
+            "text": "call 0xeed:0x216"
+          },
+          "buffer": "20ae:3a72",
+          "shop_prompt_read": {
+            "addr": "1000:c8b5",
+            "text": "call 0xf78:0x6c6"
+          },
+          "note": "the SAME buffer the `^0Барыги\\` prompt's own ReadLn wrote, so the answer overwrites the shop's command line -- which is what `1000:d35a` exists to undo"
+        },
+        "roll": {
+          "n_push": {
+            "addr": "1000:d181",
+            "text": "mov ax,0x8"
+          },
+          "call": {
+            "addr": "1000:d185",
+            "text": "call 0xf78:0x114b"
+          },
+          "base_add": {
+            "addr": "1000:d18a",
+            "text": "add ax,0xd"
+          },
+          "store": {
+            "addr": "1000:d18d",
+            "text": "mov [0x3e33],al"
+          },
+          "n": 8,
+          "base": 13,
+          "refund": "13 + Random(8)",
+          "refund_min": 13,
+          "refund_max": 20,
+          "pushed_n_command": "python3 tools/re_query.py pushed-n 1000:d185",
+          "unconditional": "the draw is made before the yes/no compare at 1000:d19a, so every arm the gates let through spends one draw whether or not the player sells"
+        },
+        "answer": {
+          "buffer_push": {
+            "addr": "1000:d190",
+            "text": "mov di,0x3a72"
+          },
+          "literal": {
+            "cs_offset": "0x8323",
+            "file_offset": "0x9bf3",
+            "text": "y",
+            "push": {
+              "addr": "1000:d195",
+              "text": "mov di,0x8323"
+            },
+            "role": "accept token"
+          },
+          "compare": {
+            "addr": "1000:d19a",
+            "text": "call 0xf78:0xbd8"
+          },
+          "decline_branch": {
+            "addr": "1000:d19f",
+            "text": "jnz 0xd1c9"
+          },
+          "sense": "sell iff the case-folded line equals `y`"
+        },
+        "effects": [
+          {
+            "addr": "1000:d18d",
+            "text": "mov [0x3e33],al",
+            "ds": "20ae:3e33",
+            "role": "the rolled refund, into the sell-price scratch byte",
+            "condition": null
+          },
+          {
+            "addr": "1000:d1a1",
+            "text": "mov byte [0x38ba],0x0",
+            "ds": "20ae:38ba",
+            "role": "Кастет no longer owned",
+            "condition": "the answer was `y`"
+          },
+          {
+            "addr": "1000:d1aa",
+            "text": "add [0x38c7],ax",
+            "ds": "20ae:38c7",
+            "role": "credit -- the refund, read back at 1000:d1a6 and sign-extended by the `cbw` at 1000:d1a9",
+            "condition": "the answer was `y`"
+          }
+        ],
+        "credit_addr": "1000:d1aa",
+        "clear_addr": "1000:d1a1",
+        "buy_price": 25,
+        "buy_price_where": "`bmar` row 5 (`20ae:0b3c`)"
+      },
+      {
+        "n": 5,
+        "item": "Дубинка",
+        "own_flag": "20ae:394b",
+        "requires_any_of": [
+          "20ae:38c2",
+          "20ae:394c"
+        ],
+        "span": {
+          "start": "1000:d1c9",
+          "end": "1000:d285"
+        },
+        "gates": [
+          {
+            "name": "own",
+            "kind": "own",
+            "sense": "the arm is offered only when [20ae:394b] != 0",
+            "test": {
+              "addr": "1000:d1c9",
+              "text": "cmp byte [0x394b],0x0"
+            },
+            "branch": {
+              "addr": "1000:d1ce",
+              "text": "jnz 0xd1d3"
+            },
+            "miss": {
+              "addr": "1000:d1d0",
+              "text": "jmp 0xd285"
+            },
+            "silent": true
+          },
+          {
+            "name": "better-owned",
+            "kind": "ladder",
+            "sense": "the arm is offered only when at least ONE of [20ae:38c2], [20ae:394c] is != 0 -- a short-circuit Pascal `or`, each conjunct's branch jumping FORWARD to the offer",
+            "conjuncts": [
+              {
+                "ds": "20ae:38c2",
+                "test": {
+                  "addr": "1000:d1d3",
+                  "text": "cmp byte [0x38c2],0x0"
+                },
+                "branch": {
+                  "addr": "1000:d1d8",
+                  "text": "jnz 0xd1e4"
+                }
+              },
+              {
+                "ds": "20ae:394c",
+                "test": {
+                  "addr": "1000:d1da",
+                  "text": "cmp byte [0x394c],0x0"
+                },
+                "branch": {
+                  "addr": "1000:d1df",
+                  "text": "jnz 0xd1e4"
+                }
+              }
+            ],
+            "miss": {
+              "addr": "1000:d1e1",
+              "text": "jmp 0xd285"
+            },
+            "silent": true
+          }
+        ],
+        "strings": [
+          {
+            "cs_offset": "0x9847",
+            "file_offset": "0xb117",
+            "text": "^2У тебя есть дубинка - барахло - хочешь продать?",
+            "push": {
+              "addr": "1000:d1e4",
+              "text": "mov di,0x9847"
+            },
+            "role": "offer",
+            "write": {
+              "addr": "1000:d1f8",
+              "text": "call 0xeed:0x1c2"
+            }
+          },
+          {
+            "cs_offset": "0x973c",
+            "file_offset": "0xb00c",
+            "text": "^0Продать вещи\\",
+            "push": {
+              "addr": "1000:d1fd",
+              "text": "mov di,0x973c"
+            },
+            "role": "prompt",
+            "write": {
+              "addr": "1000:d211",
+              "text": "call 0xeed:0x0"
+            }
+          },
+          {
+            "cs_offset": "0x9879",
+            "file_offset": "0xb149",
+            "text": "^2Ты продал дубинку за #.",
+            "push": {
+              "addr": "1000:d26a",
+              "text": "mov di,0x9879"
+            },
+            "role": "confirmation",
+            "write": {
+              "addr": "1000:d280",
+              "text": "call 0xeed:0x1c2"
+            },
+            "value_push": {
+              "addr": "1000:d26f",
+              "text": "mov al,[0x3e33]"
+            }
+          }
+        ],
+        "read": {
+          "input_text_push": {
+            "addr": "1000:d216",
+            "text": "mov di,0x3ecc"
+          },
+          "buffer_push": {
+            "addr": "1000:d21b",
+            "text": "mov di,0x3a72"
+          },
+          "max_length": {
+            "addr": "1000:d220",
+            "text": "mov ax,0xff"
+          },
+          "read_string": {
+            "addr": "1000:d224",
+            "text": "call 0xf78:0x6c6"
+          },
+          "readln": {
+            "addr": "1000:d229",
+            "text": "call 0xf78:0x59d"
+          },
+          "io_check": {
+            "addr": "1000:d22e",
+            "text": "call 0xf78:0x291"
+          },
+          "case_fold_buffer_push": {
+            "addr": "1000:d233",
+            "text": "mov di,0x3a72"
+          },
+          "case_fold": {
+            "addr": "1000:d238",
+            "text": "call 0xeed:0x216"
+          },
+          "buffer": "20ae:3a72",
+          "shop_prompt_read": {
+            "addr": "1000:c8b5",
+            "text": "call 0xf78:0x6c6"
+          },
+          "note": "the SAME buffer the `^0Барыги\\` prompt's own ReadLn wrote, so the answer overwrites the shop's command line -- which is what `1000:d35a` exists to undo"
+        },
+        "roll": {
+          "n_push": {
+            "addr": "1000:d23d",
+            "text": "mov ax,0xf"
+          },
+          "call": {
+            "addr": "1000:d241",
+            "text": "call 0xf78:0x114b"
+          },
+          "base_add": {
+            "addr": "1000:d246",
+            "text": "add ax,0x19"
+          },
+          "store": {
+            "addr": "1000:d249",
+            "text": "mov [0x3e33],al"
+          },
+          "n": 15,
+          "base": 25,
+          "refund": "25 + Random(15)",
+          "refund_min": 25,
+          "refund_max": 39,
+          "pushed_n_command": "python3 tools/re_query.py pushed-n 1000:d241",
+          "unconditional": "the draw is made before the yes/no compare at 1000:d256, so every arm the gates let through spends one draw whether or not the player sells"
+        },
+        "answer": {
+          "buffer_push": {
+            "addr": "1000:d24c",
+            "text": "mov di,0x3a72"
+          },
+          "literal": {
+            "cs_offset": "0x8323",
+            "file_offset": "0x9bf3",
+            "text": "y",
+            "push": {
+              "addr": "1000:d251",
+              "text": "mov di,0x8323"
+            },
+            "role": "accept token"
+          },
+          "compare": {
+            "addr": "1000:d256",
+            "text": "call 0xf78:0xbd8"
+          },
+          "decline_branch": {
+            "addr": "1000:d25b",
+            "text": "jnz 0xd285"
+          },
+          "sense": "sell iff the case-folded line equals `y`"
+        },
+        "effects": [
+          {
+            "addr": "1000:d249",
+            "text": "mov [0x3e33],al",
+            "ds": "20ae:3e33",
+            "role": "the rolled refund, into the sell-price scratch byte",
+            "condition": null
+          },
+          {
+            "addr": "1000:d25d",
+            "text": "mov byte [0x394b],0x0",
+            "ds": "20ae:394b",
+            "role": "Дубинка no longer owned",
+            "condition": "the answer was `y`"
+          },
+          {
+            "addr": "1000:d266",
+            "text": "add [0x38c7],ax",
+            "ds": "20ae:38c7",
+            "role": "credit -- the refund, read back at 1000:d262 and sign-extended by the `cbw` at 1000:d265",
+            "condition": "the answer was `y`"
+          }
+        ],
+        "credit_addr": "1000:d266",
+        "clear_addr": "1000:d25d",
+        "buy_price": 50,
+        "buy_price_where": "`bmar` row 6 (`20ae:0b3d`)"
+      },
+      {
+        "n": 6,
+        "item": "Нож",
+        "own_flag": "20ae:38c2",
+        "requires_any_of": [
+          "20ae:394c"
+        ],
+        "span": {
+          "start": "1000:d285",
+          "end": "1000:d33a"
+        },
+        "gates": [
+          {
+            "name": "own",
+            "kind": "own",
+            "sense": "the arm is offered only when [20ae:38c2] != 0",
+            "test": {
+              "addr": "1000:d285",
+              "text": "cmp byte [0x38c2],0x0"
+            },
+            "branch": {
+              "addr": "1000:d28a",
+              "text": "jnz 0xd28f"
+            },
+            "miss": {
+              "addr": "1000:d28c",
+              "text": "jmp 0xd33a"
+            },
+            "silent": true
+          },
+          {
+            "name": "better-owned",
+            "kind": "ladder",
+            "sense": "the arm is offered only when at least ONE of [20ae:394c] is != 0 -- a short-circuit Pascal `or`, each conjunct's branch jumping FORWARD to the offer",
+            "conjuncts": [
+              {
+                "ds": "20ae:394c",
+                "test": {
+                  "addr": "1000:d28f",
+                  "text": "cmp byte [0x394c],0x0"
+                },
+                "branch": {
+                  "addr": "1000:d294",
+                  "text": "jnz 0xd299"
+                }
+              }
+            ],
+            "miss": {
+              "addr": "1000:d296",
+              "text": "jmp 0xd33a"
+            },
+            "silent": true
+          }
+        ],
+        "strings": [
+          {
+            "cs_offset": "0x9893",
+            "file_offset": "0xb163",
+            "text": "^2У тебя есть ножик и тeсак, хочешь продать ножик?",
+            "push": {
+              "addr": "1000:d299",
+              "text": "mov di,0x9893"
+            },
+            "role": "offer",
+            "write": {
+              "addr": "1000:d2ad",
+              "text": "call 0xeed:0x1c2"
+            }
+          },
+          {
+            "cs_offset": "0x973c",
+            "file_offset": "0xb00c",
+            "text": "^0Продать вещи\\",
+            "push": {
+              "addr": "1000:d2b2",
+              "text": "mov di,0x973c"
+            },
+            "role": "prompt",
+            "write": {
+              "addr": "1000:d2c6",
+              "text": "call 0xeed:0x0"
+            }
+          },
+          {
+            "cs_offset": "0x98c6",
+            "file_offset": "0xb196",
+            "text": "^2Ты продал ножик за #.",
+            "push": {
+              "addr": "1000:d31f",
+              "text": "mov di,0x98c6"
+            },
+            "role": "confirmation",
+            "write": {
+              "addr": "1000:d335",
+              "text": "call 0xeed:0x1c2"
+            },
+            "value_push": {
+              "addr": "1000:d324",
+              "text": "mov al,[0x3e33]"
+            }
+          }
+        ],
+        "read": {
+          "input_text_push": {
+            "addr": "1000:d2cb",
+            "text": "mov di,0x3ecc"
+          },
+          "buffer_push": {
+            "addr": "1000:d2d0",
+            "text": "mov di,0x3a72"
+          },
+          "max_length": {
+            "addr": "1000:d2d5",
+            "text": "mov ax,0xff"
+          },
+          "read_string": {
+            "addr": "1000:d2d9",
+            "text": "call 0xf78:0x6c6"
+          },
+          "readln": {
+            "addr": "1000:d2de",
+            "text": "call 0xf78:0x59d"
+          },
+          "io_check": {
+            "addr": "1000:d2e3",
+            "text": "call 0xf78:0x291"
+          },
+          "case_fold_buffer_push": {
+            "addr": "1000:d2e8",
+            "text": "mov di,0x3a72"
+          },
+          "case_fold": {
+            "addr": "1000:d2ed",
+            "text": "call 0xeed:0x216"
+          },
+          "buffer": "20ae:3a72",
+          "shop_prompt_read": {
+            "addr": "1000:c8b5",
+            "text": "call 0xf78:0x6c6"
+          },
+          "note": "the SAME buffer the `^0Барыги\\` prompt's own ReadLn wrote, so the answer overwrites the shop's command line -- which is what `1000:d35a` exists to undo"
+        },
+        "roll": {
+          "n_push": {
+            "addr": "1000:d2f2",
+            "text": "mov ax,0x17"
+          },
+          "call": {
+            "addr": "1000:d2f6",
+            "text": "call 0xf78:0x114b"
+          },
+          "base_add": {
+            "addr": "1000:d2fb",
+            "text": "add ax,0x26"
+          },
+          "store": {
+            "addr": "1000:d2fe",
+            "text": "mov [0x3e33],al"
+          },
+          "n": 23,
+          "base": 38,
+          "refund": "38 + Random(23)",
+          "refund_min": 38,
+          "refund_max": 60,
+          "pushed_n_command": "python3 tools/re_query.py pushed-n 1000:d2f6",
+          "unconditional": "the draw is made before the yes/no compare at 1000:d30b, so every arm the gates let through spends one draw whether or not the player sells"
+        },
+        "answer": {
+          "buffer_push": {
+            "addr": "1000:d301",
+            "text": "mov di,0x3a72"
+          },
+          "literal": {
+            "cs_offset": "0x8323",
+            "file_offset": "0x9bf3",
+            "text": "y",
+            "push": {
+              "addr": "1000:d306",
+              "text": "mov di,0x8323"
+            },
+            "role": "accept token"
+          },
+          "compare": {
+            "addr": "1000:d30b",
+            "text": "call 0xf78:0xbd8"
+          },
+          "decline_branch": {
+            "addr": "1000:d310",
+            "text": "jnz 0xd33a"
+          },
+          "sense": "sell iff the case-folded line equals `y`"
+        },
+        "effects": [
+          {
+            "addr": "1000:d2fe",
+            "text": "mov [0x3e33],al",
+            "ds": "20ae:3e33",
+            "role": "the rolled refund, into the sell-price scratch byte",
+            "condition": null
+          },
+          {
+            "addr": "1000:d312",
+            "text": "mov byte [0x38c2],0x0",
+            "ds": "20ae:38c2",
+            "role": "Нож no longer owned",
+            "condition": "the answer was `y`"
+          },
+          {
+            "addr": "1000:d31b",
+            "text": "add [0x38c7],ax",
+            "ds": "20ae:38c7",
+            "role": "credit -- the refund, read back at 1000:d317 and sign-extended by the `cbw` at 1000:d31a",
+            "condition": "the answer was `y`"
+          }
+        ],
+        "credit_addr": "1000:d31b",
+        "clear_addr": "1000:d312",
+        "buy_price": null,
+        "buy_price_where": "not purchasable in either shop -- its only image-wide writer besides this arm is the combat loot arm at `1000:5698`"
+      }
+    ],
+    "tail": {
+      "span": {
+        "start": "1000:d33a",
+        "end": "1000:d383"
+      },
+      "sentinel_test": {
+        "addr": "1000:d33a",
+        "text": "cmp byte [0x3e33],0xff"
+      },
+      "sentinel_branch": {
+        "addr": "1000:d33f",
+        "text": "jnz 0xd35a"
+      },
+      "sentinel_sense": "print `^6У тебя нет неужных вещей.` only when NO arm was reached -- every arm stores its roll into 20ae:3e33 BEFORE the yes/no compare, so declining every offer still suppresses this line",
+      "strings": [
+        {
+          "cs_offset": "0x98de",
+          "file_offset": "0xb1ae",
+          "text": "^6У тебя нет неужных вещей.",
+          "push": {
+            "addr": "1000:d341",
+            "text": "mov di,0x98de"
+          },
+          "role": "no-offer",
+          "write": {
+            "addr": "1000:d355",
+            "text": "call 0xeed:0x1c2"
+          }
+        }
+      ],
+      "buffer_reset": {
+        "literal": {
+          "cs_offset": "0x98fa",
+          "file_offset": "0xb1ca",
+          "text": " ",
+          "push": {
+            "addr": "1000:d35a",
+            "text": "mov di,0x98fa"
+          }
+        },
+        "dest_push": {
+          "addr": "1000:d35f",
+          "text": "mov di,0x3a72"
+        },
+        "max_length": {
+          "addr": "1000:d364",
+          "text": "mov ax,0xff"
+        },
+        "call": {
+          "addr": "1000:d368",
+          "text": "call 0xf78:0xb01"
+        },
+        "what": "assigns the one-character literal into 20ae:3a72 through `rtl_str_assign_max` (`data/rtl_names.json`), so the exit compare below can never match on the `wes` path"
+      },
+      "exit_compare": {
+        "buffer_push": {
+          "addr": "1000:d36d",
+          "text": "mov di,0x3a72"
+        },
+        "literal": {
+          "cs_offset": "0x848e",
+          "file_offset": "0x9d5e",
+          "text": "w",
+          "push": {
+            "addr": "1000:d372",
+            "text": "mov di,0x848e"
+          }
+        },
+        "compare": {
+          "addr": "1000:d377",
+          "text": "call 0xf78:0xbd8"
+        },
+        "leave_branch": {
+          "addr": "1000:d37c",
+          "text": "jz 0xd381"
+        },
+        "leave": {
+          "addr": "1000:d381",
+          "text": "jmp short 0xd39c"
+        },
+        "loop_back": {
+          "addr": "1000:d37e",
+          "text": "jmp 0xc88e"
+        },
+        "loop_target": "1000:c88e",
+        "loop_target_insn": {
+          "addr": "1000:c88e",
+          "text": "mov di,0x937b"
+        },
+        "leave_target": "1000:d39c",
+        "leave_target_insn": {
+          "addr": "1000:d39c",
+          "text": "mov di,0x3972"
+        },
+        "note": "`1000:c88e` is the `^0Барыги\\` prompt push, not the menu, so a re-prompt does not reprint the nine menu lines. `1000:d39c` is the `rep` compare's setup, past the whole handler. The `w` literal CS 0x848e is shared by nine push sites image-wide (`data/den_arms.json`); it is every location's exit key, not the dealers' own."
+      }
+    },
+    "refund_finding": {
+      "tier": "flow",
+      "claim": "The refund is a per-arm LITERAL base plus a per-arm `Random` span, rolled fresh on every offer. It is not the buy price, not a fraction of the buy price, and not read from anything: no instruction in the whole range touches a price byte.",
+      "shape": "`mov ax,N` / `call 0f78:114b` / `add ax,B` / `mov [0x3e33],al` -- four contiguous instructions in every one of the six arms.",
+      "per_arm": [
+        {
+          "n": 1,
+          "item": "костюм Abibas",
+          "call": {
+            "addr": "1000:cf58",
+            "text": "call 0xf78:0x114b"
+          },
+          "n_push": {
+            "addr": "1000:cf54",
+            "text": "mov ax,0x5"
+          },
+          "base_add": {
+            "addr": "1000:cf5d",
+            "text": "add ax,0x8"
+          },
+          "refund": "8 + Random(5)",
+          "refund_min": 8,
+          "refund_max": 12,
+          "buy_price": 15
+        },
+        {
+          "n": 2,
+          "item": "Бутсы",
+          "call": {
+            "addr": "1000:d00d",
+            "text": "call 0xf78:0x114b"
+          },
+          "n_push": {
+            "addr": "1000:d009",
+            "text": "mov ax,0x5"
+          },
+          "base_add": {
+            "addr": "1000:d012",
+            "text": "add ax,0x8"
+          },
+          "refund": "8 + Random(5)",
+          "refund_min": 8,
+          "refund_max": 12,
+          "buy_price": 15
+        },
+        {
+          "n": 3,
+          "item": "Кожанка",
+          "call": {
+            "addr": "1000:d0c2",
+            "text": "call 0xf78:0x114b"
+          },
+          "n_push": {
+            "addr": "1000:d0be",
+            "text": "mov ax,0x8"
+          },
+          "base_add": {
+            "addr": "1000:d0c7",
+            "text": "add ax,0xd"
+          },
+          "refund": "13 + Random(8)",
+          "refund_min": 13,
+          "refund_max": 20,
+          "buy_price": 25
+        },
+        {
+          "n": 4,
+          "item": "Кастет",
+          "call": {
+            "addr": "1000:d185",
+            "text": "call 0xf78:0x114b"
+          },
+          "n_push": {
+            "addr": "1000:d181",
+            "text": "mov ax,0x8"
+          },
+          "base_add": {
+            "addr": "1000:d18a",
+            "text": "add ax,0xd"
+          },
+          "refund": "13 + Random(8)",
+          "refund_min": 13,
+          "refund_max": 20,
+          "buy_price": 25
+        },
+        {
+          "n": 5,
+          "item": "Дубинка",
+          "call": {
+            "addr": "1000:d241",
+            "text": "call 0xf78:0x114b"
+          },
+          "n_push": {
+            "addr": "1000:d23d",
+            "text": "mov ax,0xf"
+          },
+          "base_add": {
+            "addr": "1000:d246",
+            "text": "add ax,0x19"
+          },
+          "refund": "25 + Random(15)",
+          "refund_min": 25,
+          "refund_max": 39,
+          "buy_price": 50
+        },
+        {
+          "n": 6,
+          "item": "Нож",
+          "call": {
+            "addr": "1000:d2f6",
+            "text": "call 0xf78:0x114b"
+          },
+          "n_push": {
+            "addr": "1000:d2f2",
+            "text": "mov ax,0x17"
+          },
+          "base_add": {
+            "addr": "1000:d2fb",
+            "text": "add ax,0x26"
+          },
+          "refund": "38 + Random(23)",
+          "refund_min": 38,
+          "refund_max": 60,
+          "buy_price": null
+        }
+      ],
+      "no_price_byte_in_range": {
+        "method": "The aligned decode of `1000:ce76`..`1000:d383` (580 instructions) touches exactly 13 distinct DGROUP addresses, listed in `sweeps.dgroup_addresses`. Neither `bmar`'s price table `20ae:0b38`..`20ae:0b40` nor `mar`'s `20ae:0b2e`..`20ae:0b36` is among them, so the refund cannot be derived from a price at run time."
+      },
+      "arithmetic_coincidence": {
+        "tier": "flow",
+        "what": "For the five arms whose item HAS a shop price, the base equals `(price + 1) div 2` in all five, and the maximum equals `price * 4 div 5` in four of them -- arm 5 (Дубинка, 50) tops out at 39, one short of 40. Nothing computes either: both sides are immediates. Recorded so a port does not 'tidy' the constants into a formula.",
+        "table": [
+          {
+            "item": "костюм Abibas",
+            "price": 15,
+            "base": 8,
+            "max": 12
+          },
+          {
+            "item": "Бутсы",
+            "price": 15,
+            "base": 8,
+            "max": 12
+          },
+          {
+            "item": "Кожанка",
+            "price": 25,
+            "base": 13,
+            "max": 20
+          },
+          {
+            "item": "Кастет",
+            "price": 25,
+            "base": 13,
+            "max": 20
+          },
+          {
+            "item": "Дубинка",
+            "price": 50,
+            "base": 25,
+            "max": 39
+          }
+        ]
+      },
+      "the_offer_does_not_name_the_price": {
+        "tier": "flow",
+        "claim": "The player answers `y` without being told the amount. Each arm's offer `WriteLn` is preceded by five `xor ax,ax` / `push ax` pairs -- all five format words zero -- and the roll itself happens AFTER the ReadLn. Only the confirmation carries a value, pushed by the `mov al,[0x3e33]` each arm's `strings[].value_push` names."
+      },
+      "the_draw_is_spent_either_way": {
+        "tier": "flow",
+        "claim": "Each arm the gates let through spends exactly one `Random` draw whether the player sells or declines: the store into 20ae:3e33 precedes the yes/no compare in all six. One `wes` can therefore spend up to six draws, and a port that rolls only on acceptance desynchronises every RNG trace after it."
+      }
+    },
+    "ladder_finding": {
+      "tier": "flow",
+      "claim": "The pairing is NOT own-flag plus equipped-flag. Each arm sells the LESSER item and is offered only when a strictly better one on the same ladder is owned -- so the flags are `own` plus `have a replacement`, and there is no equipped bit anywhere in the range.",
+      "why_not_equipped": "An equipped bit would have to be written somewhere. The complete image-wide writer set of each of the ten item flags is in `globals[].xrefs.writers_image_wide`, and every one of them is a purchase arm, a combat loot arm or one of these six sell arms -- there is no second bit per item to be the equipped one, and 20ae:38b7, 20ae:38b8 and 20ae:38b9 are each written by exactly ONE site image-wide, their own `mar` purchase.",
+      "ladders": [
+        {
+          "ladder": "suit",
+          "rungs": [
+            "20ae:38b4",
+            "20ae:38b7"
+          ],
+          "sellable": [
+            "20ae:38b4"
+          ]
+        },
+        {
+          "ladder": "boots",
+          "rungs": [
+            "20ae:38b5",
+            "20ae:38b8"
+          ],
+          "sellable": [
+            "20ae:38b5"
+          ]
+        },
+        {
+          "ladder": "jacket",
+          "rungs": [
+            "20ae:38b6",
+            "20ae:38b9"
+          ],
+          "sellable": [
+            "20ae:38b6"
+          ]
+        },
+        {
+          "ladder": "hand weapon",
+          "rungs": [
+            "20ae:38ba",
+            "20ae:394b",
+            "20ae:38c2",
+            "20ae:394c"
+          ],
+          "sellable": [
+            "20ae:38ba",
+            "20ae:394b",
+            "20ae:38c2"
+          ],
+          "note": "the top rung 20ae:394c (Тесак) is never cleared by any arm; its only image-wide writer is the loot arm at `1000:573e`."
+        }
+      ],
+      "and_or_shape": "The three armour arms take ONE required flag; the three weapon arms take a short-circuit `or` of every HIGHER rung (3, 2 and 1 conjunct respectively). The buy path's better-weapon refusals at `1000:cb5b` and `1000:cc18` are `and`s over the same flags -- opposite sense, same population."
+    },
+    "no_stat_subtraction_finding": {
+      "tier": "flow",
+      "claim": "No sell arm subtracts the stat bonus the sold item granted. The armour byte 20ae:38b2 and the damage words 20ae:38a8 / 20ae:38aa are not touched anywhere in the range.",
+      "method": "Set equality against `sweeps.dgroup_addresses`, the complete list of DGROUP addresses the 580-instruction aligned decode of the range references. None of the three is in it.",
+      "port_directive": "Reproduce. Do not subtract anything on a sale.",
+      "why_it_is_not_obviously_a_bug": "The purchase side is upgrade-DELTA shaped -- `mar` rows 7, 8 and 9 add only the difference when the lesser item is already owned (`1000:c1af`, `1000:c24e`, `1000:c2f6`), and the knife's loot arm reads the club flag at `1000:56bc` the same way. Under that design selling the lesser rung should leave the total at the better rung's full bonus. This map did not measure the loot arms, so it records the negative and the cross-reference and claims nothing about the totals."
+    },
+    "sentinel_finding": {
+      "tier": "flow",
+      "claim": "`^6У тебя нет неужных вещей.` means `no arm was OFFERED`, not `nothing was sold`. Declining every offer leaves 20ae:3e33 holding the last roll, so `1000:d33a cmp byte [0x3e33],0xff` fails and the line is suppressed.",
+      "where": {
+        "sentinel": {
+          "addr": "1000:cee2",
+          "text": "mov byte [0x3e33],0xff"
+        },
+        "test": {
+          "addr": "1000:d33a",
+          "text": "cmp byte [0x3e33],0xff"
+        },
+        "branch": {
+          "addr": "1000:d33f",
+          "text": "jnz 0xd35a"
+        }
+      },
+      "port_directive": "Reproduce."
+    },
+    "buffer_overwrite_finding": {
+      "tier": "flow",
+      "claim": "Each arm's ReadLn writes the SAME buffer 20ae:3a72 the `^0Барыги\\` prompt read into, so a `w` typed as a yes/no answer would satisfy the handler's exit compare. `1000:d35a`..`1000:d368` assigns the one-character literal at CS 0x98fa over the buffer before that compare, which is why the `wes` path always returns to the prompt.",
+      "where": {
+        "assign": {
+          "addr": "1000:d368",
+          "text": "call 0xf78:0xb01"
+        },
+        "compare": {
+          "addr": "1000:d377",
+          "text": "call 0xf78:0xbd8"
+        },
+        "leave_branch": {
+          "addr": "1000:d37c",
+          "text": "jz 0xd381"
+        },
+        "loop_back": {
+          "addr": "1000:d37e",
+          "text": "jmp 0xc88e"
+        }
+      },
+      "the_x_path_does_not": "`1000:cedf jmp 0xd36d` skips the assign, so a line that reached the `x` arm still holds `x` at the exit compare and also loops back."
+    },
+    "globals": [
+      {
+        "ds": "20ae:38b4",
+        "name": "костюм Abibas, the lesser suit",
+        "named_from": "The character sheet's own line for this item: the guard decodes at 1000:22a1 and the label it pushes at 1000:22e3 is CS 0x1983. Both re-derived here, not read off `docs/re/character-sheet.md`.",
+        "evidence": [
+          {
+            "addr": "1000:22a1",
+            "text": "cmp byte [0x38b4],0x0",
+            "what": "the sheet's visibility guard"
+          },
+          {
+            "addr": "1000:22e3",
+            "text": "mov di,0x1983",
+            "what": "the sheet's label push"
+          }
+        ],
+        "sheet_label": {
+          "cs_offset": "0x1983",
+          "file_offset": "0x3253",
+          "text": "^1Костюм Abibas(+1) ",
+          "push": {
+            "addr": "1000:22e3",
+            "text": "mov di,0x1983"
+          },
+          "role": "character-sheet label"
+        },
+        "xrefs": {
+          "raw_hits": 8,
+          "accepted": 8,
+          "discarded": 0,
+          "discarded_why": [],
+          "writers_image_wide": [
+            "1000:bf80",
+            "1000:cf74"
+          ],
+          "refs_in_range": 2,
+          "refs_outside_range": 6,
+          "command": "python3 tools/re_query.py xrefs-to 20ae:38b4"
+        }
+      },
+      {
+        "ds": "20ae:38b5",
+        "name": "Бутсы, the lesser boots",
+        "named_from": "The character sheet's own line for this item: the guard decodes at 1000:1e81 and the label it pushes at 1000:1e8f is CS 0x182e. Both re-derived here, not read off `docs/re/character-sheet.md`.",
+        "evidence": [
+          {
+            "addr": "1000:1e81",
+            "text": "cmp byte [0x38b5],0x0",
+            "what": "the sheet's visibility guard"
+          },
+          {
+            "addr": "1000:1e8f",
+            "text": "mov di,0x182e",
+            "what": "the sheet's label push"
+          }
+        ],
+        "sheet_label": {
+          "cs_offset": "0x182e",
+          "file_offset": "0x30fe",
+          "text": "^1Бутсы(+1) ",
+          "push": {
+            "addr": "1000:1e8f",
+            "text": "mov di,0x182e"
+          },
+          "role": "character-sheet label"
+        },
+        "xrefs": {
+          "raw_hits": 8,
+          "accepted": 8,
+          "discarded": 0,
+          "discarded_why": [],
+          "writers_image_wide": [
+            "1000:c029",
+            "1000:d029"
+          ],
+          "refs_in_range": 2,
+          "refs_outside_range": 6,
+          "command": "python3 tools/re_query.py xrefs-to 20ae:38b5"
+        }
+      },
+      {
+        "ds": "20ae:38b6",
+        "name": "Кожанка, the lesser jacket",
+        "named_from": "The character sheet's own line for this item: the guard decodes at 1000:2323 and the label it pushes at 1000:2365 is CS 0x19b9. Both re-derived here, not read off `docs/re/character-sheet.md`.",
+        "evidence": [
+          {
+            "addr": "1000:2323",
+            "text": "cmp byte [0x38b6],0x0",
+            "what": "the sheet's visibility guard"
+          },
+          {
+            "addr": "1000:2365",
+            "text": "mov di,0x19b9",
+            "what": "the sheet's label push"
+          }
+        ],
+        "sheet_label": {
+          "cs_offset": "0x19b9",
+          "file_offset": "0x3289",
+          "text": "^1Кожанка(+2) ",
+          "push": {
+            "addr": "1000:2365",
+            "text": "mov di,0x19b9"
+          },
+          "role": "character-sheet label"
+        },
+        "xrefs": {
+          "raw_hits": 8,
+          "accepted": 8,
+          "discarded": 0,
+          "discarded_why": [],
+          "writers_image_wide": [
+            "1000:c0e0",
+            "1000:d0de"
+          ],
+          "refs_in_range": 2,
+          "refs_outside_range": 6,
+          "command": "python3 tools/re_query.py xrefs-to 20ae:38b6"
+        }
+      },
+      {
+        "ds": "20ae:38b7",
+        "name": "костюм Adidas, the better suit",
+        "named_from": "The character sheet's own line for this item: the guard decodes at 1000:22fc and the label it pushes at 1000:230a is CS 0x196e. Both re-derived here, not read off `docs/re/character-sheet.md`.",
+        "evidence": [
+          {
+            "addr": "1000:22fc",
+            "text": "cmp byte [0x38b7],0x0",
+            "what": "the sheet's visibility guard"
+          },
+          {
+            "addr": "1000:230a",
+            "text": "mov di,0x196e",
+            "what": "the sheet's label push"
+          }
+        ],
+        "sheet_label": {
+          "cs_offset": "0x196e",
+          "file_offset": "0x323e",
+          "text": "^1Костюм Adidas(+2) ",
+          "push": {
+            "addr": "1000:230a",
+            "text": "mov di,0x196e"
+          },
+          "role": "character-sheet label"
+        },
+        "xrefs": {
+          "raw_hits": 8,
+          "accepted": 8,
+          "discarded": 0,
+          "discarded_why": [],
+          "writers_image_wide": [
+            "1000:c183"
+          ],
+          "refs_in_range": 1,
+          "refs_outside_range": 7,
+          "command": "python3 tools/re_query.py xrefs-to 20ae:38b7"
+        }
+      },
+      {
+        "ds": "20ae:38b8",
+        "name": "Понтовые бутсы, the better boots",
+        "named_from": "The character sheet's own line for this item: the guard decodes at 1000:1ecf and the label it pushes at 1000:1ed6 is CS 0x1844. Both re-derived here, not read off `docs/re/character-sheet.md`.",
+        "evidence": [
+          {
+            "addr": "1000:1ecf",
+            "text": "cmp byte [0x38b8],0x0",
+            "what": "the sheet's visibility guard"
+          },
+          {
+            "addr": "1000:1ed6",
+            "text": "mov di,0x1844",
+            "what": "the sheet's label push"
+          }
+        ],
+        "sheet_label": {
+          "cs_offset": "0x1844",
+          "file_offset": "0x3114",
+          "text": "^1Понтовые бутсы(Урон+2) ",
+          "push": {
+            "addr": "1000:1ed6",
+            "text": "mov di,0x1844"
+          },
+          "role": "character-sheet label"
+        },
+        "xrefs": {
+          "raw_hits": 8,
+          "accepted": 8,
+          "discarded": 0,
+          "discarded_why": [],
+          "writers_image_wide": [
+            "1000:c222"
+          ],
+          "refs_in_range": 1,
+          "refs_outside_range": 7,
+          "command": "python3 tools/re_query.py xrefs-to 20ae:38b8"
+        }
+      },
+      {
+        "ds": "20ae:38b9",
+        "name": "Крутая кожанка, the better jacket",
+        "named_from": "The character sheet's own line for this item: the guard decodes at 1000:237e and the label it pushes at 1000:238c is CS 0x19a3. Both re-derived here, not read off `docs/re/character-sheet.md`.",
+        "evidence": [
+          {
+            "addr": "1000:237e",
+            "text": "cmp byte [0x38b9],0x0",
+            "what": "the sheet's visibility guard"
+          },
+          {
+            "addr": "1000:238c",
+            "text": "mov di,0x19a3",
+            "what": "the sheet's label push"
+          }
+        ],
+        "sheet_label": {
+          "cs_offset": "0x19a3",
+          "file_offset": "0x3273",
+          "text": "^1Крутая кожанка(+4) ",
+          "push": {
+            "addr": "1000:238c",
+            "text": "mov di,0x19a3"
+          },
+          "role": "character-sheet label"
+        },
+        "xrefs": {
+          "raw_hits": 8,
+          "accepted": 8,
+          "discarded": 0,
+          "discarded_why": [],
+          "writers_image_wide": [
+            "1000:c2ca"
+          ],
+          "refs_in_range": 1,
+          "refs_outside_range": 7,
+          "command": "python3 tools/re_query.py xrefs-to 20ae:38b9"
+        }
+      },
+      {
+        "ds": "20ae:38ba",
+        "name": "Кастет, hand weapon rung 1",
+        "named_from": "The character sheet's own line for this item: the guard decodes at 1000:1eef and the label it pushes at 1000:1f0b is CS 0x185e. Both re-derived here, not read off `docs/re/character-sheet.md`.",
+        "evidence": [
+          {
+            "addr": "1000:1eef",
+            "text": "cmp byte [0x38ba],0x0",
+            "what": "the sheet's visibility guard"
+          },
+          {
+            "addr": "1000:1f0b",
+            "text": "mov di,0x185e",
+            "what": "the sheet's label push"
+          }
+        ],
+        "sheet_label": {
+          "cs_offset": "0x185e",
+          "file_offset": "0x312e",
+          "text": "^1Кастет(+2) ",
+          "push": {
+            "addr": "1000:1f0b",
+            "text": "mov di,0x185e"
+          },
+          "role": "character-sheet label"
+        },
+        "xrefs": {
+          "raw_hits": 16,
+          "accepted": 15,
+          "discarded": 1,
+          "discarded_why": [
+            "it falls inside `mov dx,0x138` (ba 38 01) but not at the start of an operand field"
+          ],
+          "writers_image_wide": [
+            "1000:5541",
+            "1000:cb9d",
+            "1000:d1a1"
+          ],
+          "refs_in_range": 2,
+          "refs_outside_range": 13,
+          "command": "python3 tools/re_query.py xrefs-to 20ae:38ba"
+        }
+      },
+      {
+        "ds": "20ae:38c2",
+        "name": "Нож, hand weapon rung 3",
+        "named_from": "The character sheet's own line for this item: the guard decodes at 1000:1fb5 and the label it pushes at 1000:1fc3 is CS 0x1891. Both re-derived here, not read off `docs/re/character-sheet.md`.",
+        "evidence": [
+          {
+            "addr": "1000:1fb5",
+            "text": "cmp byte [0x38c2],0x0",
+            "what": "the sheet's visibility guard"
+          },
+          {
+            "addr": "1000:1fc3",
+            "text": "mov di,0x1891",
+            "what": "the sheet's label push"
+          }
+        ],
+        "sheet_label": {
+          "cs_offset": "0x1891",
+          "file_offset": "0x3161",
+          "text": "^1Нож(+6) ",
+          "push": {
+            "addr": "1000:1fc3",
+            "text": "mov di,0x1891"
+          },
+          "role": "character-sheet label"
+        },
+        "xrefs": {
+          "raw_hits": 21,
+          "accepted": 21,
+          "discarded": 0,
+          "discarded_why": [],
+          "writers_image_wide": [
+            "1000:5698",
+            "1000:d312"
+          ],
+          "refs_in_range": 4,
+          "refs_outside_range": 17,
+          "command": "python3 tools/re_query.py xrefs-to 20ae:38c2"
+        }
+      },
+      {
+        "ds": "20ae:394b",
+        "name": "Дубинка, hand weapon rung 2",
+        "named_from": "The character sheet's own line for this item: the guard decodes at 1000:1f59 and the label it pushes at 1000:1f6e is CS 0x1876. Both re-derived here, not read off `docs/re/character-sheet.md`.",
+        "evidence": [
+          {
+            "addr": "1000:1f59",
+            "text": "cmp byte [0x394b],0x0",
+            "what": "the sheet's visibility guard"
+          },
+          {
+            "addr": "1000:1f6e",
+            "text": "mov di,0x1876",
+            "what": "the sheet's label push"
+          }
+        ],
+        "sheet_label": {
+          "cs_offset": "0x1876",
+          "file_offset": "0x3146",
+          "text": "^1Дубинка(+4)  ",
+          "push": {
+            "addr": "1000:1f6e",
+            "text": "mov di,0x1876"
+          },
+          "role": "character-sheet label"
+        },
+        "xrefs": {
+          "raw_hits": 20,
+          "accepted": 20,
+          "discarded": 0,
+          "discarded_why": [],
+          "writers_image_wide": [
+            "1000:55a7",
+            "1000:cc56",
+            "1000:d25d"
+          ],
+          "refs_in_range": 3,
+          "refs_outside_range": 17,
+          "command": "python3 tools/re_query.py xrefs-to 20ae:394b"
+        }
+      },
+      {
+        "ds": "20ae:394c",
+        "name": "Тесак, hand weapon rung 4",
+        "named_from": "The character sheet's own line for this item: the guard decodes at 1000:2003 and the label it pushes at 1000:200a is CS 0x18a3. Both re-derived here, not read off `docs/re/character-sheet.md`.",
+        "evidence": [
+          {
+            "addr": "1000:2003",
+            "text": "cmp byte [0x394c],0x0",
+            "what": "the sheet's visibility guard"
+          },
+          {
+            "addr": "1000:200a",
+            "text": "mov di,0x18a3",
+            "what": "the sheet's label push"
+          }
+        ],
+        "sheet_label": {
+          "cs_offset": "0x18a3",
+          "file_offset": "0x3173",
+          "text": "^1Тесак(Урон+9) ",
+          "push": {
+            "addr": "1000:200a",
+            "text": "mov di,0x18a3"
+          },
+          "role": "character-sheet label"
+        },
+        "xrefs": {
+          "raw_hits": 19,
+          "accepted": 19,
+          "discarded": 0,
+          "discarded_why": [],
+          "writers_image_wide": [
+            "1000:573e"
+          ],
+          "refs_in_range": 3,
+          "refs_outside_range": 16,
+          "command": "python3 tools/re_query.py xrefs-to 20ae:394c"
+        }
+      },
+      {
+        "ds": "20ae:38c9",
+        "name": "Хлам, the junk word the dealers buy back",
+        "named_from": "A WORD the character sheet prints as `Хлам #` -- `1000:246a` guards it and `1000:2476` pushes it as the line's one format value, with the literal at CS 0x19fc. The victory block at `1000:524f` adds the defeated enemy's own junk into it.",
+        "evidence": [
+          {
+            "addr": "1000:246a",
+            "text": "cmp word [0x38c9],0x0",
+            "what": "the sheet's `Хлам #` guard"
+          },
+          {
+            "addr": "1000:2476",
+            "text": "push [0x38c9]",
+            "what": "the sheet pushes it as the value"
+          },
+          {
+            "addr": "1000:524f",
+            "text": "add [0x38c9],ax",
+            "what": "combat victory adds the loot word"
+          }
+        ],
+        "sheet_label": {
+          "cs_offset": "0x19fc",
+          "file_offset": "0x32cc",
+          "text": "Хлам #",
+          "role": "character-sheet label"
+        },
+        "xrefs": {
+          "raw_hits": 7,
+          "accepted": 7,
+          "discarded": 0,
+          "discarded_why": [],
+          "writers_image_wide": [
+            "1000:524f",
+            "1000:ce97",
+            "1000:de8f"
+          ],
+          "refs_in_range": 3,
+          "refs_outside_range": 4,
+          "command": "python3 tools/re_query.py xrefs-to 20ae:38c9"
+        }
+      },
+      {
+        "ds": "20ae:3e33",
+        "name": "the sell-price scratch byte",
+        "named_from": "It has no name anywhere else to borrow: all 20 of its image-wide references are inside this range. Named from its own use -- set to the 0xff sentinel at `1000:cee2` before any gate, overwritten by each arm's rolled refund, read back into the credit and into the confirmation's `#`, and compared against 0xff at `1000:d33a`.",
+        "evidence": [
+          {
+            "addr": "1000:cee2",
+            "text": "mov byte [0x3e33],0xff",
+            "what": "the sentinel"
+          },
+          {
+            "addr": "1000:cf60",
+            "text": "mov [0x3e33],al",
+            "what": "arm 1 stores its roll"
+          },
+          {
+            "addr": "1000:cf79",
+            "text": "mov al,[0x3e33]",
+            "what": "arm 1 reads it back for the credit"
+          },
+          {
+            "addr": "1000:d33a",
+            "text": "cmp byte [0x3e33],0xff",
+            "what": "the tail consumes the sentinel"
+          }
+        ],
+        "xrefs": {
+          "raw_hits": 20,
+          "accepted": 20,
+          "discarded": 0,
+          "discarded_why": [],
+          "writers_image_wide": [
+            "1000:cee2",
+            "1000:cf60",
+            "1000:d015",
+            "1000:d0ca",
+            "1000:d18d",
+            "1000:d249",
+            "1000:d2fe"
+          ],
+          "refs_in_range": 20,
+          "refs_outside_range": 0,
+          "command": "python3 tools/re_query.py xrefs-to 20ae:3e33"
+        }
+      }
+    ],
+    "sweeps": {
+      "note": "Anchors `tools/test_shop_arms.py` asserts SET EQUALITY or exact equality against, each computed over the aligned decode of `1000:ce76`..`1000:d383`. A wrong count reds the sweep, which is the point: an inventory guarded by nothing is the defect `docs/re/METHODOLOGY.md` names.",
+      "range": {
+        "start": "1000:ce76",
+        "end": "1000:d383"
+      },
+      "instructions": 580,
+      "cs_literal_pushes": 31,
+      "ds_pointer_pushes": 28,
+      "conditional_branches": 26,
+      "absolute_memory_writes": 21,
+      "random_call_sites": 6,
+      "dgroup_addresses": [
+        "0x38b4",
+        "0x38b5",
+        "0x38b6",
+        "0x38b7",
+        "0x38b8",
+        "0x38b9",
+        "0x38ba",
+        "0x38c2",
+        "0x38c7",
+        "0x38c9",
+        "0x394b",
+        "0x394c",
+        "0x3e33"
+      ]
+    },
+    "what_the_port_must_change": [
+      {
+        "n": 1,
+        "what": "`Game::sell_junk` is a hardcoded `^4Тебе нечего спихнуть.` and must become the real arm: refuse only when Хлам <= 0 (`1000:ce87` is a SIGNED word compare), otherwise add the whole junk word to the money ONE-FOR-ONE and zero it (`1000:ce8e`..`1000:ce99`), then print CS 0x96d0 with no number in it.",
+        "blocked": false
+      },
+      {
+        "n": 2,
+        "what": "`Game::sell_items` is a hardcoded `^6У тебя нет неужных вещей.` and must become six sequential offers. They are NOT exclusive: an accepted arm falls straight through to the next arm's gate, so one `wes` can sell up to six items and read up to six lines.",
+        "blocked": false
+      },
+      {
+        "n": 3,
+        "what": "Each arm's refund is `base + Random(n)` with the arm's own two immediates (8+R(5), 8+R(5), 13+R(8), 13+R(8), 25+R(15), 38+R(23)) -- never the buy price. The draw is spent even when the player declines.",
+        "blocked": false
+      },
+      {
+        "n": 4,
+        "what": "The gate is `own && (any better rung owned)`, short-circuit. The three armour arms have one required flag; the weapon arms have three, two and one.",
+        "blocked": false
+      },
+      {
+        "n": 5,
+        "what": "Nothing is subtracted from armour or damage on a sale, and nothing clears the BETTER item's flag. Reproduce.",
+        "blocked": false
+      },
+      {
+        "n": 6,
+        "what": "The `^6У тебя нет неужных вещей.` line is gated on the 0xff sentinel, i.e. on whether any arm was OFFERED. Declining every offer must NOT print it.",
+        "blocked": false
+      },
+      {
+        "n": 7,
+        "what": "The answer is compared against `y` after `0eed:0216` lower-cases it, so `Y` sells and anything else declines. The original does not trim; `docs/re/gaps.md`'s trimmed-prompt entry already owns that divergence and these six reads join its population.",
+        "blocked": false
+      },
+      {
+        "n": 8,
+        "what": "Both verbs return to the `^0Барыги\\` prompt at `1000:c88e`, which reprints the prompt and NOT the menu. `wes` reaches it unconditionally because `1000:d35a` overwrites the buffer first; `x` reaches it because `x` is not `w`.",
+        "blocked": false
       }
     ]
   }

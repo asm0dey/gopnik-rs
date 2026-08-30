@@ -1688,6 +1688,396 @@
       "DenTest.test_every_globals_xref_census_is_what_re_query_reports"
     ],
     "expect": "the artifact records raw="
+  },
+  {
+    "label": "sell-spans-tile-the-range",
+    "defends": "Every other sell sweep is measured over the whole range, so a per-arm span that overlapped or skipped its neighbour would leave the per-span records describing bytes no sweep saw.  The eleven spans are asserted to tile 1000:ce76..1000:d383 exactly and to sum to sweeps.instructions.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "arms", 0, "span", "end"],
+      "from": "1000:cf9c",
+      "to": "1000:cfa6"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_sell_spans_tile_the_range_with_no_gap_and_no_overlap"
+    ],
+    "expect": "the spans do not tile"
+  },
+  {
+    "label": "sell-range-end-is-measured",
+    "defends": "Task 28 shipped a residue whose interval ran 282 bytes past the arm's real end because the bound came from a brief.  The sell range's right-hand end is instead established by decoding all 7742 instructions of `entry` and finding the one near branch that targets 1000:d383.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "range", "end"],
+      "from": "1000:d383",
+      "to": "1000:d39c"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_sell_range_ends_where_the_artifact_says_it_does"
+    ],
+    "expect": "does not end where the range does"
+  },
+  {
+    "label": "sell-range-entry-edges-complete",
+    "defends": "`range.entered_from` claims to be every edge into 1000:ce76.  Appending a real branch that goes somewhere else must red, or the list would be a set of addresses nobody compared against the branch graph.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-append",
+      "path": ["sell", "range", "entered_from"],
+      "value": {"addr": "1000:ce8c", "text": "jle 0xceb5", "what": "not an entry edge at all"}
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_sell_range_ends_where_the_artifact_says_it_does"
+    ],
+    "expect": "the near branches into"
+  },
+  {
+    "label": "sell-gates-completeness",
+    "defends": "All twelve gates in the sell range are SILENT -- they print nothing -- so the strings sweep cannot catch one that was left out.  Every conditional branch in the range must be named by the artifact; pointing two conjuncts at the same address drops one.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "arms", 3, "gates", 1, "conjuncts", 1, "branch", "addr"],
+      "from": "1000:d11c",
+      "to": "1000:d123"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_recorded_gates_are_every_conditional_branch_in_the_range"
+    ],
+    "expect": "an unrecorded branch is an unrecorded gate"
+  },
+  {
+    "label": "sell-strings-completeness",
+    "defends": "`this arm prints nothing else` is what the port's offer and confirmation wording rests on.  It is a measurement over the range: every `mov di,imm` followed by `push cs`/`push di` must be a recorded literal, and vice versa.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "arms", 0, "strings", 0, "cs_offset"],
+      "from": "0x970e",
+      "to": "0x970f"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_recorded_strings_are_every_cs_literal_the_range_pushes"
+    ],
+    "expect": "`strings[]` is not complete"
+  },
+  {
+    "label": "sell-effects-completeness",
+    "defends": "`nothing is unwound on a sale` is a claim about the WHOLE set of writes in the range, not about the three each arm lists.  The WRITE bucket is asserted set-equal to effects[] plus the prologue.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "arms", 0, "effects", 1, "addr"],
+      "from": "1000:cf74",
+      "to": "1000:d029"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_recorded_effects_are_every_absolute_write_in_the_range"
+    ],
+    "expect": "`effects[]` is not complete"
+  },
+  {
+    "label": "sell-random-site-completeness",
+    "defends": "One `wes` can spend six draws.  A draw nobody recorded still advances the RNG stream, so the six sites come from a sweep of the five-byte `Random` signature rather than from the artifact.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "arms", 2, "roll", "call", "addr"],
+      "from": "1000:d0c2",
+      "to": "1000:d185"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_recorded_rolls_are_every_random_call_and_each_n_is_rederived"
+    ],
+    "expect": "the `Random` call sites inside"
+  },
+  {
+    "label": "sell-refund-n-is-rederived",
+    "defends": "The refund finding is the whole point of this map.  Each arm's `n` is recovered by `re_query.pushed_n` walking back from the call site, not read out of the artifact -- otherwise the refund table would be a copy of itself.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "arms", 5, "roll", "n"],
+      "from": 23,
+      "to": 15
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_recorded_rolls_are_every_random_call_and_each_n_is_rederived"
+    ],
+    "expect": "the idiom before"
+  },
+  {
+    "label": "sell-refund-base-is-rederived",
+    "defends": "The other half of the same constant: the base comes from decoding the `add ax,imm` that follows the draw.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "arms", 4, "roll", "base"],
+      "from": 25,
+      "to": 24
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_recorded_rolls_are_every_random_call_and_each_n_is_rederived"
+    ],
+    "expect": "the base add at"
+  },
+  {
+    "label": "sell-dgroup-set-is-complete",
+    "defends": "`the refund reads no price byte` and `nothing is unwound` are both negatives over the complete set of DGROUP addresses the range references.  That set is asserted equal to the decode, so the two assertNotIns are statements about everything rather than about a list someone stopped writing.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "sweeps", "dgroup_addresses", 8],
+      "from": "0x38c7",
+      "to": "0x0b38"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_range_reads_no_price_byte_and_writes_no_stat_global"
+    ],
+    "expect": "the DGROUP addresses the range references are"
+  },
+  {
+    "label": "sell-ladder-requires-matches-the-conjuncts",
+    "defends": "`own plus a better rung` is the finding the brief called a hypothesis.  The prose-level `requires_any_of` and the decoded conjunct chain must name the same flags, or the ladder could be described one way and tested another.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "arms", 3, "requires_any_of", 2],
+      "from": "20ae:394c",
+      "to": "20ae:38ba"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_each_gate_branch_lands_where_the_flow_claim_needs_it"
+    ],
+    "expect": "`requires_any_of` and the conjuncts disagree"
+  },
+  {
+    "label": "sell-arms-are-sequential",
+    "defends": "`one wes can sell up to six items` rests on there being NO jump between an arm's confirmation and the next arm's own-flag test.  Pointing the confirmation at another arm's WriteLn must red.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "arms", 0, "strings", 2, "write", "addr"],
+      "from": "1000:cf97",
+      "to": "1000:d04c"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_an_accepted_arm_falls_straight_into_the_next_arms_gate"
+    ],
+    "expect": "so the arms are not sequential"
+  },
+  {
+    "label": "sell-roll-precedes-the-answer",
+    "defends": "Two findings rest on ORDER alone: the draw is spent even when the offer is declined, and the `nothing to sell` line means `nothing was OFFERED`.  Both are the position of `mov [0x3e33],al` relative to the yes/no compare, which every other check here is blind to.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "arms", 0, "roll", "store", "addr"],
+      "from": "1000:cf60",
+      "to": "1000:d015"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_every_arm_rolls_and_stores_before_it_asks"
+    ],
+    "expect": "stores its roll AFTER the yes/no compare"
+  },
+  {
+    "label": "sell-junk-credit-has-no-rate",
+    "defends": "`x` credits the junk one-for-one.  The claim is the ABSENCE of anything between the load and the add, so the six-instruction path is recorded verbatim and compared against the decode.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "junk_arm", "rate_finding", "sequence", 3],
+      "from": "add [0x38c7],ax",
+      "to": "shl ax,1"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_junk_credit_carries_no_rate"
+    ],
+    "expect": "the one-for-one claim is exactly the absence"
+  },
+  {
+    "label": "sell-globals-xref-counts",
+    "defends": "The raw / accepted / discarded census beside each sell global must be what `re_query.xrefs_to` reports.  20ae:38ba is the one with a discard (a byte-scan hit inside `mov dx,0x138`), and dropping it would make the operand-field filter look like it never fires.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "globals", 6, "xrefs", "discarded"],
+      "from": 1,
+      "to": 0
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_sell_global_census_is_what_xrefs_to_reports"
+    ],
+    "expect": "discarded, artifact says"
+  },
+  {
+    "label": "sell-globals-writer-census",
+    "defends": "`there is no equipped bit` rests on each item flag's complete image-wide writer set being a purchase arm, a loot arm or a sell arm.  The sets are recomputed from the scan, not trusted.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "globals", 9, "xrefs", "writers_image_wide", 0],
+      "from": "1000:573e",
+      "to": "1000:5698"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_sell_global_census_is_what_xrefs_to_reports"
+    ],
+    "expect": "the image-wide writer set is not what the artifact"
+  },
+  {
+    "label": "sell-scratch-byte-is-private",
+    "defends": "20ae:3e33 has no name to borrow: it is named from its own use, and that is only honest because all twenty of its image-wide references are inside this range.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "globals", 11, "xrefs", "refs_outside_range"],
+      "from": 0,
+      "to": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_top_rung_is_never_cleared_and_the_scratch_byte_is_private"
+    ],
+    "expect": "is not the private scratch byte"
+  },
+  {
+    "label": "sell-arithmetic-coincidence-is-recomputed",
+    "defends": "The one numeric relation this map states is a COINCIDENCE between two sets of literals, and the danger is a later reader turning it into a formula.  Both halves are recomputed from the recorded prices and constants.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "refund_finding", "arithmetic_coincidence", "table", 4, "base"],
+      "from": 25,
+      "to": 26
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_arithmetic_coincidence_is_stated_as_a_coincidence"
+    ],
+    "expect": "no longer holds for every priced arm"
+  },
+  {
+    "label": "sell-tail-loops-back-to-the-prompt",
+    "defends": "Both sub-verbs return to 1000:c88e, the prompt push, and NOT to the menu -- so the dealers do not reprint nine lines after a sale.  The target is decoded from the jump rather than asserted.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "tail", "exit_compare", "loop_target"],
+      "from": "1000:c88e",
+      "to": "1000:d39c"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_tail_overwrites_the_buffer_so_the_wes_path_always_loops"
+    ],
+    "expect": "does not loop back to"
+  },
+  {
+    "label": "sell-item-flag-names-from-the-sheet",
+    "defends": "Task 27's review turned on three `named_from` values that were never re-derived.  Each of the ten item flags is named from the character sheet's own line, and both halves -- the guard that tests the flag and the push of the label -- are decoded here.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "globals", 0, "sheet_label", "cs_offset"],
+      "from": "0x1983",
+      "to": "0x196e"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_item_flag_names_come_from_the_character_sheets_own_lines"
+    ],
+    "expect": "does not push CS"
+  },
+  {
+    "label": "sell-sweeps-range-is-the-block's-range",
+    "defends": "Every count under `sell.sweeps` is a measurement over one interval.  If `sweeps.range` could drift from the range the arms tile, the counts would still be internally consistent and would be describing different bytes.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "sweeps", "range", "end"],
+      "from": "1000:d383",
+      "to": "1000:d39c"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_sell_spans_tile_the_range_with_no_gap_and_no_overlap"
+    ],
+    "expect": "`sweeps.range` is not the range"
+  },
+  {
+    "label": "sell-ds-pointer-push-count",
+    "defends": "The strings sweep keeps only `mov di,imm` followed by `push cs`/`push di` and must ignore the 28 buffer pushes that use `push ds`.  Counting the ignored population is what stops the filter silently swallowing a CS push it should have measured.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "sweeps", "ds_pointer_pushes"],
+      "from": 28,
+      "to": 27
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_sell_spans_tile_the_range_with_no_gap_and_no_overlap"
+    ],
+    "expect": "DGROUP pointers, `sweeps` says"
+  },
+  {
+    "label": "sell-ladders-are-a-view-of-the-arms",
+    "defends": "`ladder_finding.ladders[]` is the finding stated in item terms; it has to be derivable from the six arms rather than written beside them, or the prose could describe one ladder while the binary tests another.",
+    "artifact": "data/shop_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["sell", "ladder_finding", "ladders", 3, "sellable", 2],
+      "from": "20ae:38c2",
+      "to": "20ae:394c"
+    },
+    "test": [
+      "python3",
+      "tools/test_shop_arms.py",
+      "SellTest.test_the_ladders_are_the_arms_own_flags"
+    ],
+    "expect": "`sellable` is not the rungs an arm actually clears"
   }
  ]
 }
