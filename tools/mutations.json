@@ -1688,23 +1688,6 @@
       "DenTest.test_every_globals_xref_census_is_what_re_query_reports"
     ],
     "expect": "the artifact records raw="
-  },
-  {
-    "label": "den-arms-globals-evidence-is-a-real-reference",
-    "defends": "An `evidence` record whose decoded text references the global must be an address `xrefs-to` actually reported.  This is what stops the field drifting back into prose provenance: a plausible nearby address that does not touch the global fails instead of reading as authoritative.",
-    "artifact": "data/den_arms.json",
-    "mutate": {
-      "op": "json-set",
-      "path": ["globals", 4, "evidence", 2, "addr"],
-      "from": "1000:4a50",
-      "to": "1000:5399"
-    },
-    "test": [
-      "python3",
-      "tools/test_den_arms.py",
-      "DenTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
-    ],
-    "expect": "orig/g.exe decodes"
   }
  ]
 }

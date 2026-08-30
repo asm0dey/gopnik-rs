@@ -337,18 +337,15 @@ class DenTest(unittest.TestCase):
             "only %d globals carry an explicit writer LIST; the sweep is "
             "meant to cover every population small enough to read whole"
             % seen)
-        # And every `evidence` record must name an address the census saw.
-        for g in self.art["globals"]:
-            scan = re_query.xrefs_to(self.prog, g["ds"])["scan"]
-            at = {a["at"] for a in scan["accepted"]}
-            for e in g["evidence"]:
-                if "[0x%s]" % g["ds"].split(":")[1] not in e["text"]:
-                    continue          # a neighbouring instruction, by design
-                self.assertIn(
-                    e["addr"], at,
-                    "%s: evidence at %s decodes %r, which references this "
-                    "address, yet `xrefs-to` did not report it"
-                    % (g["ds"], e["addr"], e["text"]))
+        # There is deliberately NO further "every evidence[] address is in
+        # the accepted set" loop here.  It was written, and then removed:
+        # `re_query.xrefs_to` accepts exactly the aligned instructions whose
+        # operand field holds the address, so any `evidence` record that
+        # survives the identity walk above is in that set by construction,
+        # and no perturbation of an address could make it fail without the
+        # identity walk firing first.  That is the assertion-that-cannot-fail
+        # this file exists to keep out, so it is gone rather than kept as
+        # decoration.
 
     def test_every_address_the_artifact_names_is_a_boundary(self):
         exempt = {e["addr"]
