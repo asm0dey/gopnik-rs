@@ -42,10 +42,15 @@ defect every review on this project has found.
     block #3 must not, and the nine-byte shortfall must be exactly the four
     instructions the artifact names.  A port that folds the three into one
     helper is the mistake this case exists to catch.
-  * **the `[bp+0x4]` inventory in `FUN_1000_3d11` is complete.**  The claim
-    "`param_1 == 5` has no compare of its own" is a NEGATIVE over another
-    function, so the walk's instruction count is asserted too: without it an
-    empty hit list could mean an empty search.
+  * **the `param_1` inventory in `FUN_1000_3d11` is complete -- BOTH ways.**
+    "`FUN_1000_3d11` distinguishes exactly 0, 1, 3, 4 and 6" is a NEGATIVE
+    over another function, so the walk's instruction count is asserted too:
+    without it an empty hit list could mean an empty search.  TWO sweeps are
+    needed, not one -- `[bp+0x4]` ModRM references AND `cmp al,imm8`, because
+    `1000:3d24` copies the parameter into `al` and the real dispatch is a
+    register-compare chain the first sweep cannot see.  The chain's
+    contiguity is asserted as well, since that is what makes a register
+    compare readable as a parameter test.
   * **the range tiles.**  The seven arm spans, the menu, the prompt and the
     two boundary blocks must cover `1000:d802`..`1000:df06` end to end with no
     gap and no overlap, so a block cannot be dropped from the map by being
@@ -304,7 +309,8 @@ class DenTest(unittest.TestCase):
         # gate found that, which is what it is for.
         recorded = {n["addr"] for n, _ in self.walk(("addr", "text"))
                     if n["text"].startswith("j")
-                    and not n["text"].startswith("jmp")}
+                    and not n["text"].startswith("jmp")
+                    and LO <= int(n["addr"].split(":")[1], 16) < HI}
         self.assertEqual(
             recorded, swept,
             "the artifact's structured conditional-branch records are not "
@@ -686,11 +692,6 @@ class DenTest(unittest.TestCase):
             "the `[bp+0x4]` sweep over FUN_1000_3d11 finds %s, the artifact "
             "records %s" % (hits, [s["addr"] for s in rec["sites"]]))
         texts = [self.at(c).text for c in hits]
-        self.assertNotIn(
-            "cmp byte [bp+0x4],0x5", texts,
-            "FUN_1000_3d11 DOES compare its param against 5, so the `d` "
-            "arm's fight is not the undifferentiated call the artifact says "
-            "it is")
         self.assertIn(
             "cmp byte [bp+0x4],0x6", texts,
             "FUN_1000_3d11 does NOT compare its param against 6, so the `hp` "
@@ -705,6 +706,104 @@ class DenTest(unittest.TestCase):
                     pushed[a["key"]] = (ins.text, c["param_1"])
         self.assertEqual(pushed, {"hp": ("mov al,0x6", 6),
                                   "d": ("mov al,0x5", 5)})
+
+    def test_the_fight_param_dispatch_chain_is_complete(self):
+        """The `[bp+0x4]` sweep alone is NOT enough, and this is why.
+
+        `1000:3d24` copies the parameter into `al` and every later test is a
+        REGISTER compare no `[bp+0x4]` scan can see.  A first draft of
+        `fight_param_finding` had only that scan and concluded `param_1 == 5
+        has no compare of its own` from it -- which happens to be true, but
+        was established by an inventory that had stopped searching.  So the
+        `cmp al,imm8` population is swept too, and the chain's contiguity --
+        no instruction between one link's miss and the next link's compare --
+        is what licenses reading a register compare as a parameter test.
+        """
+        funcs = json.loads(FUNCTIONS.read_text(encoding="utf-8"))
+        f = next(x for x in funcs if x["entry"] == "1000:3d11")
+        body = list(dis16.decode_run(self.img, 0x3d11, 0x3d11 + f["size"]))
+        swept = [i for i in body if i.raw[0] == 0x3C]
+        disp = self.art["fight_param_finding"]["dispatch"]
+        self.assertEqual(
+            len(swept), disp["cmp_al_imm_sites_in_body"],
+            "FUN_1000_3d11 holds %d `cmp al,imm8` instructions, the artifact "
+            "records %d" % (len(swept), disp["cmp_al_imm_sites_in_body"]))
+        self.assertEqual(
+            [cit(i.off) for i in swept],
+            [l["compare"]["addr"] for l in disp["chain"]],
+            "the `cmp al,imm8` sweep finds %s, the recorded chain is %s -- a "
+            "compare outside the chain would be a parameter test nobody read"
+            % ([cit(i.off) for i in swept],
+               [l["compare"]["addr"] for l in disp["chain"]]))
+        self.assertEqual(self.at(disp["load"]["addr"]).text,
+                         "mov al,[bp+0x4]")
+        for n, link in enumerate(disp["chain"]):
+            c = self.at(link["compare"]["addr"])
+            self.assertEqual(
+                c.text, "cmp al,0x%x" % link["value"],
+                "chain link %d says it tests %d, %s decodes %r"
+                % (n, link["value"], link["compare"]["addr"], c.text))
+            b = self.at(link["branch"]["addr"])
+            self.assertEqual(
+                b.off, c.off + c.length,
+                "chain link %d: the branch is not adjacent to its compare"
+                % n)
+            tgt = cit(int(re.search(r"0x([0-9a-f]+)$",
+                                    b.text).group(1), 16) & 0xFFFF)
+            fall = cit(b.off + b.length)
+            # `jz` takes the branch on a MATCH, `jnz` on a miss.  Which of
+            # the two the artifact must name for the target is decided by
+            # the opcode, not by which reading is convenient.
+            self.assertIn(b.text[:3], ("jz ", "jnz"),
+                          "chain link %d: %r is neither `jz` nor `jnz`"
+                          % (n, b.text))
+            if b.text.startswith("jz"):
+                self.assertEqual(tgt, link["hit_target"])
+                miss_from = fall
+            else:
+                self.assertEqual(tgt, link["miss_reaches"],
+                                 "chain link %d: the `jnz` at %s goes to %s, "
+                                 "the artifact says the miss reaches %s"
+                                 % (n, link["branch"]["addr"], tgt,
+                                    link["miss_reaches"]))
+                self.assertEqual(fall, link["hit_target"],
+                                 "chain link %d: the `jnz`'s fall-through is "
+                                 "%s, not the recorded hit target %s"
+                                 % (n, fall, link["hit_target"]))
+                miss_from = link["miss_reaches"]
+            # Contiguity: nothing runs between this link's miss and the next
+            # compare, so `al` still holds the parameter there.  A `jnz`
+            # reaches it directly, so there is nothing to bridge.
+            if miss_from != link["miss_reaches"]:
+                bridge = dis16.decode(
+                    self.img, int(miss_from.split(":")[1], 16))
+                self.assertEqual(
+                    bridge.text,
+                    "jmp 0x%x" % int(link["miss_reaches"].split(":")[1], 16),
+                    "chain link %d: the instruction at the fall-through %s "
+                    "is %r, not one bare `jmp %s` -- so something runs "
+                    "between the miss and the next compare and `al` may no "
+                    "longer hold the parameter"
+                    % (n, miss_from, bridge.text, link["miss_reaches"]))
+                self.assertIn(
+                    bridge.raw[0], (0xE9, 0xEB),
+                    "chain link %d: %s is not an unconditional near/short "
+                    "jump" % (n, miss_from))
+        self.assertEqual(
+            [l["value"] for l in disp["chain"]],
+            disp["values_distinguished"])
+        self.assertNotIn(
+            5, disp["values_distinguished"],
+            "5 is in the distinguished set, so the `d` arm's fight is not "
+            "the default-arm call the artifact says it is")
+        self.assertEqual(
+            disp["chain"][-1]["miss_reaches"], disp["default_arm"],
+            "the last link's miss does not reach the recorded default arm")
+        # The default arm is not itself another `cmp al,imm8`.
+        self.assertNotEqual(
+            self.at(disp["default_arm"]).raw[0], 0x3C,
+            "%s is another `cmp al,imm8`, so the chain does not end there"
+            % disp["default_arm"])
 
     def test_every_call_out_reaches_the_target_it_names(self):
         """A near `call rel16` target is taken modulo 64 KiB, not summed."""
@@ -796,6 +895,14 @@ class DenTest(unittest.TestCase):
                 tail, want,
                 "the routine at image 0x%x returns with %r, not %r"
                 % (seg_off, tail, want))
+            # These four are RUNTIME segments, so `CITE` never sees them and
+            # the prose scans above cannot reach the claim.  Tie it to the
+            # doc by hand rather than leave an assertion that only the frozen
+            # binary can move.
+            self.assertIn(
+                "`%s`" % want, self.md,
+                "docs/re/den.md no longer quotes %r, so this check stops "
+                "guarding anything the prose says" % want)
 
     # ------------------------------------------------------------- the prose
     def test_every_prose_address_is_an_instruction_boundary(self):

@@ -2273,10 +2273,15 @@ Task 27 changed nothing in `src/`:
   adds the den's two call sites to its population. An aligned decode of
   `FUN_1000_3d11`'s 6971 bytes (3043 instructions) finds exactly eight
   `[bp+0x4]` references — `1000:3d24`, `1000:5085`, `1000:5139`, `1000:51a6`,
-  `1000:51ac`, `1000:51f6`, `1000:51fc`, `1000:57ce` — so `param_1 == 5` has
-  no compare of its own and `param_1 == 6` has two. What `1000:3e8d` (the arm
-  a `param_1` of 5 takes and 0 does not) actually does was **not** established
-  here; that is a combat-dispatch task.
+  `1000:51ac`, `1000:51f6`, `1000:51fc`, `1000:57ce` — and exactly five
+  `cmp al,imm8`, which are the real dispatch chain that `1000:3d24
+  mov al,[bp+0x4]` feeds: `1000:3d27` (0), `1000:3d2b` (6), `1000:3e8d` (1),
+  `1000:3ead` (3), `1000:3f2b` (4). So the function distinguishes exactly
+  those five values; `param_1 == 5` matches none and reaches the default arm
+  `1000:3fa7`, while `param_1 == 6` additionally gets `1000:57ce`'s
+  `add [0x38cb],ax` with `ax = district*20`. What the `1000:3d32` arm (which
+  0 and 6 take and 5 does not) actually does was **not** established here;
+  that is a combat-dispatch task.
 - **The three `[0x3695]`/`[0x369a]`/`cmp ax,0x28` blocks are not one
   predicate.** `1000:d90f` and `1000:da6e` are byte-identical and compute
   `(level - (district-1)*10 - 5) * 5 + понтовость >= 40`; `1000:dcba`, the

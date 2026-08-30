@@ -1453,6 +1453,40 @@
     "expect": "the artifact records"
   },
   {
+    "label": "den-arms-fight-param-dispatch-chain",
+    "defends": "The `[bp+0x4]` sweep alone is NOT enough: 1000:3d24 copies the parameter into `al` and the real dispatch is a chain of REGISTER compares no such scan can see.  A first draft of fight_param_finding had only that sweep.  So the `cmp al,imm8` population is swept too, set-equal to the recorded chain, and the chain's contiguity is asserted -- nothing runs between one link's miss and the next link's compare, which is what makes a register compare readable as a parameter test.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["fight_param_finding", "dispatch", "chain", 2, "value"],
+      "from": 1,
+      "to": 2
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_fight_param_dispatch_chain_is_complete"
+    ],
+    "expect": "says it tests"
+  },
+  {
+    "label": "den-arms-fight-param-chain-contiguity",
+    "defends": "The chain link that matters most is 1000:3d2b -> 1000:3e8d, which is bridged by the single `jmp` at 1000:3d2f.  If anything else ran there, `al` would no longer hold the parameter and the whole register-compare reading would collapse.  The bridge is decoded, not assumed.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["fight_param_finding", "dispatch", "chain", 1, "miss_reaches"],
+      "from": "1000:3e8d",
+      "to": "1000:3ead"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_fight_param_dispatch_chain_is_complete"
+    ],
+    "expect": "not one bare"
+  },
+  {
     "label": "den-arms-call-target-wraps",
     "defends": "All five near calls out of the den encode a rel16 that WRAPS: 1000:dc0e sums to image 0x10d14 and reaches 1000:0d14.  A check that compared the un-wrapped sum would find none of them, which is the mistake tools/re_derive.py's near_calls_to already documents.",
     "artifact": "data/den_arms.json",

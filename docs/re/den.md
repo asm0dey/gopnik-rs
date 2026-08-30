@@ -520,8 +520,10 @@ falls into `1000:defc`. No `ReadLn` happens and the submenu is never entered.
 6. **`hp` and the `d` arm's cop branch are BLOCKED.** Both call `1000:3d11`
    with a `param_1` the port does not model — 6 and 5. `Game::run_combat`
    models no `param_1` at all and `docs/re/gaps.md` already records that as
-   open. The rest of `d` — both luck compares, the haul, the xp, `1000:2526` —
-   has no such obstacle.
+   open. `param_1 = 6` is a value the fight function really does treat
+   specially; `param_1 = 5` is not, but it still reaches a different arm than
+   the port's own `0`. The rest of `d` — both luck compares, the haul, the
+   xp, `1000:2526` — has no such obstacle.
 7. **The den does not trim its input.** See "The input read" above.
 8. **An unrecognised key is silent.** `Game::shop_turn` already behaves this
    way; recorded so the porting task does not add a refusal line the original
@@ -540,32 +542,64 @@ src/game.rs`), `20ae:38c3` (`grep -n 'beer_dl += 1' src/game.rs`),
 (`grep -n 'mark_found(Location::' src/game.rs`). What blocks the port is item
 6, not reachability.
 
-### The `param_1` sweep behind item 6
+### The `param_1` dispatch behind item 6
 
-**Established from flow.** One aligned decode from `FUN_1000_3d11`'s own entry
-`1000:3d11` over the 6971 bytes `data/functions.json` records for it — 3043
-instructions — collecting every instruction whose ModRM addresses `[bp+0x4]`.
+**Established from flow**, by TWO sweeps over one aligned decode from
+`FUN_1000_3d11`'s own entry `1000:3d11` across the 6971 bytes
+`data/functions.json` records for it — 3043 instructions.
+
+The first sweep collects every instruction whose ModRM addresses `[bp+0x4]`.
 There are exactly eight: `1000:3d24 mov al,[bp+0x4]`, `1000:5085`,
 `1000:5139`, `1000:51a6`, `1000:51ac`, `1000:51f6`, `1000:51fc` and
-`1000:57ce`. Their immediates are 4, 3, 3, 4, 3, 4 and 6.
+`1000:57ce`, with immediates 4, 3, 3, 4, 3, 4 and 6.
 
-So `param_1 == 5`, what the `d` arm passes, has **no** compare of its own
-anywhere in the body. `param_1 == 6`, what `hp` passes, has two:
-`1000:3d24`..`1000:3d2f` sends 0 and 6 one way and everything else to
-`1000:3e8d`, and `1000:57ce cmp byte [bp+0x4],0x6` gives 6 alone
-`1000:57de add [0x38cb],ax` with `ax = district*20` — the errand's own
-понтовость reward, which lives inside the fight function and not in the den.
+**That sweep alone is not enough, and a first draft of this section was wrong
+to stop there.** `1000:3d24` copies the parameter into `al`, and the actual
+dispatch is a chain of REGISTER compares no `[bp+0x4]` scan can see. So the
+second sweep collects every `cmp al,imm8` in the body. There are exactly
+five, and all five are that chain:
 
-The instruction count is recorded because the `param_1 == 5` claim is a
-NEGATIVE: without it, an empty hit list could mean an empty search.
+```
+1000:3d24  mov al,[bp+0x4]
+1000:3d27  cmp al,0x0
+1000:3d29  jz 0x3d32
+1000:3d2b  cmp al,0x6
+1000:3d2d  jz 0x3d32
+1000:3d2f  jmp 0x3e8d
+1000:3e8d  cmp al,0x1
+1000:3e8f  jnz 0x3ead
+1000:3ead  cmp al,0x3
+1000:3eaf  jnz 0x3f2b
+1000:3f2b  cmp al,0x4
+1000:3f2d  jnz 0x3fa7
+```
+
+Nothing runs between one link's miss and the next link's compare — each miss
+is a fall-through, the single `1000:3d2f jmp 0x3e8d` sitting at a
+fall-through, or a `jnz`'s own target — which is what licenses reading these
+register compares as parameter tests.
+
+So `FUN_1000_3d11` distinguishes exactly **five** values: 0 and 6 reach
+`1000:3d32`, 1 reaches `1000:3e91`, 3 reaches `1000:3eb1`, 4 reaches
+`1000:3f2f`, and **everything else, `param_1 = 5` included, reaches
+`1000:3fa7`** — which is `mov ax,[0x3956]`, the fight body, not another
+compare.
+
+`param_1 = 6` then has one further block of its own:
+`1000:57ce cmp byte [bp+0x4],0x6` guards `1000:57de add [0x38cb],ax` with
+`ax = district*20` (`1000:57d4`..`1000:57dc`) — the errand's own понтовость
+reward, which lives inside the fight function and not in the den.
+
+The instruction count is recorded because these are NEGATIVE claims: without
+it, an empty hit list could mean an empty search.
 
 ## What this map could not establish
 
-- **What `1000:3e8d` does**, i.e. what a `param_1` of 5 actually costs
-  relative to 0. The eight-site sweep proves 5 is undifferentiated among the
-  values `FUN_1000_3d11` tests, not that the two calls behave identically —
-  `1000:3d24`'s three-way split sends 5 down the `1000:3e8d` path that 0 does
-  not take. Settling it means decoding `FUN_1000_3d11`, which is a
+- **What a `param_1` of 5 actually costs relative to 0.** The two sweeps
+  prove 5 is undifferentiated among the values `FUN_1000_3d11` tests and
+  reaches the default arm `1000:3fa7`; they do NOT prove the two calls behave
+  identically, because 0 takes `1000:3d32` instead and that arm was not
+  decoded. Settling it means reading `1000:3d32`..`1000:3fa7`, which is a
   combat-dispatch task and outside this range.
 - **Whether `1000:0d14`, `1000:3d11` and `1000:2526` draw as the port's
   `roll_enemy`, `run_combat` and `apply_levels` do** on these argument values.
