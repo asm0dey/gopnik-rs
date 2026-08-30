@@ -1264,6 +1264,345 @@
       "ArmsTest.test_the_mar_district_gates_are_every_district_operand_in_the_handler"
     ],
     "expect": "not at the handler's own"
+  },
+  {
+    "label": "den-arms-instruction-identity",
+    "defends": "tools/test_den_arms.py walks every {addr,text} record in data/den_arms.json and requires orig/g.exe to decode that instruction at that address -- the identity half of the two signals docs/re/METHODOLOGY.md keeps apart.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["arms", 0, "effects", 1, "text"],
+      "from": "add word [0x38cb],0x5",
+      "to": "add word [0x38cb],0x4"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
+    ],
+    "expect": "orig/g.exe decodes"
+  },
+  {
+    "label": "den-arms-literal-identity",
+    "defends": "Every {cs_offset,text} record must be the Pascal shortstring actually at that CS offset.  This is what stops a refusal being attributed to the wrong arm -- the `r` arm has TWO different refusals and swapping them is invisible to every other check here.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["arms", 1, "strings", 1, "cs_offset"],
+      "from": "0x9f49",
+      "to": "0x9f66"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_every_literal_decodes_to_the_recorded_text"
+    ],
+    "expect": "is not what the artifact"
+  },
+  {
+    "label": "den-arms-strings-completeness",
+    "defends": "strings[] is the WHOLE set of CS literals the handler pushes, measured by decoding 1000:d802..1000:df06 and collecting every `mov di,imm` followed by `push cs`/`push di`.  So `the w arm prints nothing` and `this arm prints nothing else` are measurements over the range, not lists that stopped being written.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["arms", 5, "strings", 3, "push", "addr"],
+      "from": "1000:ddff",
+      "to": "1000:de1a"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_recorded_strings_are_every_cs_literal_the_handler_pushes"
+    ],
+    "expect": "is not complete over"
+  },
+  {
+    "label": "den-arms-gates-completeness",
+    "defends": "Every CONDITIONAL branch in 1000:d802..1000:df06 must be named somewhere in data/den_arms.json, cross-checked against data/branches.json's independent Ghidra-generated population.  The string sweep cannot see a SILENT gate, and `an unrecognised key is silent` and `the d arm's two gates print nothing` are headline claims of docs/re/den.md.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["arms", 5, "gates", 1, "branch", "addr"],
+      "from": "1000:dd55",
+      "to": "1000:dd4b"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_recorded_gates_are_every_conditional_branch_in_range"
+    ],
+    "expect": "are not the conditional branches in"
+  },
+  {
+    "label": "den-arms-random-site-completeness",
+    "defends": "A draw nobody recorded still advances the RNG stream and would desynchronise every trace after it, so draws[] is set-equal to a sweep of the five-byte `call 0f78:114b` signature over the whole range -- cross-checked against a raw byte count so an aligned miss and a byte-scan miss cannot cancel out.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["arms", 5, "draws", 3, "call", "addr"],
+      "from": "1000:de7c",
+      "to": "1000:de5a"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_recorded_draws_are_every_random_call_in_range"
+    ],
+    "expect": "is not every `Random` site"
+  },
+  {
+    "label": "den-arms-draw-n-is-rederived",
+    "defends": "Each draw's `n` is re-derived with tools/re_query.py's own walk-back over the pushing idiom, never copied from the artifact.  district*15 and district*10 differ by one immediate byte and the `d` arm uses both.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["arms", 5, "draws", 0, "n"],
+      "from": "byte[0x3692] * 15",
+      "to": "byte[0x3692] * 10"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_every_recorded_draw_pushes_the_n_it_records"
+    ],
+    "expect": "the artifact records"
+  },
+  {
+    "label": "den-arms-effects-completeness",
+    "defends": "effects[] is set-equal to every instruction in the range that WRITES an absolute-memory operand, with the read and write buckets asserted EXHAUSTIVE so an unclassified shape fails instead of vanishing.  This is what makes `the s arm writes nothing` a measurement.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["arms", 5, "effects", 2, "addr"],
+      "from": "1000:debe",
+      "to": "1000:de8f"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_recorded_effects_are_every_absolute_write_in_range"
+    ],
+    "expect": "is not the set of absolute writes in"
+  },
+  {
+    "label": "den-arms-silent-arm-is-measured",
+    "defends": "`s` and `w` claim to write nothing.  The claim is checked by sweeping their own spans for absolute writes, so a span narrowed to dodge a store fails rather than passing quietly.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["arms", 3, "no_effect_claim", "span", "end"],
+      "from": "1000:dcba",
+      "to": "1000:dd32"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_arm_with_no_effects_really_has_none"
+    ],
+    "expect": "claims to write nothing"
+  },
+  {
+    "label": "den-arms-threshold-blocks-differ",
+    "defends": "The headline finding: 1000:d90f and 1000:da6e are byte-identical and 1000:dcba is a DIFFERENT predicate, nine bytes shorter.  Folding all three into one helper during the porting task is the exact mistake this case exists to catch, so the bytes are re-sliced out of orig/g.exe rather than compared with the artifact's own copy.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["threshold_blocks", 2, "start"],
+      "from": "1000:dcba",
+      "to": "1000:da6e"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_three_threshold_blocks_are_two_identical_and_one_different"
+    ],
+    "expect": "the artifact's byte string is not what is at"
+  },
+  {
+    "label": "den-arms-threshold-multiplier",
+    "defends": "Each block's recorded FORMULA is read back off its own arithmetic -- two `shl ax,1` plus an `add ax,si` is *5, one `shl ax,1` alone is *2 -- so a formula that says the wrong multiplier fails even when every address in it is right.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["threshold_blocks", 2, "formula"],
+      "from": "(level - (district-1)*10) * 2 + street_cred >= 40",
+      "to": "(level - (district-1)*10) * 5 + street_cred >= 40"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_each_threshold_block_multiplier_matches_its_recorded_formula"
+    ],
+    "expect": "does not say"
+  },
+  {
+    "label": "den-arms-fight-param-inventory",
+    "defends": "`param_1 == 5 has no compare of its own in FUN_1000_3d11` is a NEGATIVE over another function, and it is the whole reason Task 28 cannot port the two den fights.  The eight [bp+0x4] sites are set-equal to an aligned sweep, and the sweep's own instruction count is asserted so an empty hit list cannot mean an empty search.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["fight_param_finding", "sites", 7, "addr"],
+      "from": "1000:57ce",
+      "to": "1000:51fc"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_fight_param_sites_are_every_bp4_reference_in_the_fight"
+    ],
+    "expect": "the artifact records"
+  },
+  {
+    "label": "den-arms-call-target-wraps",
+    "defends": "All five near calls out of the den encode a rel16 that WRAPS: 1000:dc0e sums to image 0x10d14 and reaches 1000:0d14.  A check that compared the un-wrapped sum would find none of them, which is the mistake tools/re_derive.py's near_calls_to already documents.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["arms", 2, "calls_out", 0, "target"],
+      "from": "1000:0d14",
+      "to": "1000:3d11"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_every_call_out_reaches_the_target_it_names"
+    ],
+    "expect": "the artifact says"
+  },
+  {
+    "label": "den-arms-range-instruction-count",
+    "defends": "Every sweep in this file rests on the aligned decode covering the whole range.  The instruction count is the anchor that proves it did, so a walk that stopped early cannot pass as a search that found nothing.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["range", "instruction_count"],
+      "from": 825,
+      "to": 824
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_range_decodes_as_one_aligned_run"
+    ],
+    "expect": "every sweep"
+  },
+  {
+    "label": "den-arms-boundary-exemption-is-honest",
+    "defends": "known_not_boundaries lets the artifact NAME an address it does not claim is a boundary -- the wrong 1000:2536 in docs/re/save-format.md.  Each entry is asserted to really NOT be a boundary, so the exemption cannot be used to park a good address and skip the check on it.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["known_not_boundaries", "entries", 0, "addr"],
+      "from": "1000:2536",
+      "to": "1000:2535"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_boundary_exemption_list_is_honest"
+    ],
+    "expect": "the exemption is hiding a good address"
+  },
+  {
+    "label": "den-arms-globals-write-lists",
+    "defends": "globals[] carries, per DGROUP address, exactly the writes to it inside the range -- re-derived by sweeping the decode, not by trusting the list.  20ae:38cb is written twice and 20ae:3b7a four times, so a dropped entry is easy and invisible otherwise.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["globals", 16, "written_in_range", 3],
+      "from": "1000:d9e7",
+      "to": "1000:d9e0"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_each_globals_write_list_is_its_writes_in_range"
+    ],
+    "expect": "the sweep finds"
+  },
+  {
+    "label": "den-arms-ds-push-completeness",
+    "defends": "20ae:3a72 is the den's own buffer and 20ae:3972 is the street's; the `pr` and `kl` verbs are compared against the STREET one and all seven den keys against the den's.  The pointer-push inventory is set-equal to a sweep so that distinction cannot rot.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["globals_not_memory_operands", "entries", 1, "pushed_at", 0],
+      "from": "1000:db00",
+      "to": "1000:db18"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_ds_pointer_pushes_are_complete"
+    ],
+    "expect": "the artifact records"
+  },
+  {
+    "label": "den-arms-spans-tile",
+    "defends": "The seven arm spans must chain end-to-start and reach from the case-fold call to the discovery refusal, so a block cannot be dropped out of the map by being left out of every span -- which is how the effects and strings sweeps could be narrowed without any of them going red.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["arms", 4, "span", "end"],
+      "from": "1000:dd32",
+      "to": "1000:dd46"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_arm_spans_tile_the_loop_body"
+    ],
+    "expect": "do not tile"
+  },
+  {
+    "label": "den-arms-loop-back-edge",
+    "defends": "`the menu prints once and only the prompt repeats` rests on 1000:dede targeting 1000:dae2, the prompt push, and on that push carrying the prompt literal.  Both halves are re-derived from the branch displacement and the operand.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["loop", "top"],
+      "from": "1000:dae2",
+      "to": "1000:d816"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_the_loop_back_edge_returns_to_the_prompt"
+    ],
+    "expect": "not to the recorded loop top"
+  },
+  {
+    "label": "den-arms-key-set-from-compares",
+    "defends": "Each of the seven keys is established at a `call 0f78:0bd8` on the den's own buffer, and the CS literal at the recorded offset must BE that key -- `hp` in particular, which src/commands.rs had only from a menu string.",
+    "artifact": "data/den_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": ["arms", 2, "key_literal", "cs_offset"],
+      "from": "0x9f82",
+      "to": "0x9f85"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_each_key_compare_is_the_shortstring_compare_on_the_den_buffer"
+    ],
+    "expect": "the literal at CS"
+  },
+  {
+    "label": "den-arms-prose-fence-identity",
+    "defends": "docs/re/den.md pastes a hundred-odd disassembly lines inside fences; each is re-decoded from orig/g.exe.  The prose and data/den_arms.json are the two places the same claims live, and a fence is where a hand-edited instruction would hide.",
+    "artifact": "docs/re/den.md",
+    "mutate": {
+      "op": "text-replace",
+      "from": "1000:dc6d  call 0xf78:0xbd8",
+      "to": "1000:dc6d  call 0xf78:0xbd9"
+    },
+    "test": [
+      "python3",
+      "tools/test_den_arms.py",
+      "DenTest.test_every_instruction_inside_a_fence_says_what_the_binary_says"
+    ],
+    "expect": "tools/dis16.py decodes"
   }
  ]
 }

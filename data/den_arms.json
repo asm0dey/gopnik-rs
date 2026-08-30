@@ -1,0 +1,2343 @@
+{
+ "note": "The den (`pr`) handler of `orig/g.exe`, `1000:d802`..`1000:df06` -- from the `pr` verb compare to the `kl` verb compare -- mapped by Task 27 from an aligned decode, never from a screen. Prose twin: `docs/re/den.md`; re-derived from `orig/g.exe` by `tools/test_den_arms.py`. COVERAGE BOUNDARY: this artifact covers exactly the half-open image range `1000:d802`..`1000:df06` and nothing else. The four sweeps in `tools/test_den_arms.py` (strings, branches, draws, writes) are SET EQUALITIES over that range, so an omitted entry reds the test -- but they say nothing about the three routines the handler CALLS (`1000:0d14` the opponent roll, `1000:3d11` the fight, `1000:2526` the level-up), whose own bodies were not decoded for this task except for the one bounded `[bp+0x4]` sweep recorded under `calls_out`. Two blocks in range were already ported before this map existed and were mapped but not re-derived-for-editing: the district-keyed intro `1000:d82f`..`1000:d8b9` (`Game::print_den_intro`) and the `a` reveal `1000:dcba`..`1000:dd32` (`Game::den_reveal`). Everything else in range is unported at the time of writing.",
+ "address_forms": "`1000:xxxx` is a Ghidra label (Form A of `docs/re/METHODOLOGY.md`) and, because the game's code segment is the load base, its OFF is also the image offset. `20ae:xxxx` is DGROUP. `0eed:` and `0f78:` are Form B runtime segments. `cs_offset` is the image offset of a Pascal shortstring's LENGTH byte -- the exact immediate of the `mov di,imm16` that pushes it -- and `file_offset` is that plus the 0x18d0-byte MZ header, which is what `data/strings.json` keys on.",
+ "handler": "pr",
+ "range": {
+  "start": "1000:d802",
+  "end": "1000:df06",
+  "instruction_count": 825,
+  "note": "Half-open. `1000:d802` IS the `pr` compare; `1000:df06` IS the `kl` compare and is NOT decoded as part of the den."
+ },
+ "verb": {
+  "key": "pr",
+  "buffer": "20ae:3972",
+  "key_literal": {
+   "cs_offset": "0x9ced",
+   "file_offset": "0x0b5bd",
+   "text": "pr",
+   "push": {
+    "addr": "1000:d7fd",
+    "text": "mov di,0x9ced"
+   }
+  },
+  "push_buffer": {
+   "addr": "1000:d7f8",
+   "text": "mov di,0x3972"
+  },
+  "compare_addr": "1000:d802",
+  "compare": {
+   "addr": "1000:d802",
+   "text": "call 0xf78:0xbd8"
+  },
+  "hit_branch": {
+   "addr": "1000:d807",
+   "text": "jz 0xd80c"
+  },
+  "miss_branch": {
+   "addr": "1000:d809",
+   "text": "jmp 0xdefc"
+  },
+  "note": "The verb is read out of the STREET buffer `20ae:3972`, not the den's own `20ae:3a72`; the setup push at `1000:d7f8` is the evidence. `1000:d7fd` is one instruction before the range start and is recorded here as the left boundary's own literal."
+ },
+ "bounded_on_the_right_by": {
+  "verb": "kl",
+  "setup_addr": "1000:defc",
+  "compare_addr": "1000:df06",
+  "compare": {
+   "addr": "1000:df06",
+   "text": "call 0xf78:0xbd8"
+  },
+  "key_literal": {
+   "cs_offset": "0xa0ea",
+   "file_offset": "0x0b9ba",
+   "text": "kl",
+   "push": {
+    "addr": "1000:df01",
+    "text": "mov di,0xa0ea"
+   }
+  },
+  "note": "`1000:defc` is the next verb's own buffer push and is also where both den exits land, so the range's right edge is an instruction boundary the handler itself jumps to, not a number picked to fit."
+ },
+ "discovery_gate": {
+  "ds": "20ae:3696",
+  "what": "the den's discovery flag",
+  "test": {
+   "addr": "1000:d80c",
+   "text": "cmp byte [0x3696],0x1"
+  },
+  "hit_branch": {
+   "addr": "1000:d811",
+   "text": "jz 0xd816"
+  },
+  "miss_branch": {
+   "addr": "1000:d813",
+   "text": "jmp 0xdee3"
+  },
+  "refusal": {
+   "role": "refusal",
+   "cs_offset": "0xa0b0",
+   "file_offset": "0x0b980",
+   "text": "^4Тебя мудака такого туда не пустят - поднимай понтовость",
+   "push": {
+    "addr": "1000:dee3",
+    "text": "mov di,0xa0b0"
+   }
+  },
+  "refusal_print": {
+   "addr": "1000:def7",
+   "text": "call 0xeed:0x1c2"
+  },
+  "note": "A miss jumps to `1000:dee3`, prints the refusal and falls into `1000:defc` -- the den's submenu is never entered and no `ReadLn` happens."
+ },
+ "input_read": {
+  "buffer": "20ae:3a72",
+  "input_text": "20ae:3ecc",
+  "prompt_literal": {
+   "role": "prompt",
+   "cs_offset": "0x9eb7",
+   "file_offset": "0x0b787",
+   "text": "^0Притон\\",
+   "push": {
+    "addr": "1000:dae2",
+    "text": "mov di,0x9eb7"
+   }
+  },
+  "prompt_write": {
+   "addr": "1000:daf6",
+   "text": "call 0xeed:0x0"
+  },
+  "read": [
+   {
+    "addr": "1000:db09",
+    "text": "call 0xf78:0x6c6"
+   },
+   {
+    "addr": "1000:db0e",
+    "text": "call 0xf78:0x59d"
+   },
+   {
+    "addr": "1000:db13",
+    "text": "call 0xf78:0x291"
+   }
+  ],
+  "case_fold": {
+   "addr": "1000:db1d",
+   "text": "call 0xeed:0x216"
+  },
+  "max_length": {
+   "addr": "1000:db05",
+   "text": "mov ax,0xff"
+  },
+  "note": "`0f78:06c6` is `Read(Text,String)` and `0f78:059d` the `ReadLn` skip-to-end-of-line (`data/rtl_names.json`); `0f78:0291` is the `{$I+}` check. `0eed:0216` then lowercases ASCII A..Z IN PLACE -- `0eed:0216+0x30 cmp byte [es:di],0x41`, `+0x40 cmp byte [es:di],0x5a`, `+0x55 add ax,0x20` -- and does NOT trim, so den keys are case-insensitive and whitespace-sensitive. The prompt is written with `0eed:0000` (`Write`, no newline), which is why the typed line continues the prompt's own line.",
+  "same_buffer_as": "the dealers' `x`/`wes` and the vet's `h`/`r`"
+ },
+ "loop": {
+  "top": "1000:dae2",
+  "back_edge": {
+   "addr": "1000:dede",
+   "text": "jmp 0xdae2"
+  },
+  "exit_edge": {
+   "addr": "1000:dee1",
+   "text": "jmp short 0xdefc"
+  },
+  "note": "The menu lines `1000:d816`..`1000:dabb` print ONCE, on entry. The repeated part of the den is only `1000:dae2` (the prompt) through `1000:dedc` (the `w` compare): a non-`w` line falls off the end of the seven compares and `1000:dede` jumps straight back to the prompt, printing nothing. So an unrecognised key is silent, and the menu is NOT reprinted between turns."
+ },
+ "menu_lines": [
+  {
+   "index": 0,
+   "gates": [],
+   "prints": [
+    {
+     "addr": "1000:d82a",
+     "text": "call 0xeed:0x0"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9cf0",
+     "file_offset": "0x0b5c0",
+     "text": "Ты пришел в притон - ",
+     "push": {
+      "addr": "1000:d816",
+      "text": "mov di,0x9cf0"
+     }
+    }
+   ],
+   "effects": [],
+   "note": "PORTED (`Game::print_den_intro`). `0eed:0000` -- `Write`, no newline."
+  },
+  {
+   "index": 1,
+   "gates": [
+    {
+     "name": "district == 1",
+     "test": {
+      "addr": "1000:d82f",
+      "text": "cmp byte [0x3692],0x1"
+     },
+     "branch": {
+      "addr": "1000:d834",
+      "text": "jnz 0xd859"
+     },
+     "sense": "print iff district == 1",
+     "on_fail": "1000:d859"
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:d854",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9d06",
+     "file_offset": "0x0b5d6",
+     "text": "^0общагу №#",
+     "push": {
+      "addr": "1000:d836",
+      "text": "mov di,0x9d06"
+     }
+    }
+   ],
+   "effects": [],
+   "note": "PORTED. Spends `Random(6)` at `1000:d83f`, `+3` at `1000:d844`."
+  },
+  {
+   "index": 2,
+   "gates": [
+    {
+     "name": "district == 2",
+     "test": {
+      "addr": "1000:d859",
+      "text": "cmp byte [0x3692],0x2"
+     },
+     "branch": {
+      "addr": "1000:d85e",
+      "text": "jnz 0xd879"
+     },
+     "sense": "print iff district == 2",
+     "on_fail": "1000:d879"
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:d874",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9d12",
+     "file_offset": "0x0b5e2",
+     "text": "^0общагу ВКИ",
+     "push": {
+      "addr": "1000:d860",
+      "text": "mov di,0x9d12"
+     }
+    }
+   ],
+   "effects": [],
+   "note": "PORTED."
+  },
+  {
+   "index": 3,
+   "gates": [
+    {
+     "name": "district == 3",
+     "test": {
+      "addr": "1000:d879",
+      "text": "cmp byte [0x3692],0x3"
+     },
+     "branch": {
+      "addr": "1000:d87e",
+      "text": "jnz 0xd899"
+     },
+     "sense": "print iff district == 3",
+     "on_fail": "1000:d899"
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:d894",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9d1f",
+     "file_offset": "0x0b5ef",
+     "text": "^0гоповский притон",
+     "push": {
+      "addr": "1000:d880",
+      "text": "mov di,0x9d1f"
+     }
+    }
+   ],
+   "effects": [],
+   "note": "PORTED."
+  },
+  {
+   "index": 4,
+   "gates": [
+    {
+     "name": "district == 4",
+     "test": {
+      "addr": "1000:d899",
+      "text": "cmp byte [0x3692],0x4"
+     },
+     "branch": {
+      "addr": "1000:d89e",
+      "text": "jnz 0xd8b9"
+     },
+     "sense": "print iff district == 4",
+     "on_fail": "1000:d8b9"
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:d8b4",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9d32",
+     "file_offset": "0x0b602",
+     "text": "^0притон отморозков",
+     "push": {
+      "addr": "1000:d8a0",
+      "text": "mov di,0x9d32"
+     }
+    }
+   ],
+   "effects": [],
+   "note": "PORTED."
+  },
+  {
+   "index": 5,
+   "gates": [],
+   "prints": [
+    {
+     "addr": "1000:d8be",
+     "text": "call 0xf78:0x5dd"
+    },
+    {
+     "addr": "1000:d8c3",
+     "text": "call 0xf78:0x291"
+    }
+   ],
+   "strings": [],
+   "effects": [],
+   "note": "A bare Pascal `WriteLn` on the output `Text` at `20ae:3fcc` -- one blank line, no literal. NOT ported."
+  },
+  {
+   "index": 6,
+   "gates": [
+    {
+     "name": "den errand 1 pending",
+     "test": {
+      "addr": "1000:d8c8",
+      "text": "cmp byte [0x3b78],0x1"
+     },
+     "branch": {
+      "addr": "1000:d8cd",
+      "text": "jnz 0xd8e8"
+     },
+     "sense": "print iff [0x3b78] == 1",
+     "on_fail": "1000:d8e8"
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:d8e3",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9d46",
+     "file_offset": "0x0b616",
+     "text": "^6На одного пацана наехал какой-то урод",
+     "push": {
+      "addr": "1000:d8cf",
+      "text": "mov di,0x9d46"
+     }
+    }
+   ],
+   "effects": []
+  },
+  {
+   "index": 7,
+   "gates": [
+    {
+     "name": "den errand 2 pending",
+     "test": {
+      "addr": "1000:d8e8",
+      "text": "cmp byte [0x3b79],0x0"
+     },
+     "branch": {
+      "addr": "1000:d8ed",
+      "text": "jz 0xd90f"
+     },
+     "sense": "print iff [0x3b79] != 0",
+     "on_fail": "1000:d90f"
+    },
+    {
+     "name": "street cred >= 100",
+     "test": {
+      "addr": "1000:d8ef",
+      "text": "cmp word [0x38cb],0x64"
+     },
+     "branch": {
+      "addr": "1000:d8f4",
+      "text": "jl 0xd90f"
+     },
+     "sense": "print iff [0x38cb] >= 100 (signed)",
+     "on_fail": "1000:d90f"
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:d90a",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9d6e",
+     "file_offset": "0x0b63e",
+     "text": "^6Ты пацан нормальный. Есть дело.",
+     "push": {
+      "addr": "1000:d8f6",
+      "text": "mov di,0x9d6e"
+     }
+    }
+   ],
+   "effects": [],
+   "note": "The two gates are a conjunction: either miss lands on the same `1000:d90f`."
+  },
+  {
+   "index": 8,
+   "gates": [
+    {
+     "name": "threshold block #1",
+     "test": {
+      "addr": "1000:d90f",
+      "text": "cmp byte [0x3695],0x0"
+     },
+     "branch": {
+      "addr": "1000:d914",
+      "text": "jz 0xd91d"
+     },
+     "sense": "see threshold_blocks[0]",
+     "on_fail": "1000:d95c"
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:d957",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9d90",
+     "file_offset": "0x0b660",
+     "text": "^6Пацаны хотят тебе кое-чё сказать",
+     "push": {
+      "addr": "1000:d943",
+      "text": "mov di,0x9d90"
+     }
+    }
+   ],
+   "effects": [],
+   "note": "Gated by threshold block #1 in full -- `1000:d90f`..`1000:d941`."
+  },
+  {
+   "index": 9,
+   "gates": [],
+   "prints": [
+    {
+     "addr": "1000:d961",
+     "text": "call 0xf78:0x5dd"
+    },
+    {
+     "addr": "1000:d966",
+     "text": "call 0xf78:0x291"
+    }
+   ],
+   "strings": [],
+   "effects": [],
+   "note": "A second bare `WriteLn` blank line."
+  },
+  {
+   "index": 10,
+   "gates": [],
+   "prints": [
+    {
+     "addr": "1000:d97f",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9db3",
+     "file_offset": "0x0b683",
+     "text": "Напиши ^6w^7 чтобы уйти",
+     "push": {
+      "addr": "1000:d96b",
+      "text": "mov di,0x9db3"
+     }
+    }
+   ],
+   "effects": [],
+   "note": "The only unconditional menu line with text: how to leave."
+  },
+  {
+   "index": 11,
+   "gates": [
+    {
+     "name": "beer > 0 -> normal colour",
+     "test": {
+      "addr": "1000:d984",
+      "text": "cmp word [0x38c3],0x0"
+     },
+     "branch": {
+      "addr": "1000:d989",
+      "text": "jnz 0xd992"
+     },
+     "sense": "[0x38c3] != 0 stores '0' at 1000:d992; == 0 stores '4' at 1000:d98b",
+     "on_fail": "1000:d98b"
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:d9d4",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "role": "prefix",
+     "cs_offset": "0x9dcb",
+     "file_offset": "0x0b69b",
+     "text": "Напиши ^",
+     "push": {
+      "addr": "1000:d99d",
+      "text": "mov di,0x9dcb"
+     }
+    },
+    {
+     "role": "suffix",
+     "cs_offset": "0x9dd4",
+     "file_offset": "0x0b6a4",
+     "text": "p^7  чтобы угостить пацанов пивом",
+     "push": {
+      "addr": "1000:d9bb",
+      "text": "mov di,0x9dd4"
+     }
+    }
+   ],
+   "effects": [
+    {
+     "addr": "1000:d98b",
+     "text": "mov byte [0x3b7a],0x34",
+     "ds": "20ae:3b7a",
+     "role": "colour digit := '4' (dim) -- no beer",
+     "condition": "[0x38c3] == 0"
+    },
+    {
+     "addr": "1000:d992",
+     "text": "mov byte [0x3b7a],0x30",
+     "ds": "20ae:3b7a",
+     "role": "colour digit := '0' (normal)",
+     "condition": "[0x38c3] != 0"
+    }
+   ],
+   "note": "The `p` row. Built with the same three-call idiom `docs/re/tables.md` records for the shop menu rows: `0f78:0ae7` assigns the prefix, `0f78:0c03` turns `[0x3b7a]` into a one-character string and `0f78:0b66` appends -- each leaves the DESTINATION far pointer on the stack (`retf 4`, `retf 2`, `retf 4`), which is what the final `0eed:01c2` consumes as its string argument. The line ALWAYS prints; only its colour depends on the beer count."
+  },
+  {
+   "index": 12,
+   "gates": [
+    {
+     "name": "loan credit > 0",
+     "test": {
+      "addr": "1000:d9ec",
+      "text": "cmp byte [0x3e35],0x0"
+     },
+     "branch": {
+      "addr": "1000:d9f1",
+      "text": "jbe 0xda35"
+     },
+     "sense": "print iff [0x3e35] != 0 (`jbe` on a byte compared with 0)",
+     "on_fail": "1000:da35"
+    },
+    {
+     "name": "street cred >= 2 -> normal colour",
+     "test": {
+      "addr": "1000:d9d9",
+      "text": "cmp word [0x38cb],0x2"
+     },
+     "branch": {
+      "addr": "1000:d9de",
+      "text": "jnl 0xd9e7"
+     },
+     "sense": "[0x38cb] >= 2 stores '0' at 1000:d9e7; < 2 stores '4' at 1000:d9e0",
+     "on_fail": "1000:d9e0"
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:da30",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "role": "prefix",
+     "cs_offset": "0x9dcb",
+     "file_offset": "0x0b69b",
+     "text": "Напиши ^",
+     "push": {
+      "addr": "1000:d9f9",
+      "text": "mov di,0x9dcb"
+     }
+    },
+    {
+     "role": "suffix",
+     "cs_offset": "0x9df6",
+     "file_offset": "0x0b6c6",
+     "text": "r^7  чтобы занять 2 рубля",
+     "push": {
+      "addr": "1000:da17",
+      "text": "mov di,0x9df6"
+     }
+    }
+   ],
+   "effects": [
+    {
+     "addr": "1000:d9e0",
+     "text": "mov byte [0x3b7a],0x34",
+     "ds": "20ae:3b7a",
+     "role": "colour digit := '4' (dim)",
+     "condition": "[0x38cb] < 2"
+    },
+    {
+     "addr": "1000:d9e7",
+     "text": "mov byte [0x3b7a],0x30",
+     "ds": "20ae:3b7a",
+     "role": "colour digit := '0' (normal)",
+     "condition": "[0x38cb] >= 2"
+    }
+   ],
+   "note": "The `r` row. ORDER MATTERS: the colour store at `1000:d9d9`..`1000:d9e7` runs BEFORE the `1000:d9ec` visibility gate, so `[0x3b7a]` is written even on the turn the line is not printed."
+  },
+  {
+   "index": 13,
+   "gates": [
+    {
+     "name": "den errand 1 pending",
+     "test": {
+      "addr": "1000:da35",
+      "text": "cmp byte [0x3b78],0x1"
+     },
+     "branch": {
+      "addr": "1000:da3a",
+      "text": "jnz 0xda55"
+     },
+     "sense": "print iff [0x3b78] == 1",
+     "on_fail": "1000:da55"
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:da50",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9e10",
+     "file_offset": "0x0b6e0",
+     "text": "Напиши ^6hp^7 чтобы отпинать мудака который наезжал на пацана",
+     "push": {
+      "addr": "1000:da3c",
+      "text": "mov di,0x9e10"
+     }
+    }
+   ],
+   "effects": [],
+   "note": "The `hp` row -- and the confirmation that `hp` is a den submenu key, at a COMPARE (`1000:dc04`), not only in this menu string."
+  },
+  {
+   "index": 14,
+   "gates": [],
+   "prints": [
+    {
+     "addr": "1000:da69",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9e4e",
+     "file_offset": "0x0b71e",
+     "text": "Напиши ^6s^7  чтобы узнать отношение",
+     "push": {
+      "addr": "1000:da55",
+      "text": "mov di,0x9e4e"
+     }
+    }
+   ],
+   "effects": [],
+   "note": "The `s` row, unconditional."
+  },
+  {
+   "index": 15,
+   "gates": [
+    {
+     "name": "threshold block #2",
+     "test": {
+      "addr": "1000:da6e",
+      "text": "cmp byte [0x3695],0x0"
+     },
+     "branch": {
+      "addr": "1000:da73",
+      "text": "jz 0xda7c"
+     },
+     "sense": "see threshold_blocks[1]",
+     "on_fail": "1000:dabb"
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:dab6",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9e73",
+     "file_offset": "0x0b743",
+     "text": "Напиши ^6a^7  чтобы спросить чё-то",
+     "push": {
+      "addr": "1000:daa2",
+      "text": "mov di,0x9e73"
+     }
+    }
+   ],
+   "effects": [],
+   "note": "The `a` row. Gated by threshold block #2 -- which is BYTE-IDENTICAL to block #1 and DIFFERENT from block #3, the one the `a` ARM uses."
+  },
+  {
+   "index": 16,
+   "gates": [
+    {
+     "name": "street cred >= 100",
+     "test": {
+      "addr": "1000:dabb",
+      "text": "cmp word [0x38cb],0x64"
+     },
+     "branch": {
+      "addr": "1000:dac0",
+      "text": "jl 0xdae2"
+     },
+     "sense": "print iff [0x38cb] >= 100 (signed)",
+     "on_fail": "1000:dae2"
+    },
+    {
+     "name": "den errand 2 pending",
+     "test": {
+      "addr": "1000:dac2",
+      "text": "cmp byte [0x3b79],0x0"
+     },
+     "branch": {
+      "addr": "1000:dac7",
+      "text": "jz 0xdae2"
+     },
+     "sense": "print iff [0x3b79] != 0",
+     "on_fail": "1000:dae2"
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:dadd",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x9e96",
+     "file_offset": "0x0b766",
+     "text": "Напиши ^6d^7 чтобы пойти на дело",
+     "push": {
+      "addr": "1000:dac9",
+      "text": "mov di,0x9e96"
+     }
+    }
+   ],
+   "effects": [],
+   "note": "The `d` row. Same two conditions as the `d` arm's own gates, in the OPPOSITE order (`1000:dd46` tests cred first there too, but the menu line tests cred at `1000:dabb` and the errand at `1000:dac2`)."
+  }
+ ],
+ "threshold_blocks": [
+  {
+   "index": 0,
+   "start": "1000:d90f",
+   "end_exclusive": "1000:d943",
+   "bytes": "80 3e 95 36 00 74 07 80 3e 9a 36 00 75 3f a0 92 36 30 e4 48 ba 0a 00 f7 e2 8b d0 a1 a6 38 2b c2 2d 05 00 8b f0 d1 e0 d1 e0 01 f0 03 06 cb 38 3d 28 00 7c 19",
+   "byte_length": 52,
+   "dealers_test": {
+    "addr": "1000:d90f",
+    "text": "cmp byte [0x3695],0x0"
+   },
+   "dealers_branch": {
+    "addr": "1000:d914",
+    "text": "jz 0xd91d"
+   },
+   "gym_test": {
+    "addr": "1000:d916",
+    "text": "cmp byte [0x369a],0x0"
+   },
+   "gym_branch": {
+    "addr": "1000:d91b",
+    "text": "jnz 0xd95c"
+   },
+   "threshold_test": {
+    "addr": "1000:d93e",
+    "text": "cmp ax,0x28"
+   },
+   "threshold_branch": {
+    "addr": "1000:d941",
+    "text": "jl 0xd95c"
+   },
+   "formula": "(level - (district-1)*10 - 5) * 5 + street_cred >= 40",
+   "arithmetic": [
+    {
+     "addr": "1000:d91d",
+     "text": "mov al,[0x3692]"
+    },
+    {
+     "addr": "1000:d922",
+     "text": "dec ax"
+    },
+    {
+     "addr": "1000:d926",
+     "text": "mul dx"
+    },
+    {
+     "addr": "1000:d92a",
+     "text": "mov ax,[0x38a6]"
+    },
+    {
+     "addr": "1000:d92d",
+     "text": "sub ax,dx"
+    },
+    {
+     "addr": "1000:d92f",
+     "text": "sub ax,0x5"
+    },
+    {
+     "addr": "1000:d932",
+     "text": "mov si,ax"
+    },
+    {
+     "addr": "1000:d934",
+     "text": "shl ax,1"
+    },
+    {
+     "addr": "1000:d936",
+     "text": "shl ax,1"
+    },
+    {
+     "addr": "1000:d938",
+     "text": "add ax,si"
+    },
+    {
+     "addr": "1000:d93a",
+     "text": "add ax,[0x38cb]"
+    }
+   ],
+   "note": "The shared prefix is `cmp byte [0x3695],0` / `jz +7` / `cmp byte [0x369a],0` / `jnz <far>`: the skip happens only when Dealers is SET **and** Gym is SET. Dealers clear takes the `jz` past the Gym test entirely. Gates menu line 8. UNPORTED."
+  },
+  {
+   "index": 1,
+   "start": "1000:da6e",
+   "end_exclusive": "1000:daa2",
+   "bytes": "80 3e 95 36 00 74 07 80 3e 9a 36 00 75 3f a0 92 36 30 e4 48 ba 0a 00 f7 e2 8b d0 a1 a6 38 2b c2 2d 05 00 8b f0 d1 e0 d1 e0 01 f0 03 06 cb 38 3d 28 00 7c 19",
+   "byte_length": 52,
+   "dealers_test": {
+    "addr": "1000:da6e",
+    "text": "cmp byte [0x3695],0x0"
+   },
+   "dealers_branch": {
+    "addr": "1000:da73",
+    "text": "jz 0xda7c"
+   },
+   "gym_test": {
+    "addr": "1000:da75",
+    "text": "cmp byte [0x369a],0x0"
+   },
+   "gym_branch": {
+    "addr": "1000:da7a",
+    "text": "jnz 0xdabb"
+   },
+   "threshold_test": {
+    "addr": "1000:da9d",
+    "text": "cmp ax,0x28"
+   },
+   "threshold_branch": {
+    "addr": "1000:daa0",
+    "text": "jl 0xdabb"
+   },
+   "formula": "(level - (district-1)*10 - 5) * 5 + street_cred >= 40",
+   "arithmetic": [
+    {
+     "addr": "1000:da7c",
+     "text": "mov al,[0x3692]"
+    },
+    {
+     "addr": "1000:da81",
+     "text": "dec ax"
+    },
+    {
+     "addr": "1000:da85",
+     "text": "mul dx"
+    },
+    {
+     "addr": "1000:da89",
+     "text": "mov ax,[0x38a6]"
+    },
+    {
+     "addr": "1000:da8c",
+     "text": "sub ax,dx"
+    },
+    {
+     "addr": "1000:da8e",
+     "text": "sub ax,0x5"
+    },
+    {
+     "addr": "1000:da91",
+     "text": "mov si,ax"
+    },
+    {
+     "addr": "1000:da93",
+     "text": "shl ax,1"
+    },
+    {
+     "addr": "1000:da95",
+     "text": "shl ax,1"
+    },
+    {
+     "addr": "1000:da97",
+     "text": "add ax,si"
+    },
+    {
+     "addr": "1000:da99",
+     "text": "add ax,[0x38cb]"
+    }
+   ],
+   "note": "The shared prefix is `cmp byte [0x3695],0` / `jz +7` / `cmp byte [0x369a],0` / `jnz <far>`: the skip happens only when Dealers is SET **and** Gym is SET. Dealers clear takes the `jz` past the Gym test entirely. Gates menu line 15. UNPORTED. BYTE-IDENTICAL to block #1, displacements included."
+  },
+  {
+   "index": 2,
+   "start": "1000:dcba",
+   "end_exclusive": "1000:dce5",
+   "bytes": "80 3e 95 36 00 74 07 80 3e 9a 36 00 75 6a a0 92 36 30 e4 48 ba 0a 00 f7 e2 8b d0 a1 a6 38 2b c2 d1 e0 03 06 cb 38 3d 28 00 7c 4d",
+   "byte_length": 43,
+   "dealers_test": {
+    "addr": "1000:dcba",
+    "text": "cmp byte [0x3695],0x0"
+   },
+   "dealers_branch": {
+    "addr": "1000:dcbf",
+    "text": "jz 0xdcc8"
+   },
+   "gym_test": {
+    "addr": "1000:dcc1",
+    "text": "cmp byte [0x369a],0x0"
+   },
+   "gym_branch": {
+    "addr": "1000:dcc6",
+    "text": "jnz 0xdd32"
+   },
+   "threshold_test": {
+    "addr": "1000:dce0",
+    "text": "cmp ax,0x28"
+   },
+   "threshold_branch": {
+    "addr": "1000:dce3",
+    "text": "jl 0xdd32"
+   },
+   "formula": "(level - (district-1)*10) * 2 + street_cred >= 40",
+   "arithmetic": [
+    {
+     "addr": "1000:dcc8",
+     "text": "mov al,[0x3692]"
+    },
+    {
+     "addr": "1000:dccd",
+     "text": "dec ax"
+    },
+    {
+     "addr": "1000:dcd1",
+     "text": "mul dx"
+    },
+    {
+     "addr": "1000:dcd5",
+     "text": "mov ax,[0x38a6]"
+    },
+    {
+     "addr": "1000:dcd8",
+     "text": "sub ax,dx"
+    },
+    {
+     "addr": "1000:dcda",
+     "text": "shl ax,1"
+    },
+    {
+     "addr": "1000:dcdc",
+     "text": "add ax,[0x38cb]"
+    }
+   ],
+   "note": "The shared prefix is `cmp byte [0x3695],0` / `jz +7` / `cmp byte [0x369a],0` / `jnz <far>`: the skip happens only when Dealers is SET **and** Gym is SET. Dealers clear takes the `jz` past the Gym test entirely. Gates the `a` ARM. PORTED (`Game::den_reveal`). NINE BYTES SHORTER than blocks #1 and #2: it has no `sub ax,0x5` (`1000:d92f`), no `mov si,ax` / second `shl ax,1` / `add ax,si`, so it multiplies by 2 and does not subtract 5. THE THREE ARE NOT ONE HELPER."
+  }
+ ],
+ "threshold_blocks_finding": {
+  "claim": "Blocks #1 and #2 are byte-identical; block #3 is a DIFFERENT predicate. Factoring all three into one helper would change behaviour.",
+  "tier": "flow",
+  "shared_prefix_bytes": "80 3e 95 36 00 74 07 80 3e 9a 36 00 75",
+  "shared_prefix_note": "The first 13 bytes -- both flag compares and the `jz +7` between them -- are identical in all three; only the fourth instruction's displacement (the `jnz` at `1000:d91b`/`1000:da7a`/`1000:dcc6`) differs, and blocks #1 and #2 agree even there.",
+  "neither_implies_the_other": "With k = level - (district-1)*10, block #1/#2 is `5k + cred >= 65` and block #3 is `2k + cred >= 40`. k=1, cred=38 satisfies #3 and not #1 (the `a` arm fires with no menu line); k=13, cred=0 satisfies #1 and not #3 (the menu offers `a` and the arm refuses silently)."
+ },
+ "arms": [
+  {
+   "key": "p",
+   "name": "treat the lads to beer",
+   "span": {
+    "start": "1000:db22",
+    "end": "1000:db77"
+   },
+   "key_literal": {
+    "cs_offset": "0x9ec1",
+    "file_offset": "0x0b791",
+    "text": "p",
+    "push": {
+     "addr": "1000:db27",
+     "text": "mov di,0x9ec1"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:db22",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:db2c",
+   "compare": {
+    "addr": "1000:db2c",
+    "text": "call 0xf78:0xbd8"
+   },
+   "miss_branch": {
+    "addr": "1000:db31",
+    "text": "jnz 0xdb77"
+   },
+   "own_gate": null,
+   "gates": [
+    {
+     "name": "has beer",
+     "test": {
+      "addr": "1000:db33",
+      "text": "cmp word [0x38c3],0x0"
+     },
+     "branch": {
+      "addr": "1000:db38",
+      "text": "jle 0xdb5e"
+     },
+     "sense": "run iff [0x38c3] > 0 (signed `jle` refuses 0 and negative)",
+     "on_fail": "1000:db5e"
+    }
+   ],
+   "draws": [],
+   "effects": [
+    {
+     "addr": "1000:db3a",
+     "text": "dec [0x38c3]",
+     "ds": "20ae:38c3",
+     "role": "пиво -1 (a WORD half-litre count)",
+     "condition": null
+    },
+    {
+     "addr": "1000:db3e",
+     "text": "add word [0x38cb],0x5",
+     "ds": "20ae:38cb",
+     "role": "понтовость на улице +5",
+     "condition": null
+    }
+   ],
+   "strings": [
+    {
+     "role": "confirmation",
+     "cs_offset": "0x9ec3",
+     "file_offset": "0x0b793",
+     "text": "^2Ты угостил пацанов пивом. Понтовость улутшилась на 5.",
+     "push": {
+      "addr": "1000:db43",
+      "text": "mov di,0x9ec3"
+     }
+    },
+    {
+     "role": "refusal",
+     "cs_offset": "0x9efb",
+     "file_offset": "0x0b7cb",
+     "text": "^6А нет у тебя пива.",
+     "push": {
+      "addr": "1000:db5e",
+      "text": "mov di,0x9efb"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:db57",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:db72",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "tail": {
+    "addr": "1000:db5c",
+    "text": "jmp short 0xdb77"
+   },
+   "calls_out": [],
+   "notes": "The confirmation says the понтовость rise is 5 and `1000:db3e` adds exactly 5, so the string and the effect agree -- checked, not assumed. Repeatable: nothing one-shot is consumed."
+  },
+  {
+   "key": "r",
+   "name": "borrow two roubles",
+   "span": {
+    "start": "1000:db77",
+    "end": "1000:dbf3"
+   },
+   "key_literal": {
+    "cs_offset": "0x9a50",
+    "file_offset": "0x0b320",
+    "text": "r",
+    "push": {
+     "addr": "1000:db7c",
+     "text": "mov di,0x9a50"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:db77",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:db81",
+   "compare": {
+    "addr": "1000:db81",
+    "text": "call 0xf78:0xbd8"
+   },
+   "miss_branch": {
+    "addr": "1000:db86",
+    "text": "jnz 0xdbf3"
+   },
+   "own_gate": null,
+   "gates": [
+    {
+     "name": "loan credit left",
+     "test": {
+      "addr": "1000:db88",
+      "text": "cmp byte [0x3e35],0x0"
+     },
+     "branch": {
+      "addr": "1000:db8d",
+      "text": "jbe 0xdbda"
+     },
+     "sense": "run iff [0x3e35] != 0 (`jbe` on a byte vs 0)",
+     "on_fail": "1000:dbda"
+    },
+    {
+     "name": "street cred to spend",
+     "test": {
+      "addr": "1000:db8f",
+      "text": "cmp word [0x38cb],0x0"
+     },
+     "branch": {
+      "addr": "1000:db94",
+      "text": "jle 0xdbbf"
+     },
+     "sense": "run iff [0x38cb] > 0 (signed)",
+     "on_fail": "1000:dbbf"
+    }
+   ],
+   "draws": [],
+   "effects": [
+    {
+     "addr": "1000:db96",
+     "text": "add word [0x38c7],0x2",
+     "ds": "20ae:38c7",
+     "role": "money +2",
+     "condition": null
+    },
+    {
+     "addr": "1000:db9b",
+     "text": "sub word [0x38cb],0x2",
+     "ds": "20ae:38cb",
+     "role": "понтовость на улице -2",
+     "condition": null
+    },
+    {
+     "addr": "1000:dba0",
+     "text": "dec [0x3e35]",
+     "ds": "20ae:3e35",
+     "role": "den loan credit -1",
+     "condition": null
+    }
+   ],
+   "strings": [
+    {
+     "role": "confirmation",
+     "cs_offset": "0x9f10",
+     "file_offset": "0x0b7e0",
+     "text": "^2Ты занял 2 рубля на пиво. Понтовость уменьшилась на 2.",
+     "push": {
+      "addr": "1000:dba4",
+      "text": "mov di,0x9f10"
+     }
+    },
+    {
+     "role": "refusal: no cred to spend",
+     "cs_offset": "0x9f49",
+     "file_offset": "0x0b819",
+     "text": "^6Ты не можешь занять денег.",
+     "push": {
+      "addr": "1000:dbbf",
+      "text": "mov di,0x9f49"
+     }
+    },
+    {
+     "role": "refusal: credit exhausted",
+     "cs_offset": "0x9f66",
+     "file_offset": "0x0b836",
+     "text": "^6Ты уже всю мелочь выгреб!",
+     "push": {
+      "addr": "1000:dbda",
+      "text": "mov di,0x9f66"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:dbb8",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:dbd3",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:dbee",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "tail": {
+    "addr": "1000:dbbd",
+    "text": "jmp short 0xdbd8"
+   },
+   "calls_out": [],
+   "notes": "TWO distinct refusals with different wording, and they are NOT interchangeable: `1000:db8d` (credit exhausted) is checked first and prints `^6Ты уже всю мелочь выгреб!`, `1000:db94` (no понтовость) prints `^6Ты не можешь занять денег.`. The credit is the one-shot resource: `1000:dba0` decrements `20ae:3e35`, which starts at 5 (`1000:73e5`) and is topped up once per walk while below district*10 (`1000:af19`)."
+  },
+  {
+   "key": "hp",
+   "name": "beat up the lout who leaned on a lad",
+   "span": {
+    "start": "1000:dbf3",
+    "end": "1000:dc63"
+   },
+   "key_literal": {
+    "cs_offset": "0x9f82",
+    "file_offset": "0x0b852",
+    "text": "hp",
+    "push": {
+     "addr": "1000:dbff",
+     "text": "mov di,0x9f82"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:dbfa",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:dc04",
+   "compare": {
+    "addr": "1000:dc04",
+    "text": "call 0xf78:0xbd8"
+   },
+   "miss_branch": {
+    "addr": "1000:dc09",
+    "text": "jnz 0xdc63"
+   },
+   "own_gate": {
+    "name": "den errand 1 pending",
+    "test": {
+     "addr": "1000:dbf3",
+     "text": "cmp byte [0x3b78],0x1"
+    },
+    "branch": {
+     "addr": "1000:dbf8",
+     "text": "jnz 0xdc63"
+    },
+    "sense": "the key is compared AT ALL only when [0x3b78] == 1",
+    "on_fail": "1000:dc63"
+   },
+   "gates": [],
+   "draws": [],
+   "effects": [
+    {
+     "addr": "1000:dc11",
+     "text": "mov byte [0x3b72],0x1",
+     "ds": "20ae:3b72",
+     "role": "the fight-accepted flag := 1",
+     "condition": null
+    },
+    {
+     "addr": "1000:dc5e",
+     "text": "mov byte [0x3b78],0x0",
+     "ds": "20ae:3b78",
+     "role": "den errand 1 consumed := 0",
+     "condition": null
+    }
+   ],
+   "strings": [
+    {
+     "role": "prefix",
+     "cs_offset": "0x90c0",
+     "file_offset": "0x0a990",
+     "text": "^6Это ",
+     "push": {
+      "addr": "1000:dc1c",
+      "text": "mov di,0x90c0"
+     }
+    },
+    {
+     "role": "suffix",
+     "cs_offset": "0x90c7",
+     "file_offset": "0x0a997",
+     "text": " # уровня.",
+     "push": {
+      "addr": "1000:dc39",
+      "text": "mov di,0x90c7"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:dc53",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "tail": null,
+   "calls_out": [
+    {
+     "call": {
+      "addr": "1000:dc0e",
+      "text": "call 0x10d14"
+     },
+     "target": "1000:0d14",
+     "param_1": 1,
+     "arg_push": {
+      "addr": "1000:dc0b",
+      "text": "mov al,0x1"
+     },
+     "what": "roll the opponent into the record at 20ae:3952.. ; param_1 == 1 clamps the class to 7 (`1000:0dad`), so this errand never draws a Мент"
+    },
+    {
+     "call": {
+      "addr": "1000:dc5b",
+      "text": "call 0x13d11"
+     },
+     "target": "1000:3d11",
+     "param_1": 6,
+     "arg_push": {
+      "addr": "1000:dc58",
+      "text": "mov al,0x6"
+     },
+     "what": "the fight"
+    }
+   ],
+   "notes": "The ONLY arm whose gate stands in front of its own key compare rather than behind it, so with no errand pending the token `hp` is not even compared and falls through to the `s` compare. The announcement is the shared `^6Это ` + ranks[[0x3952]] + ` # уровня.` triple: `1000:dc26` builds `20ae:002e + [0x3952]*0x100`, which is exactly the `ranks` table `data/string_tables.json` records (base 74718 = file 0x123de = `20ae:002e`, stride 256), and `1000:dc43` pushes `20ae:395c`, the rolled level, as the `#`. The same two literals are pushed at `1000:c3f7`/`1000:c414` and `1000:e1a8`/`1000:e1c5` -- the other two `param_1 == 1` sites -- so they are not den-private."
+  },
+  {
+   "key": "s",
+   "name": "ask how the lads regard you",
+   "span": {
+    "start": "1000:dc63",
+    "end": "1000:dcba"
+   },
+   "key_literal": {
+    "cs_offset": "0x9f85",
+    "file_offset": "0x0b855",
+    "text": "s",
+    "push": {
+     "addr": "1000:dc68",
+     "text": "mov di,0x9f85"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:dc63",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:dc6d",
+   "compare": {
+    "addr": "1000:dc6d",
+    "text": "call 0xf78:0xbd8"
+   },
+   "miss_branch": {
+    "addr": "1000:dc72",
+    "text": "jnz 0xdcba"
+   },
+   "own_gate": null,
+   "gates": [
+    {
+     "name": "cred at least district*10 + 10",
+     "test": {
+      "addr": "1000:dc9b",
+      "text": "cmp ax,[0x38cb]"
+     },
+     "branch": {
+      "addr": "1000:dc9f",
+      "text": "jnle 0xdcba"
+     },
+     "sense": "the SECOND line prints iff district*10 + 10 <= [0x38cb]",
+     "on_fail": "1000:dcba"
+    }
+   ],
+   "draws": [],
+   "effects": [],
+   "strings": [
+    {
+     "role": "always",
+     "cs_offset": "0x9f87",
+     "file_offset": "0x0b857",
+     "text": "^4Твоя понтовость сейчас = #.",
+     "push": {
+      "addr": "1000:dc74",
+      "text": "mov di,0x9f87"
+     }
+    },
+    {
+     "role": "extra line",
+     "cs_offset": "0x9fa5",
+     "file_offset": "0x0b875",
+     "text": "^0Да если чё мы за тебя впрягаемся.",
+     "push": {
+      "addr": "1000:dca1",
+      "text": "mov di,0x9fa5"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:dc89",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:dcb5",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "tail": null,
+   "calls_out": [],
+   "no_effect_claim": {
+    "claim": "The `s` arm writes NOTHING. It is the only arm in range with an empty `effects[]`, and that is a measurement, not an omission: the write sweep over `1000:dc63`..`1000:dcba` finds zero instructions that store to an absolute address.",
+    "tier": "flow",
+    "span": {
+     "start": "1000:dc63",
+     "end": "1000:dcba"
+    }
+   },
+   "notes": "`1000:dc79 push [0x38cb]` is a READ -- the `#` substitution for the first line. The threshold arithmetic at `1000:dc8e`..`1000:dc9b` does NOT `dec ax` first, unlike all three threshold blocks: it is `district*10 + 10`, not `(district-1)*10`."
+  },
+  {
+   "key": "a",
+   "name": "ask about places worth going (the Dealers+Gym reveal)",
+   "span": {
+    "start": "1000:dcba",
+    "end": "1000:dd32"
+   },
+   "key_literal": {
+    "cs_offset": "0x9fc9",
+    "file_offset": "0x0b899",
+    "text": "a",
+    "push": {
+     "addr": "1000:dcea",
+     "text": "mov di,0x9fc9"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:dce5",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:dcef",
+   "compare": {
+    "addr": "1000:dcef",
+    "text": "call 0xf78:0xbd8"
+   },
+   "miss_branch": {
+    "addr": "1000:dcf4",
+    "text": "jnz 0xdd32"
+   },
+   "own_gate": {
+    "name": "threshold block #3",
+    "test": {
+     "addr": "1000:dcba",
+     "text": "cmp byte [0x3695],0x0"
+    },
+    "branch": {
+     "addr": "1000:dcbf",
+     "text": "jz 0xdcc8"
+    },
+    "sense": "see threshold_blocks[2]; the key is compared AT ALL only when the block passes",
+    "on_fail": "1000:dd32"
+   },
+   "gates": [],
+   "draws": [],
+   "effects": [
+    {
+     "addr": "1000:dcf6",
+     "text": "mov byte [0x3695],0x1",
+     "ds": "20ae:3695",
+     "role": "Dealers discovery flag := 1",
+     "condition": null
+    },
+    {
+     "addr": "1000:dcfb",
+     "text": "mov byte [0x369a],0x1",
+     "ds": "20ae:369a",
+     "role": "Gym discovery flag := 1",
+     "condition": null
+    }
+   ],
+   "strings": [
+    {
+     "role": "line 1",
+     "cs_offset": "0x9fcb",
+     "file_offset": "0x0b89b",
+     "text": "^0Тут у нас есть пара мест куда тебе стоит сходить",
+     "push": {
+      "addr": "1000:dd00",
+      "text": "mov di,0x9fcb"
+     }
+    },
+    {
+     "role": "line 2",
+     "cs_offset": "0x9ffe",
+     "file_offset": "0x0b8ce",
+     "text": "^2Ты узнал где находится качалка и где находятся барыги",
+     "push": {
+      "addr": "1000:dd19",
+      "text": "mov di,0x9ffe"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:dd14",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:dd2d",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "tail": null,
+   "calls_out": [],
+   "ported_as": "Game::den_reveal",
+   "notes": "ALREADY PORTED and out of scope for editing. Mapped here only so the three threshold blocks can be compared; the port's own re-derivation lives in `Game::den_reveal`'s doc comment."
+  },
+  {
+   "key": "d",
+   "name": "go on the job (steal money)",
+   "span": {
+    "start": "1000:dd32",
+    "end": "1000:decd"
+   },
+   "key_literal": {
+    "cs_offset": "0xa036",
+    "file_offset": "0x0b906",
+    "text": "d",
+    "push": {
+     "addr": "1000:dd37",
+     "text": "mov di,0xa036"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:dd32",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:dd3c",
+   "compare": {
+    "addr": "1000:dd3c",
+    "text": "call 0xf78:0xbd8"
+   },
+   "hit_branch": {
+    "addr": "1000:dd41",
+    "text": "jz 0xdd46"
+   },
+   "miss_branch": {
+    "addr": "1000:dd43",
+    "text": "jmp 0xdecd"
+   },
+   "own_gate": null,
+   "gates": [
+    {
+     "name": "street cred >= 100",
+     "test": {
+      "addr": "1000:dd46",
+      "text": "cmp word [0x38cb],0x64"
+     },
+     "branch": {
+      "addr": "1000:dd4b",
+      "text": "jnl 0xdd50"
+     },
+     "sense": "run iff [0x38cb] >= 100 (signed)",
+     "on_fail": "1000:dd4d"
+    },
+    {
+     "name": "den errand 2 pending",
+     "test": {
+      "addr": "1000:dd50",
+      "text": "cmp byte [0x3b79],0x0"
+     },
+     "branch": {
+      "addr": "1000:dd55",
+      "text": "jnz 0xdd5a"
+     },
+     "sense": "run iff [0x3b79] != 0",
+     "on_fail": "1000:dd57"
+    }
+   ],
+   "draws": [
+    {
+     "call": {
+      "addr": "1000:dd97",
+      "text": "call 0xf78:0x114b"
+     },
+     "n_at": "1000:dd8c",
+     "n_bytes": "a0 92 36 30 e4 ba 0f 00 f7 e2 50",
+     "n": "byte[0x3692] * 15",
+     "lands": "cx, zero-extended into bx:cx at 1000:dd9c"
+    },
+    {
+     "call": {
+      "addr": "1000:ddda",
+      "text": "call 0xf78:0x114b"
+     },
+     "n_at": "1000:ddcf",
+     "n_bytes": "a0 92 36 30 e4 ba 0f 00 f7 e2 50",
+     "n": "byte[0x3692] * 15",
+     "lands": "cx, zero-extended into bx:cx at 1000:dddf"
+    },
+    {
+     "call": {
+      "addr": "1000:de5a",
+      "text": "call 0xf78:0x114b"
+     },
+     "n_at": "1000:de4f",
+     "n_bytes": "a0 92 36 30 e4 ba 0a 00 f7 e2 50",
+     "n": "byte[0x3692] * 10",
+     "lands": "cx at 1000:de5f, added to district*10 at 1000:de6b"
+    },
+    {
+     "call": {
+      "addr": "1000:de7c",
+      "text": "call 0xf78:0x114b"
+     },
+     "n_at": "1000:de71",
+     "n_bytes": "a0 92 36 30 e4 ba 0a 00 f7 e2 50",
+     "n": "byte[0x3692] * 10",
+     "lands": "cx at 1000:de81, added to district*10 at 1000:de8d"
+    }
+   ],
+   "effects": [
+    {
+     "addr": "1000:de6d",
+     "text": "add [0x38c7],ax",
+     "ds": "20ae:38c7",
+     "role": "money += district*10 + Random(district*10)",
+     "condition": "the luck check at 1000:dda6 went to 1000:de36"
+    },
+    {
+     "addr": "1000:de8f",
+     "text": "add [0x38c9],ax",
+     "ds": "20ae:38c9",
+     "role": "хлам += district*10 + Random(district*10)",
+     "condition": "same"
+    },
+    {
+     "addr": "1000:debe",
+     "text": "add [0x38ce],ax",
+     "ds": "20ae:38ce",
+     "role": "xp += district*12",
+     "condition": "same"
+    },
+    {
+     "addr": "1000:dec8",
+     "text": "mov byte [0x3b79],0x0",
+     "ds": "20ae:3b79",
+     "role": "den errand 2 consumed := 0",
+     "condition": "every path that got past 1000:dd55"
+    }
+   ],
+   "strings": [
+    {
+     "role": "opening line 1",
+     "cs_offset": "0xa038",
+     "file_offset": "0x0b908",
+     "text": "^0Давай быстрее..",
+     "push": {
+      "addr": "1000:dd5a",
+      "text": "mov di,0xa038"
+     }
+    },
+    {
+     "role": "opening line 2",
+     "cs_offset": "0xa04a",
+     "file_offset": "0x0b91a",
+     "text": "^2Ты пришел воровать деньги",
+     "push": {
+      "addr": "1000:dd73",
+      "text": "mov di,0xa04a"
+     }
+    },
+    {
+     "role": "the cops turn up",
+     "cs_offset": "0xa066",
+     "file_offset": "0x0b936",
+     "text": "^4Шухер менты!",
+     "push": {
+      "addr": "1000:ddb6",
+      "text": "mov di,0xa066"
+     }
+    },
+    {
+     "role": "after the cop fight",
+     "cs_offset": "0xa075",
+     "file_offset": "0x0b945",
+     "text": "^6Пора валить!",
+     "push": {
+      "addr": "1000:ddff",
+      "text": "mov di,0xa075"
+     }
+    },
+    {
+     "role": "slipped away from the cops",
+     "cs_offset": "0xa084",
+     "file_offset": "0x0b954",
+     "text": "^2Ты смылся от ментов.",
+     "push": {
+      "addr": "1000:de1a",
+      "text": "mov di,0xa084"
+     }
+    },
+    {
+     "role": "the haul",
+     "cs_offset": "0xa09b",
+     "file_offset": "0x0b96b",
+     "text": "^2Ты наваровал денег",
+     "push": {
+      "addr": "1000:de36",
+      "text": "mov di,0xa09b"
+     }
+    },
+    {
+     "role": "xp award",
+     "cs_offset": "0x908b",
+     "file_offset": "0x0a95b",
+     "text": "^6Ты получаешь # качков опыта",
+     "push": {
+      "addr": "1000:de93",
+      "text": "mov di,0x908b"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:dd6e",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:dd87",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:ddca",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:de13",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:de2e",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:de4a",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:deaf",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "tail": null,
+   "calls_out": [
+    {
+     "call": {
+      "addr": "1000:ddf6",
+      "text": "call 0x10d14"
+     },
+     "target": "1000:0d14",
+     "param_1": 2,
+     "arg_push": {
+      "addr": "1000:ddf3",
+      "text": "mov al,0x2"
+     },
+     "what": "roll the opponent; param_1 == 2 FORCES class 8 (`1000:0dc0`), which `data/string_tables.json` names `Мент` -- the cops"
+    },
+    {
+     "call": {
+      "addr": "1000:ddfc",
+      "text": "call 0x13d11"
+     },
+     "target": "1000:3d11",
+     "param_1": 5,
+     "arg_push": {
+      "addr": "1000:ddf9",
+      "text": "mov al,0x5"
+     },
+     "what": "the fight"
+    },
+    {
+     "call": {
+      "addr": "1000:dec5",
+      "text": "call 0x12526"
+     },
+     "target": "1000:2526",
+     "param_1": 0,
+     "arg_push": {
+      "addr": "1000:dec2",
+      "text": "mov al,0x0"
+     },
+     "what": "the level-up drain; `param_1 == 0` is the CAPPED form (`1000:257a`), the same one the ordinary combat path passes at `1000:5238`. The award itself is the `add` at `1000:debe`, not an argument."
+    }
+   ],
+   "luck_compares": [
+    {
+     "index": 0,
+     "widen_random": {
+      "addr": "1000:dd9c",
+      "text": "xor dx,dx"
+     },
+     "widen_luck": {
+      "addr": "1000:dda5",
+      "text": "cwd"
+     },
+     "high": {
+      "addr": "1000:dda6",
+      "text": "cmp dx,bx"
+     },
+     "branches": [
+      {
+       "addr": "1000:dda8",
+       "text": "jl 0xddb6"
+      },
+      {
+       "addr": "1000:ddaa",
+       "text": "jle 0xddaf"
+      },
+      {
+       "addr": "1000:ddac",
+       "text": "jmp 0xde36"
+      },
+      {
+       "addr": "1000:ddaf",
+       "text": "cmp ax,cx"
+      },
+      {
+       "addr": "1000:ddb1",
+       "text": "jb 0xddb6"
+      },
+      {
+       "addr": "1000:ddb3",
+       "text": "jmp 0xde36"
+      }
+     ],
+     "predicate": "Longint(Удача 20ae:38a4) < Longint(Random(district*15))",
+     "true_target": "1000:ddb6",
+     "false_target": "1000:de36",
+     "reaches": "true -> the cops turn up; false -> the haul"
+    },
+    {
+     "index": 1,
+     "widen_random": {
+      "addr": "1000:dddf",
+      "text": "xor dx,dx"
+     },
+     "widen_luck": {
+      "addr": "1000:dde8",
+      "text": "cwd"
+     },
+     "high": {
+      "addr": "1000:dde9",
+      "text": "cmp dx,bx"
+     },
+     "branches": [
+      {
+       "addr": "1000:ddeb",
+       "text": "jl 0xddf3"
+      },
+      {
+       "addr": "1000:dded",
+       "text": "jnle 0xde1a"
+      },
+      {
+       "addr": "1000:ddef",
+       "text": "cmp ax,cx"
+      },
+      {
+       "addr": "1000:ddf1",
+       "text": "jnb 0xde1a"
+      }
+     ],
+     "predicate": "Longint(Удача 20ae:38a4) < Longint(Random(district*15))",
+     "true_target": "1000:ddf3",
+     "false_target": "1000:de1a",
+     "reaches": "true -> a forced fight with a Мент; false -> `^2Ты смылся от ментов.`"
+    }
+   ],
+   "notes": "The `d` arm holds every wide compare and every draw in the handler outside the ported intro. Draw count per invocation: 3 on the haul path (`1000:dd97`, `1000:de5a`, `1000:de7c`), 2 in this range on either cop path (`1000:dd97`, `1000:ddda`) plus whatever `1000:0d14` and `1000:3d11` draw on the fight path."
+  },
+  {
+   "key": "w",
+   "name": "leave",
+   "span": {
+    "start": "1000:decd",
+    "end": "1000:dee3"
+   },
+   "key_literal": {
+    "cs_offset": "0x848e",
+    "file_offset": "0x09d5e",
+    "text": "w",
+    "push": {
+     "addr": "1000:ded2",
+     "text": "mov di,0x848e"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:decd",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:ded7",
+   "compare": {
+    "addr": "1000:ded7",
+    "text": "call 0xf78:0xbd8"
+   },
+   "hit_branch": {
+    "addr": "1000:dedc",
+    "text": "jz 0xdee1"
+   },
+   "miss_branch": {
+    "addr": "1000:dede",
+    "text": "jmp 0xdae2"
+   },
+   "own_gate": null,
+   "gates": [],
+   "draws": [],
+   "effects": [],
+   "strings": [],
+   "prints": [],
+   "tail": {
+    "addr": "1000:dee1",
+    "text": "jmp short 0xdefc"
+   },
+   "calls_out": [],
+   "no_effect_claim": {
+    "claim": "`w` prints NOTHING and writes NOTHING: it is a `jmp` out of the loop. The miss branch at `1000:dede` is the loop's only back edge, so every unrecognised key reaches the prompt again in silence.",
+    "tier": "flow",
+    "span": {
+     "start": "1000:decd",
+     "end": "1000:dee3"
+    }
+   },
+   "notes": "The `w` literal CS 0x848e is shared by nine push sites image-wide (`1000:ae81`, `1000:c452`, `1000:c46f`, `1000:d372`, `1000:d6a8`, `1000:ded2`, `1000:e243`, `1000:e35c`, `1000:e937`); it is the exit key of every location, not the den's own."
+  }
+ ],
+ "key_set": [
+  "p",
+  "r",
+  "hp",
+  "s",
+  "a",
+  "d",
+  "w"
+ ],
+ "key_set_note": "Seven keys, each established at a COMPARE address, not from a menu string. `hp` was named in `src/commands.rs` as living inside `pr`'s own submenu on the strength of the menu literal CS 0x9f85... that is a STRING observation; this artifact CONFIRMS it at `1000:dc04`, the `call 0f78:0bd8` against CS 0x9f82 (`hp`) on the buffer `20ae:3a72`. The compare is reached only when `20ae:3b78` is 1 (`1000:dbf3`).",
+ "globals": [
+  {
+   "ds": "20ae:3692",
+   "name": "district (1..5)",
+   "named_from": "`docs/re/tables.md` and `data/shops.json` already own it; every menu gate `1000:c68d`..`1000:c81d` reads it and `1000:ab92` is its only writer",
+   "written_in_range": [],
+   "read_sites_in_range": 16
+  },
+  {
+   "ds": "20ae:3695",
+   "name": "Dealers (`bmar`) discovery flag",
+   "named_from": "`bmar`'s own entry gate is `cmp byte [0x3695],1` at `1000:c4c8` (`data/command_dispatch.json`)",
+   "written_in_range": [
+    "1000:dcf6"
+   ],
+   "read_sites_in_range": 3
+  },
+  {
+   "ds": "20ae:3696",
+   "name": "the den's own discovery flag",
+   "named_from": "`pr`'s entry gate at `1000:d80c`; set by wander bucket 3 (`docs/re/wander.md`)",
+   "written_in_range": [],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:369a",
+   "name": "Gym (`trn`) discovery flag",
+   "named_from": "`trn`'s entry gate is `cmp byte [0x369a],1` at `1000:e39a`; wander draw 8 sets it at `1000:b22c`",
+   "written_in_range": [
+    "1000:dcfb"
+   ],
+   "read_sites_in_range": 3
+  },
+  {
+   "ds": "20ae:38a4",
+   "name": "Удача (luck)",
+   "named_from": "the character sheet's stat 3 (`1000:1b19`); `1000:4a49 dec [0x38a4]` is a luck loss",
+   "written_in_range": [],
+   "read_sites_in_range": 2
+  },
+  {
+   "ds": "20ae:38a6",
+   "name": "level",
+   "named_from": "`1000:2580 cmp word [0x38a6],0x28` is the level cap inside the level-up routine",
+   "written_in_range": [],
+   "read_sites_in_range": 3
+  },
+  {
+   "ds": "20ae:38c3",
+   "name": "пиво, in HALF-litres (a word count, not a flag)",
+   "named_from": "the sheet prints it as `Пиво #.#л.` at `1000:23d5`; `mar` row 2 increments it at `1000:beb4`",
+   "written_in_range": [
+    "1000:db3a"
+   ],
+   "read_sites_in_range": 2
+  },
+  {
+   "ds": "20ae:38c7",
+   "name": "money",
+   "named_from": "every shop arm debits it; `docs/re/tables.md` owns the population",
+   "written_in_range": [
+    "1000:db96",
+    "1000:de6d"
+   ],
+   "read_sites_in_range": 0
+  },
+  {
+   "ds": "20ae:38c9",
+   "name": "хлам (junk)",
+   "named_from": "the sheet's `Хлам #` line at `1000:246a`; combat loot adds to it at `1000:524f`",
+   "written_in_range": [
+    "1000:de8f"
+   ],
+   "read_sites_in_range": 0
+  },
+  {
+   "ds": "20ae:38cb",
+   "name": "понтовость на улице (street cred)",
+   "named_from": "`.SAV 0x22f`; `1000:4e79` writes it and `1000:afdc` gates wander draw 2's message on it",
+   "written_in_range": [
+    "1000:db3e",
+    "1000:db9b"
+   ],
+   "read_sites_in_range": 10
+  },
+  {
+   "ds": "20ae:38ce",
+   "name": "xp not yet spent on a level",
+   "named_from": "`1000:2535`/`1000:254d`, the level-up routine's own drain -- `docs/re/save-format.md` cites `1000:2536` for the first of the two, which is one byte into `1000:2535 mov ax,[0x38ce]` and not an instruction boundary",
+   "written_in_range": [
+    "1000:debe"
+   ],
+   "read_sites_in_range": 0
+  },
+  {
+   "ds": "20ae:3952",
+   "name": "the rolled opponent's rank index",
+   "named_from": "`1000:0d2c mov [0x3952],ax` inside `FUN_1000_0d14`; `1000:b5c0 cmp word [0x3952],8` is the wander's cop test",
+   "written_in_range": [],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:395c",
+   "name": "the rolled opponent's level",
+   "named_from": "`1000:0e45 mov [0x395c],ax` inside `FUN_1000_0d14`",
+   "written_in_range": [],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:3b72",
+   "name": "the fight-accepted flag",
+   "named_from": "`1000:b5bb` clears it before the wander encounter and `1000:b747` sets it when the player says `y`",
+   "written_in_range": [
+    "1000:dc11"
+   ],
+   "read_sites_in_range": 0
+  },
+  {
+   "ds": "20ae:3b78",
+   "name": "den errand one, pending",
+   "named_from": "wander draw 1 sets it unconditionally at `1000:af71` after the gate `1000:af5d`",
+   "written_in_range": [
+    "1000:dc5e"
+   ],
+   "read_sites_in_range": 3
+  },
+  {
+   "ds": "20ae:3b79",
+   "name": "den errand two, pending",
+   "named_from": "wander draw 2, same shape, `1000:afd0` after `1000:afbc`",
+   "written_in_range": [
+    "1000:dec8"
+   ],
+   "read_sites_in_range": 3
+  },
+  {
+   "ds": "20ae:3b7a",
+   "name": "the menu row's colour digit, an ASCII '0' or '4'",
+   "named_from": "`docs/re/tables.md`'s shop row idiom writes the same byte with the same two immediates at every priced row",
+   "written_in_range": [
+    "1000:d98b",
+    "1000:d992",
+    "1000:d9e0",
+    "1000:d9e7"
+   ],
+   "read_sites_in_range": 2
+  },
+  {
+   "ds": "20ae:3e35",
+   "name": "the den's loan credit",
+   "named_from": "set to 5 at `1000:73e5`, topped up per walk while below district*10 at `1000:af19`",
+   "written_in_range": [
+    "1000:dba0"
+   ],
+   "read_sites_in_range": 2
+  }
+ ],
+ "globals_not_memory_operands": {
+  "note": "Four more DGROUP addresses are used in this handler as IMMEDIATES (`mov di,imm16` / `push ds` / `push di`), so they never appear as a memory operand and the write sweep cannot see them.",
+  "entries": [
+   {
+    "ds": "20ae:3972",
+    "what": "the STREET prompt buffer -- the `pr` verb itself and the `kl` verb after it are compared against this one",
+    "pushed_at": [
+     "1000:defc"
+    ],
+    "note": "The `pr` verb's own push is at `1000:d7f8`, ten bytes BEFORE the range start, so it is outside every sweep here and is recorded under `verb.push_buffer` instead."
+   },
+   {
+    "ds": "20ae:3a72",
+    "what": "the den's own submenu buffer; every one of the seven key compares reads it",
+    "pushed_at": [
+     "1000:db00",
+     "1000:db18",
+     "1000:db22",
+     "1000:db77",
+     "1000:dbfa",
+     "1000:dc63",
+     "1000:dce5",
+     "1000:dd32",
+     "1000:decd"
+    ]
+   },
+   {
+    "ds": "20ae:3ecc",
+    "what": "the input `Text` the read is made from",
+    "pushed_at": [
+     "1000:dafb"
+    ]
+   },
+   {
+    "ds": "20ae:3fcc",
+    "what": "the output `Text` the two bare `WriteLn` blank lines go to",
+    "pushed_at": [
+     "1000:d8b9",
+     "1000:d95c"
+    ]
+   }
+  ]
+ },
+ "fight_param_finding": {
+  "claim": "`FUN_1000_3d11` reads its `param_1` at exactly eight addresses, and `param_1 == 5` -- what the `d` arm passes at `1000:ddf9` -- has NO compare of its own anywhere in the body, while `param_1 == 6` -- what the `hp` arm passes at `1000:dc58` -- has two. So the two den fights are NOT the same call as the wander's `param_1 == 0`.",
+  "tier": "flow",
+  "method": "One aligned decode from `FUN_1000_3d11`'s own entry `1000:3d11` over the 6971 bytes `data/functions.json` records for it (3043 instructions; the walk runs out of decodable bytes at image offset 0x584f, three bytes past the body's end at 0x584c, which is why it is not carried further). Every instruction whose ModRM addresses `[bp+0x4]` was collected. Widening the walk to image offset 0x5f55, the next function entry, returns the same eight.",
+  "sites": [
+   {
+    "addr": "1000:3d24",
+    "text": "mov al,[bp+0x4]"
+   },
+   {
+    "addr": "1000:5085",
+    "text": "cmp byte [bp+0x4],0x4"
+   },
+   {
+    "addr": "1000:5139",
+    "text": "cmp byte [bp+0x4],0x3"
+   },
+   {
+    "addr": "1000:51a6",
+    "text": "cmp byte [bp+0x4],0x3"
+   },
+   {
+    "addr": "1000:51ac",
+    "text": "cmp byte [bp+0x4],0x4"
+   },
+   {
+    "addr": "1000:51f6",
+    "text": "cmp byte [bp+0x4],0x3"
+   },
+   {
+    "addr": "1000:51fc",
+    "text": "cmp byte [bp+0x4],0x4"
+   },
+   {
+    "addr": "1000:57ce",
+    "text": "cmp byte [bp+0x4],0x6"
+   }
+  ],
+  "param_6": "`1000:3d24`..`1000:3d2f` sends `param_1` 0 and 6 to `1000:3d32` and everything else to `1000:3e8d`; `1000:57ce` gives `param_1 == 6` alone `add [0x38cb],ax` at `1000:57de` with `ax = district*20` -- the errand's понтовость reward.",
+  "param_5": "matches none of the eight, so it behaves as `param_1 == 5` would anywhere the routine only tests 0, 3, 4 and 6.",
+  "consequence": "`Game::run_combat` models no `param_1` at all (`grep -n 'fn run_combat' src/game.rs`), which `docs/re/gaps.md` already records as open. Task 28 cannot port either den fight without widening it."
+ },
+ "port_reachability": {
+  "claim": "No arm of the den is unreachable in this port for want of a writer: every global any den gate reads is written somewhere in `src/`.",
+  "tier": "flow for the original addresses; the port half cites the command that recomputes it, per `docs/re/METHODOLOGY.md`",
+  "gated_globals": [
+   {
+    "ds": "20ae:3696",
+    "gate": "1000:d80c",
+    "port_command": "grep -n 'mark_found(Location::Den)' src/game.rs"
+   },
+   {
+    "ds": "20ae:3b78",
+    "gate": "1000:dbf3",
+    "port_command": "grep -n 'den_errand_1_pending = true' src/game.rs"
+   },
+   {
+    "ds": "20ae:3b79",
+    "gate": "1000:dd50",
+    "port_command": "grep -n 'den_errand_2_pending = true' src/game.rs"
+   },
+   {
+    "ds": "20ae:38c3",
+    "gate": "1000:db33",
+    "port_command": "grep -n 'beer_dl += 1' src/game.rs"
+   },
+   {
+    "ds": "20ae:3e35",
+    "gate": "1000:db88",
+    "port_command": "grep -n 'den_loan_credit' src/game.rs"
+   },
+   {
+    "ds": "20ae:38cb",
+    "gate": "1000:dd46",
+    "port_command": "grep -n 'pontovost_street +=' src/game.rs"
+   },
+   {
+    "ds": "20ae:38a4",
+    "gate": "1000:dda2",
+    "port_command": "grep -n 'luck' src/model.rs"
+   },
+   {
+    "ds": "20ae:3695",
+    "gate": "1000:dcba",
+    "port_command": "grep -n 'mark_found(Location::Dealers)' src/game.rs"
+   },
+   {
+    "ds": "20ae:369a",
+    "gate": "1000:dcc1",
+    "port_command": "grep -n 'mark_found(Location::Gym)' src/game.rs"
+   }
+  ],
+  "note": "This is the answer to `unreachable in this port`: nothing here is dead for lack of a setter. What blocks the port is `fight_param_finding`, not reachability."
+ },
+ "what_the_port_must_change": [
+  {
+   "n": 1,
+   "what": "`Game::shop_turn` recognises exactly one den key, `a`. Six more exist and are established at compare addresses: `p` (`1000:db2c`), `r` (`1000:db81`), `hp` (`1000:dc04`), `s` (`1000:dc6d`), `d` (`1000:dd3c`), `w` (`1000:ded7`).",
+   "blocked": false
+  },
+  {
+   "n": 2,
+   "what": "The whole one-shot menu `1000:d816`..`1000:dabb` is unported past `1000:d8b9`; `Game::print_den_intro`'s own doc already says so. Eleven more lines, four of them gated and two of them dimmed by a colour digit.",
+   "blocked": false
+  },
+  {
+   "n": 3,
+   "what": "The three `[0x3695]`/`[0x369a]`/`cmp ax,0x28` blocks are NOT one helper. #1 (`1000:d90f`) and #2 (`1000:da6e`) are byte-identical and use `(level - (district-1)*10 - 5)*5 + cred >= 40`; #3 (`1000:dcba`, ported) uses `(level - (district-1)*10)*2 + cred >= 40`. Factoring all three together changes behaviour in both directions.",
+   "blocked": false
+  },
+  {
+   "n": 4,
+   "what": "`p` and `r` are plain state edits and port directly.",
+   "blocked": false
+  },
+  {
+   "n": 5,
+   "what": "`s` writes nothing at all and prints one or two lines; it ports directly.",
+   "blocked": false
+  },
+  {
+   "n": 6,
+   "what": "`hp` and the `d` arm's cop branch both call `FUN_1000_3d11` with a `param_1` the port does not model (6 and 5). See `fight_param_finding`. The rest of `d` -- the two luck compares, the haul, the xp and `1000:2526` -- has no such obstacle.",
+   "blocked": true
+  },
+  {
+   "n": 7,
+   "what": "The den's own `ReadLn` does not trim (`0eed:0216` only lowercases). `Game::shop_turn` trims; `docs/re/gaps.md`'s trimmed-prompt entry already owns that divergence and this map adds the den to its population, it does not open a new one.",
+   "blocked": false
+  },
+  {
+   "n": 8,
+   "what": "An unrecognised key is SILENT and reprints only the prompt, never the menu (`1000:dede`). `Game::shop_turn` already behaves this way; recorded so the porting task does not add a `Непонятно` line that the original has no string for.",
+   "blocked": false
+  }
+ ],
+ "known_not_boundaries": {
+  "note": "Addresses this artifact NAMES but does not claim are instruction boundaries. `tools/test_den_arms.py` exempts exactly these from the boundary walk AND asserts that each really is not a boundary, so the exemption cannot be used to smuggle in a wrong address.",
+  "entries": [
+   {
+    "addr": "1000:2536",
+    "why": "`docs/re/save-format.md`'s xp row cites it for the level-up routine's first read of `20ae:38ce`. It is one byte into `1000:2535 mov ax,[0x38ce]` (`a1 ce 38`). Recorded as a finding against that document, not used as a citation here."
+   }
+  ]
+ },
+ "sweeps": {
+  "note": "The anchors `tools/test_den_arms.py` asserts SET EQUALITY against. Each is a count over the aligned decode of `1000:d802`..`1000:df06`; a wrong count reds the sweep, which is the point -- an inventory guarded by nothing is the defect `docs/re/METHODOLOGY.md` names.",
+  "instructions": 825,
+  "cs_literal_pushes": 45,
+  "conditional_branches": 44,
+  "random_call_sites": 5,
+  "absolute_memory_writes": 17,
+  "dgroup_addresses_touched": 18,
+  "ds_pointer_pushes": 13
+ }
+}

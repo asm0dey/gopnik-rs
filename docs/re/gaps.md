@@ -2243,3 +2243,53 @@ decided rather than established.
   needs no entry: it is `i32` in `src/model.rs` and the original's money gate
   (`1000:242e` / `1000:2433` `7e1c` JLE) is signed too, so the two already
   agree in sign.
+
+---
+
+## Opened by Task 27 (mapping the den's submenu)
+
+*Cited from `docs/re/den.md` and `data/den_arms.json`.*
+
+`docs/re/den.md` maps `1000:d802`..`1000:df06` — the whole `pr` handler — and
+`tools/test_den_arms.py` re-derives every address and every string in
+`data/den_arms.json` from `orig/g.exe`. **What it closes:** the den's key set
+(`p`, `r`, `hp`, `s`, `a`, `d`, `w`, each established at a compare address,
+not from a menu string), every gate on every arm, both wide compares, all five
+`Random` sites in range, all seventeen absolute writes, and the seventeen
+menu lines. **What it leaves open**, all still unported after Task 27 because
+Task 27 changed nothing in `src/`:
+
+- **Six of the seven den keys are not dispatched.** `Game::shop_turn`
+  recognises only `a`. The other six compares are `1000:db2c` (`p`),
+  `1000:db81` (`r`), `1000:dc04` (`hp`), `1000:dc6d` (`s`), `1000:dd3c` (`d`)
+  and `1000:ded7` (`w`). Established from flow. Task 28's job.
+- **Twelve of the seventeen menu lines are not printed.** `1000:d8b9` onward;
+  `Game::print_den_intro`'s doc comment already said so, and this map is what
+  enumerates them.
+- **`hp` and the `d` arm's cop branch are BLOCKED on `FUN_1000_3d11`'s
+  `param_1`.** `1000:dc5b` passes 6 and `1000:ddfc` passes 5;
+  `Game::run_combat` models no `param_1` at all. That obstacle already has an
+  entry above ("`FUN_1000_11c2` -- traced (Task 20), not ported"); this map
+  adds the den's two call sites to its population. An aligned decode of
+  `FUN_1000_3d11`'s 6971 bytes (3043 instructions) finds exactly eight
+  `[bp+0x4]` references — `1000:3d24`, `1000:5085`, `1000:5139`, `1000:51a6`,
+  `1000:51ac`, `1000:51f6`, `1000:51fc`, `1000:57ce` — so `param_1 == 5` has
+  no compare of its own and `param_1 == 6` has two. What `1000:3e8d` (the arm
+  a `param_1` of 5 takes and 0 does not) actually does was **not** established
+  here; that is a combat-dispatch task.
+- **The three `[0x3695]`/`[0x369a]`/`cmp ax,0x28` blocks are not one
+  predicate.** `1000:d90f` and `1000:da6e` are byte-identical and compute
+  `(level - (district-1)*10 - 5) * 5 + понтовость >= 40`; `1000:dcba`, the
+  only one ported, computes `(level - (district-1)*10) * 2 + понтовость >= 40`.
+  Neither implies the other. Registered here because the natural refactor
+  during Task 28 — one helper for all three — is a behaviour change.
+- **The den's own `ReadLn` does not trim.** `1000:db1d call 0eed:0216` only
+  lowercases ASCII `A`..`Z`; it compares against no `0x20`. The den therefore
+  joins the population of "The trimmed `y` prompts — the port accepts input
+  the original refuses" above; no new gap class.
+- **A wrong address in another document.** `docs/re/save-format.md`'s xp row
+  cites `1000:2536` for `FUN_1000_2526`'s first read of `20ae:38ce`. That is
+  one byte into `1000:2535 mov ax,[0x38ce]` (`a1 ce 38`) and is not an
+  instruction boundary. Recorded in `data/den_arms.json`'s
+  `known_not_boundaries`, where `tools/test_den_arms.py` asserts it really is
+  not one. Not corrected in `save-format.md` — outside Task 27's range.
