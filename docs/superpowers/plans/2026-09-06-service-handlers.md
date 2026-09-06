@@ -142,94 +142,6 @@ what it must do — written so a later port can falsify it.
 
 ---
 
-### Task 32b: Address-annotated decompilation
-
-**Tooling task. It moves `port_touched` by zero and that is expected** — the
-port work it unblocks is named below, per `CLAUDE.md`'s requirement that an
-instrument declare one before it is built.
-
-**Why.** Every wrong citation this project has shipped came from a hand-derived
-or byte-scanned address: the `0x18d0` header-size miss; the misaligned
-`1000:ce99`, which is the last byte of `1000:ce97 mov [0x38c9],ax`; three of the
-four bad citations caught in Task 19, which carried no literal at all and so no
-textual scan could have found them. **An address Ghidra emits from its own
-instruction listing is aligned by construction**, so this removes that defect
-class at the source instead of catching it in review. The secondary gain is
-speed: it cuts the arm-finding half of every later RE task.
-
-**Port work unblocked:** combat, `1000:3d11` — 224 branches, **118 untouched**,
-the one slice where hand-walking disassembly is the actual bottleneck. Tasks 33
-and 35 take a smaller share of the same gain.
-
-**Files:** modify `tools/ghidra/ExportAll.java` and `tools/ghidra/run_ghidra.sh`;
-create `tools/test_decomp_addresses.py` and its golden file.
-
-`ExportAll.java` already calls `DecompInterface` and writes 123 files to
-`build/decomp/` — gitignored, documented in `docs/re/functions.md`, and cited by
-`docs/re/rng.md` and `docs/re/command-dispatch.md`. That C carries no addresses
-today, which is why `docs/superpowers/RESUME.md` ranks it a lead rather than a
-citation.
-
-**Build:**
-
-1. Annotate each emitted C line with the **set** of machine addresses that
-   contributed to it, from `DecompileResults.getCCodeMarkup()` and the
-   `ClangLine` tokens' addresses.
-   **`getMinAddress()` alone is forbidden.** A decompiled line merges several
-   instructions; emitting one confident-looking address for it is exactly the
-   "check that cannot fail, presented as verification" that
-   `docs/re/METHODOLOGY.md` names. Emit every contributing address.
-2. Give `run_ghidra.sh` a decomp-only mode that does **not** rewrite
-   `data/branches.json`, `data/functions.json` or `data/string_pointers.json`.
-   Those are committed, and this plan's whole coverage baseline is measured
-   against them. If a full run is performed instead, show that
-   `git diff --stat` over those three paths is empty.
-3. The five oracles under `data/` are never regenerated.
-
-**Falsification — this is the task, not a postscript.**
-`tools/test_decomp_addresses.py`, over the shipped `build/decomp/`, must:
-
-- assert every annotated address is a real **aligned instruction start**,
-  decoded from `orig/g.exe` — not merely well-formed;
-- for the three handlers already mapped and reviewed by hand — the den
-  (`1000:d802`..`1000:df05`), the dealers' sell path
-  (`1000:ce76`..`1000:d383`) and the market (`1000:b94a`..`1000:c4bd`) — take
-  every branch address and guard address `data/branches.json` records in range
-  and check it appears in the annotation of the enclosing function's file;
-- record the resulting coverage as a **golden set** checked into the test, so
-  later drift fails. Do **not** assert a hand-picked percentage threshold: a
-  threshold chosen so it passes is the same defect one level up. Report the
-  exact figure with the command that produced it, and list every address that
-  did not appear.
-
-A disagreement between the annotation and a known-good citation is the finding
-this task exists to surface. If one turns up, report it — do not tune it away.
-
-**Second checker, same theme — `src/` line-number citations.** `docs/` cites
-`src/<file>:<line>` in many places and those line numbers drift every time
-`src/` changes. Four were already stale when this task was written, found by
-decoding rather than by any test: `docs/re/gaps.md` cites `src/save.rs:257`
-for `beer_half_litres` (actually 255) and `src/persist.rs:345` for
-`joints: it.joints.max(0) as u16` (actually 357), with `:350` and `:352`
-shifted by the same amount. Every claim still held; only the line numbers had
-moved. This plan then adds three modules and moves handler code, which will
-invalidate more of them.
-
-Extend `tools/test_decomp_addresses.py` (or add a sibling) to parse the
-`` `src/f.rs:NNN` `symbol` `` pairs the docs already write and assert the symbol
-appears at that line. Report the count checked and every pair that failed.
-The same rule applies as above: no hand-picked pass threshold, and a pair the
-parser cannot understand is reported, never silently skipped — an inventory
-whose completeness claim stopped the next search is the defect this project
-keeps finding.
-
-**Docs:** one line in `docs/re/functions.md` stating that the annotation makes a
-citation cheap to *verify*, not pre-verified, and that
-`python3 tools/re_query.py resolve <citation>` is still required. The
-lead-not-evidence ranking in `docs/superpowers/RESUME.md` does not move.
-
----
-
 ### Task 33: Map the club (`kl`) and the command list (`i`)
 
 **RE only. This task changes no line of `src/`.**
@@ -327,3 +239,100 @@ dispatch at `1000:d5fb`/`1000:d61b` — what `ax` holds and where it was set.
 - Final coverage recomputation: re-run the `docs/re/branches.md` block and
   replace both the headline sentence and the verbatim output block with what
   this task's tree prints, plus one line in the measured-history sentence.
+
+---
+
+### Task 37: Address-annotated decompilation
+
+**Moved to the end of the plan (ruling R10).** It was drafted as Task 32b,
+between the gym's port and the club's map. It is tooling: it moves
+`port_touched` by zero, and it accelerates the RE half of a task, not the
+writing of Rust. Three porting tasks therefore run ahead of it. Its
+validation targets -- the den, the dealers' sell path and the market -- are
+already mapped and do not expire.
+
+**Tooling task. It moves `port_touched` by zero and that is expected** — the
+port work it unblocks is named below, per `CLAUDE.md`'s requirement that an
+instrument declare one before it is built.
+
+**Why.** Every wrong citation this project has shipped came from a hand-derived
+or byte-scanned address: the `0x18d0` header-size miss; the misaligned
+`1000:ce99`, which is the last byte of `1000:ce97 mov [0x38c9],ax`; three of the
+four bad citations caught in Task 19, which carried no literal at all and so no
+textual scan could have found them. **An address Ghidra emits from its own
+instruction listing is aligned by construction**, so this removes that defect
+class at the source instead of catching it in review. The secondary gain is
+speed: it cuts the arm-finding half of every later RE task.
+
+**Port work unblocked:** combat, `1000:3d11` — 224 branches, **118 untouched**,
+the one slice where hand-walking disassembly is the actual bottleneck. Tasks 33
+and 35 take a smaller share of the same gain.
+
+**Files:** modify `tools/ghidra/ExportAll.java` and `tools/ghidra/run_ghidra.sh`;
+create `tools/test_decomp_addresses.py` and its golden file.
+
+`ExportAll.java` already calls `DecompInterface` and writes 123 files to
+`build/decomp/` — gitignored, documented in `docs/re/functions.md`, and cited by
+`docs/re/rng.md` and `docs/re/command-dispatch.md`. That C carries no addresses
+today, which is why `docs/superpowers/RESUME.md` ranks it a lead rather than a
+citation.
+
+**Build:**
+
+1. Annotate each emitted C line with the **set** of machine addresses that
+   contributed to it, from `DecompileResults.getCCodeMarkup()` and the
+   `ClangLine` tokens' addresses.
+   **`getMinAddress()` alone is forbidden.** A decompiled line merges several
+   instructions; emitting one confident-looking address for it is exactly the
+   "check that cannot fail, presented as verification" that
+   `docs/re/METHODOLOGY.md` names. Emit every contributing address.
+2. Give `run_ghidra.sh` a decomp-only mode that does **not** rewrite
+   `data/branches.json`, `data/functions.json` or `data/string_pointers.json`.
+   Those are committed, and this plan's whole coverage baseline is measured
+   against them. If a full run is performed instead, show that
+   `git diff --stat` over those three paths is empty.
+3. The five oracles under `data/` are never regenerated.
+
+**Falsification — this is the task, not a postscript.**
+`tools/test_decomp_addresses.py`, over the shipped `build/decomp/`, must:
+
+- assert every annotated address is a real **aligned instruction start**,
+  decoded from `orig/g.exe` — not merely well-formed;
+- for the three handlers already mapped and reviewed by hand — the den
+  (`1000:d802`..`1000:df05`), the dealers' sell path
+  (`1000:ce76`..`1000:d383`) and the market (`1000:b94a`..`1000:c4bd`) — take
+  every branch address and guard address `data/branches.json` records in range
+  and check it appears in the annotation of the enclosing function's file;
+- record the resulting coverage as a **golden set** checked into the test, so
+  later drift fails. Do **not** assert a hand-picked percentage threshold: a
+  threshold chosen so it passes is the same defect one level up. Report the
+  exact figure with the command that produced it, and list every address that
+  did not appear.
+
+A disagreement between the annotation and a known-good citation is the finding
+this task exists to surface. If one turns up, report it — do not tune it away.
+
+**Second checker, same theme — `src/` line-number citations.** `docs/` cites
+`src/<file>:<line>` in many places and those line numbers drift every time
+`src/` changes. Four were already stale when this task was written, found by
+decoding rather than by any test: `docs/re/gaps.md` cites `src/save.rs:257`
+for `beer_half_litres` (actually 255) and `src/persist.rs:345` for
+`joints: it.joints.max(0) as u16` (actually 357), with `:350` and `:352`
+shifted by the same amount. Every claim still held; only the line numbers had
+moved. This plan then adds three modules and moves handler code, which will
+invalidate more of them.
+
+Extend `tools/test_decomp_addresses.py` (or add a sibling) to parse the
+`` `src/f.rs:NNN` `symbol` `` pairs the docs already write and assert the symbol
+appears at that line. Report the count checked and every pair that failed.
+The same rule applies as above: no hand-picked pass threshold, and a pair the
+parser cannot understand is reported, never silently skipped — an inventory
+whose completeness claim stopped the next search is the defect this project
+keeps finding.
+
+**Docs:** one line in `docs/re/functions.md` stating that the annotation makes a
+citation cheap to *verify*, not pre-verified, and that
+`python3 tools/re_query.py resolve <citation>` is still required. The
+lead-not-evidence ranking in `docs/superpowers/RESUME.md` does not move.
+
+---
