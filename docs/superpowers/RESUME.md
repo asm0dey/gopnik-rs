@@ -883,13 +883,13 @@ corrections to what this condition used to claim:
   and vanish from the grep — none of them is in a `bmar` path (`bmar` is
   handled at `src/game.rs:1188-1214` and `:3001-3040`, neither range contains
   a `38c2` line). Mapped to enclosing scope: the two field declarations
-  (`Kit` in `src/character_sheet.rs:163`, `Game` in `src/game.rs:438`);
+  (`Kit` in `src/character_sheet.rs:163`, `Game` in `src/game.rs:479`);
   `character_sheet::damage_line` (5 sites) and its two unit tests
   (`the_damage_line_is_dim_until_something_boosts_it`,
   `best_item_wins_dims_the_superseded_weapon`); `Game::new`, `Game::sheet_kit`,
   `Game::spoil_club`, `Game::spoil_blade` and its own unit test
   (`sheet_kit_wires_each_game_flag_to_its_own_sheet_line`); and
-  `Game::from_save` in `src/persist.rs:387`. What survives is *the
+  `Game::from_save` in `src/persist.rs:400`. What survives is *the
   declaration and its documented anchors*, not every site.
 * **Nothing binds those anchors to the image.** It claimed the decode checks
   (`tools/test_string_citations.py`, `tools/test_character_sheet_port.py`)

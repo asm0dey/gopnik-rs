@@ -2548,11 +2548,13 @@ decided rather than established.
   and хлам as `i16` (`src/save.rs:255` `beer_half_litres`, `src/save.rs:262`
   `junk`, and the sibling `joints` field alongside them), and the load path
   clamps each through `.max(0) as u16` before it ever reaches `Fighter`
-  (`src/persist.rs:357` `joints: it.joints.max(0) as u16`, `:362`
-  `beer_dl: it.beer_half_litres.max(0) as u16`, `:364`
+  (`src/persist.rs:358` `joints: it.joints.max(0) as u16`, `:363`
+  `beer_dl: it.beer_half_litres.max(0) as u16`, `:365`
   `junk: it.junk.max(0) as u16`). Those five line numbers are
   stale-by-construction, exactly as `docs/re/METHODOLOGY.md` says; four of them
-  had already drifted when Task 31 checked them. The command that recomputes
+  had already drifted when Task 31 checked them, and three of the five had
+  drifted again by Task 37 — which found them with a test rather than by eye
+  (`tools/test_decomp_addresses.py`, `TestSrcCitations`). The command that recomputes
   all of them is
   `grep -n 'pub beer_half_litres\|pub junk\|max(0) as u16' src/save.rs src/persist.rs`.
   A `.SAV` word `>= 0x8000` in any of those

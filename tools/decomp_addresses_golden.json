@@ -1,0 +1,140 @@
+{
+  "annotation": {
+    "annotated_tokens": 12072,
+    "distinct_addresses": 9220,
+    "files": 123,
+    "lines_carrying_more_than_one_address": 1390,
+    "malformed": [],
+    "not_instruction_start_sites": {
+      "2000:f88f": [
+        "FUN_1f78_0a0f_1f78_0a0f.c:32",
+        "FUN_1f78_0a0f_1f78_0a0f.c:33",
+        "FUN_1f78_0a0f_1f78_0a0f.c:46",
+        "FUN_1f78_10ff_1f78_10ff.c:20",
+        "FUN_1f78_10ff_1f78_10ff.c:21",
+        "FUN_1f78_1105_1f78_1105.c:20",
+        "FUN_1f78_1105_1f78_1105.c:21",
+        "FUN_1f78_1111_1f78_1111.c:20",
+        "FUN_1f78_1111_1f78_1111.c:21",
+        "FUN_1f78_1117_1f78_1117.c:21",
+        "FUN_1f78_1117_1f78_1117.c:22",
+        "FUN_1f78_1131_1f78_1131.c:20",
+        "FUN_1f78_1131_1f78_1131.c:21"
+      ]
+    },
+    "not_instruction_starts": {
+      "2000:f88f": "image offset 0x1f88f is past the end of the load image (0x14180)"
+    }
+  },
+  "branch_guard_pairs_with_neither_half_annotated": [],
+  "handler_total": {
+    "present": 345,
+    "wanted": 374
+  },
+  "handlers": {
+    "club": {
+      "missing": [
+        "1000:e14f"
+      ],
+      "present": 33,
+      "wanted": 34
+    },
+    "den": {
+      "missing": [
+        "1000:d8ed",
+        "1000:d914",
+        "1000:d91b",
+        "1000:d93e",
+        "1000:da73",
+        "1000:da7a",
+        "1000:da9d",
+        "1000:dcbf",
+        "1000:dda8",
+        "1000:ddaa",
+        "1000:ddeb",
+        "1000:dded"
+      ],
+      "present": 66,
+      "wanted": 78
+    },
+    "gym": {
+      "missing": [
+        "1000:e3af",
+        "1000:e3cd",
+        "1000:e58b",
+        "1000:e892"
+      ],
+      "present": 65,
+      "wanted": 69
+    },
+    "market": {
+      "missing": [],
+      "present": 109,
+      "wanted": 109
+    },
+    "sell": {
+      "missing": [
+        "1000:ceec",
+        "1000:cfa1",
+        "1000:d056",
+        "1000:d10b",
+        "1000:d115",
+        "1000:d11c",
+        "1000:d1ce",
+        "1000:d1d8",
+        "1000:d28a"
+      ],
+      "present": 34,
+      "wanted": 43
+    },
+    "vet": {
+      "missing": [
+        "1000:d3e1",
+        "1000:d4c8",
+        "1000:d543"
+      ],
+      "present": 38,
+      "wanted": 41
+    }
+  },
+  "note": "Golden set for tools/test_decomp_addresses.py. Regenerate with `python3 tools/decomp_addresses.py --write-golden` and READ THE DIFF: every number here is a fact about the shipped build/decomp/ tree, orig/g.exe and docs/, and a change in any of them is a finding, not noise. There is deliberately no percentage threshold -- a threshold chosen so it passes is the defect this file exists to prevent.",
+  "src_citations": {
+    "mismatch": [
+      "docs/superpowers/RESUME.md `src/character_sheet.rs:163` -> src/character_sheet.rs:163 `Kit`",
+      "docs/superpowers/RESUME.md `src/game.rs:479` -> src/game.rs:479 `Game`",
+      "docs/superpowers/RESUME.md `src/persist.rs:400` -> src/persist.rs:400 `Game::from_save`",
+      "docs/superpowers/plans/2026-09-06-service-handlers.md `src/game.rs:2380` -> src/game.rs:2380 `Game::show_command_list`",
+      "docs/superpowers/plans/2026-09-06-service-handlers.md `src/game.rs:3575` -> src/game.rs:3575 `Game::smoke`"
+    ],
+    "unbound": [
+      "docs/re/METHODOLOGY.md `src/game.rs:1421-1422` -> src/game.rs:1421-1422 -- no symbol span adjacent to it",
+      "docs/re/METHODOLOGY.md `src/game.rs:810` -> src/game.rs:810 -- no symbol span adjacent to it",
+      "docs/re/difftest.md `src/game.rs:1421-1422` -> src/game.rs:1421-1422 -- no symbol span adjacent to it",
+      "docs/re/difftest.md `src/progress.rs:173-175` -> src/progress.rs:173-175 -- no symbol span adjacent to it",
+      "docs/re/difftest.md `src/trace.rs:202,210` -> src/trace.rs:202,210 -- no symbol span adjacent to it",
+      "docs/re/gaps.md `src/game.rs:1421-1422` -> src/game.rs:1421-1422 -- no symbol span adjacent to it",
+      "docs/re/gaps.md `src/game.rs:883` -> src/game.rs:883 -- no symbol span adjacent to it",
+      "docs/superpowers/RESUME.md `:3001-3040` -> src/game.rs:3001-3040 -- no symbol span adjacent to it",
+      "docs/superpowers/RESUME.md `src/game.rs:1188-1214` -> src/game.rs:1188-1214 -- no symbol span adjacent to it",
+      "docs/superpowers/RESUME.md `src/locations.rs:175` -> src/locations.rs:175 -- no symbol span adjacent to it",
+      "docs/superpowers/plans/2026-09-06-service-handlers.md `:168` -> src/commands.rs:168 -- no symbol span adjacent to it",
+      "docs/superpowers/plans/2026-09-06-service-handlers.md `:350` -> src/persist.rs:350 -- no symbol span adjacent to it",
+      "docs/superpowers/plans/2026-09-06-service-handlers.md `:352` -> src/persist.rs:352 -- no symbol span adjacent to it",
+      "docs/superpowers/plans/2026-09-06-service-handlers.md `:9553` -> src/game.rs:9553 -- no symbol span adjacent to it",
+      "docs/superpowers/plans/2026-09-06-service-handlers.md `src/commands.rs:61` -> src/commands.rs:61 -- no symbol span adjacent to it",
+      "docs/superpowers/plans/2026-09-06-service-handlers.md `src/game.rs:2443` -> src/game.rs:2443 -- no symbol span adjacent to it",
+      "docs/superpowers/plans/2026-09-06-service-handlers.md `src/game.rs:9541` -> src/game.rs:9541 -- no symbol span adjacent to it",
+      "docs/superpowers/plans/2026-09-06-service-handlers.md `src/persist.rs:345` -> src/persist.rs:345 -- no symbol span adjacent to it",
+      "docs/superpowers/plans/2026-09-06-service-handlers.md `src/save.rs:257` -> src/save.rs:257 -- no symbol span adjacent to it"
+    ],
+    "unreadable": [],
+    "verified": [
+      "docs/re/gaps.md `:363` -> src/persist.rs:363 `beer_dl: it.beer_half_litres.max(0) as u16`",
+      "docs/re/gaps.md `:365` -> src/persist.rs:365 `junk: it.junk.max(0) as u16`",
+      "docs/re/gaps.md `src/persist.rs:358` -> src/persist.rs:358 `joints: it.joints.max(0) as u16`",
+      "docs/re/gaps.md `src/save.rs:255` -> src/save.rs:255 `beer_half_litres`",
+      "docs/re/gaps.md `src/save.rs:262` -> src/save.rs:262 `junk`",
+      "docs/re/gaps.md `src/save.rs:318` -> src/save.rs:318 `[u16; 8]`"
+    ]
+  }
+}
