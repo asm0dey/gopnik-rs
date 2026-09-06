@@ -932,6 +932,31 @@ class ClubTest(unittest.TestCase):
             return head + on + tail
         self.fail("%s: unknown derived kind %r" % (key, kind))
 
+    def test_the_prose_carries_every_command_list_line(self):
+        """The `i` half of the prose/artifact agreement.
+
+        `tools/test_arms_artifacts.py` checks the ARMS half for all three
+        artifacts; the seventeen `i` lines are not arms and have no
+        counterpart in the other two maps, so this stays here. Each line's CS
+        offset and, where it has one, its gate address must appear in
+        `docs/re/club.md`.
+        """
+        self.assertEqual(len(self.list["lines"]), 17)
+        gated = 0
+        for ln in self.list["lines"]:
+            self.assertIn(
+                ln["string"]["cs_offset"], self.md,
+                "the prose does not carry the `i` list's CS %s"
+                % ln["string"]["cs_offset"])
+            if ln["gate"]:
+                self.assertIn(
+                    ln["gate"]["test"]["addr"], self.md,
+                    "the prose does not carry the gate at %s"
+                    % ln["gate"]["test"]["addr"])
+                gated += 1
+        self.assertEqual(gated, 7, "seven of the seventeen lines are gated")
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

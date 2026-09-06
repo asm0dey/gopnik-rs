@@ -547,6 +547,27 @@ class GymTest(unittest.TestCase):
             "0eed:0216 compares against 0x20; the no-trim claim would be "
             "wrong: %s" % texts)
 
+    def test_the_prose_carries_the_joint_and_the_armour_recompute(self):
+        """The non-arm half of the prose/artifact agreement.
+
+        `tools/test_arms_artifacts.py` checks the ARMS half for all three
+        artifacts. `kos`'s effects and the trained-armour recompute's steps
+        belong to neither an arm nor another map, so they stay here.
+        """
+        for e in self.art["joint"]["effects"]:
+            self.assertIn(
+                e["addr"], self.md,
+                "the prose does not carry the joint's effect at %s"
+                % e["addr"])
+        for s in self.art["abs_recompute"]["steps"]:
+            self.assertIn(
+                s["effect"]["addr"], self.md,
+                "the prose does not carry the recompute step at %s"
+                % s["effect"]["addr"])
+        self.assertGreaterEqual(len(self.art["joint"]["effects"]), 5)
+        self.assertGreaterEqual(len(self.art["abs_recompute"]["steps"]), 3)
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

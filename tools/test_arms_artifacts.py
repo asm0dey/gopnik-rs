@@ -631,6 +631,7 @@ class ArmsArtifactTest(unittest.TestCase):
 
     # ---------------------------------------------------------------- effects
     def test_the_recorded_effects_are_every_absolute_write_in_range(self):
+        reads_total = [0]
         for c, blk, path, lo, hi in self.each_block():
             with self.subTest(artifact=c.art_rel, block=path):
                 writes, reads, unclassified = set(), set(), []
@@ -667,6 +668,15 @@ class ArmsArtifactTest(unittest.TestCase):
                     "finds %d" % (c.art_rel, path,
                                   blk["sweeps"]["absolute_memory_writes"],
                                   len(writes)))
+                reads_total[0] += len(reads)
+        # The READ bucket is not recorded anywhere, so it is not compared --
+        # but it must not be empty, or the classifier that sorts writes from
+        # reads was never exercised and the write set could be everything.
+        self.assertGreater(
+            reads_total[0], 40,
+            "the absolute-READ bucket holds %d instructions across the whole "
+            "corpus; the write/read classifier is not being exercised"
+            % reads_total[0])
 
     def test_the_effect_path_markers_are_all_exercised(self):
         """`EFFECT_PATH` must not grow a marker that matches nothing.
