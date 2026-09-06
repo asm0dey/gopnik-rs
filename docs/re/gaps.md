@@ -1144,7 +1144,11 @@ widened again, the gym's own `ReadLn` case-folding at `1000:e61f` with
 `0eed:0216` and stripping nothing, exactly as the den's `1000:db1d` does, so
 ` 1` is a miss in the original and a hit here
 (`the_gym_prompt_accepts_untrimmed_input_the_original_refuses` in
-`src/gym.rs` measures it rather than remembering it) — and the two in-combat
+`src/gym.rs` measures it rather than remembering it, and Task 34 added the
+club's `1000:e060` and the vet's `1000:d528` to the same population with
+`the_club_prompt_accepts_untrimmed_input_the_original_refuses` and
+`the_vet_prompt_is_case_insensitive_and_accepts_untrimmed_input`) — and the
+two in-combat
 verb compares `run_combat` handles itself (`run` at `1000:48e1` and `e` at
 `1000:4c56` — two rows of the nine-row compare-site table in "The in-combat
 verb set", below; that nine counts the original's `0f78:0bd8` sites inside
@@ -1163,7 +1167,7 @@ and the counts are what to check, not the line numbers.
 | `crate::commands::parse` | the street verb table |
 | `main.rs`'s `read_number` | `Val()` on the class answer — a number, not a token |
 | `Game::district_advance` | the district autosave's `y` |
-| `Game::shop_turn` | the location submenu key — the vet's, the dealers', the den's and, since Task 32, the gym's |
+| `Game::shop_turn` | the location submenu key — the dealers', the den's, the gym's (Task 32) and, since Task 34, the club's (`1000:e060`) and the vet's (`1000:d528`) |
 | `Game::walk` | the encounter accept's `y` |
 | `Game::mage` | the mage's `y` |
 | `Game::wander_girl` | wander bucket 2's `y` |
@@ -1444,9 +1448,20 @@ character creation whose name is compared. (Nothing is lost on the read side:
 original files byte-for-byte, prefix included.) Registered here with both
 addresses rather than left as a silent difference.
 
-## The vet's charged amounts
+## The vet's charged amounts — CLOSED by Task 34, and the arms were wrong
 
-*Cited from `src/game.rs`'s `heal_jaw` / `heal_leg`.*
+*Cited from `src/vet.rs`.*
+
+**Task 34 mapped and ported the whole handler** (`docs/re/vet.md`,
+`data/vet_arms.json`), and the two prices below are the only part of the old
+reading that survived. `Game::heal_jaw` charged 3 to clear `20ae:38b0` and
+`Game::heal_leg` charged 7 to clear `20ae:38b1`; in the original the `r` arm
+clears **both** breaks at `1000:d558` and `1000:d55d` behind the single price
+test at `1000:d54c`, and the `h` arm touches neither — it is
+`1000:d5de add word [0x38ac],0x5`, five points of health. Both arms also fail
+**silently** on their own precondition (`1000:d54a`, `1000:d5cc`), where
+`pay_and_heal` printed a refusal the range has no literal for.
+`grep -rn '1000:d5de' src/vet.rs` finds the heal.
 
 **Established from flow** that the menu prints `3` and `7` (files `0xB2B2`,
 `0xB2D9`) and that the affordability colour compares money against the same
@@ -1638,7 +1653,7 @@ emulates `Delete` must pick the clamping semantics, not the library's.
 `tools/test_rtlmatch.py::test_deletes_divergence_is_visible_in_the_image_itself`
 pins the 11 bytes against `orig/g.exe`, so this needs no library to re-check.
 
-## The two ban countdowns are modelled and decremented but never set
+## The two ban countdowns — the club's is now set and gated, the market's is not
 
 *Cited from `src/game.rs`'s `market_ban_countdown` / `club_ban_countdown`,
 `Game::walk_preamble` and `Game::visit_girl`.*
@@ -1654,9 +1669,9 @@ re-derived from `orig/g.exe` for this entry.
 | what | site | bytes | in the port? |
 |---|---|---|---|
 | set the market ban to 5 | `1000:c465` | `c6 06 76 3b 05` | **no** |
-| set the club ban to 5 | `1000:e23e` | `c6 06 77 3b 05` | **no** |
+| set the club ban to 5 | `1000:e23e` | `c6 06 77 3b 05` | yes (Task 34, `crate::club`) |
 | `mar`'s gate on it | `1000:b95e` | `80 3e 76 3b 00` + `jz 0xb968` | **no** |
-| `kl`'s gate on it | `1000:df1a` | `80 3e 77 3b 00` + `jbe 0xdf3d` | **no** |
+| `kl`'s gate on it | `1000:df1a` | `80 3e 77 3b 00` + `jbe 0xdf3d` | yes (Task 34, `Game::enter_shop`) |
 | `girl` clears the market ban | `1000:d793` | `c6 06 76 3b 00` | **no** |
 | both tick down, once per walk | `1000:b173` / `1000:b17e` | `fe 0e 76 3b` / `fe 0e 77 3b` | yes |
 | the district advance clears both | `1000:abce` / `1000:abd3` | `c6 06 76 3b 00` / `c6 06 77 3b 00` | yes (Task 21) |
@@ -1676,10 +1691,14 @@ zero takes `jbe 0xdf3d` into the club, ban non-zero falls through to
 `1000:df21`, which prints file `0xB9BD`
 (`^6Тебе не стоит пока туда соваться`).
 
-Both refusal strings are in `data/strings.json` and neither is printed
-anywhere in `src/` — the port's `enter_shop` gates on the discovery flag only.
-Implementing the two setters without the two gates would be worse than the
-present state, so this entry lists them as one omission, not five.
+**Task 34 landed the club's pair together**, setter and gate, which is why
+this entry listed them as one omission rather than five: `1000:e23e` is
+`crate::club`'s caught-cheating block and `1000:df1a` is the second gate in
+`Game::enter_shop`, and file `0xB9BD` is now printed. What remains open is the
+MARKET half — `1000:c465`, `1000:b95e` and the `girl` clear at `1000:d793` —
+and it is still one omission, not three: `Game::market_ban_countdown` is
+permanently 0 in this port and its two readers stay unreachable until all
+three land.
 
 **Task 33 settled WHEN `1000:e23e` runs**, which this entry never said:
 it is the last effect of the club's caught-cheating block, reached only when
@@ -1688,9 +1707,11 @@ wins. `docs/re/club.md` and `data/club_arms.json` have the whole arm. So the
 club setter is not a loose end waiting on new research; it is one item in the
 `p` arm's port, and the gate at `1000:df1a` must land in the same change.
 
-**Consequence, stated plainly:** `src/game.rs`'s two "it blew over" phone
-messages (`1000:b11e`, `1000:b145`) can never print in this port, and the
-decrements they share a preamble with can never run. They are left in place —
+**Consequence, stated plainly:** the MARKET half of `src/game.rs`'s two "it
+blew over" phone messages (`1000:b11e`, `1000:b145`) can never print in this
+port. The club half now can, because `1000:e23e` lands: a player caught
+cheating carries a countdown of 5 into the walk preamble, where `1000:b17e`
+ticks it down and the `== 1` branch fires. They are left in place —
 at the right addresses, in the right order in the walk preamble — so that
 implementing the two setters and the `girl` clear is the only work needed to
 make them live. Nothing about them is *wrong*; they are unreachable.
@@ -2779,13 +2800,20 @@ inherits.
 **seventeen** lines: one ungated at `1000:ea9e`, then seven gated on the seven
 discovery flags at `1000:eab7`, `1000:ead7`, `1000:eaf7`, `1000:eb17`,
 `1000:eb37`, `1000:eb57` and `1000:eb77`, then nine more ungated from
-`1000:eb97`. `Game::show_command_list` prints thirteen with no gating.
+`1000:eb97`. At Task 33 `Game::show_command_list` printed thirteen with no
+gating.
 
-All thirteen are verbatim original lines in the original's relative order, so
-the divergence is exactly two things: four lines the port never prints — CS
+All thirteen were verbatim original lines in the original's relative order, so
+the divergence was exactly two things: four lines the port never printed — CS
 `0xa787` (`bmar`), `0xa7d6` (`girl`), `0xa83d` (`kl`), `0xa860` (`trn`) — and
-three it prints unconditionally that the original gates — CS `0xa762` (`mar`),
+three it printed unconditionally that the original gates — CS `0xa762` (`mar`),
 `0xa7ad` (`rep`), `0xa809` (`pr`).
+
+**CLOSED by Task 34.** `Game::show_command_list` now prints the ungated head,
+the seven gated lines in the original's gate order, and the nine ungated tail
+lines; `data/club_arms.json`'s `command_list.port_divergence.closed_by` carries
+the command that recomputes the port half, and it prints
+`17 port lines; [] never printed`.
 
 **Where the thirteen came from, and why it is worth writing down.**
 `docs/re/oracle-captures/command-table-and-combat.md` captures exactly these
@@ -2805,8 +2833,8 @@ draft counted four. The command that finds all of them is
   `docs/re/club.md`.
 * Left for the porting task, because an RE task changing a `src/` comment would
   be a `src/` diff that is only comments: two comments in `src/commands.rs` and
-  one in `src/game.rs`. `grep -rn '13-line' src/` prints three lines today and
-  must print none once `Game::show_command_list` is rewritten.
+  one in `src/game.rs`. Task 34 corrected all three, and
+  `grep -rn '13-line' src/` now prints nothing.
 
 ### The gate ORDER in the `i` list is not the flag-address order
 

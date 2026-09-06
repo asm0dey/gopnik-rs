@@ -1,0 +1,1428 @@
+{
+ "note": "The vet (`rep`) handler of `orig/g.exe`, `1000:d3a6`..`1000:d6ed`, mapped and ported by the same task (Task 34).  `docs/re/vet.md` is the prose twin and `tools/test_arms_artifacts.py` -- the generic verifier that also covers `data/club_arms.json` and `data/gym_arms.json` -- re-derives every claim here from `orig/g.exe`.  Nothing here reads `src/`, a screen, or Ghidra's decompiled C.",
+ "address_forms": "`1000:xxxx` is a Ghidra label (Form A of `docs/re/METHODOLOGY.md`) and, because the game's code segment is the load base, its OFF is also the image offset.  `20ae:xxxx` is DGROUP.  `0eed:` and `0f78:` are Form B runtime segments.  A \"CS offset\" is the image offset of a Pascal shortstring's length byte and the file offset is that plus the `0x18d0`-byte MZ header.",
+ "handlers": [
+  "rep"
+ ],
+ "range": {
+  "start": "1000:d3a6",
+  "end": "1000:d6ed",
+  "instruction_count": 379,
+  "note": "Half-open.  `1000:d3a6` IS the `rep` verb compare; `1000:d6ed` IS the `girl` verb compare and is NOT decoded here.  `data/command_dispatch.json` is the independent authority on both."
+ },
+ "verb": {
+  "token": {
+   "role": "verb_token",
+   "cs_offset": "0x9966",
+   "file_offset": "0x0b236",
+   "text": "rep",
+   "push": {
+    "addr": "1000:d3a1",
+    "text": "mov di,0x9966"
+   }
+  },
+  "buffer": "20ae:3972",
+  "buffer_push": {
+   "addr": "1000:d39c",
+   "text": "mov di,0x3972"
+  },
+  "compare": {
+   "addr": "1000:d3a6",
+   "text": "call 0xf78:0xbd8"
+  },
+  "hit": {
+   "addr": "1000:d3ab",
+   "text": "jz 0xd3b0"
+  },
+  "miss": {
+   "addr": "1000:d3ad",
+   "text": "jmp 0xd6e3"
+  },
+  "note": "The token is read out of the STREET buffer `20ae:3972`, not the vet's own `20ae:3a72`; `data/command_dispatch.json` records the compare at `1000:d3a6` and the token at file `0xB236`."
+ },
+ "bounded_on_the_right_by": {
+  "addr": "1000:d6ed",
+  "verb": "girl",
+  "text": "call 0xf78:0xbd8",
+  "token": {
+   "role": "verb_token",
+   "cs_offset": "0x9b9a",
+   "file_offset": "0x0b46a",
+   "text": "girl",
+   "push": {
+    "addr": "1000:d6e8",
+    "text": "mov di,0x9b9a"
+   }
+  },
+  "note": "`1000:d6e3`..`1000:d6ed` is `girl`'s own setup and is the last span of the tiling."
+ },
+ "discovery_gate": {
+  "ds": "20ae:3698",
+  "location": "Vet",
+  "test": {
+   "addr": "1000:d3b0",
+   "text": "cmp byte [0x3698],0x1"
+  },
+  "branch": {
+   "addr": "1000:d3b5",
+   "text": "jz 0xd3ba"
+  },
+  "refusal_target": "1000:d6ca",
+  "refusal_string": {
+   "role": "undiscovered_refusal",
+   "cs_offset": "0x9b70",
+   "file_offset": "0x0b440",
+   "text": "^6Сначала найди где находтся эта больница",
+   "push": {
+    "addr": "1000:d6ca",
+    "text": "mov di,0x9b70"
+   },
+   "print": {
+    "addr": "1000:d6de",
+    "text": "call 0xeed:0x1c2"
+   }
+  },
+  "note": "The same byte the `i` command list gates its `rep` line on at `1000:eaf7` (`docs/re/club.md`, Part 2), and the same one `1000:6dc3` sets for a brand-new character."
+ },
+ "intro_line": {
+  "role": "intro",
+  "cs_offset": "0x996a",
+  "file_offset": "0x0b23a",
+  "text": "Ты пришел на ремот, к ветеринару напиши  ^6w^7  чтобы уйти",
+  "push": {
+   "addr": "1000:d3ba",
+   "text": "mov di,0x996a"
+  },
+  "print": {
+   "addr": "1000:d3ce",
+   "text": "call 0xeed:0x1c2"
+  }
+ },
+ "menu_skip_finding": {
+  "tier": "flow",
+  "claim": "The healthy predicate is spelled TWICE, and the two spellings are opposite.  `1000:d3d3`..`1000:d3f2` computes it into `al` and branches on `or al,al`; `1000:d4ba`..`1000:d4cf` branches on the three compares directly.  The first decides whether the MENU prints, the second whether the VISIT continues -- so a port that shared one predicate between them would either print the menu to a whole player or never eject one.",
+  "as_al": [
+   {
+    "addr": "1000:d3d3",
+    "text": "mov ax,[0x38ac]"
+   },
+   {
+    "addr": "1000:d3d6",
+    "text": "cmp ax,[0x38ae]"
+   },
+   {
+    "addr": "1000:d3da",
+    "text": "jl 0xd3ea"
+   },
+   {
+    "addr": "1000:d3dc",
+    "text": "cmp byte [0x38b0],0x0"
+   },
+   {
+    "addr": "1000:d3e1",
+    "text": "jnz 0xd3ea"
+   },
+   {
+    "addr": "1000:d3e3",
+    "text": "cmp byte [0x38b1],0x0"
+   },
+   {
+    "addr": "1000:d3e8",
+    "text": "jz 0xd3ee"
+   },
+   {
+    "addr": "1000:d3ea",
+    "text": "mov al,0x0"
+   },
+   {
+    "addr": "1000:d3ee",
+    "text": "mov al,0x1"
+   },
+   {
+    "addr": "1000:d3f0",
+    "text": "or al,al"
+   },
+   {
+    "addr": "1000:d3f2",
+    "text": "jz 0xd3f7"
+   }
+  ],
+  "as_branches": [
+   {
+    "addr": "1000:d4ba",
+    "text": "mov ax,[0x38ac]"
+   },
+   {
+    "addr": "1000:d4bd",
+    "text": "cmp ax,[0x38ae]"
+   },
+   {
+    "addr": "1000:d4c1",
+    "text": "jl 0xd4ed"
+   },
+   {
+    "addr": "1000:d4c3",
+    "text": "cmp byte [0x38b0],0x0"
+   },
+   {
+    "addr": "1000:d4c8",
+    "text": "jnz 0xd4ed"
+   },
+   {
+    "addr": "1000:d4ca",
+    "text": "cmp byte [0x38b1],0x0"
+   },
+   {
+    "addr": "1000:d4cf",
+    "text": "jnz 0xd4ed"
+   }
+  ],
+  "menu_skip_jump": {
+   "addr": "1000:d3f4",
+   "text": "jmp 0xd4ba"
+  },
+  "note": "`1000:d3f4 jmp 0xd4ba` is the healthy-skip: it lands ON the loop top, so a whole player entering the vet sees the intro, then the eject line, and leaves without a prompt."
+ },
+ "menu_header": {
+  "role": "menu_header",
+  "cs_offset": "0x99a5",
+  "file_offset": "0x0b275",
+  "text": "^0Док: не волнуйся всё зарастёт как на собаке",
+  "push": {
+   "addr": "1000:d3f7",
+   "text": "mov di,0x99a5"
+  },
+  "print": {
+   "addr": "1000:d40b",
+   "text": "call 0xeed:0x1c2"
+  }
+ },
+ "menu_lines": [
+  {
+   "key": "h",
+   "price": 3,
+   "price_test": {
+    "addr": "1000:d410",
+    "text": "cmp word [0x38c7],0x3"
+   },
+   "branch": {
+    "addr": "1000:d415",
+    "text": "jnl 0xd41e"
+   },
+   "colour_digit": {
+    "unaffordable_store": {
+     "addr": "1000:d417",
+     "text": "mov byte [0x3b7a],0x34"
+    },
+    "affordable_store": {
+     "addr": "1000:d41e",
+     "text": "mov byte [0x3b7a],0x30"
+    },
+    "ds": "20ae:3b7a",
+    "note": "`0x34` is `'4'`, `0x30` is `'0'` -- the colour digit the prefix's trailing `^` completes."
+   },
+   "prefix": {
+    "role": "row_prefix",
+    "cs_offset": "0x99d3",
+    "file_offset": "0x0b2a3",
+    "text": "  ^2h^7 - за ^",
+    "push": {
+     "addr": "1000:d429",
+     "text": "mov di,0x99d3"
+    }
+   },
+   "text": {
+    "role": "row_text",
+    "cs_offset": "0x99e2",
+    "file_offset": "0x0b2b2",
+    "text": "3^7 рубля тебя залатают",
+    "push": {
+     "addr": "1000:d447",
+     "text": "mov di,0x99e2"
+    }
+   },
+   "writeln": {
+    "addr": "1000:d460",
+    "text": "call 0xeed:0x1c2"
+   }
+  },
+  {
+   "key": "r",
+   "price": 7,
+   "price_test": {
+    "addr": "1000:d465",
+    "text": "cmp word [0x38c7],0x7"
+   },
+   "branch": {
+    "addr": "1000:d46a",
+    "text": "jnl 0xd473"
+   },
+   "colour_digit": {
+    "unaffordable_store": {
+     "addr": "1000:d46c",
+     "text": "mov byte [0x3b7a],0x34"
+    },
+    "affordable_store": {
+     "addr": "1000:d473",
+     "text": "mov byte [0x3b7a],0x30"
+    },
+    "ds": "20ae:3b7a",
+    "note": "Same shape as row 1."
+   },
+   "prefix": {
+    "role": "row_prefix",
+    "cs_offset": "0x99fa",
+    "file_offset": "0x0b2ca",
+    "text": "  ^2r^7 - за ^",
+    "push": {
+     "addr": "1000:d47e",
+     "text": "mov di,0x99fa"
+    }
+   },
+   "text": {
+    "role": "row_text",
+    "cs_offset": "0x9a09",
+    "file_offset": "0x0b2d9",
+    "text": "7^7 рублей починят переломы",
+    "push": {
+     "addr": "1000:d49c",
+     "text": "mov di,0x9a09"
+    }
+   },
+   "writeln": {
+    "addr": "1000:d4b5",
+    "text": "call 0xeed:0x1c2"
+   }
+  }
+ ],
+ "menu_lines_note": "Both rows are assembled the way every other immediate-priced row in the image is: `0f78:0ae7` (`rtl_str_assign`), `0f78:0c03` (`rtl_char_to_str`), two `0f78:0b66` (`rtl_str_append`) and one `0eed:01c2`.  Names from `data/rtl_names.json`.  Neither row has a district gate; the price test only chooses the colour digit, so no vet row is ever hidden.",
+ "loop_top": {
+  "addr": "1000:d4ba",
+  "reached_from": [
+   {
+    "addr": "1000:d3f4",
+    "why": "the healthy-skip past the menu"
+   },
+   {
+    "addr": "1000:d6c5",
+    "why": "the loop's back edge"
+   }
+  ],
+  "tests": [
+   {
+    "addr": "1000:d4ba",
+    "text": "mov ax,[0x38ac]"
+   },
+   {
+    "addr": "1000:d4bd",
+    "text": "cmp ax,[0x38ae]"
+   },
+   {
+    "addr": "1000:d4c1",
+    "text": "jl 0xd4ed"
+   },
+   {
+    "addr": "1000:d4c3",
+    "text": "cmp byte [0x38b0],0x0"
+   },
+   {
+    "addr": "1000:d4c8",
+    "text": "jnz 0xd4ed"
+   },
+   {
+    "addr": "1000:d4ca",
+    "text": "cmp byte [0x38b1],0x0"
+   },
+   {
+    "addr": "1000:d4cf",
+    "text": "jnz 0xd4ed"
+   }
+  ],
+  "eject_string": {
+   "role": "eject",
+   "cs_offset": "0x9a25",
+   "file_offset": "0x0b2f5",
+   "text": "^0Док: вали отсюда ты здоров.",
+   "push": {
+    "addr": "1000:d4d1",
+    "text": "mov di,0x9a25"
+   },
+   "print": {
+    "addr": "1000:d4e5",
+    "text": "call 0xeed:0x1c2"
+   }
+  },
+  "eject_jump": {
+   "addr": "1000:d4ea",
+   "text": "jmp 0xd6c8"
+  },
+  "prompt_target": "1000:d4ed",
+  "note": "All three branches go to the PROMPT and the EJECT is the fall-through, so the player is thrown out the moment they are whole.  Inverting the sense would eject exactly the players who need the vet."
+ },
+ "input_read": {
+  "prompt": {
+   "role": "prompt",
+   "cs_offset": "0x9a43",
+   "file_offset": "0x0b313",
+   "text": "^0Ветеренар\\",
+   "push": {
+    "addr": "1000:d4ed",
+    "text": "mov di,0x9a43"
+   },
+   "print": {
+    "addr": "1000:d501",
+    "text": "call 0xeed:0x0"
+   }
+  },
+  "prompt_call": {
+   "addr": "1000:d501",
+   "text": "call 0xeed:0x0",
+   "note": "`0eed:0000` is Write, not WriteLn, so the typed line continues the prompt."
+  },
+  "buffer": "20ae:3a72",
+  "scratch": "20ae:3ecc",
+  "setup": [
+   {
+    "addr": "1000:d506",
+    "text": "mov di,0x3ecc"
+   },
+   {
+    "addr": "1000:d50b",
+    "text": "mov di,0x3a72"
+   },
+   {
+    "addr": "1000:d510",
+    "text": "mov ax,0xff"
+   },
+   {
+    "addr": "1000:d514",
+    "text": "call 0xf78:0x6c6"
+   },
+   {
+    "addr": "1000:d519",
+    "text": "call 0xf78:0x59d"
+   },
+   {
+    "addr": "1000:d51e",
+    "text": "call 0xf78:0x291"
+   }
+  ],
+  "case_fold": {
+   "addr": "1000:d528",
+   "text": "call 0xeed:0x216",
+   "note": "`0eed:0216` lowercases ASCII `A`..`Z` in place and compares against no `0x20`, so vet keys are case-insensitive and whitespace-SENSITIVE.  `Game::shop_turn` trims, which is the standing divergence `docs/re/gaps.md`'s trimmed-prompt entry owns."
+  }
+ },
+ "loop": {
+  "top": "1000:d4ba",
+  "prompt": "1000:d4ed",
+  "back_edge": {
+   "addr": "1000:d6c5",
+   "text": "jmp 0xd4ba"
+  },
+  "exit": {
+   "addr": "1000:d6c8",
+   "text": "jmp short 0xd6e3"
+  },
+  "note": "The back edge targets the LOOP TOP, not the prompt -- the vet is the only handler in this port whose loop re-runs a test before re-prompting.  Nothing between them reprints the menu, and an unrecognised key is silent."
+ },
+ "arms": [
+  {
+   "key": "r",
+   "name": "починят переломы",
+   "price": 7,
+   "span": {
+    "start": "1000:d532",
+    "end": "1000:d5af"
+   },
+   "key_literal": {
+    "role": "key_literal",
+    "cs_offset": "0x9a50",
+    "file_offset": "0x0b320",
+    "text": "r",
+    "push": {
+     "addr": "1000:d532",
+     "text": "mov di,0x9a50"
+    }
+   },
+   "compare_addr": "1000:d537",
+   "compare": {
+    "addr": "1000:d537",
+    "text": "call 0xf78:0xbd8"
+   },
+   "miss": {
+    "addr": "1000:d53c",
+    "text": "jnz 0xd5af"
+   },
+   "gates": [
+    {
+     "what": "jaw set -> straight to the money test",
+     "test": {
+      "addr": "1000:d53e",
+      "text": "cmp byte [0x38b0],0x1"
+     },
+     "branch": {
+      "addr": "1000:d543",
+      "text": "jz 0xd54c"
+     }
+    },
+    {
+     "what": "else leg set; neither is SILENT",
+     "test": {
+      "addr": "1000:d545",
+      "text": "cmp byte [0x38b1],0x1"
+     },
+     "branch": {
+      "addr": "1000:d54a",
+      "text": "jnz 0xd5af"
+     }
+    },
+    {
+     "what": "can pay 7, SIGNED",
+     "test": {
+      "addr": "1000:d54c",
+      "text": "cmp word [0x38c7],0x7"
+     },
+     "branch": {
+      "addr": "1000:d551",
+      "text": "jl 0xd596"
+     }
+    }
+   ],
+   "effects": [
+    {
+     "addr": "1000:d553",
+     "text": "sub word [0x38c7],0x7"
+    },
+    {
+     "addr": "1000:d558",
+     "text": "mov byte [0x38b0],0x0"
+    },
+    {
+     "addr": "1000:d55d",
+     "text": "mov byte [0x38b1],0x0"
+    }
+   ],
+   "strings": [
+    {
+     "role": "success",
+     "cs_offset": "0x9a52",
+     "file_offset": "0x0b322",
+     "text": "^0Ого! да тебя не иначе как грузовик откатал!",
+     "push": {
+      "addr": "1000:d562",
+      "text": "mov di,0x9a52"
+     },
+     "print": {
+      "addr": "1000:d576",
+      "text": "call 0xeed:0x1c2"
+     }
+    },
+    {
+     "role": "success",
+     "cs_offset": "0x9a80",
+     "file_offset": "0x0b350",
+     "text": "^2Твои переломы залечены.",
+     "push": {
+      "addr": "1000:d57b",
+      "text": "mov di,0x9a80"
+     },
+     "print": {
+      "addr": "1000:d58f",
+      "text": "call 0xeed:0x1c2"
+     }
+    },
+    {
+     "role": "refusal",
+     "cs_offset": "0x9a9a",
+     "file_offset": "0x0b36a",
+     "text": "^4Блин халявщик, медицина не бесплатная",
+     "push": {
+      "addr": "1000:d596",
+      "text": "mov di,0x9a9a"
+     },
+     "print": {
+      "addr": "1000:d5aa",
+      "text": "call 0xeed:0x1c2"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:d576",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:d58f",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:d5aa",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "leaves": {
+    "addr": "1000:d594",
+    "text": "jmp short 0xd5af"
+   },
+   "finding": "ONE price clears BOTH breaks.  `1000:d543` takes the jaw case straight past the leg test to `1000:d54c`, so the gate is an OR and a player with two breaks pays 7 once.  A player with NEITHER break is answered with silence: `1000:d54a` jumps to `1000:d5af`, the `h` compare, printing nothing.  There is no 'you are healthy' literal on this path -- that line is the loop top's."
+  },
+  {
+   "key": "h",
+   "name": "тебя залатают",
+   "price": 3,
+   "span": {
+    "start": "1000:d5af",
+    "end": "1000:d6a3"
+   },
+   "key_literal": {
+    "role": "key_literal",
+    "cs_offset": "0x9ac2",
+    "file_offset": "0x0b392",
+    "text": "h",
+    "push": {
+     "addr": "1000:d5b4",
+     "text": "mov di,0x9ac2"
+    }
+   },
+   "compare_addr": "1000:d5b9",
+   "compare": {
+    "addr": "1000:d5b9",
+    "text": "call 0xf78:0xbd8"
+   },
+   "hit": {
+    "addr": "1000:d5be",
+    "text": "jz 0xd5c3"
+   },
+   "miss": {
+    "addr": "1000:d5c0",
+    "text": "jmp 0xd6a3"
+   },
+   "gates": [
+    {
+     "what": "hp < hpmax, else SILENT",
+     "test": {
+      "addr": "1000:d5c3",
+      "text": "mov ax,[0x38ac]"
+     },
+     "second": {
+      "addr": "1000:d5c6",
+      "text": "cmp ax,[0x38ae]"
+     },
+     "branch": {
+      "addr": "1000:d5ca",
+      "text": "jl 0xd5cf"
+     },
+     "miss_jump": {
+      "addr": "1000:d5cc",
+      "text": "jmp 0xd6a3"
+     }
+    },
+    {
+     "what": "can pay 3, SIGNED",
+     "test": {
+      "addr": "1000:d5cf",
+      "text": "cmp word [0x38c7],0x3"
+     },
+     "branch": {
+      "addr": "1000:d5d4",
+      "text": "jnl 0xd5d9"
+     },
+     "miss_jump": {
+      "addr": "1000:d5d6",
+      "text": "jmp 0xd68a"
+     }
+    },
+    {
+     "what": "the hpmax clamp",
+     "test": {
+      "addr": "1000:d5e3",
+      "text": "mov ax,[0x38ac]"
+     },
+     "second": {
+      "addr": "1000:d5e6",
+      "text": "cmp ax,[0x38ae]"
+     },
+     "branch": {
+      "addr": "1000:d5ea",
+      "text": "jle 0xd5f2"
+     }
+    },
+    {
+     "what": "the flavour dispatch, arm 1",
+     "test": {
+      "addr": "1000:d5fb",
+      "text": "cmp ax,0x1"
+     },
+     "branch": {
+      "addr": "1000:d5fe",
+      "text": "jnz 0xd61b"
+     }
+    },
+    {
+     "what": "the flavour dispatch, arm 2",
+     "test": {
+      "addr": "1000:d61b",
+      "text": "cmp ax,0x2"
+     },
+     "branch": {
+      "addr": "1000:d61e",
+      "text": "jnz 0xd63b"
+     }
+    }
+   ],
+   "effects": [
+    {
+     "addr": "1000:d5d9",
+     "text": "sub word [0x38c7],0x3"
+    },
+    {
+     "addr": "1000:d5de",
+     "text": "add word [0x38ac],0x5"
+    },
+    {
+     "addr": "1000:d5ef",
+     "text": "mov [0x38ac],ax"
+    }
+   ],
+   "draw": {
+    "n_push": {
+     "addr": "1000:d5f2",
+     "text": "mov ax,0x3"
+    },
+    "push": {
+     "addr": "1000:d5f5",
+     "text": "push ax"
+    },
+    "call": {
+     "addr": "1000:d5f6",
+     "text": "call 0xf78:0x114b"
+    },
+    "n": 3,
+    "note": "The only `Random` site in the range, and the only one in a location handler whose `n` is a bare immediate rather than a district product.  `ax` at `1000:d5fb` and `1000:d61b` is this draw's return value: no instruction between `1000:d5f6` and `1000:d61b` writes `ax` outside the `1000:d600` arm that `1000:d5fe` skips."
+   },
+   "strings": [
+    {
+     "role": "flavour_1",
+     "cs_offset": "0x9ac4",
+     "file_offset": "0x0b394",
+     "text": "^0Щас гайки подтянем и будешь как новый!",
+     "push": {
+      "addr": "1000:d600",
+      "text": "mov di,0x9ac4"
+     },
+     "print": {
+      "addr": "1000:d614",
+      "text": "call 0xeed:0x1c2"
+     }
+    },
+    {
+     "role": "flavour_2",
+     "cs_offset": "0x9aed",
+     "file_offset": "0x0b3bd",
+     "text": "^0Так чё тут у нас? Ага, пара швов и всё будет в порядке.",
+     "push": {
+      "addr": "1000:d620",
+      "text": "mov di,0x9aed"
+     },
+     "print": {
+      "addr": "1000:d634",
+      "text": "call 0xeed:0x1c2"
+     }
+    },
+    {
+     "role": "flavour_0",
+     "cs_offset": "0x9b27",
+     "file_offset": "0x0b3f7",
+     "text": "^6Эй, Док а зачем тебе паяльник?",
+     "push": {
+      "addr": "1000:d63b",
+      "text": "mov di,0x9b27"
+     },
+     "print": {
+      "addr": "1000:d64f",
+      "text": "call 0xeed:0x1c2"
+     }
+    },
+    {
+     "role": "flavour_0",
+     "cs_offset": "0x9b48",
+     "file_offset": "0x0b418",
+     "text": "^0Док: Молчи животное!",
+     "push": {
+      "addr": "1000:d654",
+      "text": "mov di,0x9b48"
+     },
+     "print": {
+      "addr": "1000:d668",
+      "text": "call 0xeed:0x1c2"
+     }
+    },
+    {
+     "role": "health_report",
+     "cs_offset": "0x9b5f",
+     "file_offset": "0x0b42f",
+     "text": "^2Здоровья #/#",
+     "push": {
+      "addr": "1000:d66d",
+      "text": "mov di,0x9b5f"
+     },
+     "print": {
+      "addr": "1000:d683",
+      "text": "call 0xeed:0x1c2"
+     }
+    },
+    {
+     "role": "refusal",
+     "cs_offset": "0x9a9a",
+     "file_offset": "0x0b36a",
+     "text": "^4Блин халявщик, медицина не бесплатная",
+     "push": {
+      "addr": "1000:d68a",
+      "text": "mov di,0x9a9a"
+     },
+     "print": {
+      "addr": "1000:d69e",
+      "text": "call 0xeed:0x1c2"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:d614",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:d634",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:d64f",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:d668",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:d683",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:d69e",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "health_report_args": [
+    {
+     "addr": "1000:d672",
+     "text": "push [0x38ac]"
+    },
+    {
+     "addr": "1000:d676",
+     "text": "push [0x38ae]"
+    }
+   ],
+   "converge": "1000:d66d",
+   "leaves": {
+    "addr": "1000:d688",
+    "text": "jmp short 0xd6a3"
+   },
+   "finding": "`h` is a HEAL, not a jaw.  `1000:d5de` is `add word [0x38ac],0x5` and neither `20ae:38b0` nor `20ae:38b1` appears anywhere in `1000:d5af`..`1000:d6a3`.  The two menu rows say the same thing -- file `0xB2B2` is `3^7 рубля тебя залатают`, file `0xB2D9` is `7^7 рублей починят переломы` -- but the rows are OUTPUT and the `add` is the flow.  The `Random(3)` picks one of three flavour blocks, all three converge on `1000:d66d`, and only the `0` arm prints two lines."
+  }
+ ],
+ "key_set": [
+  {
+   "key": "r",
+   "compare": "1000:d537",
+   "cs_offset": "0x9a50",
+   "gated_by": null
+  },
+  {
+   "key": "h",
+   "compare": "1000:d5b9",
+   "cs_offset": "0x9ac2",
+   "gated_by": null
+  },
+  {
+   "key": "w",
+   "compare": "1000:d6ad",
+   "cs_offset": "0x848e",
+   "gated_by": null
+  },
+  {
+   "key": "e",
+   "compare": "1000:d6be",
+   "cs_offset": "0x9b6e",
+   "gated_by": null
+  }
+ ],
+ "key_set_note": "Four keys, each established at a COMPARE address on the vet's own buffer `20ae:3a72` -- never from a menu string.  Neither key arm sits behind a gate that skips its own compare, unlike the club's `2` and the gym's `3`/`4`/`5`: both preconditions stand AFTER the compare and inside the arm.",
+ "exits": {
+  "tier": "flow",
+  "claim": "TWO exit tokens, not one.  `1000:d6ad` compares the shared `w` (CS `0x848e`, nine push sites image-wide) and `1000:d6be` compares `e` (CS `0x9b6e`, file `0xB43E`) -- the same literal `entry`'s quit verb compares at `1000:edfa`.  Both `jz` to `1000:d6c8`, which `jmp short`s to `1000:d6e3`, the `girl` verb's setup on the STREET buffer, so the street dispatch chain resumes.  `e` at the vet prompt therefore LEAVES THE VET; it cannot quit, because the vet's `ReadLn` fills `20ae:3a72` and `1000:edfa` reads `20ae:3972`.",
+  "entries": [
+   {
+    "key": "w",
+    "buffer_push": {
+     "addr": "1000:d6a3",
+     "text": "mov di,0x3a72"
+    },
+    "literal": {
+     "role": "key_literal",
+     "cs_offset": "0x848e",
+     "file_offset": "0x09d5e",
+     "text": "w",
+     "push": {
+      "addr": "1000:d6a8",
+      "text": "mov di,0x848e"
+     }
+    },
+    "compare": {
+     "addr": "1000:d6ad",
+     "text": "call 0xf78:0xbd8"
+    },
+    "hit": {
+     "addr": "1000:d6b2",
+     "text": "jz 0xd6c8"
+    }
+   },
+   {
+    "key": "e",
+    "buffer_push": {
+     "addr": "1000:d6b4",
+     "text": "mov di,0x3a72"
+    },
+    "literal": {
+     "role": "key_literal",
+     "cs_offset": "0x9b6e",
+     "file_offset": "0x0b43e",
+     "text": "e",
+     "push": {
+      "addr": "1000:d6b9",
+      "text": "mov di,0x9b6e"
+     }
+    },
+    "compare": {
+     "addr": "1000:d6be",
+     "text": "call 0xf78:0xbd8"
+    },
+    "hit": {
+     "addr": "1000:d6c3",
+     "text": "jz 0xd6c8"
+    }
+   }
+  ],
+  "shared_target": "1000:d6c8",
+  "shared_jump": {
+   "addr": "1000:d6c8",
+   "text": "jmp short 0xd6e3"
+  }
+ },
+ "globals": [
+  {
+   "ds": "20ae:3698",
+   "named_from": "the vet's discovery flag",
+   "note": "Read once in range, by the gate at `1000:d3b0`.  Four writers image-wide and none of them here.",
+   "written_in_range": [],
+   "read_sites_in_range": 1,
+   "evidence": [
+    {
+     "addr": "1000:d3b0",
+     "text": "cmp byte [0x3698],0x1"
+    }
+   ],
+   "xrefs": {
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3698",
+    "raw_hits": 9,
+    "accepted": 9,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:6d3b",
+     "1000:6dc3",
+     "1000:ab96",
+     "1000:b196"
+    ]
+   }
+  },
+  {
+   "ds": "20ae:38ac",
+   "named_from": "здоровье",
+   "note": "The `h` arm's subject: `1000:d5de` adds 5 and `1000:d5ef` clamps.  Also read by both health tests and pushed as the first `#` of the health report.",
+   "written_in_range": [
+    "1000:d5de",
+    "1000:d5ef"
+   ],
+   "read_sites_in_range": 5,
+   "evidence": [
+    {
+     "addr": "1000:d5de",
+     "text": "add word [0x38ac],0x5"
+    }
+   ],
+   "xrefs": {
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38ac",
+    "raw_hits": 74,
+    "accepted": 74,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:2699",
+     "1000:27c8",
+     "1000:2a97",
+     "1000:2ae7",
+     "1000:4783",
+     "1000:49da",
+     "1000:4a41",
+     "1000:4b92",
+     "1000:4bb3",
+     "1000:501b",
+     "1000:526c",
+     "1000:527d",
+     "1000:5344",
+     "1000:53a3",
+     "1000:71d5",
+     "1000:802a",
+     "1000:8094",
+     "1000:8116",
+     "1000:8175",
+     "1000:b25a",
+     "1000:b26b",
+     "1000:b2dd",
+     "1000:bdc3",
+     "1000:bdd3",
+     "1000:ca4d",
+     "1000:ca9e",
+     "1000:d5de",
+     "1000:d5ef",
+     "1000:d78b",
+     "1000:e67d",
+     "1000:e70a",
+     "1000:e9f8",
+     "1000:ea19"
+    ]
+   }
+  },
+  {
+   "ds": "20ae:38ae",
+   "named_from": "здоровье max",
+   "note": "Never written in range -- the vet raises the ceiling for nobody; the gym's `1000:e679`/`1000:e705` do that.",
+   "written_in_range": [],
+   "read_sites_in_range": 6,
+   "evidence": [
+    {
+     "addr": "1000:d3d6",
+     "text": "cmp ax,[0x38ae]"
+    }
+   ],
+   "xrefs": {
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38ae",
+    "raw_hits": 59,
+    "accepted": 59,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:2695",
+     "1000:27c3",
+     "1000:49ca",
+     "1000:4a30",
+     "1000:533f",
+     "1000:539e",
+     "1000:71cf",
+     "1000:8026",
+     "1000:808f",
+     "1000:8111",
+     "1000:8170",
+     "1000:ca49",
+     "1000:ca99",
+     "1000:e679",
+     "1000:e705"
+    ]
+   }
+  },
+  {
+   "ds": "20ae:38b0",
+   "named_from": "сломана челюсть",
+   "note": "Five writers image-wide and exactly one of them is the vet's, `1000:d558`, in the `r` arm.",
+   "written_in_range": [
+    "1000:d558"
+   ],
+   "read_sites_in_range": 3,
+   "evidence": [
+    {
+     "addr": "1000:d558",
+     "text": "mov byte [0x38b0],0x0"
+    }
+   ],
+   "xrefs": {
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38b0",
+    "raw_hits": 17,
+    "accepted": 17,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:47ee",
+     "1000:4820",
+     "1000:5031",
+     "1000:b2ae",
+     "1000:d558"
+    ]
+   }
+  },
+  {
+   "ds": "20ae:38b1",
+   "named_from": "сломана нога",
+   "note": "Four writers image-wide; the vet's is `1000:d55d`, beside the jaw's, under the same price test.",
+   "written_in_range": [
+    "1000:d55d"
+   ],
+   "read_sites_in_range": 3,
+   "evidence": [
+    {
+     "addr": "1000:d55d",
+     "text": "mov byte [0x38b1],0x0"
+    }
+   ],
+   "xrefs": {
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38b1",
+    "raw_hits": 12,
+    "accepted": 12,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:4862",
+     "1000:5036",
+     "1000:b289",
+     "1000:d55d"
+    ]
+   }
+  },
+  {
+   "ds": "20ae:38c7",
+   "named_from": "бабки",
+   "note": "Debited twice in range, 7 at `1000:d553` and 3 at `1000:d5d9`, and read by the two menu price tests and the two arm price tests.",
+   "written_in_range": [
+    "1000:d553",
+    "1000:d5d9"
+   ],
+   "read_sites_in_range": 4,
+   "evidence": [
+    {
+     "addr": "1000:d553",
+     "text": "sub word [0x38c7],0x7"
+    }
+   ],
+   "xrefs": {
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38c7",
+    "raw_hits": 107,
+    "accepted": 107,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:5014",
+     "1000:502c",
+     "1000:504e",
+     "1000:5248",
+     "1000:761d",
+     "1000:b32d",
+     "1000:bdb3",
+     "1000:be49",
+     "1000:bf00",
+     "1000:bf8a",
+     "1000:c033",
+     "1000:c0ea",
+     "1000:c18d",
+     "1000:c22c",
+     "1000:c2d4",
+     "1000:c37d",
+     "1000:c90a",
+     "1000:c973",
+     "1000:c9eb",
+     "1000:cb0f",
+     "1000:cba7",
+     "1000:cc60",
+     "1000:cd14",
+     "1000:cdad",
+     "1000:ce3e",
+     "1000:ce91",
+     "1000:cf7d",
+     "1000:d032",
+     "1000:d0e7",
+     "1000:d1aa",
+     "1000:d266",
+     "1000:d31b",
+     "1000:d553",
+     "1000:d5d9",
+     "1000:d78e",
+     "1000:db96",
+     "1000:de6d",
+     "1000:e0a8",
+     "1000:e0d7",
+     "1000:e2a7",
+     "1000:e31c",
+     "1000:e657",
+     "1000:e6e3",
+     "1000:e796",
+     "1000:e823",
+     "1000:e8b8"
+    ]
+   }
+  },
+  {
+   "ds": "20ae:3b7a",
+   "named_from": "the menu rows' colour digit",
+   "note": "The shared scratch byte every immediate-priced row in the image writes before assembling itself; 58 writers image-wide, four of them here.",
+   "written_in_range": [
+    "1000:d417",
+    "1000:d41e",
+    "1000:d46c",
+    "1000:d473"
+   ],
+   "read_sites_in_range": 2,
+   "evidence": [
+    {
+     "addr": "1000:d417",
+     "text": "mov byte [0x3b7a],0x34"
+    }
+   ],
+   "xrefs": {
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3b7a",
+    "raw_hits": 87,
+    "accepted": 87,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:b9be",
+     "1000:b9c5",
+     "1000:ba1a",
+     "1000:ba21",
+     "1000:ba77",
+     "1000:ba7e",
+     "1000:bad3",
+     "1000:bada",
+     "1000:bb2f",
+     "1000:bb36",
+     "1000:bb95",
+     "1000:bb9c",
+     "1000:bbf1",
+     "1000:bbf8",
+     "1000:bc54",
+     "1000:bc5b",
+     "1000:bcb7",
+     "1000:bcbe",
+     "1000:c528",
+     "1000:c52f",
+     "1000:c584",
+     "1000:c58b",
+     "1000:c5e0",
+     "1000:c5e7",
+     "1000:c63c",
+     "1000:c643",
+     "1000:c69f",
+     "1000:c6a6",
+     "1000:c703",
+     "1000:c70a",
+     "1000:c767",
+     "1000:c76e",
+     "1000:c7cc",
+     "1000:c7d3",
+     "1000:c83d",
+     "1000:c844",
+     "1000:d417",
+     "1000:d41e",
+     "1000:d46c",
+     "1000:d473",
+     "1000:d98b",
+     "1000:d992",
+     "1000:d9e0",
+     "1000:d9e7",
+     "1000:df76",
+     "1000:df7d",
+     "1000:dfd2",
+     "1000:dfd9",
+     "1000:e407",
+     "1000:e40e",
+     "1000:e45c",
+     "1000:e463",
+     "1000:e4cb",
+     "1000:e4d2",
+     "1000:e528",
+     "1000:e52f",
+     "1000:e596",
+     "1000:e59d"
+    ]
+   }
+  }
+ ],
+ "globals_not_memory_operands": {
+  "note": "`20ae:3a72` (the vet's input buffer), `20ae:3ecc` (the `ReadLn` scratch) and `20ae:3972` (the street buffer the verb compare reads) are pushed as DS pointers, never carried as an absolute-memory operand, so they are outside the `globals[]` census by construction.  They are recorded here so the completeness claim on `globals[]` cannot hide them.",
+  "entries": [
+   "20ae:3972",
+   "20ae:3a72",
+   "20ae:3ecc"
+  ]
+ },
+ "known_not_boundaries": {
+  "note": "Addresses this artifact NAMES but does not claim are instruction boundaries reachable from a function entry.  There are none: every address in this file resolves through the aligned decode, which `tools/test_arms_artifacts.py` asserts for the whole artifact.  An empty list is a measurement here, not an omission -- the boundary walk runs over every `1000:` string in the file and this list is what it subtracts.",
+  "tier": "flow",
+  "entries": []
+ },
+ "spans": [
+  {
+   "name": "rep verb compare",
+   "start": "1000:d3a6",
+   "end": "1000:d3b0"
+  },
+  {
+   "name": "discovery gate on 20ae:3698",
+   "start": "1000:d3b0",
+   "end": "1000:d3ba"
+  },
+  {
+   "name": "the intro line",
+   "start": "1000:d3ba",
+   "end": "1000:d3d3"
+  },
+  {
+   "name": "the healthy test that decides whether the menu prints",
+   "start": "1000:d3d3",
+   "end": "1000:d3f7"
+  },
+  {
+   "name": "the doctor's menu header",
+   "start": "1000:d3f7",
+   "end": "1000:d410"
+  },
+  {
+   "name": "menu row 1 -- h, 3 rubles",
+   "start": "1000:d410",
+   "end": "1000:d465"
+  },
+  {
+   "name": "menu row 2 -- r, 7 rubles",
+   "start": "1000:d465",
+   "end": "1000:d4ba"
+  },
+  {
+   "name": "the LOOP TOP: the same health test, and the eject",
+   "start": "1000:d4ba",
+   "end": "1000:d4ed"
+  },
+  {
+   "name": "prompt, ReadLn, case fold",
+   "start": "1000:d4ed",
+   "end": "1000:d532"
+  },
+  {
+   "name": "the r arm -- fix both fractures",
+   "start": "1000:d532",
+   "end": "1000:d5af"
+  },
+  {
+   "name": "the h arm -- five points of health",
+   "start": "1000:d5af",
+   "end": "1000:d6a3"
+  },
+  {
+   "name": "the w exit compare",
+   "start": "1000:d6a3",
+   "end": "1000:d6b4"
+  },
+  {
+   "name": "the e exit compare and the loop back edge",
+   "start": "1000:d6b4",
+   "end": "1000:d6c8"
+  },
+  {
+   "name": "the shared exit jump",
+   "start": "1000:d6c8",
+   "end": "1000:d6ca"
+  },
+  {
+   "name": "the undiscovered refusal",
+   "start": "1000:d6ca",
+   "end": "1000:d6e3"
+  },
+  {
+   "name": "the girl verb's own setup",
+   "start": "1000:d6e3",
+   "end": "1000:d6ed"
+  }
+ ],
+ "spans_note": "These 16 spans tile `1000:d3a6`..`1000:d6ed` end to end with no gap and no overlap, which `tools/test_arms_artifacts.py` asserts, so a block cannot be dropped from this map by being left out of every span.",
+ "sweeps": {
+  "note": "The anchors `tools/test_arms_artifacts.py` asserts SET EQUALITY against, not counts read off this file.  Each is a count over the aligned decode of `1000:d3a6`..`1000:d6ed`.",
+  "instructions": 379,
+  "cs_literal_pushes": 23,
+  "conditional_branches": 23,
+  "random_call_sites": 1,
+  "random_call_sites_note": "ONE, at `1000:d5f6`, and its `n` is the bare immediate 3 pushed at `1000:d5f2`.  The sweep that says so is the same signature run image-wide and required to find the 86-call population `docs/re/METHODOLOGY.md` records.",
+  "absolute_memory_writes": 10,
+  "dgroup_addresses_touched": 7,
+  "ds_pointer_pushes": 8,
+  "shortstring_compares": 5,
+  "str_assign_calls": 2,
+  "char_to_str_calls": 2,
+  "str_append_calls": 4,
+  "writeln_calls": 15,
+  "write_calls": 1
+ },
+ "branch_census": {
+  "range": [
+   "1000:d3a6",
+   "1000:d6ec"
+  ],
+  "branches": 23,
+  "port_touched_false": 20,
+  "note": "Reproduced from `data/branches.json`'s STORED `port_touched` column at this commit.  That column is a snapshot taken when Ghidra last ran; recomputing the metric the file itself documents (`port_cross_reference.metric`) against a later tree gives a different, larger number, and image-wide the same disagreement is 84 stored against 476 recomputed.  It is structural, not a defect of this range.  `port_touched == false` means 'no address citation', never 'unimplemented'.",
+  "command": "python3 - <<'EOF'\nimport json\nB=json.load(open('data/branches.json'))['branches']\noff=lambda a:int(a.split(':')[1],16)\nr=[b for b in B if 0xd3a6<=off(b['addr'])<=0xd6ec]\nprint(len(r),'branches,',sum(1 for b in r if not b['port_touched']),'untouched')\nEOF"
+ },
+ "port_reachability": {
+  "note": "Nothing in this range is BLOCKED on a missing input: every global it touches already has a field in `src/`, it calls into no unported routine, and its one draw goes through `crate::rng::Rng::below_at` like every other.",
+  "globals_with_fields": [
+   "20ae:3698",
+   "20ae:38ac",
+   "20ae:38ae",
+   "20ae:38b0",
+   "20ae:38b1",
+   "20ae:38c7"
+  ],
+  "globals_without_fields": [
+   "20ae:3b7a"
+  ],
+  "globals_without_fields_note": "`20ae:3b7a` is the colour-digit scratch every priced row writes before assembling itself; `Game::afford` returns the same `'0'`/`'4'` as a value instead of keeping a byte, which is the existing modelling for all 58 of its writers.",
+  "calls_out": []
+ },
+ "what_the_port_must_change": [
+  {
+   "n": 1,
+   "blocked": false,
+   "what": "`Game::heal_jaw` charged 3 to clear `20ae:38b0` and `Game::heal_leg` charged 7 to clear `20ae:38b1`.  Neither key does that.  `r` (`1000:d537`) clears BOTH breaks at `1000:d558` and `1000:d55d` behind ONE price test at `1000:d54c`, and `h` (`1000:d5b9`) touches no break at all: it is `1000:d5de add word [0x38ac],0x5`.",
+   "falsifiable_as": "with both breaks set and 7 rubles, one `r` must clear both and leave 0 rubles; with a break set and hp short, one `h` must raise hp by 5 and leave the break standing."
+  },
+  {
+   "n": 2,
+   "blocked": false,
+   "what": "Both arms fail SILENTLY when their own precondition is unmet -- `1000:d54a jnz 0xd5af` for `r` with no break, `1000:d5cc jmp 0xd6a3` for `h` at full health.  `pay_and_heal` printed `^0Док: вали отсюда ты здоров.` in both cases; that literal (CS `0x9a25`) is pushed at `1000:d4d1`, inside the LOOP TOP, and nowhere else in the range.",
+   "do_not_fix": "Do not print a refusal for a key whose precondition fails.  The CS-literal sweep over the range is a set equality and finds no literal for one."
+  },
+  {
+   "n": 3,
+   "blocked": false,
+   "what": "The loop top `1000:d4ba` re-tests health before EVERY prompt and ejects on the fall-through at `1000:d4d1`/`1000:d4ea`.  So healing the last point of damage ends the visit in the same turn, and entering the vet whole prints the intro and the eject line and leaves.",
+   "falsifiable_as": "`1000:d3f4` lands on `1000:d4ba`, so a whole player entering the vet must never see the two menu rows and must never reach a prompt."
+  },
+  {
+   "n": 4,
+   "blocked": false,
+   "what": "`e` is a second exit key at `1000:d6be`.  `Game::shop_turn`'s catch-all parses `e` as `Command::Quit`, which matches nothing there, so the vet used to ignore it.",
+   "do_not_fix": "`e` here must LEAVE THE VET, not quit the game: `1000:d6c8` reaches `1000:d6e3`, the `girl` verb's setup, and the quit verb's own compare at `1000:edfa` reads a different buffer."
+  },
+  {
+   "n": 5,
+   "blocked": false,
+   "what": "The `h` arm spends one `Random(3)` at `1000:d5f6` on flavour, then always prints `^2Здоровья #/#` at `1000:d683` with hp and hpmax in that order.  A port that elided the draw as cosmetic would desynchronise the RNG stream from the original's.",
+   "falsifiable_as": "the draw count inside `1000:d3a6`..`1000:d6ed` is exactly ONE; all three flavour arms converge on `1000:d66d` and the `0` arm is the only one that prints two lines."
+  },
+  {
+   "n": 6,
+   "blocked": false,
+   "what": "The vet's `ReadLn` at `1000:d528` does not trim (`0eed:0216` lowercases only); `Game::shop_turn` trims.",
+   "do_not_fix": "Do not fix it here; it is one gap across every submenu."
+  }
+ ]
+}

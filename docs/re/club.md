@@ -556,7 +556,8 @@ The full, falsifiable list is `data/club_arms.json`'s
     key is silent.
 13. The club's `ReadLn` at `1000:e060` does not trim; `Game::shop_turn` does.
 
-Nothing in this range is *blocked*: `20ae:38a0`, `20ae:38a4`, `20ae:38c7`,
+**All thirteen landed in Task 34**, in `src/club.rs` and in
+`Game::enter_shop`. Nothing in this range is *blocked*: `20ae:38a0`, `20ae:38a4`, `20ae:38c7`,
 `20ae:38ce`, `20ae:3692`, `20ae:3699`, `20ae:3b72` and `20ae:3b77` all have
 fields in `src/`, and `1000:0d14`, `1000:2526` and `1000:3d11` are all ported.
 The one thing the port lacks is the stake byte itself — missing code, not a
@@ -658,12 +659,12 @@ time. Read as flow it confirms the file order; read as an ordering it would
 reintroduce the swap. A port that "tidies" this list into address order breaks
 `locations::TRACKED`.
 
-## The port divergence
+## The port divergence — closed by Task 34
 
-`Game::show_command_list` prints **thirteen** fixed lines with no gating.
-Recomputed for this commit — the command is in `data/club_arms.json`'s
-`command_list.port_divergence.command` — all thirteen are verbatim original
-lines and they are in the original's relative order, but:
+At Task 33, when this document was written, `Game::show_command_list` printed
+**thirteen** fixed lines with no gating. Recomputed then — the command is in
+`data/club_arms.json`'s `command_list.port_divergence.command` — all thirteen
+were verbatim original lines and in the original's relative order, but:
 
 * **four are never printed at all**: CS `0xa787` (`bmar`, gate `1000:ead7`),
   `0xa7d6` (`girl`, `1000:eb17`), `0xa83d` (`kl`, `1000:eb57`) and `0xa860`
@@ -672,7 +673,14 @@ lines and they are in the original's relative order, but:
   (`mar`, `1000:eab7`), `0xa7ad` (`rep`, `1000:eaf7`) and `0xa809` (`pr`,
   `1000:eb37`).
 
-The remaining ten — the ungated head and the ungated tail — are right.
+The remaining ten — the ungated head and the ungated tail — were right.
+
+**Task 34 rewrote the function to the seventeen-line partition above.**
+`data/club_arms.json`'s `command_list.port_divergence.closed_by` carries the
+command that recomputes the port half against the shape it has now; it prints
+`17 port lines; [] never printed`. `measured` is kept as the record of what
+the divergence was, not of what `src/` holds today — a claim about the port
+cites the command that recomputes it, and that is what `closed_by` is.
 
 **Where the thirteen came from.**
 `docs/re/oracle-captures/command-table-and-combat.md` captures exactly these
@@ -691,9 +699,8 @@ them.
 
 Task 33 corrected the two outside `src/`: the `i` row in
 `docs/re/command-dispatch.md` and the `i` note in
-`data/command_dispatch.json` now say seventeen and point here. The three inside
-`src/` belong to the porting task and are left exactly as they are;
-`docs/re/gaps.md` names all five.
+`data/command_dispatch.json` now say seventeen and point here. Task 34
+corrected the three inside it — `grep -rn '13-line' src/` now prints nothing.
 
 ## The counts this map rests on
 
@@ -727,10 +734,10 @@ Four numbered items in `data/club_arms.json`'s
    earlier draft said eleven, and nothing read it.
 2. Add the four lines the port has never had.
 3. Gate the three it prints unconditionally.
-4. Stop the thirteen propagating: `grep -rn '13-line' src/` finds three
-   comments at this commit — two in `src/commands.rs`, one in `src/game.rs` —
-   and must find none after the port lands. The two sites outside `src/` are
-   already corrected.
+4. Stop the thirteen propagating: `grep -rn '13-line' src/` found three
+   comments at Task 33's commit — two in `src/commands.rs`, one in
+   `src/game.rs` — and must find none after the port lands. **All four items
+   landed in Task 34**; the two sites outside `src/` were already corrected.
 
 ## Branch coverage
 

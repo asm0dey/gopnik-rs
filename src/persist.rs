@@ -235,6 +235,7 @@ impl Game {
     /// | [`Game::club_ban_countdown`] | `20ae:3b77` | above |
     /// | [`Game::den_errand_1_pending`] | `20ae:3b78` | above |
     /// | [`Game::den_errand_2_pending`] | `20ae:3b79` | above |
+    /// | [`Game::club_stake`] | `20ae:3c82` | above -- club-local, reset per visit at `1000:e020` |
     /// | [`Game::rector_showdown`] | `20ae:3c83` | above |
     /// | [`Game::dealer_delivery_counter`] | `20ae:3e32` | above |
     /// | [`Game::den_loan_credit`] | `20ae:3e35` | above |

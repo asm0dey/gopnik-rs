@@ -58,7 +58,7 @@
 //! | `kl` | `1000:df06` | `0xB9BA` | club |
 //! | `trn` | `1000:e390` | `0xBC23` | gym |
 //! | `kos` | `1000:e973` | `0xBEEF` | smoke a joint |
-//! | `i` | `1000:ea94` | `0xBFDE` | prints the 13-line command list (`docs/re/oracle-captures/...`'s capture); **not inventory** -- the brief's guess is wrong |
+//! | `i` | `1000:ea94` | `0xBFDE` | prints the command list; **not inventory** -- the brief's guess is wrong. Earlier revisions said the list was thirteen lines long and cited an oracle capture for it; the handler decodes to **seventeen** lines, one ungated plus seven gated on the discovery flags plus nine ungated -- `docs/re/club.md`, Part 2, and [`Game::show_command_list`] |
 //! | `s` | `1000:ec82` | `0xB855` | stats |
 //! | `f` | `1000:ec96` | `0xC31C` | shoot, **traced** in Task 18: `1000:ec9d cmp byte [0x394d],0` / `eca2 jz 0xecbd` gates the refusal `^6Ты чё псих? мигом менты накроют!` (file `0xC31E`) on owning a pistol, and without one the verb is accepted and answered with silence |
 //! | `k` | `1000:ecc7` | `0xC341` | handler not traced past its `jz`; corroborated as "fight" the same way, via `^6Чё машешь копытами? Ищи мудака которого будешь пинать!` at `0xC343` (the colour code is `^6`, not `^4`) |
@@ -165,7 +165,11 @@ pub enum Command {
     /// arm is traced in `docs/re/combat-dispatch.md` and implemented in
     /// [`crate::combat_dispatch::Backup`].
     Backup,
-    /// `i`. Confirmed at `1000:ea94`: prints the 13-line command list.
+    /// `i`. Confirmed at `1000:ea94`: prints the command list --
+    /// **seventeen** lines, seven of them gated on the discovery flags
+    /// (`docs/re/club.md`, Part 2). The thirteen an earlier revision of this
+    /// line named came from an oracle screen, which
+    /// `docs/re/METHODOLOGY.md` forbids as an establishing source.
     CommandList,
     /// `kos`. Confirmed at `1000:e973`.
     Joint,

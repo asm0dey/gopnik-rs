@@ -54,6 +54,8 @@ SOURCES = [
     "src/locations.rs",
     "src/game.rs",
     "src/gym.rs",
+    "src/club.rs",
+    "src/vet.rs",
     "src/character_sheet.rs",
     "docs/re/save-format.md",
 ]

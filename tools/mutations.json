@@ -2229,8 +2229,8 @@
     },
     "test": [
       "python3",
-      "tools/test_gym_arms.py",
-      "GymTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
     ],
     "expect": "orig/g.exe decodes"
   },
@@ -2274,8 +2274,8 @@
     },
     "test": [
       "python3",
-      "tools/test_gym_arms.py",
-      "GymTest.test_the_menu_and_arm_predicates_differ_exactly_as_recorded"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_menu_and_arm_predicates_differ_exactly_as_recorded"
     ],
     "expect": "the artifact records identical=True"
   },
@@ -2298,8 +2298,8 @@
     },
     "test": [
       "python3",
-      "tools/test_gym_arms.py",
-      "GymTest.test_the_recorded_strings_are_every_cs_literal_the_handler_pushes"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_recorded_strings_are_every_cs_literal_pushed"
     ],
     "expect": "the CS-literal push sweep and the artifact disagree"
   },
@@ -2319,8 +2319,8 @@
     },
     "test": [
       "python3",
-      "tools/test_gym_arms.py",
-      "GymTest.test_every_globals_xref_census_is_what_re_query_reports"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_every_globals_xref_census_is_what_re_query_reports"
     ],
     "expect": "as its image-wide writers"
   },
@@ -2341,8 +2341,8 @@
     },
     "test": [
       "python3",
-      "tools/test_gym_arms.py",
-      "GymTest.test_each_exemption_names_the_instruction_that_covers_it"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_each_exemption_names_the_instruction_that_covers_it"
     ],
     "expect": "the artifact records byte_index"
   },
@@ -2525,8 +2525,8 @@
     },
     "test": [
       "python3",
-      "tools/test_club_arms.py",
-      "ClubTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
     ],
     "expect": "orig/g.exe decodes"
   },
@@ -2549,8 +2549,8 @@
     },
     "test": [
       "python3",
-      "tools/test_club_arms.py",
-      "ClubTest.test_every_literal_decodes_to_the_recorded_text"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_every_literal_decodes_to_the_recorded_text"
     ],
     "expect": "the artifact records"
   },
@@ -2573,8 +2573,8 @@
     },
     "test": [
       "python3",
-      "tools/test_club_arms.py",
-      "ClubTest.test_the_recorded_effects_are_every_absolute_write_in_the_club"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_recorded_effects_are_every_absolute_write_in_range"
     ],
     "expect": "the absolute-write sweep and the artifact disagree"
   },
@@ -2597,8 +2597,8 @@
     },
     "test": [
       "python3",
-      "tools/test_club_arms.py",
-      "ClubTest.test_the_recorded_strings_are_every_cs_literal_pushed"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_recorded_strings_are_every_cs_literal_pushed"
     ],
     "expect": "the CS-literal push sweep and the artifact disagree"
   },
@@ -2622,8 +2622,8 @@
     },
     "test": [
       "python3",
-      "tools/test_club_arms.py",
-      "ClubTest.test_the_recorded_gates_are_every_conditional_branch"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_recorded_gates_are_every_conditional_branch_in_range"
     ],
     "expect": "that the artifact never names"
   },
@@ -2645,8 +2645,8 @@
     },
     "test": [
       "python3",
-      "tools/test_club_arms.py",
-      "ClubTest.test_the_menu_and_arm_predicates_differ_exactly_as_recorded"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_menu_and_arm_predicates_differ_exactly_as_recorded"
     ],
     "expect": "told apart by these bytes"
   },
@@ -2667,8 +2667,8 @@
     },
     "test": [
       "python3",
-      "tools/test_club_arms.py",
-      "ClubTest.test_the_longest_run_the_two_blocks_share_is_the_recorded_one"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_longest_run_the_two_blocks_share_is_the_recorded_one"
     ],
     "expect": "the two blocks share a"
   },
@@ -2697,8 +2697,8 @@
     },
     "test": [
       "python3",
-      "tools/test_club_arms.py",
-      "ClubTest.test_every_globals_xref_census_is_what_re_query_reports"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_every_globals_xref_census_is_what_re_query_reports"
     ],
     "expect": "xrefs-to` finds"
   },
@@ -2816,8 +2816,8 @@
     },
     "test": [
       "python3",
-      "tools/test_club_arms.py",
-      "ClubTest.test_both_ranges_decode_as_one_aligned_run"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_each_range_decodes_as_one_aligned_run"
     ],
     "expect": "every sweep"
   },
@@ -2838,8 +2838,8 @@
     },
     "test": [
       "python3",
-      "tools/test_club_arms.py",
-      "ClubTest.test_the_spans_tile_both_ranges"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_spans_tile_each_range"
     ],
     "expect": "the tiling has a"
   },
@@ -2861,8 +2861,8 @@
     },
     "test": [
       "python3",
-      "tools/test_club_arms.py",
-      "ClubTest.test_the_boundary_exemption_list_is_honest"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_boundary_exemption_list_is_honest"
     ],
     "expect": "IS a boundary"
   },
@@ -2899,8 +2899,8 @@
     },
     "test": [
       "python3",
-      "tools/test_club_arms.py",
-      "ClubTest.test_the_longest_run_the_two_blocks_share_is_the_recorded_one"
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_longest_run_the_two_blocks_share_is_the_recorded_one"
     ],
     "expect": "The span is not a free choice"
   },

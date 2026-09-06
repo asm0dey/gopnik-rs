@@ -174,188 +174,6 @@ class ClubTest(unittest.TestCase):
     def arms(self):
         return self.club["arms"]
 
-    # ------------------------------------------------------------- decode set
-    def test_both_ranges_decode_as_one_aligned_run(self):
-        """The instruction counts are the anchor every negative rests on.
-
-        An empty hit list means nothing unless the walk is known to have
-        covered the range: a walk that stopped early must not pass as a search
-        that found nothing.
-        """
-        for key, lo, hi in (("club", CLO, CHI), ("command_list", ILO, IHI)):
-            run = self.run_of(lo, hi)
-            rec = self.art[key]["range"]
-            self.assertEqual(
-                len(run), rec["instruction_count"],
-                "%s: the aligned decode of %s..%s yields %d instructions, the "
-                "artifact records %d -- one of the two is wrong and every "
-                "sweep below rests on this number"
-                % (key, cit(lo), cit(hi), len(run), rec["instruction_count"]))
-            self.assertEqual(run[0].off, lo)
-            self.assertEqual(
-                run[-1].off + run[-1].length, hi,
-                "%s: the run does not end exactly on %s, so the range is not a "
-                "whole number of instructions" % (key, cit(hi)))
-            self.assertEqual(rec["start"], cit(lo))
-            self.assertEqual(rec["end"], cit(hi))
-
-    def test_every_cited_instruction_decodes_to_what_the_artifact_says(self):
-        seen = self.walk(("addr", "text"))
-        self.assertGreater(
-            len(seen), 150,
-            "the artifact stopped carrying instruction records; a walk that "
-            "finds nothing must not pass (found %d)" % len(seen))
-        for node, path in seen:
-            ins = self.at(node["addr"])
-            self.assertEqual(
-                ins.text, node["text"],
-                "%s: data/club_arms.json says %s at %s, orig/g.exe decodes %s "
-                "there" % (path, node["text"], node["addr"], ins.text))
-
-    #: An instruction claim written INSIDE a prose string, which carries
-    #: neither a separate `addr` key nor a separate `text` key and so escapes
-    #: every other check here.
-    PROSE_INSN = re.compile(r"`(1000:[0-9a-f]{4})\s+([a-z][^`]*)`")
-
-    def test_every_prose_embedded_instruction_says_what_the_binary_says(self):
-        found = []
-
-        def rec(node, path):
-            if isinstance(node, dict):
-                for k, v in node.items():
-                    rec(v, "%s.%s" % (path, k))
-            elif isinstance(node, list):
-                for i, v in enumerate(node):
-                    rec(v, "%s[%d]" % (path, i))
-            elif isinstance(node, str):
-                for m in self.PROSE_INSN.finditer(node):
-                    found.append((path, m.group(1), m.group(2)))
-        rec(self.art, "$")
-        self.assertGreaterEqual(
-            len(found), 3,
-            "the prose-embedded instruction sweep matched only %d spans; a "
-            "scan that measures nothing must not pass" % len(found))
-        # And prove the regex can still see a claim of the shape it hunts, so
-        # "no matches" can never be mistaken for "no defects".
-        self.assertEqual(
-            self.PROSE_INSN.findall("x `1000:e2c5 inc [0x38a0]` y"),
-            [("1000:e2c5", "inc [0x38a0]")],
-            "the prose-embedded pattern no longer matches the claim shape it "
-            "hunts")
-        for path, c, text in found:
-            ins = self.at(c)
-            self.assertEqual(
-                ins.text, text,
-                "%s: data/club_arms.json writes `%s %s` inside a prose string, "
-                "but orig/g.exe decodes %r there" % (path, c, text, ins.text))
-
-    def test_every_address_the_artifact_names_is_a_boundary(self):
-        exempt = {e["addr"]
-                  for e in self.club["known_not_boundaries"]["entries"]}
-        cits = sorted(self.all_addresses() - exempt)
-        self.assertGreaterEqual(
-            len(cits), 180,
-            "the artifact names only %d distinct 1000: addresses; a scan that "
-            "measures nothing must not pass" % len(cits))
-        for c in cits:
-            self.at(c)
-
-    def test_each_exemption_names_the_instruction_that_covers_it(self):
-        """The byte role in an exemption's prose is re-derived, not authored.
-
-        Both entries claim to be the DISPLACEMENT byte of a `jbe`, which is the
-        load-bearing half of the longest-common-run finding: the shared run
-        stops on the opcode byte and the two displacements are the first
-        difference.  So the covering instruction is decoded, it must really
-        cover the exempt address, and the index must be the offset within it.
-        """
-        entries = self.club["known_not_boundaries"]["entries"]
-        self.assertEqual(len(entries), 2)
-        for e in entries:
-            host = self.at(e["inside"])
-            lo, hi = host.off, host.off + host.length
-            self.assertTrue(
-                lo < off_of(e["addr"]) < hi,
-                "%s: the artifact says it falls inside %s (%s, %d bytes), but "
-                "that instruction spans %s..%s"
-                % (e["addr"], e["inside"], host.text, host.length,
-                   cit(lo), cit(hi)))
-            self.assertEqual(
-                off_of(e["addr"]) - lo, e["byte_index"],
-                "%s: the artifact records byte_index %d inside %s; it is at "
-                "byte %d" % (e["addr"], e["byte_index"], e["inside"],
-                             off_of(e["addr"]) - lo))
-            self.assertTrue(
-                host.text.startswith("jbe"),
-                "%s: the covering instruction is recorded as a `jbe`; it "
-                "decodes %r" % (e["addr"], host.text))
-            self.assertIn(
-                cit(hi), self.aligned,
-                "%s: %s is not a boundary, so %s cannot be interior to a "
-                "single instruction" % (e["addr"], cit(hi), e["addr"]))
-
-    def test_the_boundary_exemption_list_is_honest(self):
-        """An exemption that names a real boundary would hide a wrong address."""
-        for e in self.club["known_not_boundaries"]["entries"]:
-            self.assertNotIn(
-                e["addr"], self.aligned,
-                "%s is exempted from the boundary walk but IS a boundary; the "
-                "exemption is either stale or covering for a wrong address"
-                % e["addr"])
-
-    # -------------------------------------------------------------- literals
-    def test_every_literal_decodes_to_the_recorded_text(self):
-        seen = self.walk(("cs_offset", "file_offset", "text"))
-        self.assertGreaterEqual(
-            len(seen), 45,
-            "only %d literal records; the artifact lost its strings"
-            % len(seen))
-        for node, path in seen:
-            cs = int(node["cs_offset"], 16)
-            self.assertEqual(
-                int(node["file_offset"], 16), cs + addrmod.HEADER_BYTES,
-                "%s: file_offset is not cs_offset + the MZ header size" % path)
-            self.assertEqual(
-                self.cs_literal(cs), node["text"],
-                "%s: the Pascal shortstring at CS %s is %r, the artifact "
-                "records %r" % (path, node["cs_offset"], self.cs_literal(cs),
-                                node["text"]))
-            push = node["push"]
-            self.assertEqual(
-                self.at(push["addr"]).text, "mov di,%s" % node["cs_offset"],
-                "%s: the push at %s does not load %s"
-                % (path, push["addr"], node["cs_offset"]))
-
-    def test_the_recorded_strings_are_every_cs_literal_pushed(self):
-        """SET EQUALITY, both directions, over BOTH ranges.
-
-        Swept: every `mov di,imm16` followed by `push cs` / `push di`.
-        Recorded: every literal record whose push falls in that range.  "The
-        `w` arm prints nothing" and "the `i` list is exactly seventeen lines"
-        are this measurement, not notes.
-        """
-        recorded_all = [n for n, _ in self.walk(("cs_offset", "text"))]
-        for key, lo, hi in (("club", CLO, CHI), ("command_list", ILO, IHI)):
-            run = self.run_of(lo, hi)
-            swept = set()
-            for k, i in enumerate(run):
-                if (i.text.startswith("mov di,0x") and k + 2 < len(run)
-                        and run[k + 1].text == "push cs"
-                        and run[k + 2].text == "push di"):
-                    swept.add(cit(i.off))
-            recorded = {n["push"]["addr"] for n in recorded_all
-                        if lo <= off_of(n["push"]["addr"]) < hi}
-            self.assertEqual(
-                swept, recorded,
-                "%s: the CS-literal push sweep and the artifact disagree: only "
-                "swept %s, only recorded %s"
-                % (key, sorted(swept - recorded), sorted(recorded - swept)))
-            self.assertEqual(
-                len(swept), self.art[key]["sweeps"]["cs_literal_pushes"],
-                "%s: sweeps.cs_literal_pushes says %d, the sweep finds %d"
-                % (key, self.art[key]["sweeps"]["cs_literal_pushes"],
-                   len(swept)))
-
     def test_every_literal_in_the_dispatch_region_belongs_to_an_arm(self):
         """The measurable half of "an unrecognised key is silent".
 
@@ -382,41 +200,6 @@ class ClubTest(unittest.TestCase):
             "no recorded arm: %s" % sorted(swept - recorded))
         self.assertGreaterEqual(len(swept), 15)
 
-    # ---------------------------------------------------------------- gates
-    def test_the_recorded_gates_are_every_conditional_branch(self):
-        named = self.all_addresses()
-        for key, lo, hi in (("club", CLO, CHI), ("command_list", ILO, IHI)):
-            swept = {cit(i.off) for i in self.run_of(lo, hi)
-                     if re.match(r"^j(?!mp)", i.text)}
-            missing = sorted(swept - named)
-            self.assertEqual(
-                missing, [],
-                "%s: conditional branches in %s..%s that the artifact never "
-                "names: %s" % (key, cit(lo), cit(hi), missing))
-            self.assertEqual(
-                len(swept), self.art[key]["sweeps"]["conditional_branches"],
-                "%s: sweeps.conditional_branches says %d, the sweep finds %d"
-                % (key, self.art[key]["sweeps"]["conditional_branches"],
-                   len(swept)))
-
-    def test_the_branch_census_reproduces_data_branches_json(self):
-        for key, (lo, hi) in (("club", (0xdf06, 0xe38f)),
-                              ("command_list", (0xea94, 0xec81))):
-            cen = self.art[key]["branch_census"]
-            rng = [b for b in self.branches["branches"]
-                   if lo <= off_of(b["addr"]) <= hi]
-            self.assertEqual(
-                len(rng), cen["branches"],
-                "%s: data/branches.json holds %d branches in %s..%s, the "
-                "artifact records %d"
-                % (key, len(rng), cit(lo), cit(hi), cen["branches"]))
-            untouched = sum(1 for b in rng if not b["port_touched"])
-            self.assertEqual(
-                untouched, cen["port_touched_false"],
-                "%s: %d branches have port_touched false, the artifact records "
-                "%d" % (key, untouched, cen["port_touched_false"]))
-
-    # ---------------------------------------------------------------- draws
     def test_the_club_draws_exactly_once_and_the_sweep_can_find_a_draw(self):
         """One site in the club, none in `i` -- and the sweep is shown to work.
 
@@ -456,39 +239,6 @@ class ClubTest(unittest.TestCase):
         self.assertEqual(
             self.club["arms"][0]["luck_compare"]["n_expr"], d["n_expr"])
 
-    # -------------------------------------------------------------- effects
-    def test_the_recorded_effects_are_every_absolute_write_in_the_club(self):
-        writes, reads, unclassified = set(), set(), []
-        for i in self.run_of(CLO, CHI):
-            if "[0x" not in i.text:
-                continue
-            if WRITES_ABS_MEM.match(i.text):
-                writes.add(cit(i.off))
-            elif READS_ABS_MEM.match(i.text):
-                reads.add(cit(i.off))
-            else:
-                unclassified.append((cit(i.off), i.text))
-        self.assertEqual(
-            unclassified, [],
-            "instructions with an absolute-memory operand that neither bucket "
-            "describes -- an unclassified shape must fail loudly rather than "
-            "pass as a read: %s" % unclassified)
-        recorded = set()
-        for a in self.arms():
-            recorded |= {e["addr"] for e in a["effects"]}
-        recorded.add(self.club["stake_init"]["effect"]["addr"])
-        for m in self.club["menu_lines"]:
-            recorded.add(m["colour_digit"]["affordable_store"]["addr"])
-            recorded.add(m["colour_digit"]["unaffordable_store"]["addr"])
-        self.assertEqual(
-            writes, recorded,
-            "the absolute-write sweep and the artifact disagree: only swept "
-            "%s, only recorded %s"
-            % (sorted(writes - recorded), sorted(recorded - writes)))
-        self.assertEqual(
-            len(writes), self.club["sweeps"]["absolute_memory_writes"])
-        self.assertGreater(len(reads), 20)
-
     def test_the_command_list_writes_nothing_and_that_sweep_can_see_a_write(self):
         """The `i` handler's headline negative, with its sweep proven live."""
         found = [cit(i.off) for i in self.run_of(ILO, IHI)
@@ -507,23 +257,6 @@ class ClubTest(unittest.TestCase):
             "the write regex finds %d writes in the club; if it found none the "
             "`i` handler's zero would prove nothing" % len(club))
 
-    def test_the_w_arm_writes_and_prints_nothing(self):
-        arm = next(a for a in self.arms() if a["key"] == "w")
-        body = self.run_of(off_of(arm["span"]["start"]),
-                           off_of(arm["span"]["end"]))
-        self.assertGreater(len(body), 4,
-                           "the `w` arm's span decoded to %d instructions"
-                           % len(body))
-        self.assertEqual(
-            [cit(i.off) for i in body if WRITES_ABS_MEM.match(i.text)], [],
-            "the `w` arm is recorded as writing nothing")
-        self.assertEqual(
-            [cit(i.off) for i in body
-             if i.text in ("call 0xeed:0x1c2", "call 0xeed:0x0")], [],
-            "the `w` arm is recorded as printing nothing")
-        self.assertEqual(arm["effects"], [])
-        self.assertEqual(arm["prints"], [])
-
     def test_every_recorded_print_is_a_writeln_call(self):
         n = 0
         for a in self.arms():
@@ -537,81 +270,6 @@ class ClubTest(unittest.TestCase):
                              "call 0xeed:0x1c2")
             n += 1
         self.assertGreaterEqual(n, 25)
-
-    # -------------------------------------------------------------- globals
-    def test_the_dgroup_addresses_touched_are_the_recorded_globals(self):
-        for key, lo, hi in (("club", CLO, CHI), ("command_list", ILO, IHI)):
-            swept = {"20ae:" + m for i in self.run_of(lo, hi)
-                     if "[0x" in i.text
-                     for m in re.findall(r"\[0x([0-9a-f]+)\]", i.text)}
-            recorded = {g["ds"] for g in self.art[key]["globals"]}
-            self.assertEqual(
-                swept, recorded,
-                "%s: the DGROUP-operand sweep and globals[] disagree: only "
-                "swept %s, only recorded %s"
-                % (key, sorted(swept - recorded), sorted(recorded - swept)))
-            self.assertEqual(
-                len(swept),
-                self.art[key]["sweeps"]["dgroup_addresses_touched"])
-
-    def test_each_globals_write_list_is_its_writes_in_range(self):
-        for key, lo, hi in (("club", CLO, CHI), ("command_list", ILO, IHI)):
-            for g in self.art[key]["globals"]:
-                dskey = "[0x%s]" % g["ds"].split(":")[1]
-                run = self.run_of(lo, hi)
-                swept = [cit(i.off) for i in run
-                         if WRITES_ABS_MEM.match(i.text) and dskey in i.text]
-                self.assertEqual(
-                    swept, g["written_in_range"],
-                    "%s/%s: the sweep finds %s written in range, the artifact "
-                    "records %s" % (key, g["ds"], swept,
-                                    g["written_in_range"]))
-                reads = len([i for i in run if dskey in i.text
-                             and not WRITES_ABS_MEM.match(i.text)])
-                self.assertEqual(
-                    reads, g["read_sites_in_range"],
-                    "%s/%s: %d read sites in range, the artifact records %d"
-                    % (key, g["ds"], reads, g["read_sites_in_range"]))
-
-    def test_every_globals_xref_census_is_what_re_query_reports(self):
-        """`named_from` and "the only writer" are re-derived, not trusted."""
-        checked = 0
-        for key in ("club", "command_list"):
-            for g in self.art[key]["globals"]:
-                scan = re_query.xrefs_to(self.prog, g["ds"])["scan"]
-                xr = g["xrefs"]
-                self.assertEqual(
-                    (scan["raw_hits"], len(scan["accepted"]),
-                     len(scan["discarded"])),
-                    (xr["raw_hits"], xr["accepted"], xr["discarded"]),
-                    "%s: `xrefs-to` reports raw=%d accepted=%d discarded=%d, "
-                    "the artifact records raw=%d accepted=%d discarded=%d"
-                    % (g["ds"], scan["raw_hits"], len(scan["accepted"]),
-                       len(scan["discarded"]), xr["raw_hits"], xr["accepted"],
-                       xr["discarded"]))
-                self.assertEqual(
-                    xr["command"],
-                    "python3 tools/re_query.py xrefs-to " + g["ds"],
-                    "%s: the recorded command does not recompute the census "
-                    "beside it" % g["ds"])
-                writers = [a["at"] for a in scan["accepted"]
-                           if WRITES_ABS_MEM.match(a["text"])]
-                self.assertEqual(
-                    xr["writers_image_wide"], writers,
-                    "%s: the artifact lists %s as its image-wide writers, "
-                    "`xrefs-to` finds %s -- an 'only writer' claim that "
-                    "stopped the next search is exactly what this check exists "
-                    "for" % (g["ds"], xr["writers_image_wide"], writers))
-                for e in g["evidence"]:
-                    self.assertEqual(
-                        self.at(e["addr"]).text, e["text"],
-                        "%s: evidence at %s says %r, orig/g.exe decodes %r"
-                        % (g["ds"], e["addr"], e["text"],
-                           self.at(e["addr"]).text))
-                checked += 1
-        self.assertEqual(checked, 19,
-                         "twelve club globals and seven flags were expected, "
-                         "%d were checked" % checked)
 
     def test_the_stake_is_club_local_with_exactly_three_writers(self):
         """`20ae:3c82` is the card game's stake -- the naming this task adds.
@@ -786,59 +444,30 @@ class ClubTest(unittest.TestCase):
                          "exactly one club arm has a district gate of its own, "
                          "found %d" % checked)
 
-    def test_the_spans_tile_both_ranges(self):
-        for key, lo, hi in (("club", CLO, CHI), ("command_list", ILO, IHI)):
-            spans = self.art[key]["spans"]
-            cursor = lo
-            for s in spans:
-                self.assertEqual(
-                    off_of(s["start"]), cursor,
-                    "%s: span %r starts at %s, the previous one ended at %s -- "
-                    "the tiling has a %s"
-                    % (key, s["name"], s["start"], cit(cursor),
-                       "gap" if off_of(s["start"]) > cursor else "overlap"))
-                self.at(s["start"])
-                cursor = off_of(s["end"])
-            self.assertEqual(cursor, hi,
-                             "%s: the spans stop at %s, the range ends at %s"
-                             % (key, cit(cursor), cit(hi)))
-        for a in self.arms():
-            self.assertIn(
-                (a["span"]["start"], a["span"]["end"]),
-                [(s["start"], s["end"]) for s in self.club["spans"]],
-                "arm %s's span is not one of the tiling's spans" % a["key"])
+    def test_the_three_identical_predicates_are_told_apart_by_their_jcc(self):
+        """The club's own residue of `menu_vs_arm_finding`.
 
-    # ------------------------------------------------- menu against the arms
-    def test_the_menu_and_arm_predicates_differ_exactly_as_recorded(self):
+        `tools/test_arms_artifacts.py` re-slices every recorded pair's bytes
+        and its two `jcc`s out of `orig/g.exe` for all three artifacts.  What
+        is only true HERE is the shape of the argument: all THREE club pairs
+        are byte-identical predicates -- that is the premise the finding
+        argues against -- and each is told apart from its twin by the two
+        bytes after it, in two different ways.  The two price tests differ in
+        SENSE (a different opcode); the district gate shares its opcode and
+        differs only in displacement.
+        """
         f = self.club["menu_vs_arm_finding"]
         self.assertEqual(len(f["pairs"]), 3)
         for p in f["pairs"]:
-            m = self.sl(off_of(p["menu"]["start"]), off_of(p["menu"]["end"]))
-            a = self.sl(off_of(p["arm"]["start"]), off_of(p["arm"]["end"]))
-            self.assertEqual(m, p["menu_bytes"], "%s: menu bytes" % p["what"])
-            self.assertEqual(a, p["arm_bytes"], "%s: arm bytes" % p["what"])
-            self.assertEqual(
-                m == a, p["identical"],
-                "%s: the artifact records identical=%s, the bytes say %s"
-                % (p["what"], p["identical"], m == a))
             self.assertTrue(
                 p["identical"],
                 "%s: all three recorded pairs are byte-identical predicates; "
                 "that is the premise the finding argues against" % p["what"])
-            jm = self.sl(off_of(p["menu"]["end"]), off_of(p["menu"]["end"]) + 2)
-            ja = self.sl(off_of(p["arm"]["end"]), off_of(p["arm"]["end"]) + 2)
-            msg = ("%s: the artifact records %%s, orig/g.exe holds %%s -- the "
-                   "two blocks are told apart by these bytes, not by the "
-                   "identical predicate above them" % p["what"])
-            self.assertEqual(jm, p["jcc_menu"], msg % (p["jcc_menu"], jm))
-            self.assertEqual(ja, p["jcc_arm"], msg % (p["jcc_arm"], ja))
             self.assertNotEqual(
-                jm, ja,
+                p["jcc_menu"], p["jcc_arm"],
                 "%s: the two `jcc`s beside the identical predicate must "
                 "differ, or the two blocks really would be the same code"
                 % p["what"])
-        # The two price predicates differ in SENSE (`jl` vs `jnl`); the
-        # district gate shares its opcode and differs only in displacement.
         price = [p for p in f["pairs"] if "price" in p["what"]]
         self.assertEqual(len(price), 2)
         for p in price:
@@ -849,81 +478,25 @@ class ClubTest(unittest.TestCase):
         self.assertEqual(gate["jcc_menu"][:2], gate["jcc_arm"][:2])
         self.assertNotEqual(gate["jcc_menu"][3:], gate["jcc_arm"][3:])
 
-    def test_the_longest_run_the_two_blocks_share_is_the_recorded_one(self):
-        """The measurement that answers "is the second block a copy?".
 
-        Recomputed here rather than remembered: a longest-common-substring over
-        the two spans.  If it grew, the two blocks really do share a body and
-        the finding is wrong.
+    def test_the_shared_run_stops_on_the_two_exempt_displacement_bytes(self):
+        """The club's own residue of the longest-common-run measurement.
+
+        `tools/test_arms_artifacts.py` recomputes the run itself and resolves
+        the four span anchors.  What is only true HERE is where the run
+        STOPS: its last byte is the `jbe` OPCODE, the next byte is each
+        block's displacement, those two differ, and they are exactly the two
+        addresses `known_not_boundaries` exempts.  So the exemption list is
+        not a free list -- it has to be the pair the measurement lands on.
         """
         f = self.club["menu_vs_arm_finding"]
-        # The two spans are anchored to addresses this artifact already
-        # carries for other reasons, and the anchors are resolved FIRST.
-        # Review round 1 showed the cost of leaving them free: widening
-        # `arm_span.end` to `1000:e366` and updating `byte_length` to match
-        # passed green, so the check proved only that two length fields agreed
-        # with each other.
-        anchors = {
-            "menu_span.start": (f["menu_span"]["start"],
-                                f["menu_span"]["start_is"],
-                                self.club["menu_lines"][0]["colour_digit"]
-                                ["test"]["addr"]),
-            "menu_span.end": (f["menu_span"]["end"], f["menu_span"]["end_is"],
-                              self.club["stake_init"]["span"]["start"]),
-            "arm_span.start": (f["arm_span"]["start"],
-                               f["arm_span"]["start_is"],
-                               self.arms()[1]["miss_branch"]["addr"]),
-            "arm_span.end": (f["arm_span"]["end"], f["arm_span"]["end_is"],
-                             self.arms()[2]["span"]["end"]),
-        }
-        want_is = {"menu_span.start": "menu_lines[0].colour_digit.test.addr",
-                   "menu_span.end": "stake_init.span.start",
-                   "arm_span.start": "arms[1].miss_branch.addr",
-                   "arm_span.end": "arms[2].span.end"}
-        for field, (got, says, anchor) in anchors.items():
-            self.assertEqual(
-                says, want_is[field],
-                "%s: the recorded anchor name is %r, this check resolves %r"
-                % (field, says, want_is[field]))
-            self.assertEqual(
-                got, anchor,
-                "%s is %s, but %s -- the address it is anchored to -- is %s.  "
-                "The span is not a free choice: a span moved to flatter the "
-                "longest-common-substring fails here"
-                % (field, got, says, anchor))
-        X = self.img[off_of(f["menu_span"]["start"]):
-                     off_of(f["menu_span"]["end"])]
-        Y = self.img[off_of(f["arm_span"]["start"]):
-                     off_of(f["arm_span"]["end"])]
-        self.assertEqual(len(X), f["menu_span"]["byte_length"])
-        self.assertEqual(len(Y), f["arm_span"]["byte_length"])
-        best = (0, 0, 0)
-        prev = [0] * (len(Y) + 1)
-        for i in range(1, len(X) + 1):
-            cur = [0] * (len(Y) + 1)
-            xi = X[i - 1]
-            for j in range(1, len(Y) + 1):
-                if xi == Y[j - 1]:
-                    cur[j] = prev[j - 1] + 1
-                    if cur[j] > best[0]:
-                        best = (cur[j], i - cur[j], j - cur[j])
-            prev = cur
         rec = f["longest_common_byte_run"]
-        self.assertEqual(
-            best[0], rec["length"],
-            "the two blocks share a %d-byte run; the artifact records %d"
-            % (best[0], rec["length"]))
-        self.assertEqual(cit(off_of(f["menu_span"]["start"]) + best[1]),
-                         rec["menu_at"])
-        self.assertEqual(cit(off_of(f["arm_span"]["start"]) + best[2]),
-                         rec["arm_at"])
-        self.assertEqual(X[best[1]:best[1] + best[0]].hex(" "), rec["bytes"])
-        # The run's last byte is the `jbe` OPCODE and the next byte is the
-        # displacement, which is where the two blocks first differ.  Both
-        # displacement bytes are the `known_not_boundaries` entries.
-        menu_end = off_of(f["menu_span"]["start"]) + best[1] + best[0]
-        arm_end = off_of(f["arm_span"]["start"]) + best[2] + best[0]
-        self.assertNotEqual(self.img[menu_end], self.img[arm_end])
+        menu_end = off_of(rec["menu_at"]) + rec["length"]
+        arm_end = off_of(rec["arm_at"]) + rec["length"]
+        self.assertNotEqual(
+            self.img[menu_end], self.img[arm_end],
+            "the two bytes past the shared run are equal, so the run did not "
+            "stop where the artifact says it did")
         self.assertEqual(
             sorted(e["addr"] for e in
                    self.club["known_not_boundaries"]["entries"]),
@@ -931,27 +504,7 @@ class ClubTest(unittest.TestCase):
             "the exemption list must name exactly the two bytes at which the "
             "shared run stops")
 
-    def test_the_menu_price_test_never_hides_a_row(self):
-        """Both colour arms reconverge; only 20ae:3b7a differs between them."""
-        run = self.run_of(CLO, CHI)
-        offs = [i.off for i in run]
-        for m in self.club["menu_lines"]:
-            lo = self.at(m["colour_digit"]["affordable_store"]["addr"])
-            hi = self.at(m["colour_digit"]["unaffordable_store"]["addr"])
-            join = run[offs.index(hi.off) + 1]
-            after_lo = run[offs.index(lo.off) + 1]
-            self.assertTrue(
-                after_lo.text.startswith("jmp"),
-                "club row %s: the affordable store is not followed by a jump"
-                % m["key"])
-            self.assertEqual(
-                self.rel_target(after_lo), join.off,
-                "club row %s: the two colour arms do not reconverge on %s"
-                % (m["key"], cit(join.off)))
-            self.assertIn("[0x3b7a]", lo.text)
-            self.assertIn("[0x3b7a]", hi.text)
 
-    # ------------------------------------------------------------ arm detail
     def test_the_luck_compare_is_the_32_bit_idiom_with_the_win_falling_through(self):
         """The operands and the sense, which is what the port needs.
 
@@ -1304,162 +857,6 @@ class ClubTest(unittest.TestCase):
                 "table was renamed and this check stopped measuring it"
                 % (key, seen))
         self.assertGreaterEqual(checked, 17)
-
-    def test_every_prose_address_is_an_instruction_boundary(self):
-        exempt = {e["addr"]
-                  for e in self.club["known_not_boundaries"]["entries"]}
-        cits = sorted(set(CITE.findall(strip_fences(self.md))) - exempt)
-        self.assertGreaterEqual(
-            len(cits), 80,
-            "docs/re/club.md names only %d distinct 1000: addresses; a prose "
-            "scan that measures nothing must not pass" % len(cits))
-        for c in cits:
-            self.at(c)
-
-    def test_every_prose_instruction_says_what_the_binary_says(self):
-        checked = 0
-        for span in self.spans:
-            m = re.match(r"^(1000:[0-9a-f]{4})\s+([a-z].*)$", span)
-            if not m:
-                continue
-            c, text = m.groups()
-            checked += 1
-            self.assertEqual(
-                self.at(c).text, text,
-                "docs/re/club.md writes `%s %s`, but tools/dis16.py decodes "
-                "%r there" % (c, text, self.at(c).text))
-        self.assertGreaterEqual(
-            checked, 10,
-            "only %d `addr text` spans in docs/re/club.md" % checked)
-
-    def test_every_instruction_inside_a_fence_says_what_the_binary_says(self):
-        checked = 0
-        for block in re.findall(r"^```.*?\n(.*?)^```", self.md, re.S | re.M):
-            for line in block.splitlines():
-                m = re.match(r"^(1000:[0-9a-f]{4})\s+([a-z][^;]*?)\s*(;.*)?$",
-                             line)
-                if not m:
-                    continue
-                c, text = m.group(1), m.group(2).strip()
-                self.assertIn(c, self.aligned, "%r: not a boundary" % line)
-                checked += 1
-                self.assertEqual(
-                    self.aligned[c].text, text,
-                    "docs/re/club.md writes `%s %s` in a fence, but "
-                    "tools/dis16.py decodes %r there"
-                    % (c, text, self.aligned[c].text))
-        self.assertGreaterEqual(
-            checked, 30,
-            "only %d fenced instruction lines in docs/re/club.md" % checked)
-
-    def test_every_prose_literal_comes_out_of_the_binary(self):
-        offs = [int(m.group(1), 16)
-                for m in re.finditer(r"CS `0x([0-9a-f]{4})`", self.md)]
-        self.assertGreaterEqual(len(offs), 30, "only %d CS offsets" % len(offs))
-        for o in offs:
-            self.assertTrue(self.img[o],
-                            "CS 0x%04x has a zero length byte" % o)
-            self.cs_literal(o)
-        # The `, file 0x.....` half is optional: this document writes both
-        # forms, and a pattern that only saw the bare one would silently check
-        # a third of the quotes it looks like it checks.
-        pairs = re.findall(
-            r"`((?!1000:)[^`]+)`\s*\(CS `0x([0-9a-f]{4})`"
-            r"(?:,\s*file `0x[0-9A-Fa-f]{5}`)?\)", self.md, re.S)
-        self.assertGreaterEqual(len(pairs), 25, "only %d pairs" % len(pairs))
-        self.assertGreaterEqual(
-            len([p for p in pairs if re.search(r"[Ѐ-ӿ]", p[0])]), 20,
-            "only %d of the quoted literals are Russian; the pairing is "
-            "matching something else" % len(pairs))
-        for text, o in pairs:
-            self.assertEqual(
-                self.cs_literal(int(o, 16)), text,
-                "the prose quotes %r beside CS 0x%s, which holds %r"
-                % (text, o, self.cs_literal(int(o, 16))))
-        known = {self.cs_literal(n["cs_offset"])
-                 for n, _ in self.walk(("cs_offset", "text"))}
-        tables = json.loads(TABLES.read_text(encoding="utf-8"))
-        known |= {e["text"] for t in tables["tables"] for e in t["entries"]}
-        known |= {self.cs_literal(o) for o in offs}
-        unmatched = sorted({run for span in self.spans
-                            for run in re.findall(r"[Ѐ-ӿ]+", span)
-                            if not any(run in k for k in known)})
-        self.assertEqual(
-            unmatched, [],
-            "Russian in docs/re/club.md that matches no literal in orig/g.exe "
-            "at any address the doc or the artifact names: %r" % unmatched)
-
-    def test_the_prose_and_the_artifact_agree_on_every_arm_and_line(self):
-        for a in self.arms():
-            for c in (a["compare_addr"], a["span"]["start"]):
-                self.assertIn(
-                    c, self.md,
-                    "docs/re/club.md never names %s, which "
-                    "data/club_arms.json records for arm %s" % (c, a["key"]))
-            for s in a["strings"]:
-                self.assertIn(
-                    s["cs_offset"], self.md,
-                    "arm %s: the prose does not carry CS %s"
-                    % (a["key"], s["cs_offset"]))
-            for e in a["effects"]:
-                self.assertIn(
-                    e["addr"], self.md,
-                    "arm %s: the prose does not carry the effect at %s"
-                    % (a["key"], e["addr"]))
-        for ln in self.list["lines"]:
-            self.assertIn(
-                ln["string"]["cs_offset"], self.md,
-                "the prose does not carry the `i` list's CS %s"
-                % ln["string"]["cs_offset"])
-            if ln["gate"]:
-                self.assertIn(ln["gate"]["test"]["addr"], self.md)
-
-    def test_the_port_change_lists_are_addressed_and_falsifiable(self):
-        """Every numbered item names an original address and a consequence.
-
-        **This is a lint over the artifact's own prose, not evidence about
-        `orig/g.exe`.**  It cannot judge whether a `do_not_fix` string really
-        describes a trap; what it does check is that the item is anchored to an
-        address and that its consequence is addressed to the PORTING task
-        rather than being a note about this RE task's scope.  Review round 1
-        found `command_list` item 4 satisfying the lint through a `do_not_fix`
-        whose content ("This RE task does not edit them") inverted the field's
-        name, so the second half is narrow by construction: it names one shape
-        that has actually occurred here, and it establishes nothing about the
-        other items beyond that they do not have that shape.  The numbers
-        those consequences quote are checked by
-        `test_every_counted_consequence_is_recomputed_from_the_decode`.
-        """
-        scope_note = re.compile(r"\bthis RE task\b|\bTask 33 (?:does|did) not\b",
-                                re.I)
-        for key, least in (("club", 10), ("command_list", 4)):
-            items = self.art[key]["what_the_port_must_change"]
-            self.assertGreaterEqual(len(items), least)
-            self.assertEqual([i["n"] for i in items],
-                             list(range(1, len(items) + 1)))
-            for it in items:
-                self.assertTrue(
-                    CITE.findall(it["what"]) or "CS `0x" in it["what"],
-                    "%s item %d names no original address: %r"
-                    % (key, it["n"], it["what"]))
-                self.assertTrue(
-                    "falsifiable_as" in it or "do_not_fix" in it,
-                    "%s item %d carries neither a falsifiable consequence nor "
-                    "a do-not-fix trap" % (key, it["n"]))
-                for field in ("falsifiable_as", "do_not_fix"):
-                    if field in it:
-                        self.assertIsNone(
-                            scope_note.search(it[field]),
-                            "%s item %d's %s is a note about this RE task's "
-                            "own scope, not a consequence for the porting "
-                            "task: %r" % (key, it["n"], field, it[field]))
-                self.assertIn("blocked", it)
-        # And the pattern still matches the shape it hunts, so "no hits" can
-        # never be mistaken for "no defects".
-        self.assertIsNotNone(
-            scope_note.search("This RE task does not edit them"),
-            "the scope-note pattern no longer matches the string that "
-            "prompted it")
 
     def test_every_counted_consequence_is_recomputed_from_the_decode(self):
         """A consequence that states a COUNT has that count derived here.

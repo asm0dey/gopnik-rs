@@ -62,6 +62,7 @@
 //! — wired (Task 21)".
 
 use crate::character_sheet;
+use crate::club;
 use crate::combat::{blows_per_round, resolve_blow_nth, Break, Swing};
 use crate::combat_dispatch::{self, Backup, Called, Shot, Status};
 use crate::commands::{parse, Command};
@@ -73,6 +74,7 @@ use crate::progress::{self, Progress};
 use crate::rng::Rng;
 use crate::term;
 use crate::text;
+use crate::vet;
 use std::io::{self, BufRead};
 
 /// What the main loop is currently doing. Only [`Mode::Street`] dispatches
@@ -345,10 +347,31 @@ pub struct Game {
     /// every missing site's address.
     pub market_ban_countdown: u8,
     /// `20ae:3b77` -- the club ban's countdown: set to 5 at `1000:e23e`
-    /// (`c6 06 77 3b 05`), gated on at `1000:df1a`, decremented at
-    /// `1000:b17e`. Same state as [`Game::market_ban_countdown`] -- only the
-    /// decrement is implemented; see the same `docs/re/gaps.md` entry.
+    /// (`c6 06 77 3b 05`) by [`crate::club`]'s caught-cheating block, gated
+    /// on at `1000:df1a` in [`Game::enter_shop`], decremented at
+    /// `1000:b17e`, cleared by the district reset at `1000:abd3`.
+    ///
+    /// **Unlike [`Game::market_ban_countdown`], all four sites are now
+    /// implemented.** The `docs/re/gaps.md` entry "The two ban countdowns
+    /// are modelled and decremented but never set" survives for the market
+    /// half only -- `1000:c465` (the setter), `1000:b95e` (the gate) and
+    /// `1000:d793` (the `girl` clear) are still missing.
     pub club_ban_countdown: u8,
+    /// `20ae:3c82` -- the club card game's stake, in rubles.
+    ///
+    /// **Established from flow.** `python3 tools/re_query.py xrefs-to
+    /// 20ae:3c82` reports 14 references, every one of them between
+    /// `1000:e020` and `1000:e25d`, so the byte is club-local exactly as
+    /// `20ae:3e34` is gym-local and `data/save_layout.json` has no field for
+    /// it. Three of the fourteen are writes: `1000:e020` `:= 5` on entry,
+    /// `1000:e0f7` `+= 2` after a win, `1000:e145` `:= 5` after a loss.
+    ///
+    /// `1000:e020` is FIVE bytes before the loop top at `1000:e025` and is
+    /// the join point of the menu's district gate, so the stake resets once
+    /// per VISIT and carries across keys within one visit. Resetting it per
+    /// prompt iteration would make the whole `p` arm unreachable past its
+    /// first hand.
+    pub club_stake: u8,
     /// `20ae:3b78` -- den errand one. Set by draw 1 at `1000:af71`, and set
     /// there **unconditionally**, before the flags that decide whether
     /// anything prints.
@@ -580,6 +603,7 @@ impl Game {
             buff_countdown: 0,
             market_ban_countdown: 0,
             club_ban_countdown: 0,
+            club_stake: 5,
             den_errand_1_pending: false,
             den_errand_2_pending: false,
             fight_accepted_3b72: false,
@@ -989,6 +1013,23 @@ impl Game {
         term::print(p);
     }
 
+    /// `rep` typed at the street prompt, for `crate::vet`'s entry test:
+    /// the same `Game::enter_shop(Location::Vet)` `Command::Vet` reaches at
+    /// `1000:d3a6`, exposed because `dispatch` is private to this module.
+    #[cfg(test)]
+    pub(crate) fn enter_vet_for_test(&mut self) {
+        self.enter_shop(Location::Vet);
+    }
+
+    /// Whether the player is at the STREET prompt rather than a location's
+    /// own. `mode` is private to this module; `crate::vet`'s exit test needs
+    /// to tell "left the shop" from "quit the game" and this is the half it
+    /// can see.
+    #[cfg(test)]
+    pub(crate) fn mode_is_street(&self) -> bool {
+        self.mode == Mode::Street
+    }
+
     fn banner(&self) {
         term::println("^4Gopnik: ^7version 1.02 june,sept 2003");
     }
@@ -1157,6 +1198,19 @@ impl Game {
             term::println(Self::undiscovered_line(loc));
             return;
         }
+        // 1000:df1a `cmp byte [0x3b77],0x0` / 1000:df1f `jbe 0xdf3d`. On an
+        // unsigned byte against zero `jbe` is `== 0`, so the club is open
+        // only while the countdown is zero; a non-zero countdown falls
+        // THROUGH to 1000:df21, prints its refusal at 1000:df35 and leaves
+        // at 1000:df3a. `mar`'s own countdown gate at 1000:b95e decides the
+        // same condition with `jz` and is **still** not ported -- see
+        // `docs/re/gaps.md`.
+        if loc == Location::Club && self.club_ban_countdown > 0 {
+            // 1000:df21 pushes file `0xB9BD`
+            // `^6Тебе не стоит пока туда соваться`.
+            term::println("^6Тебе не стоит пока туда соваться");
+            return;
+        }
         self.location = loc;
         if loc == Location::Girl {
             // Not modal: no prompt string, no ReadLn (1000:d701..1000:d798).
@@ -1166,6 +1220,31 @@ impl Game {
         }
         self.mode = Mode::Shop(loc);
         self.print_shop_intro(loc);
+        if loc == Location::Vet {
+            // 1000:d3f4 (the healthy-skip past the menu) and the menu's own
+            // fall-through both land on 1000:d4ba, so the loop top runs
+            // once on entry before the first prompt.
+            vet::loop_top(self);
+        }
+        if loc == Location::Club {
+            // 1000:e020 -- AFTER the two menu rows and OUTSIDE the loop
+            // whose top is 1000:e025. See [`Game::club_stake`].
+            self.club_stake = 5;
+        }
+    }
+
+    /// End the current visit without the player typing the exit key.
+    ///
+    /// The original has no such operation: it writes the exit token into
+    /// the location's own input buffer and lets the buffer's own `w`
+    /// compare fire. `1000:e251` (`0f78:0b01`, the club's caught-cheating
+    /// block) is the one site that does it inside a range this port has
+    /// implemented, and `1000:d35a` (the dealers' sell tail) is the other
+    /// -- that one writes a token the exit compare can never match, which
+    /// is why `Game::sell_items` does NOT call this.
+    pub(crate) fn leave_shop(&mut self) {
+        self.location = Location::Street;
+        self.mode = Mode::Street;
     }
 
     /// `girl`, `1000:d701`..`1000:d798`, in order:
@@ -1841,8 +1920,17 @@ impl Game {
     ) -> io::Result<()> {
         let key = line.trim().to_lowercase();
         match (loc, key.as_str()) {
-            (Location::Vet, "h") => self.heal_jaw(),
-            (Location::Vet, "r") => self.heal_leg(),
+            // The vet's two keys -- `1000:d532`..`1000:d6a3`, ported by
+            // [`crate::vet`]. Neither sits behind a gate that skips its own
+            // compare, so the guard is the key alone; the arms carry their
+            // own preconditions, which is where they are in the original.
+            (Location::Vet, k) if vet::key_dispatches(k) => vet::run_key(self, k),
+            // `1000:d6ad` (`w`) and `1000:d6be` (`e`) both `jz 0xd6c8`. The
+            // vet is the only location with a second exit token, and `e`
+            // leaves the VET rather than quitting because the compare reads
+            // the vet's own buffer `20ae:3a72` and never `entry`'s
+            // `20ae:3972`.
+            (Location::Vet, k) if vet::exits(k) => self.leave_shop(),
             // 1000:ce80 against CS 0x96ce (`x`); 1000:ce85 misses straight
             // into the `wes` compare below, so a line that reaches the junk
             // arm also runs it -- and then misses on the buffer `x`.
@@ -1875,6 +1963,16 @@ impl Game {
             // original's own fall-through to the `w` compare at
             // `1000:e93c`.
             (Location::Gym, k) if gym::key_dispatches(self, k) => gym::run_key(self, k),
+            // The club's three keys -- `1000:e065`..`1000:e357`, ported by
+            // [`crate::club`], which owns the district gate and the arms.
+            // Same shape as the gym's arm above: the guard is the compare
+            // CHAIN (gate then key, as `1000:e2e2`/`1000:e2f3` are ordered)
+            // and is side-effect-free, so a `false` falls into the catch-all
+            // below -- the original's own fall-through to the `w` compare at
+            // `1000:e361`.
+            (Location::Club, k) if club::key_dispatches(self, k) => {
+                return club::run_key(self, k, lines);
+            }
             (Location::Market | Location::Dealers, k)
                 if k.len() == 1 && k.chars().all(|c| c.is_ascii_digit()) =>
             {
@@ -1892,6 +1990,16 @@ impl Game {
                 }
                 // Everything else: ignored, prompt repeats.
             }
+        }
+        // The vet's back edge `1000:d6c5 jmp 0xd4ba` returns to the LOOP
+        // TOP, not to the prompt, and the loop top is a health test that
+        // ejects (`crate::vet::loop_top`). Every other location's back edge
+        // targets its prompt directly, which is why this is the only
+        // location with a tail here. The `self.location` guard is the
+        // original's own control flow: an exit taken at `1000:d6a8` or
+        // `1000:d6b9` reaches `1000:d6c8` without passing `1000:d4ba`.
+        if loc == Location::Vet && self.location == Location::Vet {
+            vet::loop_top(self);
         }
         Ok(())
     }
@@ -2230,7 +2338,7 @@ impl Game {
     /// same idiom, and [`Game::walk`]'s own comment records that it widens
     /// both sides by zero-extension instead. That divergence is `walk`'s
     /// and is left where it is; this method does not inherit it.
-    fn luck_below_random_32(luck: u16, random: u16) -> bool {
+    pub(crate) fn luck_below_random_32(luck: u16, random: u16) -> bool {
         // `cwd` on 1000:dda5 / 1000:dde8 vs `xor dx,dx` on 1000:dd9c /
         // 1000:dddf: only the LUCK side can be negative.
         let luck_high: i16 = if (luck as i16) < 0 { -1 } else { 0 };
@@ -2440,23 +2548,121 @@ impl Game {
         }
     }
 
-    /// `i`. Confirmed dispatched at `1000:ea94`. Text is the 13-line list
-    /// the live capture printed verbatim -- see `crate::commands`' module
-    /// doc for the confirmed-vs-corroborated status of each line's own verb.
+    /// `i` -- `1000:ea94`..`1000:ec82`, **seventeen** lines: one ungated,
+    /// seven gated on the discovery flags, then nine ungated.
+    ///
+    /// **Established from flow** (`docs/re/club.md` Part 2,
+    /// `data/club_arms.json`'s `command_list`). Over its 261 instructions
+    /// the handler makes zero absolute-memory writes, spends zero `Random`
+    /// draws, and past the verb compare its only call is `0eed:01c2` --
+    /// seventeen of them and nothing else, so there is no `ReadLn`, no
+    /// prompt and no loop. All four are set-equality sweeps over the range,
+    /// not omissions.
+    ///
+    /// ```text
+    /// ea9e  mov di,0xa710 .. eab2 WriteLn        ; ungated
+    /// eab7  cmp byte [0x3694],0x1 / eabc jnz 0xead7   ; Market
+    /// ead7  cmp byte [0x3695],0x1 / eadc jnz 0xeaf7   ; Dealers
+    /// eaf7  cmp byte [0x3698],0x1 / eafc jnz 0xeb17   ; Vet
+    /// eb17  cmp byte [0x3697],0x1 / eb1c jnz 0xeb37   ; Girl
+    /// eb37  cmp byte [0x3696],0x1 / eb3c jnz 0xeb57   ; Den
+    /// eb57  cmp byte [0x3699],0x1 / eb5c jnz 0xeb77   ; Club
+    /// eb77  cmp byte [0x369a],0x1 / eb7c jnz 0xeb97   ; Gym
+    /// eb97  mov di,0xa886 .. ec73 WriteLn        ; the nine ungated
+    /// ```
+    ///
+    /// **Each `jnz`'s displacement lands on the NEXT gate**, and the last
+    /// on `1000:eb97` -- so no gate can hide another line. That is
+    /// arithmetic over the seven decoded displacements, asserted by
+    /// `tools/test_club_arms.py`, not a sentence.
+    ///
+    /// **The gate order is Vet BEFORE Girl BEFORE Den, which is not the
+    /// flag-address order** (`3694`, `3695`, **`3698`**, `3697`, **`3696`**,
+    /// `3699`, `369a`). Read as flow it CONFIRMS the PLACES.SAV read order
+    /// at `1000:6ca2`..`1000:6d0e` that [`crate::locations::TRACKED`]
+    /// quotes; read as an ordering it would reintroduce the Den/Vet swap
+    /// that `src/locations.rs` records earlier revisions of this port
+    /// carrying. Do not "tidy" it, and do not reorder `TRACKED` to match.
+    ///
+    /// **Where the thirteen came from.** Earlier revisions printed thirteen
+    /// fixed lines with no gating, taken verbatim from
+    /// `docs/re/oracle-captures/command-table-and-combat.md` -- output used
+    /// as an establishing source, which `docs/re/METHODOLOGY.md` forbids.
+    /// Four lines were never printed at all (CS `0xa787` `bmar`, `0xa7d6`
+    /// `girl`, `0xa83d` `kl`, `0xa860` `trn`) and three were printed
+    /// unconditionally that the original gates (CS `0xa762` `mar`,
+    /// `0xa7ad` `rep`, `0xa809` `pr`). The capture is consistent with
+    /// Market, Vet and Den set and the other four clear -- 1 + 3 + 9 = 13 --
+    /// but that arithmetic corroborates the flow reading, it never
+    /// established it.
     fn show_command_list(&self) {
-        for line in [
+        // 1000:ea9e, printed by 1000:eab2. file `0xBFE0`
+        // `Напиши: ^6w^7    чтобы шататься по окрестностям - искать на свою жопу приключения`
+        term::println(
             "Напиши: ^6w^7    чтобы шататься по окрестностям - искать на свою жопу приключения",
-            "Напиши: ^6mar^7  чтобы идти на рынок",
-            "Напиши: ^6rep^7  чтобы идти к ветеринару",
-            "Напиши: ^6pr^7   чтобы идти в местный притон гопоты",
+        );
+        // The seven gated lines, in the original's gate order. Each tuple is
+        // (the flag the gate reads, the line the fall-through prints).
+        for (loc, line) in [
+            // 1000:eab7 / 1000:eabc; pushed 1000:eabe, printed 1000:ead2.
+            // file `0xC032` `Напиши: ^6mar^7  чтобы идти на рынок`
+            (Location::Market, "Напиши: ^6mar^7  чтобы идти на рынок"),
+            // 1000:ead7 / 1000:eadc; pushed 1000:eade, printed 1000:eaf2.
+            // file `0xC057` `Напиши: ^6bmar^7 чтобы идти к барыгам`
+            (Location::Dealers, "Напиши: ^6bmar^7 чтобы идти к барыгам"),
+            // 1000:eaf7 / 1000:eafc; pushed 1000:eafe, printed 1000:eb12.
+            // file `0xC07D` `Напиши: ^6rep^7  чтобы идти к ветеринару`
+            (Location::Vet, "Напиши: ^6rep^7  чтобы идти к ветеринару"),
+            // 1000:eb17 / 1000:eb1c; pushed 1000:eb1e, printed 1000:eb32.
+            // file `0xC0A6` `Напиши: ^6girl^7 чтобы завалиться к своей девчонке`
+            (
+                Location::Girl,
+                "Напиши: ^6girl^7 чтобы завалиться к своей девчонке",
+            ),
+            // 1000:eb37 / 1000:eb3c; pushed 1000:eb3e, printed 1000:eb52.
+            // file `0xC0D9` `Напиши: ^6pr^7   чтобы идти в местный притон гопоты`
+            (
+                Location::Den,
+                "Напиши: ^6pr^7   чтобы идти в местный притон гопоты",
+            ),
+            // 1000:eb57 / 1000:eb5c; pushed 1000:eb5e, printed 1000:eb72.
+            // file `0xC10D` `Напиши: ^6kl^7   чтобы идти в клуб`
+            (Location::Club, "Напиши: ^6kl^7   чтобы идти в клуб"),
+            // 1000:eb77 / 1000:eb7c; pushed 1000:eb7e, printed 1000:eb92.
+            // file `0xC130` `Напиши: ^6trn^7  чтобы идти в качалку`
+            (Location::Gym, "Напиши: ^6trn^7  чтобы идти в качалку"),
+        ] {
+            if self.places.is_found(loc) {
+                term::println(line);
+            }
+        }
+        for line in [
+            // 1000:eb97, printed 1000:ebab. file `0xC156`
+            // `Напиши: ^6s^7    чтобы посмотреть в лужу на свою уродскую рожу`
             "Напиши: ^6s^7    чтобы посмотреть в лужу на свою уродскую рожу",
+            // 1000:ebb0, printed 1000:ebc4. file `0xC195`
+            // `Напиши: ^6sv^7   чтобы приглядеться к пинаемому мудаку`
             "Напиши: ^6sv^7   чтобы приглядеться к пинаемому мудаку",
+            // 1000:ebc9, printed 1000:ebdd. file `0xC1CC`
+            // `Напиши: ^6k^7    чтобы гасить мудака который тебе попался на дороге`
             "Напиши: ^6k^7    чтобы гасить мудака который тебе попался на дороге",
+            // 1000:ebe2, printed 1000:ebf6. file `0xC210`
+            // `Напиши: ^6v^7    чтобы позвать подкрепление`
             "Напиши: ^6v^7    чтобы позвать подкрепление",
+            // 1000:ebfb, printed 1000:ec0f. file `0xC23C`
+            // `Напиши: ^6kos^7  чтобы схавать косяк`
             "Напиши: ^6kos^7  чтобы схавать косяк",
+            // 1000:ec14, printed 1000:ec28. file `0xC261`
+            // `Напиши: ^6h^7    чтобы выпить пиво (если не охото к ветеринару)`
             "Напиши: ^6h^7    чтобы выпить пиво (если не охото к ветеринару)",
+            // 1000:ec2d, printed 1000:ec41. file `0xC2A1`
+            // `Напиши: ^6mh^7   чтобы набухаться до чёртиков`
             "Напиши: ^6mh^7   чтобы набухаться до чёртиков",
+            // 1000:ec46, printed 1000:ec5a. file `0xC2CF`
+            // `Напиши: ^6name^7 чтобы сменить погоняло`
             "Напиши: ^6name^7 чтобы сменить погоняло",
+            // 1000:ec5f, printed 1000:ec73. file `0xC2F7`
+            // `Напиши: ^6e^7    если захочешь выйти`
             "Напиши: ^6e^7    если захочешь выйти",
         ] {
             term::println(line);
@@ -3441,7 +3647,7 @@ impl Game {
     ///     `Random(0)`, which the original's `Random` returns 0 for -- the
     ///     draw still happens, which is why `1000:1197` has 13 stops and
     ///     not 3.
-    fn roll_enemy(&mut self, param_1: u8) -> Fighter {
+    pub(crate) fn roll_enemy(&mut self, param_1: u8) -> Fighter {
         let mut cls = i32::from(self.rng.below_at("1000:0d26", 0x33)) + 1;
         for i in 1..=10 {
             if cls - i < 0 {
@@ -4139,47 +4345,6 @@ impl Game {
         // [`Game::sell_offer`] and never reaches `Game::shop_turn`'s exit
         // arm, so `self.mode` is untouched on every path out of here.
         Ok(())
-    }
-
-    /// `h` at the vet: 3 rubles to fix a broken jaw.
-    ///
-    /// The price is the literal `3` of the menu line the vet prints (file
-    /// `0xB2B2`), and the same literal is what the display's affordability
-    /// test compares money against (`cmp word [0x38c7],0x3` at `1000:d410`).
-    ///
-    /// **The debit is 3 as well -- established from flow**, not inferred:
-    /// `1000:d5d9` is `83 2e c7 38 03`, `sub word [0x38c7],0x3`, reached
-    /// through the submenu's `h` compare at `1000:d5b9` (token file
-    /// `0xB392`). An earlier revision of this comment called it an inference
-    /// because "the vet's own submenu handler was not traced"; the `difftest`
-    /// task traced it and this comment did not follow. See
-    /// `docs/re/gaps.md`, "The vet's charged amounts".
-    fn heal_jaw(&mut self) {
-        self.pay_and_heal(3, self.player.broken_jaw, |f| f.broken_jaw = false);
-    }
-
-    /// `r` at the vet: 7 rubles to fix a broken leg (file `0xB2D9`,
-    /// `cmp word [0x38c7],0x7` at `1000:d465`). Its debit is
-    /// `1000:d553` `83 2e c7 38 07`, reached through the `r` compare at
-    /// `1000:d537` (token file `0xB320`) -- **established from flow**, same
-    /// as [`Game::heal_jaw`]. Note the two arms sit in the opposite order to
-    /// the two menu rows, which is why they are paired by key, not position.
-    fn heal_leg(&mut self) {
-        self.pay_and_heal(7, self.player.broken_leg, |f| f.broken_leg = false);
-    }
-
-    fn pay_and_heal(&mut self, price: i32, already_broken: bool, clear: impl FnOnce(&mut Fighter)) {
-        if !already_broken {
-            term::println("^0Док: вали отсюда ты здоров.");
-            return;
-        }
-        if self.player.money < price {
-            term::println("^4Блин халявщик, медицина не бесплатная");
-            return;
-        }
-        self.player.money -= price;
-        clear(&mut self.player);
-        term::println("^2Твои переломы залечены.");
     }
 
     /// Whether a row's `district>N` gate is satisfied.
@@ -5243,7 +5408,7 @@ impl Game {
     /// in `1000:48eb`..`1000:4afb`. That is what makes run A turn 7 of
     /// `data/rng_trace.json` -- a cop fight entered and fled -- show zero
     /// draws between `1000:b792` and the next turn's `1000:af68`.
-    fn run_combat(
+    pub(crate) fn run_combat(
         &mut self,
         mut enemy: Fighter,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
@@ -6316,7 +6481,7 @@ impl Game {
     /// The rank name at `DS:002e + class * 0x100` -- the same eleven-row
     /// table `1000:13dc`..`1000:13e4` indexes for the enemy's display name,
     /// which `data/enemies.json` carries one row per class of.
-    fn rank_name(class: u16) -> String {
+    pub(crate) fn rank_name(class: u16) -> String {
         data::enemies()
             .iter()
             .find(|e| e.class == class)
@@ -6638,7 +6803,12 @@ mod tests {
         assert_eq!(g.location, Location::Market);
         assert_eq!(g.mode, Mode::Shop(Location::Market));
 
+        // A WOUNDED character, because the vet's loop top at `1000:d4ba`
+        // ejects a whole one on entry (`crate::vet::loop_top`). What is
+        // under test here is the discovery gate at `1000:d3b0`, not the
+        // health test behind it.
         let mut g = game();
+        g.player.hp = 1;
         g.dispatch(Command::Vet, &mut no_input()).unwrap();
         assert_eq!(g.location, Location::Vet);
         assert_eq!(g.mode, Mode::Shop(Location::Vet));
@@ -7371,6 +7541,7 @@ mod tests {
         g.places.mark_found(Location::Vet);
         g.location = Location::Vet;
         g.mode = Mode::Shop(Location::Vet);
+        g.player.hp = 1; // 1000:d4ba ejects a whole player after every turn
         g.shop_turn(Location::Vet, "mar", &mut no_input()).unwrap(); // must not teleport
         assert_eq!(g.location, Location::Vet);
         g.shop_turn(Location::Vet, "w", &mut no_input()).unwrap();
@@ -7379,21 +7550,26 @@ mod tests {
     }
 
     /// I5: `h` is the beer verb at the top level (`entry` -> `FUN_1000_29c4`,
-    /// `1000:e966`) *and* the vet's jaw key, because the vet reads its own
-    /// input at its own prompt. Both must work, through the same public path
-    /// the player uses -- not by calling a handler directly.
+    /// `1000:e966`) *and* a vet key, because the vet reads its own input at
+    /// its own prompt. Both must work, through the same public path the
+    /// player uses -- not by calling a handler directly.
+    ///
+    /// The vet's `h` is the five-point HEAL (`1000:d5de`), not a jaw: see
+    /// [`crate::vet`], whose own tests carry the arm. This one is only
+    /// about the two `h`s not being the same `h`.
     #[test]
-    fn h_heals_the_jaw_at_the_vet_and_drinks_beer_on_the_street() {
+    fn h_heals_at_the_vet_and_drinks_beer_on_the_street() {
         let mut g = game();
         g.places.mark_found(Location::Vet);
         g.location = Location::Vet;
         g.mode = Mode::Shop(Location::Vet);
-        g.player.broken_jaw = true;
+        g.player.hp = g.player.hpmax - 6; // 1000:d5c3 needs hp < hpmax
         g.player.money = 10;
         g.player.beer_dl = 4;
+        let hp0 = g.player.hp;
         g.shop_turn(Location::Vet, "h", &mut no_input()).unwrap();
-        assert!(!g.player.broken_jaw, "vet's h must heal the jaw");
-        assert_eq!(g.player.money, 7);
+        assert_eq!(g.player.hp, hp0 + 5, "vet's h is 1000:d5de, +5 health");
+        assert_eq!(g.player.money, 7, "1000:d5d9 sub 0x3");
         assert_eq!(g.player.beer_dl, 4, "vet's h must not drink beer");
 
         let mut g = game();
@@ -7410,9 +7586,12 @@ mod tests {
         g.location = Location::Vet;
         g.mode = Mode::Shop(Location::Vet);
         g.player.broken_leg = true;
+        g.player.broken_jaw = true;
         g.player.money = 10;
         g.shop_turn(Location::Vet, "r", &mut no_input()).unwrap();
+        // 1000:d558 AND 1000:d55d, behind the one price test at 1000:d54c.
         assert!(!g.player.broken_leg);
+        assert!(!g.player.broken_jaw);
         assert_eq!(g.player.money, 3);
     }
 

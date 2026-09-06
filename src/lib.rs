@@ -1,4 +1,5 @@
 pub mod character_sheet;
+pub mod club;
 pub mod combat;
 pub mod combat_dispatch;
 pub mod commands;
@@ -14,3 +15,4 @@ pub mod save;
 pub mod term;
 pub mod text;
 pub mod trace;
+pub mod vet;

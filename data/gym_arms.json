@@ -3276,7 +3276,7 @@
   {
    "n": 8,
    "blocked": false,
-   "what": "`kos` needs NO change. `Game::smoke` reproduces all four gates and all seven effects; `joint.port_equivalences` records the three places the port's representation differs from the original's and why each is equivalent. The four `port_touched: false` branches are missing CITATIONS, not missing behaviour."
+   "what": "`kos` (`1000:e973`) needs NO change. `Game::smoke` reproduces all four gates and all seven effects; `joint.port_equivalences` records the three places the port's representation differs from the original's and why each is equivalent. The four `port_touched: false` branches are missing CITATIONS, not missing behaviour."
   },
   {
    "n": 9,

@@ -2682,9 +2682,15 @@
    "do_not_fix": "Do not reorder `locations::TRACKED` to match this list."
   },
   "port_divergence": {
-   "claim": "`Game::show_command_list` prints THIRTEEN fixed lines with no gating.  The original prints seventeen, seven of them gated.  The thirteen are not a subset chosen from flow: they are one flag configuration's SCREEN.",
-   "tier": "flow for the original; the port half is recomputed by the command below",
+   "claim": "AS OF TASK 33: `Game::show_command_list` printed THIRTEEN fixed lines with no gating, where the original prints seventeen, seven of them gated -- the thirteen were not a subset chosen from flow, they were one flag configuration's SCREEN.  **CLOSED by Task 34**, which rewrote the function to the seventeen-line partition below; `closed_by` carries the command that recomputes the port half against the shape it has now, and `measured` is preserved as the record of what the divergence WAS.",
+   "tier": "flow for the original; the port half is recomputed by `closed_by.command`",
    "command": "python3 - <<'EOF'\nimport re, sys\nsys.path.insert(0, 'tools')\nfrom re_derive import load_image\nimg = load_image()\ndef s(o):\n    n = img[o]\n    return img[o + 1:o + 1 + n].decode('cp866')\norig = [0xa710, 0xa762, 0xa787, 0xa7ad, 0xa7d6, 0xa809,\n        0xa83d, 0xa860, 0xa886, 0xa8c5, 0xa8fc, 0xa940,\n        0xa96c, 0xa991, 0xa9d1, 0xa9ff, 0xaa27]\nsrc = open('src/game.rs').read()\nm = re.search(r'fn show_command_list.*?for line in \\[(.*?)\\] \\{',\n              src, re.S)\nport = re.findall(r'\"((?:[^\"\\\\\\\\]|\\\\\\\\.)*)\"', m.group(1))\nprint(len(port), 'port lines;',\n      [hex(o) for o in orig if s(o) not in port],\n      'never printed')\nEOF",
+   "closed_by": {
+    "task": 34,
+    "what": "`Game::show_command_list` now prints the ungated head, the seven lines gated on `crate::locations::Location::Market`/`Dealers`/`Vet`/`Girl`/`Den`/`Club`/`Gym` in the original's gate order, and the nine ungated tail lines.  The three `13-line` comments `what_the_port_must_change[3]` names are gone from `src/`.",
+    "command": "python3 - <<'EOF'\nimport re, sys\nsys.path.insert(0, 'tools')\nfrom re_derive import load_image\nimg = load_image()\ndef s(o):\n    n = img[o]\n    return img[o + 1:o + 1 + n].decode('cp866')\norig = [0xa710, 0xa762, 0xa787, 0xa7ad, 0xa7d6, 0xa809,\n        0xa83d, 0xa860, 0xa886, 0xa8c5, 0xa8fc, 0xa940,\n        0xa96c, 0xa991, 0xa9d1, 0xa9ff, 0xaa27]\nsrc = open('src/game.rs').read()\nm = re.search(r'fn show_command_list.*?\\n    \\}', src, re.S)\nport = re.findall(r'\"(\u041d\u0430\u043f\u0438\u0448\u0438:[^\"]*)\"', m.group(0))\nprint(len(port), 'port lines;',\n      [hex(o) for o in orig if s(o) not in port], 'never printed;',\n      len(re.findall(r'is_found', m.group(0))), 'gates')\nEOF",
+    "expected_output": "17 port lines; [] never printed; 1 gates -- the single `is_found` call is the loop over the seven gated lines, which is how one call covers all seven."
+   },
    "measured": {
     "port_lines": 13,
     "all_thirteen_are_verbatim_original_lines": true,
