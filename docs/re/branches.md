@@ -1000,6 +1000,60 @@ print('unmentioned', len(miss), '%.1f%%' % (100*len(miss)/len(rng)),
 EOF
 ```
 
+### Two "untouched" numbers for the same range, and why both are right
+
+Task 31's brief said the gym (`1000:e390`..`1000:e972`) had 23 of 38 branches
+untouched and `kos` (`1000:e973`..`1000:ea93`) 3 of 5. The `port_touched`
+column in `data/branches.json` says **37** and **4**. Neither number is a
+mistake: they answer different questions, and the difference is the same
+citation-rule distinction this section already turns on.
+
+* `port_touched` is per-branch and per-guard, computed by the generator against
+  `src/**/*.rs` **and** `data/command_dispatch.json` (the `port_citation_sources`
+  array), and it is frozen at generation time.
+* The brief's pair is the *ad-hoc* rule the wander cross-check above uses —
+  scan `src/*.rs` alone for `1000:xxxx` and count a branch as touched when its
+  own address OR its guard's address appears — recomputed against the tree
+  rather than read out of the artifact.
+
+Recomputing the second, and the `docs/re/*.md` variant beside it:
+
+```bash
+python3 - <<'EOF'
+import json, re, glob
+B = [b for b in json.load(open('data/branches.json'))['branches']
+     if b['class'] == 'game']
+off = lambda a: int(a.split(':')[1], 16)
+def count(paths, label):
+    blob = ''.join(open(p, encoding='utf-8').read() for p in paths)
+    cited = {int(m, 16) for m in re.findall(r'1000:([0-9a-fA-F]{4})', blob)}
+    out = []
+    for name, lo, hi in (('trn', 0xe390, 0xe972), ('kos', 0xe973, 0xea93)):
+        rng = [b for b in B if lo <= off(b['addr']) <= hi]
+        miss = [b for b in rng if off(b['addr']) not in cited
+                and (b['guard'] is None
+                     or off(b['guard']['addr']) not in cited)]
+        out.append('%s %d/%d' % (name, len(miss), len(rng)))
+    print(label, ' '.join(out))
+count(glob.glob('src/*.rs'), 'src/*.rs      ')
+count(glob.glob('docs/re/*.md'), 'docs/re/*.md  ')
+EOF
+```
+
+At `f9ea589`, the commit Task 31 started from — and unchanged since `72f1bae`,
+because the only commit between them added a plan document — that printed
+`src/*.rs       trn 23/38 kos 3/5`, the brief's pair, and
+`docs/re/*.md   trn 26/38 kos 1/5`.
+
+Run it again after Task 31 and the `src/*.rs` line is unchanged, because that
+task touches no Rust, while the `docs/re/*.md` line collapses to
+`trn 2/38 kos 1/5` — `docs/re/gym.md` now cites the range. **That collapse is
+the whole point of the caution this document repeats and `CLAUDE.md` states
+outright:** writing a map moves the docs-glob figure and moves the port by
+exactly nothing. Only the `src/` figure is about the port, and it is still 23 of
+38. `docs/re/gym.md` and `data/gym_arms.json`'s `branch_census` carry the same
+reconciliation for readers who arrive from the other side.
+
 The function-body disjointness argument (43,890 two ways):
 
 ```bash

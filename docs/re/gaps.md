@@ -658,12 +658,29 @@ back out, so what is left is the armour the player TRAINED.
 
 Those are `mar` rows 4, 7, 6 and 9 — the abibas suit, the adidas suit, the
 leather jacket and the crutaya kozhanka — and the four subtrahends are the
-rows' own advertised bonuses. Exactly one thing reads the result: `trn`
-row 5. It has **two** gates and only the second reads `abs` —
-`1000:e576` (`cmp byte [0x3692],0x2` / `jbe 0xe5e4`) is `district > 2`, and
-`1000:e57d`..`1000:e58d` (`shl ax,1` on the district, `mov al,[0x3e34]`,
-`cmp ax,dx` / `jnl 0xe5e4`) is `abs < district * 2`. `imm_row_visible`
-implements both; an earlier revision of this entry folded them into one.
+rows' own advertised bonuses.
+
+**TWO things read the result, against two different thresholds** — corrected by
+Task 31, which mapped the whole handler (`docs/re/gym.md`, `data/gym_arms.json`).
+`python3 tools/re_query.py xrefs-to 20ae:3e34` reports eight references, six
+writes and two reads:
+
+| read | what | threshold | compare |
+|---|---|---|---|
+| `1000:e586` | `trn` row 5's MENU visibility | `district * 2` | `1000:e58b` `cmp ax,dx` / `1000:e58d` `jnl 0xe5e4` |
+| `1000:e88d` | the `5` ARM's own ceiling | `(district - 2) * 10` | `1000:e892` `cmp ax,dx` / `1000:e894` `jnl 0xe8f9` |
+
+Earlier revisions of this entry said "Exactly one thing reads the result", which
+is the "inventory whose completeness claim stopped the next search" defect
+`docs/re/METHODOLOGY.md` names; the census above is the executable replacement.
+The two predicates are 16 bytes against 21 and differ by exactly `d1 e0`
+(`shl ax,1`) against `48 48 ba 0a 00 f7 e2` (`dec ax` / `dec ax` / `mov dx,0xa` /
+`mul dx`) — `tools/test_gym_arms.py` re-slices both out of `orig/g.exe`.
+
+The menu row still has **two** gates and only the second reads `abs`:
+`1000:e576` (`cmp byte [0x3692],0x2` / `jbe 0xe5e4`) is `district > 2`.
+`imm_row_visible` implements both; an earlier revision of this entry folded them
+into one.
 
 **The port carries the four flags (`Game::wear_suit_abibas_38b4`,
 `wear_jacket_38b6`, `wear_suit_adidas_38b7`, `wear_jacket_krutaya_38b9`,
@@ -707,9 +724,67 @@ row's own 20-rouble test at `1000:e58f`, so nothing else suppresses it.
 `SAVE_R3` at slot 3 and `SAVE_R5` at slot 5 agree either way, and `SAVE_R2`
 is district 2, where the first gate hides the row for both.
 
-Fixing it properly needs `mar`'s purchase effects, which are the larger
-unimplemented gap below; applying the subtraction on its own would gate a gym
-row on a flag the player has no way to earn.
+**The blocker this entry used to name is gone.** It read "Fixing it properly
+needs `mar`'s purchase effects ... applying the subtraction on its own would
+gate a gym row on a flag the player has no way to earn." That was true before
+Task 26 and contradicted the Task 26 paragraph three above it from the moment
+that paragraph was written: `grep -n 'wear_suit_abibas_38b4 = true' src/game.rs`
+finds the setter in `Game::buy_market_row`, and the other three are beside it.
+All four flags are earnable in play, so the subtraction can be applied without
+gating anything on an unreachable flag. What remains is the work itself, and it
+is a change to the gym's recompute (`1000:e3a4`..`1000:e3e2`) plus a place to
+keep the result — which is also what the `5` arm needs. Task 31's map supplies
+both; see the next entry.
+
+## The gym's five keys are dispatched by nothing (mapped, Task 31)
+
+*Cited from `src/game.rs`'s `Game::shop_turn`; the map is `docs/re/gym.md` and
+`data/gym_arms.json`.*
+
+**Established from flow.** `Game::enter_shop(Location::Gym)` puts the port in
+`Mode::Shop(Location::Gym)`, prints the intro and the five `IMM_ROWS` rows, and
+then `Game::shop_turn` recognises **no gym key at all**. The command that shows
+it is `grep -nE '^\s+\(Location::' src/game.rs`, which lists every arm of that
+function's key `match`: eleven of them, for the vet, the dealers, the den and
+the shared Market|Dealers digit arm, and not one for `Location::Gym`. Typing
+`1`..`5` at `^0Качалка\` falls into the catch-all and is silently ignored, so
+the whole gym is a menu that does nothing.
+
+The original dispatches five keys on its own buffer `20ae:3a72`: `1`
+(`1000:e62e`), `2` (`1000:e6ba`), `3` (`1000:e73c`), `4` (`1000:e7f3`) and `5`
+(`1000:e875`); `w` (`1000:e93c`) is the shared exit the port already has. What
+each does, its gates in order, its price, its effects and its strings are in
+`docs/re/gym.md`; `data/gym_arms.json`'s `what_the_port_must_change` is the work
+order, written so a later port can falsify it.
+
+Three of the nine items there are things a port will get wrong by default rather
+than by omission, so they are repeated here:
+
+* **Arm `1`'s damage split.** `1000:e68d`'s `jnz` skips exactly the four bytes
+  of `1000:e68f inc [0x38a8]`, so урон min rises only when the NEW strength is
+  even while урон max (`1000:e693`) rises every time. Both-conditional and
+  both-unconditional are equally wrong and invisible on screen.
+* **Arm `5`'s ceiling is not the menu row's.** `(district - 2) * 10` at
+  `1000:e87f`..`1000:e894`, against `district * 2` at `1000:e57d`..`1000:e58d`.
+  Sharing one predicate is wrong in both directions; at district 3 the row
+  disappears at trained armour 6 while the arm keeps working to 10.
+* **Arm `3`'s ordering.** `money -= 10` (`1000:e796`), `xp += 10`
+  (`1000:e7b4`), print, and only then the level-up call `1000:e7df` with
+  `param_1 = 0`. In `progress::apply_levels` terms that is a manual `xp += 10`
+  and a later call with `award = 0`, because `apply_levels` adds its own award
+  before the threshold test.
+
+`kos` is **not** part of this gap: `Game::smoke` reproduces it in full, and the
+four branches `data/branches.json` marks `port_touched: false` there are missing
+citations, not missing behaviour (`data/gym_arms.json`'s
+`joint.port_equivalences` records the three representation differences and why
+each is equivalent).
+
+Nothing here is blocked. Every global a gym gate reads is written somewhere in
+`src/` (`data/gym_arms.json`'s `port_reachability`), and the two routines the
+range calls out to — `1000:2526` and `1000:29c4` — are both already ported. The
+one value the port lacks is the trained armour `20ae:3e34`, which is the entry
+above.
 
 ## The district-advance autosave — wired (Task 21)
 

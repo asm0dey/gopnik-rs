@@ -2210,6 +2210,119 @@
       "every_game_field_is_either_persisted_or_named_out_of_record"
     ],
     "expect": "neither persists it nor lists it in the out-of-record table"
+  },
+  {
+    "label": "gym-arms-instruction-identity",
+    "defends": "tools/test_gym_arms.py walks every {addr,text} record in data/gym_arms.json and requires orig/g.exe to decode that instruction at that address -- the identity half of the two signals docs/re/METHODOLOGY.md keeps apart.",
+    "artifact": "data/gym_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        0,
+        "effects",
+        1,
+        "text"
+      ],
+      "from": "inc [0x389e]",
+      "to": "inc [0x389f]"
+    },
+    "test": [
+      "python3",
+      "tools/test_gym_arms.py",
+      "GymTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
+    ],
+    "expect": "orig/g.exe decodes"
+  },
+  {
+    "label": "gym-arms-parity-branch",
+    "defends": "Arm `1`'s damage split: 1000:e68d's jnz skips ONLY the dmg_min increment, so dmg_max rises on every purchase and dmg_min only on an even strength.  tools/test_gym_arms.py decodes the rel8 and requires exactly one CONDITIONAL effect in the arm.  Marking the dmg_max increment conditional too is a divergence no screen capture can show.",
+    "artifact": "data/gym_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        0,
+        "effects",
+        5,
+        "condition"
+      ],
+      "from": null,
+      "to": "only when the NEW [0x389e] is even"
+    },
+    "test": [
+      "python3",
+      "tools/test_gym_arms.py",
+      "GymTest.test_arm_1s_parity_branch_skips_only_the_dmg_min_increment"
+    ],
+    "expect": "must record exactly one CONDITIONAL effect"
+  },
+  {
+    "label": "gym-arms-menu-vs-arm-predicate",
+    "defends": "The row-5 trained-armour predicate is a DIFFERENT number in the menu (district*2 at 1000:e57d) and in the `5` arm ((district-2)*10 at 1000:e87f); the row-3 level predicate is byte-identical in both.  tools/test_gym_arms.py re-slices all four spans out of orig/g.exe, so recording the pair as symmetric -- the hypothesis docs/re/METHODOLOGY.md warns about -- goes red.",
+    "artifact": "data/gym_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "menu_vs_arm_finding",
+        "pairs",
+        1,
+        "identical"
+      ],
+      "from": false,
+      "to": true
+    },
+    "test": [
+      "python3",
+      "tools/test_gym_arms.py",
+      "GymTest.test_the_menu_and_arm_predicates_differ_exactly_as_recorded"
+    ],
+    "expect": "the artifact records identical=True"
+  },
+  {
+    "label": "gym-arms-strings-completeness",
+    "defends": "strings[] is the WHOLE set of CS literals the range pushes, measured by decoding 1000:e390..1000:ea94 and collecting every `mov di,imm` followed by `push cs`/`push di`.  So \"the `w` arm prints nothing\" and \"this arm prints nothing else\" are measurements over the range, not lists that stopped being written.",
+    "artifact": "data/gym_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        0,
+        "strings",
+        2,
+        "push",
+        "addr"
+      ],
+      "from": "1000:e697",
+      "to": "1000:e6b5"
+    },
+    "test": [
+      "python3",
+      "tools/test_gym_arms.py",
+      "GymTest.test_the_recorded_strings_are_every_cs_literal_the_handler_pushes"
+    ],
+    "expect": "the CS-literal push sweep and the artifact disagree"
+  },
+  {
+    "label": "gym-arms-global-writer-census",
+    "defends": "globals[].xrefs.writers_image_wide is re-derived by running re_query.xrefs_to, so \"1000:e828 is the only image-wide writer of the tooth guard 20ae:394a\" is a measured set rather than an inventory that stopped the next search -- the recurring defect docs/re/METHODOLOGY.md names.",
+    "artifact": "data/gym_arms.json",
+    "mutate": {
+      "op": "json-append",
+      "path": [
+        "globals",
+        20,
+        "xrefs",
+        "writers_image_wide"
+      ],
+      "value": "1000:abbd"
+    },
+    "test": [
+      "python3",
+      "tools/test_gym_arms.py",
+      "GymTest.test_every_globals_xref_census_is_what_re_query_reports"
+    ],
+    "expect": "as its image-wide writers"
   }
  ]
 }

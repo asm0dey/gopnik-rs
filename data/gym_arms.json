@@ -1,0 +1,3442 @@
+{
+ "note": "The gym (`trn`) and the joint (`kos`) handlers of `orig/g.exe`, the half-open image range `1000:e390`..`1000:ea94` -- from the `trn` verb compare through, but not including, the `i` verb compare -- mapped by Task 31 from an aligned decode, never from a screen. Prose twin: `docs/re/gym.md`; re-derived from `orig/g.exe` by `tools/test_gym_arms.py`. `data/den_arms.json` is the shape this follows. COVERAGE BOUNDARY: this artifact covers exactly that range and nothing else. The sweeps in `tools/test_gym_arms.py` (literals, branches, draws, absolute writes, DGROUP addresses, DS pushes, span tiling) are SET EQUALITIES over the range, so an omitted entry reds the test -- but they say nothing about the two routines the range CALLS (`1000:2526`, the level-up, from the gym's `3` arm; `1000:29c4`, the beer sub-dispatcher, from the shared tail at `1000:e966`), whose bodies were not decoded for this task. TWO HANDLERS, ONE FILE: the gym is a modal submenu, `kos` is a one-shot street verb that merely sits next to it in address space. They are kept in separate top-level blocks (`gym`-prefixed keys and `joint`) because the port puts them in different places: the gym becomes a new module, `kos` stays with `Game::smoke`.",
+ "address_forms": "`1000:xxxx` is a Ghidra label (Form A of `docs/re/METHODOLOGY.md`) and, because the game's code segment is the load base, its OFF is also the image offset. `20ae:xxxx` is DGROUP. `0eed:` and `0f78:` are Form B runtime segments. `cs_offset` is the image offset of a Pascal shortstring's LENGTH byte -- the exact immediate of the `mov di,imm16` that pushes it -- and `file_offset` is that plus the 0x18d0-byte MZ header, which is what `data/strings.json` keys on. The two near calls in range encode a `rel16` that WRAPS: `1000:e7df` and `1000:e966` reach `1000:2526` and `1000:29c4` only modulo 64 KiB, which is the mistake `tools/re_derive.py`'s `near_calls_to` exists to avoid.",
+ "handlers": [
+  "trn",
+  "kos"
+ ],
+ "range": {
+  "start": "1000:e390",
+  "end": "1000:ea94",
+  "instruction_count": 790,
+  "note": "Half-open. `1000:e390` IS the `trn` compare; `1000:ea94` IS the `i` compare and is NOT decoded as part of this map. `trn`'s own half is `1000:e390`..`1000:e973` and `kos`'s is `1000:e973`..`1000:ea94`, the split `data/command_dispatch.json` already records."
+ },
+ "verb": {
+  "key": "trn",
+  "buffer": "20ae:3972",
+  "key_literal": {
+   "role": "verb",
+   "cs_offset": "0xa353",
+   "file_offset": "0x0bc23",
+   "text": "trn",
+   "push": {
+    "addr": "1000:e38b",
+    "text": "mov di,0xa353"
+   }
+  },
+  "push_buffer": {
+   "addr": "1000:e386",
+   "text": "mov di,0x3972"
+  },
+  "compare_addr": "1000:e390",
+  "compare": {
+   "addr": "1000:e390",
+   "text": "call 0xf78:0xbd8"
+  },
+  "hit_branch": {
+   "addr": "1000:e395",
+   "text": "jz 0xe39a"
+  },
+  "miss_branch": {
+   "addr": "1000:e397",
+   "text": "jmp 0xe961"
+  },
+  "note": "The verb is read out of the STREET buffer `20ae:3972`, not the gym's own `20ae:3a72`; the setup push at `1000:e386` is the evidence. `1000:e386` and `1000:e38b` are before the range start and are recorded here as the left boundary's own setup. A miss jumps to `1000:e961`, which is also where the gym's `w` exit lands -- so the shared tail is on every street line's path, not only the gym's."
+ },
+ "bounded_on_the_right_by": {
+  "verb": "i",
+  "setup_addr": "1000:ea8a",
+  "compare_addr": "1000:ea94",
+  "key_literal": {
+   "role": "verb",
+   "cs_offset": "0xa70e",
+   "file_offset": "0x0bfde",
+   "text": "i",
+   "push": {
+    "addr": "1000:ea8f",
+    "text": "mov di,0xa70e"
+   }
+  },
+  "note": "`1000:ea8a` is the next verb's own buffer push and is where every `kos` exit lands, so the range's right edge is an instruction boundary the handler itself jumps to, not a number picked to fit. `data/command_dispatch.json` records `i`'s compare at `1000:ea94`."
+ },
+ "discovery_gate": {
+  "ds": "20ae:369a",
+  "what": "the gym's discovery flag",
+  "test": {
+   "addr": "1000:e39a",
+   "text": "cmp byte [0x369a],0x1"
+  },
+  "hit_branch": {
+   "addr": "1000:e39f",
+   "text": "jz 0xe3a4"
+  },
+  "miss_branch": {
+   "addr": "1000:e3a1",
+   "text": "jmp 0xe948"
+  },
+  "refusal": {
+   "role": "refusal",
+   "cs_offset": "0xa5f2",
+   "file_offset": "0x0bec2",
+   "text": "^6Ты пока незнаешь где в этом районе качалка",
+   "push": {
+    "addr": "1000:e948",
+    "text": "mov di,0xa5f2"
+   }
+  },
+  "refusal_print": {
+   "addr": "1000:e95c",
+   "text": "call 0xeed:0x1c2"
+  },
+  "note": "A miss jumps to `1000:e948`, prints the refusal and falls into `1000:e961` -- the gym's submenu is never entered and no `ReadLn` happens. `src/game.rs` already carries this line; `grep -n '1000:e39a' src/game.rs` finds the table row that cites it."
+ },
+ "abs_recompute": {
+  "ds": "20ae:3e34",
+  "what": "the TRAINED half of the armour byte: `20ae:38b2` minus the armour that came from bought clothing",
+  "span": {
+   "start": "1000:e3a4",
+   "end": "1000:e3e7"
+  },
+  "seed": [
+   {
+    "addr": "1000:e3a4",
+    "text": "mov al,[0x38b2]"
+   },
+   {
+    "addr": "1000:e3a7",
+    "text": "mov [0x3e34],al"
+   }
+  ],
+  "steps": [
+   {
+    "subtracts": 1,
+    "when": "[0x38b4] set and [0x38b7] clear",
+    "tests": [
+     {
+      "addr": "1000:e3aa",
+      "text": "cmp byte [0x38b4],0x0"
+     },
+     {
+      "addr": "1000:e3b1",
+      "text": "cmp byte [0x38b7],0x0"
+     }
+    ],
+    "branches": [
+     {
+      "addr": "1000:e3af",
+      "text": "jz 0xe3bc"
+     },
+     {
+      "addr": "1000:e3b6",
+      "text": "jnz 0xe3bc"
+     }
+    ],
+    "effect": {
+     "addr": "1000:e3b8",
+     "text": "dec [0x3e34]"
+    },
+    "item": "mar row 4, Костюм Abibas(+1), bought at 1000:bf80"
+   },
+   {
+    "subtracts": 2,
+    "when": "[0x38b7] set",
+    "tests": [
+     {
+      "addr": "1000:e3bc",
+      "text": "cmp byte [0x38b7],0x0"
+     }
+    ],
+    "branches": [
+     {
+      "addr": "1000:e3c1",
+      "text": "jz 0xe3c8"
+     }
+    ],
+    "effect": {
+     "addr": "1000:e3c3",
+     "text": "sub byte [0x3e34],0x2"
+    },
+    "item": "mar row 7, Костюм Adidas(+2), bought at 1000:c183"
+   },
+   {
+    "subtracts": 2,
+    "when": "[0x38b6] set and [0x38b9] clear",
+    "tests": [
+     {
+      "addr": "1000:e3c8",
+      "text": "cmp byte [0x38b6],0x0"
+     },
+     {
+      "addr": "1000:e3cf",
+      "text": "cmp byte [0x38b9],0x0"
+     }
+    ],
+    "branches": [
+     {
+      "addr": "1000:e3cd",
+      "text": "jz 0xe3db"
+     },
+     {
+      "addr": "1000:e3d4",
+      "text": "jnz 0xe3db"
+     }
+    ],
+    "effect": {
+     "addr": "1000:e3d6",
+     "text": "sub byte [0x3e34],0x2"
+    },
+    "item": "mar row 6, Кожанка(+2), bought at 1000:c0e0"
+   },
+   {
+    "subtracts": 4,
+    "when": "[0x38b9] set",
+    "tests": [
+     {
+      "addr": "1000:e3db",
+      "text": "cmp byte [0x38b9],0x0"
+     }
+    ],
+    "branches": [
+     {
+      "addr": "1000:e3e0",
+      "text": "jz 0xe3e7"
+     }
+    ],
+    "effect": {
+     "addr": "1000:e3e2",
+     "text": "sub byte [0x3e34],0x4"
+    },
+    "item": "mar row 9, Крутая кожанка(+4), bought at 1000:c2ca"
+   }
+  ],
+  "the_three_unported_gates": [
+   "1000:e395",
+   "1000:e3b6",
+   "1000:e3d4"
+  ],
+  "what_the_three_gates_skip": "`1000:e395` is not part of this block at all -- it is the `trn` verb compare's own hit branch, and its fallthrough `1000:e397` is the miss. The two that ARE in the block, `1000:e3b6` and `1000:e3d4`, are the SECOND test of a two-test pair: `1000:e3b6` `jnz` skips the `-1` for the abibas suit when the adidas suit is also owned, and `1000:e3d4` `jnz` skips the `-2` for the plain jacket when the крутая кожанка is also owned. So the pairs are exclusive by subtrahend, not additive: owning both suits costs 2, not 3, and owning both jackets costs 4, not 6."
+ },
+ "abs_recompute_finding": {
+  "claim": "`20ae:3e34` is gym-local. Every reference to it in the whole image is inside `1000:e3a7`..`1000:e8da`, and nothing outside the gym reads or writes it.",
+  "tier": "flow",
+  "command": "python3 tools/re_query.py xrefs-to 20ae:3e34",
+  "consequence": "It is not in `data/save_layout.json`, so it does not survive a save/load; it is rebuilt from `20ae:38b2` and the four clothing flags on every entry to the gym.",
+  "readers": [
+   "1000:e586",
+   "1000:e88d"
+  ],
+  "readers_note": "TWO readers, with DIFFERENT thresholds -- this is the thing `docs/re/gaps.md` had wrong. `1000:e586` is the MENU row-5 visibility test against `district * 2`; `1000:e88d` is the `5` ARM's own ceiling test against `(district - 2) * 10`. A port that shares one predicate between the two is wrong in both directions."
+ },
+ "intro_line": {
+  "span": {
+   "start": "1000:e3e7",
+   "end": "1000:e400"
+  },
+  "strings": [
+   {
+    "role": "intro",
+    "cs_offset": "0xa357",
+    "file_offset": "0x0bc27",
+    "text": "Ты пришел в качалку напиши  ^6w^7  чтобы уйти",
+    "push": {
+     "addr": "1000:e3e7",
+     "text": "mov di,0xa357"
+    }
+   }
+  ],
+  "prints": [
+   {
+    "addr": "1000:e3fb",
+    "text": "call 0xeed:0x1c2"
+   }
+  ],
+  "note": "PORTED (`Game::print_shop_intro`, `Location::Gym`)."
+ },
+ "menu_lines": [
+  {
+   "index": 1,
+   "key": "1",
+   "price": 20,
+   "gates": [],
+   "colour_digit": {
+    "ds": "20ae:3b7a",
+    "test": {
+     "addr": "1000:e400",
+     "text": "cmp word [0x38c7],0x14"
+    },
+    "branch": {
+     "addr": "1000:e405",
+     "text": "jl 0xe40e"
+    },
+    "affordable_store": {
+     "addr": "1000:e407",
+     "text": "mov byte [0x3b7a],0x30"
+    },
+    "unaffordable_store": {
+     "addr": "1000:e40e",
+     "text": "mov byte [0x3b7a],0x34"
+    },
+    "sense": "`'0'` (white) when money >= 20, `'4'` (red) when it is less -- the digit lands between the prefix's trailing `^` and the price digits, so the two halves only form a valid `^N` code once joined"
+   },
+   "assemble": [
+    {
+     "addr": "1000:e41e",
+     "text": "call 0xf78:0xae7"
+    },
+    {
+     "addr": "1000:e42d",
+     "text": "call 0xf78:0xc03"
+    },
+    {
+     "addr": "1000:e432",
+     "text": "call 0xf78:0xb66"
+    },
+    {
+     "addr": "1000:e43c",
+     "text": "call 0xf78:0xb66"
+    }
+   ],
+   "strings": [
+    {
+     "role": "prefix",
+     "cs_offset": "0xa178",
+     "file_offset": "0x0ba48",
+     "text": " 1 -  ^",
+     "push": {
+      "addr": "1000:e419",
+      "text": "mov di,0xa178"
+     }
+    },
+    {
+     "role": "row",
+     "cs_offset": "0xa385",
+     "file_offset": "0x0bc55",
+     "text": "20^7  качаться гателями и шгангой(Сила +1)",
+     "push": {
+      "addr": "1000:e437",
+      "text": "mov di,0xa385"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:e450",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "fill": null,
+   "note": "PORTED as `IMM_ROWS[\"trn\",\"1\"]`. No gate of its own: the row is always listed."
+  },
+  {
+   "index": 2,
+   "key": "2",
+   "price": 20,
+   "gates": [],
+   "colour_digit": {
+    "ds": "20ae:3b7a",
+    "test": {
+     "addr": "1000:e455",
+     "text": "cmp word [0x38c7],0x14"
+    },
+    "branch": {
+     "addr": "1000:e45a",
+     "text": "jl 0xe463"
+    },
+    "affordable_store": {
+     "addr": "1000:e45c",
+     "text": "mov byte [0x3b7a],0x30"
+    },
+    "unaffordable_store": {
+     "addr": "1000:e463",
+     "text": "mov byte [0x3b7a],0x34"
+    },
+    "sense": "`'0'` (white) when money >= 20, `'4'` (red) when it is less -- the digit lands between the prefix's trailing `^` and the price digits, so the two halves only form a valid `^N` code once joined"
+   },
+   "assemble": [
+    {
+     "addr": "1000:e473",
+     "text": "call 0xf78:0xae7"
+    },
+    {
+     "addr": "1000:e482",
+     "text": "call 0xf78:0xc03"
+    },
+    {
+     "addr": "1000:e487",
+     "text": "call 0xf78:0xb66"
+    },
+    {
+     "addr": "1000:e491",
+     "text": "call 0xf78:0xb66"
+    }
+   ],
+   "strings": [
+    {
+     "role": "prefix",
+     "cs_offset": "0xa1ad",
+     "file_offset": "0x0ba7d",
+     "text": " 2 -  ^",
+     "push": {
+      "addr": "1000:e46e",
+      "text": "mov di,0xa1ad"
+     }
+    },
+    {
+     "role": "row",
+     "cs_offset": "0xa3b0",
+     "file_offset": "0x0bc80",
+     "text": "20^7  качаться на тренажерах(Выносливость +1)",
+     "push": {
+      "addr": "1000:e48c",
+      "text": "mov di,0xa3b0"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:e4a5",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "fill": null,
+   "note": "PORTED. No gate of its own."
+  },
+  {
+   "index": 3,
+   "key": "3",
+   "price": 10,
+   "gates": [
+    {
+     "name": "district > 1",
+     "test": {
+      "addr": "1000:e4aa",
+      "text": "cmp byte [0x3692],0x1"
+     },
+     "branch": {
+      "addr": "1000:e4af",
+      "text": "jbe 0xe51a"
+     },
+     "sense": "list iff [0x3692] > 1 (`jbe` skips to line 4)",
+     "on_fail": "1000:e51a"
+    },
+    {
+     "name": "district * 10 - 3 > level",
+     "test": {
+      "addr": "1000:e4be",
+      "text": "cmp ax,[0x38a6]"
+     },
+     "branch": {
+      "addr": "1000:e4c2",
+      "text": "jle 0xe51a"
+     },
+     "sense": "list iff district*10-3 > [0x38a6] (`jle` skips)",
+     "on_fail": "1000:e51a"
+    }
+   ],
+   "colour_digit": {
+    "ds": "20ae:3b7a",
+    "test": {
+     "addr": "1000:e4c4",
+     "text": "cmp word [0x38c7],0xa"
+    },
+    "branch": {
+     "addr": "1000:e4c9",
+     "text": "jl 0xe4d2"
+    },
+    "affordable_store": {
+     "addr": "1000:e4cb",
+     "text": "mov byte [0x3b7a],0x30"
+    },
+    "unaffordable_store": {
+     "addr": "1000:e4d2",
+     "text": "mov byte [0x3b7a],0x34"
+    },
+    "sense": "`'0'` (white) when money >= 10, `'4'` (red) when it is less -- the digit lands between the prefix's trailing `^` and the price digits, so the two halves only form a valid `^N` code once joined"
+   },
+   "assemble": [
+    {
+     "addr": "1000:e4e2",
+     "text": "call 0xf78:0xae7"
+    },
+    {
+     "addr": "1000:e4f1",
+     "text": "call 0xf78:0xc03"
+    },
+    {
+     "addr": "1000:e4f6",
+     "text": "call 0xf78:0xb66"
+    },
+    {
+     "addr": "1000:e500",
+     "text": "call 0xf78:0xb66"
+    }
+   ],
+   "strings": [
+    {
+     "role": "prefix",
+     "cs_offset": "0xa3de",
+     "file_offset": "0x0bcae",
+     "text": " 3 -  ^",
+     "push": {
+      "addr": "1000:e4dd",
+      "text": "mov di,0xa3de"
+     }
+    },
+    {
+     "role": "row",
+     "cs_offset": "0xa3e6",
+     "file_offset": "0x0bcb6",
+     "text": "10^7  прокачать # качков опыта",
+     "push": {
+      "addr": "1000:e4fb",
+      "text": "mov di,0xa3e6"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:e515",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "fill": {
+    "count": 1,
+    "values": [
+     {
+      "addr": "1000:e505",
+      "text": "mov ax,0xa"
+     },
+     {
+      "addr": "1000:e508",
+      "text": "push ax"
+     }
+    ],
+    "note": "The one `#` in the row text is filled from a SEPARATE immediate `mov ax,0xa`, not from the price compare at `1000:e4c4`; the two happen to be equal. `src/game.rs`'s `print_imm_rows` already records this."
+   },
+   "note": "PORTED, both gates. The arithmetic at `1000:e4b1`..`1000:e4be` is byte-identical to the `3` arm's at `1000:e746`..`1000:e753` -- see `menu_vs_arm_finding`."
+  },
+  {
+   "index": 4,
+   "key": "4",
+   "price": 30,
+   "gates": [
+    {
+     "name": "district > 1",
+     "test": {
+      "addr": "1000:e51a",
+      "text": "cmp byte [0x3692],0x1"
+     },
+     "branch": {
+      "addr": "1000:e51f",
+      "text": "jbe 0xe576"
+     },
+     "sense": "list iff [0x3692] > 1",
+     "on_fail": "1000:e576"
+    }
+   ],
+   "colour_digit": {
+    "ds": "20ae:3b7a",
+    "test": {
+     "addr": "1000:e521",
+     "text": "cmp word [0x38c7],0x1e"
+    },
+    "branch": {
+     "addr": "1000:e526",
+     "text": "jl 0xe52f"
+    },
+    "affordable_store": {
+     "addr": "1000:e528",
+     "text": "mov byte [0x3b7a],0x30"
+    },
+    "unaffordable_store": {
+     "addr": "1000:e52f",
+     "text": "mov byte [0x3b7a],0x34"
+    },
+    "sense": "`'0'` (white) when money >= 30, `'4'` (red) when it is less -- the digit lands between the prefix's trailing `^` and the price digits, so the two halves only form a valid `^N` code once joined"
+   },
+   "assemble": [
+    {
+     "addr": "1000:e53f",
+     "text": "call 0xf78:0xae7"
+    },
+    {
+     "addr": "1000:e54e",
+     "text": "call 0xf78:0xc03"
+    },
+    {
+     "addr": "1000:e553",
+     "text": "call 0xf78:0xb66"
+    },
+    {
+     "addr": "1000:e55d",
+     "text": "call 0xf78:0xb66"
+    }
+   ],
+   "strings": [
+    {
+     "role": "prefix",
+     "cs_offset": "0xa405",
+     "file_offset": "0x0bcd5",
+     "text": " 4 -  ^",
+     "push": {
+      "addr": "1000:e53a",
+      "text": "mov di,0xa405"
+     }
+    },
+    {
+     "role": "row",
+     "cs_offset": "0xa40d",
+     "file_offset": "0x0bcdd",
+     "text": "30^7  купить зубную защиту боксёров(-75% что сломают челюсть)",
+     "push": {
+      "addr": "1000:e558",
+      "text": "mov di,0xa40d"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:e571",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "fill": null,
+   "note": "PORTED. NOTE the asymmetry: the ARM at `1000:e7fa` also refuses when the guard is already owned (`[0x394a]`), and this row has no such test, so it is listed even after the purchase."
+  },
+  {
+   "index": 5,
+   "key": "5",
+   "price": 20,
+   "gates": [
+    {
+     "name": "district > 2",
+     "test": {
+      "addr": "1000:e576",
+      "text": "cmp byte [0x3692],0x2"
+     },
+     "branch": {
+      "addr": "1000:e57b",
+      "text": "jbe 0xe5e4"
+     },
+     "sense": "list iff [0x3692] > 2",
+     "on_fail": "1000:e5e4"
+    },
+    {
+     "name": "trained armour < district * 2",
+     "test": {
+      "addr": "1000:e58b",
+      "text": "cmp ax,dx"
+     },
+     "branch": {
+      "addr": "1000:e58d",
+      "text": "jnl 0xe5e4"
+     },
+     "sense": "list iff [0x3e34] < district*2 (`jnl` skips)",
+     "on_fail": "1000:e5e4"
+    }
+   ],
+   "colour_digit": {
+    "ds": "20ae:3b7a",
+    "test": {
+     "addr": "1000:e58f",
+     "text": "cmp word [0x38c7],0x14"
+    },
+    "branch": {
+     "addr": "1000:e594",
+     "text": "jl 0xe59d"
+    },
+    "affordable_store": {
+     "addr": "1000:e596",
+     "text": "mov byte [0x3b7a],0x30"
+    },
+    "unaffordable_store": {
+     "addr": "1000:e59d",
+     "text": "mov byte [0x3b7a],0x34"
+    },
+    "sense": "`'0'` (white) when money >= 20, `'4'` (red) when it is less -- the digit lands between the prefix's trailing `^` and the price digits, so the two halves only form a valid `^N` code once joined"
+   },
+   "assemble": [
+    {
+     "addr": "1000:e5ad",
+     "text": "call 0xf78:0xae7"
+    },
+    {
+     "addr": "1000:e5bc",
+     "text": "call 0xf78:0xc03"
+    },
+    {
+     "addr": "1000:e5c1",
+     "text": "call 0xf78:0xb66"
+    },
+    {
+     "addr": "1000:e5cb",
+     "text": "call 0xf78:0xb66"
+    }
+   ],
+   "strings": [
+    {
+     "role": "prefix",
+     "cs_offset": "0xa44b",
+     "file_offset": "0x0bd1b",
+     "text": " 5 -  ^",
+     "push": {
+      "addr": "1000:e5a8",
+      "text": "mov di,0xa44b"
+     }
+    },
+    {
+     "role": "row",
+     "cs_offset": "0xa453",
+     "file_offset": "0x0bd23",
+     "text": "20^7  прокачать пресс(Броня +1)",
+     "push": {
+      "addr": "1000:e5c6",
+      "text": "mov di,0xa453"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:e5df",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "fill": null,
+   "note": "PORTED, both gates -- but the second uses `armor` where the original uses the trained-armour scratch `20ae:3e34`. That is the standing `docs/re/gaps.md` entry. The arm's OWN ceiling is a different number; see `menu_vs_arm_finding`."
+  }
+ ],
+ "menu_lines_note": "Every row is assembled the same way: `0f78:0ae7` (`rtl_str_assign`) copies the prefix into a local, `0f78:0c03` (`rtl_char_to_str`) turns the colour byte `20ae:3b7a` into a one-character string, `0f78:0b66` (`rtl_str_append`) appends it, a second `0f78:0b66` appends the row text, and `0eed:01c2` writes the line. Five rows, so five of each assign/char call and ten appends -- asserted as counts by `tools/test_gym_arms.py`. Names from `data/rtl_names.json`.",
+ "input_read": {
+  "buffer": "20ae:3a72",
+  "input_text": "20ae:3ecc",
+  "prompt_literal": {
+   "role": "prompt",
+   "cs_offset": "0xa473",
+   "file_offset": "0x0bd43",
+   "text": "^0Качалка\\",
+   "push": {
+    "addr": "1000:e5e4",
+    "text": "mov di,0xa473"
+   }
+  },
+  "prompt_write": {
+   "addr": "1000:e5f8",
+   "text": "call 0xeed:0x0"
+  },
+  "read": [
+   {
+    "addr": "1000:e60b",
+    "text": "call 0xf78:0x6c6"
+   },
+   {
+    "addr": "1000:e610",
+    "text": "call 0xf78:0x59d"
+   },
+   {
+    "addr": "1000:e615",
+    "text": "call 0xf78:0x291"
+   }
+  ],
+  "case_fold": {
+   "addr": "1000:e61f",
+   "text": "call 0xeed:0x216"
+  },
+  "max_length": {
+   "addr": "1000:e607",
+   "text": "mov ax,0xff"
+  },
+  "note": "Identical in shape to the den's (`data/den_arms.json`): `0f78:06c6` is `Read(Text,String)`, `0f78:059d` the `ReadLn` skip-to-end-of-line, `0f78:0291` the `{$I+}` check, and `0eed:0216` lowercases ASCII A..Z in place and does NOT trim. The prompt is written with `0eed:0000` (`Write`, no newline). So gym keys are case-insensitive and whitespace-SENSITIVE, and `Game::shop_turn`'s `line.trim()` is the same divergence `docs/re/gaps.md`'s trimmed-prompt entry already owns.",
+  "same_buffer_as": "the den's seven keys, the dealers' `x`/`wes` and the vet's `h`/`r`"
+ },
+ "loop": {
+  "top": "1000:e5e4",
+  "back_edge": {
+   "addr": "1000:e943",
+   "text": "jmp 0xe5e4"
+  },
+  "exit_edge": {
+   "addr": "1000:e946",
+   "text": "jmp short 0xe961"
+  },
+  "note": "The five menu lines `1000:e400`..`1000:e5e4` print ONCE, on entry. The repeated part of the gym is only `1000:e5e4` (the prompt) through `1000:e941` (the `w` compare): a non-`w` line falls off the end of the six compares and `1000:e943` jumps straight back to the PROMPT, printing nothing. So an unrecognised key is silent and the menu is NOT reprinted between turns -- the same shape as the den, established here at these addresses rather than assumed from it."
+ },
+ "arms": [
+  {
+   "key": "1",
+   "name": "качаться гантелями и штангой -- Сила +1",
+   "span": {
+    "start": "1000:e624",
+    "end": "1000:e6b0"
+   },
+   "key_literal": {
+    "role": "key",
+    "cs_offset": "0x8dca",
+    "file_offset": "0x0a69a",
+    "text": "1",
+    "push": {
+     "addr": "1000:e629",
+     "text": "mov di,0x8dca"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:e624",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:e62e",
+   "compare": {
+    "addr": "1000:e62e",
+    "text": "call 0xf78:0xbd8"
+   },
+   "miss_branch": {
+    "addr": "1000:e633",
+    "text": "jnz 0xe6b0"
+   },
+   "own_gate": null,
+   "price": 20,
+   "gates": [
+    {
+     "name": "can pay 20",
+     "test": {
+      "addr": "1000:e635",
+      "text": "cmp word [0x38c7],0x14"
+     },
+     "branch": {
+      "addr": "1000:e63a",
+      "text": "jnl 0xe657"
+     },
+     "sense": "run iff [0x38c7] >= 20 (signed `jnl`)",
+     "on_fail": "1000:e63c"
+    },
+    {
+     "name": "the NEW strength is even",
+     "test": {
+      "addr": "1000:e68b",
+      "text": "or ax,ax"
+     },
+     "branch": {
+      "addr": "1000:e68d",
+      "text": "jnz 0xe693"
+     },
+     "sense": "the `idiv cx` at 1000:e688 leaves the remainder of [0x389e] div 2 in dx, `xchg ax,dx` at 1000:e68a moves it to ax, and a NONZERO remainder jumps PAST 1000:e68f -- so dmg_min rises only on an even strength",
+     "on_fail": "1000:e693"
+    }
+   ],
+   "draws": [],
+   "effects": [
+    {
+     "addr": "1000:e657",
+     "text": "sub word [0x38c7],0x14",
+     "ds": "20ae:38c7",
+     "role": "бабки -20",
+     "condition": null
+    },
+    {
+     "addr": "1000:e675",
+     "text": "inc [0x389e]",
+     "ds": "20ae:389e",
+     "role": "Сила +1",
+     "condition": null
+    },
+    {
+     "addr": "1000:e679",
+     "text": "inc [0x38ae]",
+     "ds": "20ae:38ae",
+     "role": "здоровье max +1",
+     "condition": null
+    },
+    {
+     "addr": "1000:e67d",
+     "text": "inc [0x38ac]",
+     "ds": "20ae:38ac",
+     "role": "здоровье +1",
+     "condition": null
+    },
+    {
+     "addr": "1000:e68f",
+     "text": "inc [0x38a8]",
+     "ds": "20ae:38a8",
+     "role": "урон min +1",
+     "condition": "only when the NEW [0x389e] is even (1000:e681..1000:e68d)"
+    },
+    {
+     "addr": "1000:e693",
+     "text": "inc [0x38aa]",
+     "ds": "20ae:38aa",
+     "role": "урон max +1",
+     "condition": null
+    }
+   ],
+   "strings": [
+    {
+     "role": "refusal",
+     "cs_offset": "0x8e4d",
+     "file_offset": "0x0a71d",
+     "text": "^4Не хватает",
+     "push": {
+      "addr": "1000:e63c",
+      "text": "mov di,0x8e4d"
+     }
+    },
+    {
+     "role": "confirmation",
+     "cs_offset": "0xa47e",
+     "file_offset": "0x0bd4e",
+     "text": "^2Ты прокачиваешь силу.",
+     "push": {
+      "addr": "1000:e65c",
+      "text": "mov di,0xa47e"
+     }
+    },
+    {
+     "role": "effect",
+     "cs_offset": "0x9402",
+     "file_offset": "0x0acd2",
+     "text": "^1Сила +1 ",
+     "push": {
+      "addr": "1000:e697",
+      "text": "mov di,0x9402"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:e650",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e670",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e6ab",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "tail": {
+    "addr": "1000:e655",
+    "text": "jmp short 0xe6b0"
+   },
+   "calls_out": [],
+   "notes": "The dmg split is the single easiest thing here to get backwards. `1000:e68d` `jnz` is a FOUR-byte skip and `1000:e68f inc [0x38a8]` is exactly four bytes, so the jump lands on `1000:e693 inc [0x38aa]`: урон max rises on EVERY purchase and урон min only on an even strength. Reading the `jnz` as skipping both is a real, silent divergence. Repeatable: nothing one-shot is consumed. The confirmation says `Сила +1` and `1000:e675` is an `inc`, so string and effect agree -- checked, not assumed."
+  },
+  {
+   "key": "2",
+   "name": "качаться на тренажерах -- Выносливость +1",
+   "span": {
+    "start": "1000:e6b0",
+    "end": "1000:e728"
+   },
+   "key_literal": {
+    "role": "key",
+    "cs_offset": "0x8e4b",
+    "file_offset": "0x0a71b",
+    "text": "2",
+    "push": {
+     "addr": "1000:e6b5",
+     "text": "mov di,0x8e4b"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:e6b0",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:e6ba",
+   "compare": {
+    "addr": "1000:e6ba",
+    "text": "call 0xf78:0xbd8"
+   },
+   "miss_branch": {
+    "addr": "1000:e6bf",
+    "text": "jnz 0xe728"
+   },
+   "own_gate": null,
+   "price": 20,
+   "gates": [
+    {
+     "name": "can pay 20",
+     "test": {
+      "addr": "1000:e6c1",
+      "text": "cmp word [0x38c7],0x14"
+     },
+     "branch": {
+      "addr": "1000:e6c6",
+      "text": "jnl 0xe6e3"
+     },
+     "sense": "run iff [0x38c7] >= 20",
+     "on_fail": "1000:e6c8"
+    }
+   ],
+   "draws": [],
+   "effects": [
+    {
+     "addr": "1000:e6e3",
+     "text": "sub word [0x38c7],0x14",
+     "ds": "20ae:38c7",
+     "role": "бабки -20",
+     "condition": null
+    },
+    {
+     "addr": "1000:e701",
+     "text": "inc [0x38a2]",
+     "ds": "20ae:38a2",
+     "role": "Выносливость +1",
+     "condition": null
+    },
+    {
+     "addr": "1000:e705",
+     "text": "add word [0x38ae],0x5",
+     "ds": "20ae:38ae",
+     "role": "здоровье max +5",
+     "condition": null
+    },
+    {
+     "addr": "1000:e70a",
+     "text": "add word [0x38ac],0x5",
+     "ds": "20ae:38ac",
+     "role": "здоровье +5",
+     "condition": null
+    }
+   ],
+   "strings": [
+    {
+     "role": "refusal",
+     "cs_offset": "0x8e4d",
+     "file_offset": "0x0a71d",
+     "text": "^4Не хватает",
+     "push": {
+      "addr": "1000:e6c8",
+      "text": "mov di,0x8e4d"
+     }
+    },
+    {
+     "role": "confirmation",
+     "cs_offset": "0xa496",
+     "file_offset": "0x0bd66",
+     "text": "^2Ты прокачиваешь выносливость.",
+     "push": {
+      "addr": "1000:e6e8",
+      "text": "mov di,0xa496"
+     }
+    },
+    {
+     "role": "effect",
+     "cs_offset": "0xa4b6",
+     "file_offset": "0x0bd86",
+     "text": "^1Выносливость +1 ",
+     "push": {
+      "addr": "1000:e70f",
+      "text": "mov di,0xa4b6"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:e6dc",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e6fc",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e723",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "tail": {
+    "addr": "1000:e6e1",
+    "text": "jmp short 0xe728"
+   },
+   "calls_out": [],
+   "notes": "Same price and same refusal literal as arm `1`, and NO conditional inside: both health words rise by a flat 5 and neither damage word is touched. The two arms are not a template of each other -- `1` has six effects and a parity branch, `2` has four effects and none."
+  },
+  {
+   "key": "3",
+   "name": "прокачать 10 качков опыта",
+   "span": {
+    "start": "1000:e728",
+    "end": "1000:e7e2"
+   },
+   "key_literal": {
+    "role": "key",
+    "cs_offset": "0x8ea5",
+    "file_offset": "0x0a775",
+    "text": "3",
+    "push": {
+     "addr": "1000:e737",
+     "text": "mov di,0x8ea5"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:e732",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:e73c",
+   "compare": {
+    "addr": "1000:e73c",
+    "text": "call 0xf78:0xbd8"
+   },
+   "hit_branch": {
+    "addr": "1000:e741",
+    "text": "jz 0xe746"
+   },
+   "miss_branch": {
+    "addr": "1000:e743",
+    "text": "jmp 0xe7e2"
+   },
+   "own_gate": {
+    "name": "district > 1",
+    "test": {
+     "addr": "1000:e728",
+     "text": "cmp byte [0x3692],0x1"
+    },
+    "branch": {
+     "addr": "1000:e72d",
+     "text": "ja 0xe732"
+    },
+    "sense": "the key is not even COMPARED at district 1: `ja` is the only way past, and its fallthrough 1000:e72f jumps the whole arm",
+    "on_fail": "1000:e7e2"
+   },
+   "price": 10,
+   "gates": [
+    {
+     "name": "district * 10 - 3 > level",
+     "test": {
+      "addr": "1000:e753",
+      "text": "cmp ax,[0x38a6]"
+     },
+     "branch": {
+      "addr": "1000:e757",
+      "text": "jnle 0xe774"
+     },
+     "sense": "run iff district*10-3 > [0x38a6] (`jnle`); otherwise the too-strong refusal",
+     "on_fail": "1000:e759"
+    },
+    {
+     "name": "can pay 10",
+     "test": {
+      "addr": "1000:e774",
+      "text": "cmp word [0x38c7],0xa"
+     },
+     "branch": {
+      "addr": "1000:e779",
+      "text": "jnl 0xe796"
+     },
+     "sense": "run iff [0x38c7] >= 10",
+     "on_fail": "1000:e77b"
+    },
+    {
+     "name": "xp reached the threshold",
+     "test": {
+      "addr": "1000:e7d6",
+      "text": "cmp ax,[0x38d0]"
+     },
+     "branch": {
+      "addr": "1000:e7da",
+      "text": "jl 0xe7e2"
+     },
+     "sense": "call the level-up only when [0x38ce] >= [0x38d0]; `jl` skips the call",
+     "on_fail": "1000:e7e2"
+    }
+   ],
+   "draws": [],
+   "effects": [
+    {
+     "addr": "1000:e796",
+     "text": "sub word [0x38c7],0xa",
+     "ds": "20ae:38c7",
+     "role": "бабки -10",
+     "condition": null
+    },
+    {
+     "addr": "1000:e7b4",
+     "text": "add word [0x38ce],0xa",
+     "ds": "20ae:38ce",
+     "role": "опыт +10",
+     "condition": null
+    }
+   ],
+   "strings": [
+    {
+     "role": "refusal_too_strong",
+     "cs_offset": "0xa4c9",
+     "file_offset": "0x0bd99",
+     "text": "^6Ты слишком крутой чтобы тренироваться здесь.",
+     "push": {
+      "addr": "1000:e759",
+      "text": "mov di,0xa4c9"
+     }
+    },
+    {
+     "role": "refusal_money",
+     "cs_offset": "0x9473",
+     "file_offset": "0x0ad43",
+     "text": "^4Не хватает деньжат",
+     "push": {
+      "addr": "1000:e77b",
+      "text": "mov di,0x9473"
+     }
+    },
+    {
+     "role": "confirmation",
+     "cs_offset": "0xa4f8",
+     "file_offset": "0x0bdc8",
+     "text": "^2Ты тренируешься.",
+     "push": {
+      "addr": "1000:e79b",
+      "text": "mov di,0xa4f8"
+     }
+    },
+    {
+     "role": "effect",
+     "cs_offset": "0xa50b",
+     "file_offset": "0x0bddb",
+     "text": "^1 +# качков опыта ",
+     "push": {
+      "addr": "1000:e7b9",
+      "text": "mov di,0xa50b"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:e76d",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e78f",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e7af",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e7ce",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "tail": {
+    "addr": "1000:e772",
+    "text": "jmp short 0xe7e2"
+   },
+   "calls_out": [
+    {
+     "addr": "1000:e7df",
+     "text": "call 0x12526",
+     "target": "1000:2526",
+     "target_note": "`FUN_1000_2526`, the level-up, already documented at `docs/re/progression.md` and ported as `crate::progress::apply_levels`. The `rel16` wraps: `re_derive.near_calls_to(img, 0x2526)` is what finds this site.",
+     "param": {
+      "set_at": "1000:e7dc",
+      "push_at": "1000:e7de",
+      "value": 0,
+      "means": "`param_1 = 0` is the CAPPED call -- the level stops at 40 (`1000:257a`..`1000:2587`) and the closing `Сейчас у тебя # качков опыта` line is printed (`1000:28a6`). The den's own level-up call at `1000:dec5` pushes the same 0."
+     }
+    }
+   ],
+   "notes": "The ONLY arm in the range that can move the RNG stream, and it moves it indirectly: the gym itself contains zero `Random` call sites, but `1000:2526` spends two draws per level gained at `1000:25fe`. The outer guard at `1000:e7d3`..`1000:e7da` duplicates the callee's own entry test at `1000:2535`..`1000:253c` -- the seven bytes `a1 ce 38 3b 06 d0 38` are identical at both addresses and only the following `jcc` differs -- and the callee's early-out target `1000:28c1` is PAST the closing message at `1000:28a6`, so the guard changes nothing observable. It is recorded because a port that keeps it and a port that drops it are both faithful, and the map should say which.",
+   "fill": {
+    "string": "0xa50b",
+    "count": 1,
+    "args": [
+     {
+      "addr": "1000:e7be",
+      "text": "mov ax,0xa"
+     },
+     {
+      "addr": "1000:e7c1",
+      "text": "push ax"
+     }
+    ],
+    "note": "The `+# качков опыта` line's one `#` is the separate immediate 10, not the xp total. The menu row's `#` at CS 0xa3e6 is filled from its own `mov ax,0xa` at `1000:e505`; the two immediates are equal and independent."
+   }
+  },
+  {
+   "key": "4",
+   "name": "купить зубную защиту боксёров",
+   "span": {
+    "start": "1000:e7e2",
+    "end": "1000:e861"
+   },
+   "key_literal": {
+    "role": "key",
+    "cs_offset": "0x8ef7",
+    "file_offset": "0x0a7c7",
+    "text": "4",
+    "push": {
+     "addr": "1000:e7ee",
+     "text": "mov di,0x8ef7"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:e7e9",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:e7f3",
+   "compare": {
+    "addr": "1000:e7f3",
+    "text": "call 0xf78:0xbd8"
+   },
+   "miss_branch": {
+    "addr": "1000:e7f8",
+    "text": "jnz 0xe861"
+   },
+   "own_gate": {
+    "name": "district > 1",
+    "test": {
+     "addr": "1000:e7e2",
+     "text": "cmp byte [0x3692],0x1"
+    },
+    "branch": {
+     "addr": "1000:e7e7",
+     "text": "jbe 0xe861"
+    },
+    "sense": "the key is not even COMPARED at district 1",
+    "on_fail": "1000:e861"
+   },
+   "price": 30,
+   "gates": [
+    {
+     "name": "does not already own it",
+     "test": {
+      "addr": "1000:e7fa",
+      "text": "cmp byte [0x394a],0x0"
+     },
+     "branch": {
+      "addr": "1000:e7ff",
+      "text": "jnz 0xe848"
+     },
+     "sense": "run iff [0x394a] == 0; `jnz` goes to the already-own line",
+     "on_fail": "1000:e848"
+    },
+    {
+     "name": "can pay 30",
+     "test": {
+      "addr": "1000:e801",
+      "text": "cmp word [0x38c7],0x1e"
+     },
+     "branch": {
+      "addr": "1000:e806",
+      "text": "jnl 0xe823"
+     },
+     "sense": "run iff [0x38c7] >= 30",
+     "on_fail": "1000:e808"
+    }
+   ],
+   "draws": [],
+   "effects": [
+    {
+     "addr": "1000:e823",
+     "text": "sub word [0x38c7],0x1e",
+     "ds": "20ae:38c7",
+     "role": "бабки -30",
+     "condition": null
+    },
+    {
+     "addr": "1000:e828",
+     "text": "mov byte [0x394a],0x1",
+     "ds": "20ae:394a",
+     "role": "зубная защита := 1",
+     "condition": null
+    }
+   ],
+   "strings": [
+    {
+     "role": "refusal_money",
+     "cs_offset": "0xa51f",
+     "file_offset": "0x0bdef",
+     "text": "^4А не хватает рубликов",
+     "push": {
+      "addr": "1000:e808",
+      "text": "mov di,0xa51f"
+     }
+    },
+    {
+     "role": "confirmation",
+     "cs_offset": "0xa537",
+     "file_offset": "0x0be07",
+     "text": "^2Ты купил защиту.",
+     "push": {
+      "addr": "1000:e82d",
+      "text": "mov di,0xa537"
+     }
+    },
+    {
+     "role": "refusal_already_owned",
+     "cs_offset": "0xa54a",
+     "file_offset": "0x0be1a",
+     "text": "^6У тебя есть эта штучка.",
+     "push": {
+      "addr": "1000:e848",
+      "text": "mov di,0xa54a"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:e81c",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e841",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e85c",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "tail": {
+    "addr": "1000:e821",
+    "text": "jmp short 0xe846"
+   },
+   "calls_out": [],
+   "notes": "The one purchase in the gym that sets a flag rather than bumping a number, and `1000:e828` is its ONLY image-wide absolute-memory write (`python3 tools/re_query.py xrefs-to 20ae:394a` reports five references, one write). Nothing clears it -- not the district reset at `1000:abbd`, which clears the discovery flags and leaves this one alone -- so the purchase is permanent for the character. The save loader restores it as part of the 182-byte state block (`data/save_layout.json`, `.SAV` offset 686), which is a block copy and not an absolute-memory operand, so it is outside that census by construction. What the flag BUYS is `1000:47ce`/`1000:47f3`: it splits a jaw break into the plain arm and a `Random(4)`, a DRAW-COUNT difference."
+  },
+  {
+   "key": "5",
+   "name": "прокачать пресс -- Броня +1",
+   "span": {
+    "start": "1000:e861",
+    "end": "1000:e932"
+   },
+   "key_literal": {
+    "role": "key",
+    "cs_offset": "0x8f6b",
+    "file_offset": "0x0a83b",
+    "text": "5",
+    "push": {
+     "addr": "1000:e870",
+     "text": "mov di,0x8f6b"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:e86b",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:e875",
+   "compare": {
+    "addr": "1000:e875",
+    "text": "call 0xf78:0xbd8"
+   },
+   "hit_branch": {
+    "addr": "1000:e87a",
+    "text": "jz 0xe87f"
+   },
+   "miss_branch": {
+    "addr": "1000:e87c",
+    "text": "jmp 0xe932"
+   },
+   "own_gate": {
+    "name": "district > 2",
+    "test": {
+     "addr": "1000:e861",
+     "text": "cmp byte [0x3692],0x2"
+    },
+    "branch": {
+     "addr": "1000:e866",
+     "text": "ja 0xe86b"
+    },
+    "sense": "the key is not even COMPARED at district 1 or 2",
+    "on_fail": "1000:e932"
+   },
+   "price": 20,
+   "gates": [
+    {
+     "name": "trained armour < (district - 2) * 10",
+     "test": {
+      "addr": "1000:e892",
+      "text": "cmp ax,dx"
+     },
+     "branch": {
+      "addr": "1000:e894",
+      "text": "jnl 0xe8f9"
+     },
+     "sense": "run iff [0x3e34] < (district-2)*10; `jnl` goes to the ceiling message",
+     "on_fail": "1000:e8f9"
+    },
+    {
+     "name": "can pay 20",
+     "test": {
+      "addr": "1000:e896",
+      "text": "cmp word [0x38c7],0x14"
+     },
+     "branch": {
+      "addr": "1000:e89b",
+      "text": "jnl 0xe8b8"
+     },
+     "sense": "run iff [0x38c7] >= 20",
+     "on_fail": "1000:e89d"
+    },
+    {
+     "name": "district < 4",
+     "test": {
+      "addr": "1000:e912",
+      "text": "cmp byte [0x3692],0x4"
+     },
+     "branch": {
+      "addr": "1000:e917",
+      "text": "jnb 0xe932"
+     },
+     "sense": "inside the CEILING branch only: `jnb` suppresses the `Качай дальше в следующем районе` hint from district 4 up",
+     "on_fail": "1000:e932"
+    }
+   ],
+   "draws": [],
+   "effects": [
+    {
+     "addr": "1000:e8b8",
+     "text": "sub word [0x38c7],0x14",
+     "ds": "20ae:38c7",
+     "role": "бабки -20",
+     "condition": null
+    },
+    {
+     "addr": "1000:e8d6",
+     "text": "inc [0x38b2]",
+     "ds": "20ae:38b2",
+     "role": "Броня +1",
+     "condition": null
+    },
+    {
+     "addr": "1000:e8da",
+     "text": "inc [0x3e34]",
+     "ds": "20ae:3e34",
+     "role": "trained armour +1 -- the scratch is kept in step with the armour byte inside the same visit",
+     "condition": null
+    }
+   ],
+   "strings": [
+    {
+     "role": "refusal_money",
+     "cs_offset": "0xa564",
+     "file_offset": "0x0be34",
+     "text": "^4Не хватает рубликов",
+     "push": {
+      "addr": "1000:e89d",
+      "text": "mov di,0xa564"
+     }
+    },
+    {
+     "role": "confirmation",
+     "cs_offset": "0xa57a",
+     "file_offset": "0x0be4a",
+     "text": "^2Ты прокачиваешь пресс.",
+     "push": {
+      "addr": "1000:e8bd",
+      "text": "mov di,0xa57a"
+     }
+    },
+    {
+     "role": "effect",
+     "cs_offset": "0xa593",
+     "file_offset": "0x0be63",
+     "text": "^1Броня +1",
+     "push": {
+      "addr": "1000:e8de",
+      "text": "mov di,0xa593"
+     }
+    },
+    {
+     "role": "refusal_ceiling",
+     "cs_offset": "0xa59e",
+     "file_offset": "0x0be6e",
+     "text": "^6Ты максимально прокачал пресс для своего уровня",
+     "push": {
+      "addr": "1000:e8f9",
+      "text": "mov di,0xa59e"
+     }
+    },
+    {
+     "role": "hint_next_district",
+     "cs_offset": "0xa5d0",
+     "file_offset": "0x0bea0",
+     "text": "^6Качай дальше в следующем районе",
+     "push": {
+      "addr": "1000:e919",
+      "text": "mov di,0xa5d0"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:e8b1",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e8d1",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e8f2",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e90d",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:e92d",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "tail": {
+    "addr": "1000:e8b6",
+    "text": "jmp short 0xe8f7"
+   },
+   "calls_out": [],
+   "notes": "Both writes are unconditional once the two gates pass, and both must happen: `1000:e8d6` raises the visible Броня and `1000:e8da` raises the scratch the NEXT purchase is tested against, so a port that raises only the armour lets the arm run for ever. The ceiling here is `(district-2)*10`; the MENU row's is `district*2`. At district 3 the row disappears at trained armour 6 while the arm keeps working to 10, so the arm is reachable through a menu that no longer lists it -- which is exactly why the loop reprints only the prompt."
+  },
+  {
+   "key": "w",
+   "name": "leave",
+   "span": {
+    "start": "1000:e932",
+    "end": "1000:e948"
+   },
+   "key_literal": {
+    "role": "key",
+    "cs_offset": "0x848e",
+    "file_offset": "0x09d5e",
+    "text": "w",
+    "push": {
+     "addr": "1000:e937",
+     "text": "mov di,0x848e"
+    }
+   },
+   "push_buffer": {
+    "addr": "1000:e932",
+    "text": "mov di,0x3a72"
+   },
+   "compare_addr": "1000:e93c",
+   "compare": {
+    "addr": "1000:e93c",
+    "text": "call 0xf78:0xbd8"
+   },
+   "hit_branch": {
+    "addr": "1000:e941",
+    "text": "jz 0xe946"
+   },
+   "miss_branch": {
+    "addr": "1000:e943",
+    "text": "jmp 0xe5e4"
+   },
+   "own_gate": null,
+   "price": null,
+   "gates": [],
+   "draws": [],
+   "effects": [],
+   "strings": [],
+   "prints": [],
+   "tail": {
+    "addr": "1000:e946",
+    "text": "jmp short 0xe961"
+   },
+   "calls_out": [],
+   "notes": "Pushes no literal of its own beyond the `w` token, writes nothing and prints nothing -- both are measurements over the span, not omissions. The literal CS `0x848e` is shared with every other location's exit (`data/den_arms.json` records nine push sites image-wide), which is why the port keeps one shared exit arm. Its MISS is the loop back edge: `1000:e943` is the only path back to the prompt."
+  }
+ ],
+ "key_set": [
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "w"
+ ],
+ "key_set_note": "Six keys, each established at a COMPARE address on the gym's own buffer `20ae:3a72`, not from the menu text. Three of the six are compared only when the district gate above them passes -- `3` and `4` need district > 1 (`1000:e728`, `1000:e7e2`), `5` needs district > 2 (`1000:e861`) -- so at district 1 exactly three keys exist: `1`, `2` and `w`. That is a flow fact about the DISPATCHER, not about what the menu prints.",
+ "menu_vs_arm_finding": {
+  "claim": "The second block `1000:e633`..`1000:e941` is NOT a second menu tier and NOT a repeat of the first. It is the key dispatch; `1000:e400`..`1000:e594` is the menu print. They share guard CONSTANTS and almost no code.",
+  "tier": "flow",
+  "how_it_is_reached": "Fall-through, once: the last menu line's `WriteLn` at `1000:e5df` is followed by the prompt at `1000:e5e4`, the `ReadLn` at `1000:e60b`..`1000:e615`, the case fold at `1000:e61f`, and then the first key compare at `1000:e62e`. There is no branch INTO the second block from anywhere else, and the only branch back is `1000:e943`, which targets `1000:e5e4` -- the prompt, not the menu.",
+  "menu_span": {
+   "start": "1000:e400",
+   "end": "1000:e595",
+   "byte_length": 405
+  },
+  "arm_span": {
+   "start": "1000:e633",
+   "end": "1000:e942",
+   "byte_length": 783
+  },
+  "longest_common_byte_run": {
+   "length": 25,
+   "menu_at": "1000:e496",
+   "arm_at": "1000:e714",
+   "bytes": "31 c0 50 31 c0 50 31 c0 50 31 c0 50 31 c0 50 9a c2 01 ed 0e 80 3e 92 36 01",
+   "what_it_is": "five zeroed `WriteLn` format words, the `call 0eed:01c2` after them, and the first five bytes of a `cmp byte [0x3692],0x1` -- boilerplate every print in the image shares, not a shared body"
+  },
+  "pairs": [
+   {
+    "what": "row 3 level predicate",
+    "menu": {
+     "start": "1000:e4b1",
+     "end": "1000:e4c2"
+    },
+    "arm": {
+     "start": "1000:e746",
+     "end": "1000:e757"
+    },
+    "menu_bytes": "a0 92 36 30 e4 ba 0a 00 f7 e2 2d 03 00 3b 06 a6 38",
+    "arm_bytes": "a0 92 36 30 e4 ba 0a 00 f7 e2 2d 03 00 3b 06 a6 38",
+    "identical": true,
+    "jcc_menu": "7e 56",
+    "jcc_arm": "7f 1b",
+    "difference": "byte-identical, 17 bytes; only the `jcc` after them differs, and it differs in SENSE because the menu skips the row where the arm proceeds"
+   },
+   {
+    "what": "row 5 trained-armour predicate",
+    "menu": {
+     "start": "1000:e57d",
+     "end": "1000:e58d"
+    },
+    "arm": {
+     "start": "1000:e87f",
+     "end": "1000:e894"
+    },
+    "menu_bytes": "a0 92 36 30 e4 d1 e0 8b d0 a0 34 3e 30 e4 3b c2",
+    "arm_bytes": "a0 92 36 30 e4 48 48 ba 0a 00 f7 e2 8b d0 a0 34 3e 30 e4 3b c2",
+    "identical": false,
+    "jcc_menu": "7d 55",
+    "jcc_arm": "7d 63",
+    "difference": "16 bytes against 21. The first five (`a0 92 36 30 e4`, `mov al,[0x3692]` / `xor ah,ah`) and the last nine (`8b d0 a0 34 3e 30 e4 3b c2`) are identical and in the same order. In between the menu has `d1 e0` (`shl ax,1`, so district*2) and the arm has `48 48 ba 0a 00 f7 e2` (`dec ax` / `dec ax` / `mov dx,0xa` / `mul dx`, so (district-2)*10). That two-bytes-against-seven substitution IS the whole difference, and it is a different NUMBER, not a different spelling of the same one."
+   }
+  ],
+  "shared_constants": [
+   {
+    "what": "row 1 price",
+    "menu": "1000:e400",
+    "arm": "1000:e635",
+    "bytes": "83 3e c7 38 14",
+    "identical": true
+   },
+   {
+    "what": "row 2 price",
+    "menu": "1000:e455",
+    "arm": "1000:e6c1",
+    "bytes": "83 3e c7 38 14",
+    "identical": true
+   },
+   {
+    "what": "row 3 price",
+    "menu": "1000:e4c4",
+    "arm": "1000:e774",
+    "bytes": "83 3e c7 38 0a",
+    "identical": true
+   },
+   {
+    "what": "row 4 price",
+    "menu": "1000:e521",
+    "arm": "1000:e801",
+    "bytes": "83 3e c7 38 1e",
+    "identical": true
+   },
+   {
+    "what": "row 5 price",
+    "menu": "1000:e58f",
+    "arm": "1000:e896",
+    "bytes": "83 3e c7 38 14",
+    "identical": true
+   },
+   {
+    "what": "row 3 district",
+    "menu": "1000:e4aa",
+    "arm": "1000:e728",
+    "bytes": "80 3e 92 36 01",
+    "identical": true
+   },
+   {
+    "what": "row 4 district",
+    "menu": "1000:e51a",
+    "arm": "1000:e7e2",
+    "bytes": "80 3e 92 36 01",
+    "identical": true
+   },
+   {
+    "what": "row 5 district",
+    "menu": "1000:e576",
+    "arm": "1000:e861",
+    "bytes": "80 3e 92 36 02",
+    "identical": true
+   }
+  ],
+  "gates_the_menu_does_not_have": [
+   {
+    "arm": "4",
+    "gate": "1000:e7fa",
+    "what": "`cmp byte [0x394a],0x0` -- already owns the tooth guard. Row 4's only menu gate is district > 1, so the row stays listed after the purchase and the arm refuses it."
+   }
+  ],
+  "the_price_test_has_two_different_ROLES": "In the menu the money compare is COSMETIC: both of its arms fall into the same string assembly and only the colour byte `20ae:3b7a` differs (`1000:e407` stores `'0'`, `1000:e40e` stores `'4'`). No menu row is ever HIDDEN by price. In the arms the identical compare is a refusal that skips the whole effect block. Same five bytes, different consequence -- and a port that shares one helper between them would either hide unaffordable rows or charge for nothing.",
+  "note": "`docs/re/METHODOLOGY.md`: symmetry is a hypothesis, not a finding. The hypothesis here was 'the second block repeats the first's guards'. Measured: eight of the ten guard constants ARE byte-identical, one predicate is byte-identical, one predicate is a different number, and one arm carries a gate the menu has no counterpart for. Only the last two matter to a port, and neither would have been found by reading the constants."
+ },
+ "joint": {
+  "verb": "kos",
+  "span": {
+   "start": "1000:e969",
+   "end": "1000:ea8a"
+  },
+  "buffer": "20ae:3972",
+  "key_literal": {
+   "role": "verb",
+   "cs_offset": "0xa61f",
+   "file_offset": "0x0beef",
+   "text": "kos",
+   "push": {
+    "addr": "1000:e96e",
+    "text": "mov di,0xa61f"
+   }
+  },
+  "push_buffer": {
+   "addr": "1000:e969",
+   "text": "mov di,0x3972"
+  },
+  "compare_addr": "1000:e973",
+  "compare": {
+   "addr": "1000:e973",
+   "text": "call 0xf78:0xbd8"
+  },
+  "hit_branch": {
+   "addr": "1000:e978",
+   "text": "jz 0xe97d"
+  },
+  "miss_branch": {
+   "addr": "1000:e97a",
+   "text": "jmp 0xea8a"
+  },
+  "modal": false,
+  "modal_note": "Established from flow, not from a screen: there is no prompt literal, no `0eed:0000`-then-`ReadLn` pair and no back edge anywhere in `1000:e97d`..`1000:ea8a`. Every path in the body ends at `1000:ea8a`, the `i` verb's own setup. So `kos` runs once per street line and returns to the street prompt -- it is a street verb that happens to sit next to the gym in address space, and it belongs with `Game::smoke`, not with the gym.",
+  "gates": [
+   {
+    "name": "jaw not broken",
+    "test": {
+     "addr": "1000:e97d",
+     "text": "cmp byte [0x38b0],0x1"
+    },
+    "branch": {
+     "addr": "1000:e982",
+     "text": "jnz 0xe9a0"
+    },
+    "sense": "run iff [0x38b0] != 1; the `jnz` is the RUN direction and the fallthrough 1000:e984 is the refusal",
+    "on_fail": "1000:e984"
+   },
+   {
+    "name": "not already stoned",
+    "test": {
+     "addr": "1000:e9a0",
+     "text": "cmp byte [0x38cd],0x0"
+    },
+    "branch": {
+     "addr": "1000:e9a5",
+     "text": "jz 0xe9aa"
+    },
+    "sense": "run iff [0x38cd] == 0; otherwise 1000:e9a7 jumps to the second-joint refusal",
+    "on_fail": "1000:ea71"
+   },
+   {
+    "name": "has a joint",
+    "test": {
+     "addr": "1000:e9aa",
+     "text": "cmp word [0x38c5],0x0"
+    },
+    "branch": {
+     "addr": "1000:e9af",
+     "text": "jnle 0xe9b4"
+    },
+    "sense": "run iff [0x38c5] > 0, SIGNED (`jnle` on a word compare against 0); otherwise 1000:e9b1 jumps to the no-joints refusal",
+    "on_fail": "1000:ea56"
+   },
+   {
+    "name": "health shortfall reaches 10",
+    "test": {
+     "addr": "1000:e9d2",
+     "text": "cmp ax,0xa"
+    },
+    "branch": {
+     "addr": "1000:e9d5",
+     "text": "jnl 0xea19"
+    },
+    "sense": "ax is [0x38ae] - [0x38ac] (1000:e9cb..1000:e9ce). `jnl` takes the flat +10 branch; the fallthrough is the top-up-to-full branch, which is also where a NEGATIVE shortfall lands",
+    "on_fail": "1000:ea19"
+   }
+  ],
+  "draws": [],
+  "effects": [
+   {
+    "addr": "1000:e9b4",
+    "text": "dec [0x38c5]",
+    "ds": "20ae:38c5",
+    "role": "косяки -1",
+    "condition": null
+   },
+   {
+    "addr": "1000:e9b8",
+    "text": "mov byte [0x38cd],0xa",
+    "ds": "20ae:38cd",
+    "role": "обдолбанность := 10",
+    "condition": null
+   },
+   {
+    "addr": "1000:e9bd",
+    "text": "add word [0x389e],0x2",
+    "ds": "20ae:389e",
+    "role": "Сила +2",
+    "condition": null
+   },
+   {
+    "addr": "1000:e9c2",
+    "text": "inc [0x38a8]",
+    "ds": "20ae:38a8",
+    "role": "урон min +1",
+    "condition": null
+   },
+   {
+    "addr": "1000:e9c6",
+    "text": "add word [0x38aa],0x2",
+    "ds": "20ae:38aa",
+    "role": "урон max +2",
+    "condition": null
+   },
+   {
+    "addr": "1000:e9f8",
+    "text": "mov [0x38ac],ax",
+    "ds": "20ae:38ac",
+    "role": "здоровье := здоровье max",
+    "condition": "only on the shortfall < 10 branch (1000:e9d5)"
+   },
+   {
+    "addr": "1000:ea19",
+    "text": "add word [0x38ac],0xa",
+    "ds": "20ae:38ac",
+    "role": "здоровье +10",
+    "condition": "only on the shortfall >= 10 branch (1000:e9d5)"
+   }
+  ],
+  "strings": [
+   {
+    "role": "refusal_broken_jaw",
+    "cs_offset": "0xa623",
+    "file_offset": "0x0bef3",
+    "text": "^4Ты не схавать колёса из-за сломаной челюсти.",
+    "push": {
+     "addr": "1000:e984",
+     "text": "mov di,0xa623"
+    }
+   },
+   {
+    "role": "heal_short_part_1",
+    "cs_offset": "0xa652",
+    "file_offset": "0x0bf22",
+    "text": "^2Колёса прибавляют #з. ",
+    "push": {
+     "addr": "1000:e9d7",
+     "text": "mov di,0xa652"
+    }
+   },
+   {
+    "role": "heal_short_part_2",
+    "cs_offset": "0xa66b",
+    "file_offset": "0x0bf3b",
+    "text": "^2Здоровья:#/#. Осталось # косяков",
+    "push": {
+     "addr": "1000:e9fb",
+     "text": "mov di,0xa66b"
+    }
+   },
+   {
+    "role": "heal_long",
+    "cs_offset": "0xa68e",
+    "file_offset": "0x0bf5e",
+    "text": "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косякова",
+    "push": {
+     "addr": "1000:ea1e",
+     "text": "mov di,0xa68e"
+    }
+   },
+   {
+    "role": "effect",
+    "cs_offset": "0xa6c8",
+    "file_offset": "0x0bf98",
+    "text": "^2Сила +2.",
+    "push": {
+     "addr": "1000:ea3b",
+     "text": "mov di,0xa6c8"
+    }
+   },
+   {
+    "role": "refusal_no_joints",
+    "cs_offset": "0xa6d3",
+    "file_offset": "0x0bfa3",
+    "text": "^4У тебя нет косяков",
+    "push": {
+     "addr": "1000:ea56",
+     "text": "mov di,0xa6d3"
+    }
+   },
+   {
+    "role": "refusal_already_stoned",
+    "cs_offset": "0xa6e8",
+    "file_offset": "0x0bfb8",
+    "text": "^6Ты неможешь схавать ещё один косяк.",
+    "push": {
+     "addr": "1000:ea71",
+     "text": "mov di,0xa6e8"
+    }
+   }
+  ],
+  "prints": [
+   {
+    "addr": "1000:e998",
+    "text": "call 0xeed:0x1c2"
+   },
+   {
+    "addr": "1000:e9f0",
+    "text": "call 0xeed:0x0"
+   },
+   {
+    "addr": "1000:ea12",
+    "text": "call 0xeed:0x1c2"
+   },
+   {
+    "addr": "1000:ea36",
+    "text": "call 0xeed:0x1c2"
+   },
+   {
+    "addr": "1000:ea4f",
+    "text": "call 0xeed:0x1c2"
+   },
+   {
+    "addr": "1000:ea6a",
+    "text": "call 0xeed:0x1c2"
+   },
+   {
+    "addr": "1000:ea85",
+    "text": "call 0xeed:0x1c2"
+   }
+  ],
+  "fills": [
+   {
+    "string": "0xa652",
+    "count": 1,
+    "args": [
+     "[0x38ae] - [0x38ac], recomputed at 1000:e9dc..1000:e9e3"
+    ],
+    "note": "written with `0eed:0000`, no newline, so it and the 0xa66b line form ONE screen line"
+   },
+   {
+    "string": "0xa66b",
+    "count": 3,
+    "args": [
+     "1000:ea00 push [0x38ac]",
+     "1000:ea04 push [0x38ae]",
+     "1000:ea08 push [0x38c5]"
+    ],
+    "note": "hp / hpmax / joints, in push order"
+   },
+   {
+    "string": "0xa68e",
+    "count": 4,
+    "args": [
+     "1000:ea23 mov ax,0xa",
+     "1000:ea27 push [0x38ac]",
+     "1000:ea2b push [0x38ae]",
+     "1000:ea2f push [0x38c5]"
+    ],
+    "note": "the flat 10, then hp / hpmax / joints. The trailing `косякова` is the original's typo and is preserved."
+   }
+  ],
+  "exits": [
+   {
+    "addr": "1000:e99d",
+    "text": "jmp 0xea8a"
+   },
+   {
+    "addr": "1000:ea17",
+    "text": "jmp short 0xea3b"
+   },
+   {
+    "addr": "1000:ea54",
+    "text": "jmp short 0xea6f"
+   },
+   {
+    "addr": "1000:ea6f",
+    "text": "jmp short 0xea8a"
+   }
+  ],
+  "port_status": "PORTED IN FULL by `Game::smoke`. `grep -n 'fn smoke' src/game.rs` finds it and `grep -n '1000:e9b8' src/game.rs` finds the countdown citation. All four of its branches read `port_touched: false` in `data/branches.json` because that column is a CITATION proxy over `src/**/*.rs` (`data/branches.json`'s own `port_cross_reference.metric` says so), and `src/game.rs` cites the guard `1000:e97d` but not `1000:e978`, `1000:e9a5`, `1000:e9af` or `1000:e9d5`. Nothing here is a port gap.",
+  "port_equivalences": [
+   {
+    "original": "1000:e9a5 -- `[0x38cd] != 0` refuses",
+    "port": "`self.player.stoned`",
+    "why_equivalent": "the two are written and cleared together and never independently: `grep -n 'stoned' src/game.rs src/persist.rs` finds the setter in `Game::smoke`, the clear in `Game::wander_preamble` when the countdown hits 0, and `stoned: save.buff_countdown != 0` on load, so a loaded save cannot desynchronise them"
+   },
+   {
+    "original": "1000:e9af -- `cmp word [0x38c5],0` / `jnle`, SIGNED",
+    "port": "`self.player.joints == 0`",
+    "why_equivalent": "`Fighter::joints` is `u16` (`grep -n 'pub joints' src/model.rs`), so the negative half of the signed test is unrepresentable and `== 0` and `<= 0` decide the same way. A future change of that field to a signed type would break the equivalence, which is why it is written down rather than assumed"
+   },
+   {
+    "original": "1000:e9d5 -- `cmp ax,0xa` on a SIGNED shortfall",
+    "port": "`hpmax.saturating_sub(hp) < 10`",
+    "why_equivalent": "when hp > hpmax the original's ax is negative, `jnl` fails and it takes the top-up branch, which LOWERS hp to hpmax; `saturating_sub` gives 0, which is also < 10, so the port takes the same branch and makes the same assignment"
+   }
+  ]
+ },
+ "shared_tail": {
+  "span": {
+   "start": "1000:e961",
+   "end": "1000:e969"
+  },
+  "push_buffer": {
+   "addr": "1000:e961",
+   "text": "mov di,0x3972"
+  },
+  "call": {
+   "addr": "1000:e966",
+   "text": "call 0x129c4",
+   "target": "1000:29c4"
+  },
+  "note": "Every street line that is not `trn` reaches this, and so does every `w` that leaves the gym. `FUN_1000_29c4` is the beer sub-dispatcher: it compares its argument against `h` (CS `0x28c7`, file `0x4197`) at `1000:29f0` and `mh` (CS `0x28c9`, file `0x4199`) at `1000:2a02` and returns at `1000:2a0e` when it is neither. `src/game.rs`'s `Game::beer` already documents it; the only new fact here is that `1000:e961` is its ONLY caller inside `entry` -- `re_derive.near_calls_to(img, 0x29c4)` finds two call sites image-wide, this one and `1000:4b00` inside the fight."
+ },
+ "globals": [
+  {
+   "ds": "20ae:3692",
+   "name": "district, 1..5",
+   "named_from": "Already established by `data/den_arms.json`; carried here because six gates in this range read it. Not re-derived.",
+   "evidence": [
+    {
+     "addr": "1000:e4aa",
+     "text": "cmp byte [0x3692],0x1",
+     "what": "the row-3 menu gate compares it against 1"
+    },
+    {
+     "addr": "1000:e87f",
+     "text": "mov al,[0x3692]",
+     "what": "the `5` arm multiplies (it - 2) by 10 for its ceiling"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 97,
+    "accepted": 97,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:6bf9",
+     "1000:6d9d",
+     "1000:6dbe",
+     "1000:ab92"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3692"
+   },
+   "written_in_range": [],
+   "read_sites_in_range": 11
+  },
+  {
+   "ds": "20ae:369a",
+   "name": "Gym (`trn`) discovery flag",
+   "named_from": "A byte compared against 1 as `trn`'s own entry gate and stored as 1 by the two paths that reveal the gym; `data/den_arms.json` records the den's `a` reveal setting it and `docs/re/wander.md` the wander draw that does.",
+   "evidence": [
+    {
+     "addr": "1000:e39a",
+     "text": "cmp byte [0x369a],0x1",
+     "what": "`trn`'s entry gate -- the only reference in this range"
+    },
+    {
+     "addr": "1000:dcfb",
+     "text": "mov byte [0x369a],0x1",
+     "what": "the den's `a` reveal sets it"
+    },
+    {
+     "addr": "1000:b22c",
+     "text": "mov byte [0x369a],0x1",
+     "what": "the wander reveal sets it"
+    },
+    {
+     "addr": "1000:abac",
+     "text": "mov byte [0x369a],0x0",
+     "what": "the district reset clears it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 12,
+    "accepted": 12,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:6d51",
+     "1000:abac",
+     "1000:b22c",
+     "1000:dcfb"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:369a"
+   },
+   "written_in_range": [],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:389e",
+   "name": "Сила (strength), `.SAV` 0x202",
+   "named_from": "`data/save_layout.json` names it (`.SAV` 0x202). Both writers in this range are announced by a `Сила` string a few instructions later, and the `1` arm reads it straight back at `1000:e681 mov ax,[0x389e]` to test its parity.",
+   "evidence": [
+    {
+     "addr": "1000:e675",
+     "text": "inc [0x389e]",
+     "what": "the `1` arm's `Сила +1`, confirmed by CS 0x9402 at 1000:e697"
+    },
+    {
+     "addr": "1000:e9bd",
+     "text": "add word [0x389e],0x2",
+     "what": "the joint's `Сила +2`, confirmed by CS 0xa6c8 at 1000:ea3b"
+    },
+    {
+     "addr": "1000:e681",
+     "text": "mov ax,[0x389e]",
+     "what": "the `1` arm reads it back to test parity"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 27,
+    "accepted": 27,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:261d",
+     "1000:4996",
+     "1000:4b57",
+     "1000:532f",
+     "1000:538a",
+     "1000:7148",
+     "1000:7167",
+     "1000:7186",
+     "1000:71a0",
+     "1000:8022",
+     "1000:8101",
+     "1000:815c",
+     "1000:aeb3",
+     "1000:ca16",
+     "1000:e675",
+     "1000:e9bd"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:389e"
+   },
+   "written_in_range": [
+    "1000:e675",
+    "1000:e9bd"
+   ],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:38a2",
+   "name": "Выносливость (vitality), `.SAV` 0x206",
+   "named_from": "`data/save_layout.json`. One writer in range, announced by CS 0xa4b6.",
+   "evidence": [
+    {
+     "addr": "1000:e701",
+     "text": "inc [0x38a2]",
+     "what": "the `2` arm's `Выносливость +1`"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 16,
+    "accepted": 15,
+    "discarded": 1,
+    "writers_image_wide": [
+     "1000:2761",
+     "1000:4a13",
+     "1000:5337",
+     "1000:5394",
+     "1000:7154",
+     "1000:7173",
+     "1000:7192",
+     "1000:71ac",
+     "1000:808b",
+     "1000:8109",
+     "1000:8166",
+     "1000:ca7c",
+     "1000:e701"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38a2"
+   },
+   "written_in_range": [
+    "1000:e701"
+   ],
+   "read_sites_in_range": 0
+  },
+  {
+   "ds": "20ae:38a6",
+   "name": "уровень (level), `.SAV` 0x20a",
+   "named_from": "`data/save_layout.json` and `data/den_arms.json` both name it; the two reads here compare `district * 10 - 3` against it, which is a LEVEL comparison and not a понтовость one -- понтовость is 20ae:38cb and is not referenced anywhere in this range.",
+   "evidence": [
+    {
+     "addr": "1000:e4be",
+     "text": "cmp ax,[0x38a6]",
+     "what": "the row-3 menu gate"
+    },
+    {
+     "addr": "1000:e753",
+     "text": "cmp ax,[0x38a6]",
+     "what": "the `3` arm's own gate, the same 17 bytes"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 34,
+    "accepted": 34,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:258e",
+     "1000:4ac3"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38a6"
+   },
+   "written_in_range": [],
+   "read_sites_in_range": 2
+  },
+  {
+   "ds": "20ae:38a8",
+   "name": "урон min, `.SAV` 0x20c",
+   "named_from": "`data/save_layout.json`. Both writers in range are `inc`.",
+   "evidence": [
+    {
+     "addr": "1000:e68f",
+     "text": "inc [0x38a8]",
+     "what": "the `1` arm, CONDITIONAL on strength parity"
+    },
+    {
+     "addr": "1000:e9c2",
+     "text": "inc [0x38a8]",
+     "what": "the joint, unconditional"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 31,
+    "accepted": 31,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:2691",
+     "1000:49c6",
+     "1000:4b5c",
+     "1000:535e",
+     "1000:53ad",
+     "1000:5574",
+     "1000:55da",
+     "1000:55e6",
+     "1000:56cf",
+     "1000:56e0",
+     "1000:56ff",
+     "1000:577c",
+     "1000:5794",
+     "1000:57a5",
+     "1000:57c4",
+     "1000:71e1",
+     "1000:8043",
+     "1000:8130",
+     "1000:817f",
+     "1000:aeb8",
+     "1000:c050",
+     "1000:c250",
+     "1000:c25a",
+     "1000:ca45",
+     "1000:cbab",
+     "1000:cc6b",
+     "1000:e68f",
+     "1000:e9c2"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38a8"
+   },
+   "written_in_range": [
+    "1000:e68f",
+    "1000:e9c2"
+   ],
+   "read_sites_in_range": 0
+  },
+  {
+   "ds": "20ae:38aa",
+   "name": "урон max, `.SAV` 0x20e",
+   "named_from": "`data/save_layout.json`.",
+   "evidence": [
+    {
+     "addr": "1000:e693",
+     "text": "inc [0x38aa]",
+     "what": "the `1` arm, UNCONDITIONAL -- the `jnz` at 1000:e68d lands here"
+    },
+    {
+     "addr": "1000:e9c6",
+     "text": "add word [0x38aa],0x2",
+     "what": "the joint, +2"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 31,
+    "accepted": 31,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:267f",
+     "1000:49b3",
+     "1000:4b60",
+     "1000:5349",
+     "1000:53a8",
+     "1000:5579",
+     "1000:55df",
+     "1000:55eb",
+     "1000:56d4",
+     "1000:56e5",
+     "1000:5704",
+     "1000:5781",
+     "1000:5799",
+     "1000:57aa",
+     "1000:57c9",
+     "1000:71e7",
+     "1000:802e",
+     "1000:811b",
+     "1000:817a",
+     "1000:aebc",
+     "1000:c054",
+     "1000:c254",
+     "1000:c25f",
+     "1000:ca33",
+     "1000:cbb0",
+     "1000:cc70",
+     "1000:e693",
+     "1000:e9c6"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38aa"
+   },
+   "written_in_range": [
+    "1000:e693",
+    "1000:e9c6"
+   ],
+   "read_sites_in_range": 0
+  },
+  {
+   "ds": "20ae:38ac",
+   "name": "здоровье (hp), `.SAV` 0x210",
+   "named_from": "`data/save_layout.json`; the joint prints it as the first `#` of `Здоровья:#/#` (`1000:ea00` pushes it before `1000:ea04` pushes hpmax).",
+   "evidence": [
+    {
+     "addr": "1000:e67d",
+     "text": "inc [0x38ac]",
+     "what": "the `1` arm +1"
+    },
+    {
+     "addr": "1000:e70a",
+     "text": "add word [0x38ac],0x5",
+     "what": "the `2` arm +5"
+    },
+    {
+     "addr": "1000:e9f8",
+     "text": "mov [0x38ac],ax",
+     "what": "the joint tops it up to hpmax"
+    },
+    {
+     "addr": "1000:ea19",
+     "text": "add word [0x38ac],0xa",
+     "what": "the joint adds a flat 10"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 74,
+    "accepted": 74,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:2699",
+     "1000:27c8",
+     "1000:2a97",
+     "1000:2ae7",
+     "1000:4783",
+     "1000:49da",
+     "1000:4a41",
+     "1000:4b92",
+     "1000:4bb3",
+     "1000:501b",
+     "1000:526c",
+     "1000:527d",
+     "1000:5344",
+     "1000:53a3",
+     "1000:71d5",
+     "1000:802a",
+     "1000:8094",
+     "1000:8116",
+     "1000:8175",
+     "1000:b25a",
+     "1000:b26b",
+     "1000:b2dd",
+     "1000:bdc3",
+     "1000:bdd3",
+     "1000:ca4d",
+     "1000:ca9e",
+     "1000:d5de",
+     "1000:d5ef",
+     "1000:d78b",
+     "1000:e67d",
+     "1000:e70a",
+     "1000:e9f8",
+     "1000:ea19"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38ac"
+   },
+   "written_in_range": [
+    "1000:e67d",
+    "1000:e70a",
+    "1000:e9f8",
+    "1000:ea19"
+   ],
+   "read_sites_in_range": 4
+  },
+  {
+   "ds": "20ae:38ae",
+   "name": "здоровье max (hpmax), `.SAV` 0x212",
+   "named_from": "`data/save_layout.json`; the second `#` of `Здоровья:#/#`.",
+   "evidence": [
+    {
+     "addr": "1000:e679",
+     "text": "inc [0x38ae]",
+     "what": "the `1` arm +1"
+    },
+    {
+     "addr": "1000:e705",
+     "text": "add word [0x38ae],0x5",
+     "what": "the `2` arm +5"
+    },
+    {
+     "addr": "1000:e9cb",
+     "text": "mov ax,[0x38ae]",
+     "what": "the joint reads it to compute the shortfall"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 59,
+    "accepted": 59,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:2695",
+     "1000:27c3",
+     "1000:49ca",
+     "1000:4a30",
+     "1000:533f",
+     "1000:539e",
+     "1000:71cf",
+     "1000:8026",
+     "1000:808f",
+     "1000:8111",
+     "1000:8170",
+     "1000:ca49",
+     "1000:ca99",
+     "1000:e679",
+     "1000:e705"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38ae"
+   },
+   "written_in_range": [
+    "1000:e679",
+    "1000:e705"
+   ],
+   "read_sites_in_range": 5
+  },
+  {
+   "ds": "20ae:38b0",
+   "name": "сломана челюсть (broken jaw), `.SAV` 0x214",
+   "named_from": "`data/save_layout.json`; read once here, as the joint's first gate.",
+   "evidence": [
+    {
+     "addr": "1000:e97d",
+     "text": "cmp byte [0x38b0],0x1",
+     "what": "the joint's jaw gate"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 17,
+    "accepted": 17,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:47ee",
+     "1000:4820",
+     "1000:5031",
+     "1000:b2ae",
+     "1000:d558"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38b0"
+   },
+   "written_in_range": [],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:38b2",
+   "name": "Броня (armour), `.SAV` 0x216",
+   "named_from": "`data/save_layout.json`; the gym both seeds the trained-armour scratch from it and raises it.",
+   "evidence": [
+    {
+     "addr": "1000:e3a4",
+     "text": "mov al,[0x38b2]",
+     "what": "read to seed 20ae:3e34"
+    },
+    {
+     "addr": "1000:e8d6",
+     "text": "inc [0x38b2]",
+     "what": "the `5` arm's `Броня +1`, confirmed by CS 0xa593"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 12,
+    "accepted": 12,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:81e9",
+     "1000:bfa7",
+     "1000:c107",
+     "1000:c1b1",
+     "1000:c1b7",
+     "1000:c2f8",
+     "1000:c2ff",
+     "1000:e8d6"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38b2"
+   },
+   "written_in_range": [
+    "1000:e8d6"
+   ],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:38b4",
+   "name": "Костюм Abibas(+1) ownership, `.SAV` 0x218",
+   "named_from": "`data/save_layout.json` names it from the character sheet line at `1000:22a1`; the gym subtracts exactly the +1 the item's own line advertises.",
+   "evidence": [
+    {
+     "addr": "1000:e3aa",
+     "text": "cmp byte [0x38b4],0x0",
+     "what": "the gym's first recompute test"
+    },
+    {
+     "addr": "1000:bf80",
+     "text": "mov byte [0x38b4],0x1",
+     "what": "the only setter -- `mar` row 4"
+    },
+    {
+     "addr": "1000:cf74",
+     "text": "mov byte [0x38b4],0x0",
+     "what": "the dealers' sell-back clears it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 8,
+    "accepted": 8,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:bf80",
+     "1000:cf74"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38b4"
+   },
+   "written_in_range": [],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:38b6",
+   "name": "Кожанка(+2) ownership, `.SAV` 0x21a",
+   "named_from": "`data/save_layout.json`; the gym subtracts the advertised +2.",
+   "evidence": [
+    {
+     "addr": "1000:e3c8",
+     "text": "cmp byte [0x38b6],0x0",
+     "what": "the gym's third recompute test"
+    },
+    {
+     "addr": "1000:c0e0",
+     "text": "mov byte [0x38b6],0x1",
+     "what": "the only setter -- `mar` row 6"
+    },
+    {
+     "addr": "1000:d0de",
+     "text": "mov byte [0x38b6],0x0",
+     "what": "the dealers' sell-back clears it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 8,
+    "accepted": 8,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:c0e0",
+     "1000:d0de"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38b6"
+   },
+   "written_in_range": [],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:38b7",
+   "name": "Костюм Adidas(+2) ownership, `.SAV` 0x21b",
+   "named_from": "`data/save_layout.json`; read TWICE by the recompute -- once to suppress the abibas subtraction and once for its own.",
+   "evidence": [
+    {
+     "addr": "1000:e3b1",
+     "text": "cmp byte [0x38b7],0x0",
+     "what": "suppresses the -1 for 20ae:38b4"
+    },
+    {
+     "addr": "1000:e3bc",
+     "text": "cmp byte [0x38b7],0x0",
+     "what": "its own -2 test"
+    },
+    {
+     "addr": "1000:c183",
+     "text": "mov byte [0x38b7],0x1",
+     "what": "the only image-wide writer -- `mar` row 7. Nothing clears it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 8,
+    "accepted": 8,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:c183"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38b7"
+   },
+   "written_in_range": [],
+   "read_sites_in_range": 2
+  },
+  {
+   "ds": "20ae:38b9",
+   "name": "Крутая кожанка(+4) ownership, `.SAV` 0x21d",
+   "named_from": "`data/save_layout.json`; read TWICE, same shape as 20ae:38b7.",
+   "evidence": [
+    {
+     "addr": "1000:e3cf",
+     "text": "cmp byte [0x38b9],0x0",
+     "what": "suppresses the -2 for 20ae:38b6"
+    },
+    {
+     "addr": "1000:e3db",
+     "text": "cmp byte [0x38b9],0x0",
+     "what": "its own -4 test"
+    },
+    {
+     "addr": "1000:c2ca",
+     "text": "mov byte [0x38b9],0x1",
+     "what": "the only image-wide writer -- `mar` row 9"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 8,
+    "accepted": 8,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:c2ca"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38b9"
+   },
+   "written_in_range": [],
+   "read_sites_in_range": 2
+  },
+  {
+   "ds": "20ae:38c5",
+   "name": "косяки (joints), `.SAV` 0x229",
+   "named_from": "`data/save_layout.json` puts it at `.SAV` offset 553; the joint spends one and prints the remainder as the last `#` of both heal lines.",
+   "evidence": [
+    {
+     "addr": "1000:e9aa",
+     "text": "cmp word [0x38c5],0x0",
+     "what": "the joint's have-one gate"
+    },
+    {
+     "addr": "1000:e9b4",
+     "text": "dec [0x38c5]",
+     "what": "the spend"
+    },
+    {
+     "addr": "1000:ea08",
+     "text": "push [0x38c5]",
+     "what": "pushed as the `Осталось #` argument"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 12,
+    "accepted": 12,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:4b4e",
+     "1000:542c",
+     "1000:c90e",
+     "1000:e9b4"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38c5"
+   },
+   "written_in_range": [
+    "1000:e9b4"
+   ],
+   "read_sites_in_range": 3
+  },
+  {
+   "ds": "20ae:38c7",
+   "name": "бабки (money), `.SAV` 0x22b",
+   "named_from": "`data/save_layout.json`: every shop row's affordability test is a compare against it and every purchase a `sub`. Ten reads and five subtractions here.",
+   "evidence": [
+    {
+     "addr": "1000:e400",
+     "text": "cmp word [0x38c7],0x14",
+     "what": "the row-1 menu COLOUR test -- cosmetic"
+    },
+    {
+     "addr": "1000:e635",
+     "text": "cmp word [0x38c7],0x14",
+     "what": "the `1` arm's REFUSAL test -- the same five bytes"
+    },
+    {
+     "addr": "1000:e657",
+     "text": "sub word [0x38c7],0x14",
+     "what": "the `1` arm's -20"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 107,
+    "accepted": 107,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:5014",
+     "1000:502c",
+     "1000:504e",
+     "1000:5248",
+     "1000:761d",
+     "1000:b32d",
+     "1000:bdb3",
+     "1000:be49",
+     "1000:bf00",
+     "1000:bf8a",
+     "1000:c033",
+     "1000:c0ea",
+     "1000:c18d",
+     "1000:c22c",
+     "1000:c2d4",
+     "1000:c37d",
+     "1000:c90a",
+     "1000:c973",
+     "1000:c9eb",
+     "1000:cb0f",
+     "1000:cba7",
+     "1000:cc60",
+     "1000:cd14",
+     "1000:cdad",
+     "1000:ce3e",
+     "1000:ce91",
+     "1000:cf7d",
+     "1000:d032",
+     "1000:d0e7",
+     "1000:d1aa",
+     "1000:d266",
+     "1000:d31b",
+     "1000:d553",
+     "1000:d5d9",
+     "1000:d78e",
+     "1000:db96",
+     "1000:de6d",
+     "1000:e0a8",
+     "1000:e0d7",
+     "1000:e2a7",
+     "1000:e31c",
+     "1000:e657",
+     "1000:e6e3",
+     "1000:e796",
+     "1000:e823",
+     "1000:e8b8"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38c7"
+   },
+   "written_in_range": [
+    "1000:e657",
+    "1000:e6e3",
+    "1000:e796",
+    "1000:e823",
+    "1000:e8b8"
+   ],
+   "read_sites_in_range": 10
+  },
+  {
+   "ds": "20ae:38cd",
+   "name": "обдолбанность countdown, `.SAV` 0x231",
+   "named_from": "`data/save_layout.json` calls it `buff_countdown`; `docs/re/gaps.md` and `src/game.rs` already trace the decay at `1000:aea8`.",
+   "evidence": [
+    {
+     "addr": "1000:e9a0",
+     "text": "cmp byte [0x38cd],0x0",
+     "what": "the joint's already-stoned gate"
+    },
+    {
+     "addr": "1000:e9b8",
+     "text": "mov byte [0x38cd],0xa",
+     "what": "set to 10 at the street prompt -- 1000:4b52 sets 3 in a fight"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 12,
+    "accepted": 12,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:4b52",
+     "1000:aea8",
+     "1000:e9b8"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38cd"
+   },
+   "written_in_range": [
+    "1000:e9b8"
+   ],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:38ce",
+   "name": "опыт (xp), `.SAV` 0x232",
+   "named_from": "`data/save_layout.json`; the level-up drains it at `1000:254d`.",
+   "evidence": [
+    {
+     "addr": "1000:e7b4",
+     "text": "add word [0x38ce],0xa",
+     "what": "the `3` arm's +10"
+    },
+    {
+     "addr": "1000:e7d3",
+     "text": "mov ax,[0x38ce]",
+     "what": "read back for the outer level-up guard"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 21,
+    "accepted": 21,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:254d",
+     "1000:4ad9",
+     "1000:5091",
+     "1000:5142",
+     "1000:51e9",
+     "1000:582e",
+     "1000:7fe7",
+     "1000:c3c0",
+     "1000:debe",
+     "1000:e11d",
+     "1000:e215",
+     "1000:e7b4"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38ce"
+   },
+   "written_in_range": [
+    "1000:e7b4"
+   ],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:38d0",
+   "name": "порог прокачки (xp threshold), `.SAV` 0x234",
+   "named_from": "`data/save_layout.json`; raised by 10 per level at `1000:2550`. Read once in this range, as the right-hand side of the `3` arm's outer guard.",
+   "evidence": [
+    {
+     "addr": "1000:e7d6",
+     "text": "cmp ax,[0x38d0]",
+     "what": "the `3` arm's outer level-up guard"
+    },
+    {
+     "addr": "1000:2550",
+     "text": "add word [0x38d0],0xa",
+     "what": "the level-up raises it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 16,
+    "accepted": 16,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:2550",
+     "1000:4ac7",
+     "1000:6de0"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:38d0"
+   },
+   "written_in_range": [],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:394a",
+   "name": "зубная защита (tooth guard), `.SAV` 0x2ae",
+   "named_from": "`data/save_layout.json` names it from the character sheet line at `1000:2068`; the gym is its only source.",
+   "evidence": [
+    {
+     "addr": "1000:e7fa",
+     "text": "cmp byte [0x394a],0x0",
+     "what": "the `4` arm's already-own gate"
+    },
+    {
+     "addr": "1000:e828",
+     "text": "mov byte [0x394a],0x1",
+     "what": "the ONLY absolute-memory write in the image"
+    },
+    {
+     "addr": "1000:47ce",
+     "text": "cmp byte [0x394a],0x0",
+     "what": "combat reads it when a jaw would break"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 5,
+    "accepted": 5,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:e828"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:394a"
+   },
+   "written_in_range": [
+    "1000:e828"
+   ],
+   "read_sites_in_range": 1
+  },
+  {
+   "ds": "20ae:3b7a",
+   "name": "the menu row's affordability COLOUR digit",
+   "named_from": "A scratch byte every priced menu in the image writes `'0'` (0x30) or `'4'` (0x34) into and immediately converts to a one-character string with `0f78:0c03`. `src/game.rs`'s `Game::afford` already models it.",
+   "evidence": [
+    {
+     "addr": "1000:e407",
+     "text": "mov byte [0x3b7a],0x30",
+     "what": "row 1 affordable -- `'0'`"
+    },
+    {
+     "addr": "1000:e40e",
+     "text": "mov byte [0x3b7a],0x34",
+     "what": "row 1 unaffordable -- `'4'`"
+    },
+    {
+     "addr": "1000:e429",
+     "text": "mov al,[0x3b7a]",
+     "what": "read straight back into the string builder"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 87,
+    "accepted": 87,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:b9be",
+     "1000:b9c5",
+     "1000:ba1a",
+     "1000:ba21",
+     "1000:ba77",
+     "1000:ba7e",
+     "1000:bad3",
+     "1000:bada",
+     "1000:bb2f",
+     "1000:bb36",
+     "1000:bb95",
+     "1000:bb9c",
+     "1000:bbf1",
+     "1000:bbf8",
+     "1000:bc54",
+     "1000:bc5b",
+     "1000:bcb7",
+     "1000:bcbe",
+     "1000:c528",
+     "1000:c52f",
+     "1000:c584",
+     "1000:c58b",
+     "1000:c5e0",
+     "1000:c5e7",
+     "1000:c63c",
+     "1000:c643",
+     "1000:c69f",
+     "1000:c6a6",
+     "1000:c703",
+     "1000:c70a",
+     "1000:c767",
+     "1000:c76e",
+     "1000:c7cc",
+     "1000:c7d3",
+     "1000:c83d",
+     "1000:c844",
+     "1000:d417",
+     "1000:d41e",
+     "1000:d46c",
+     "1000:d473",
+     "1000:d98b",
+     "1000:d992",
+     "1000:d9e0",
+     "1000:d9e7",
+     "1000:df76",
+     "1000:df7d",
+     "1000:dfd2",
+     "1000:dfd9",
+     "1000:e407",
+     "1000:e40e",
+     "1000:e45c",
+     "1000:e463",
+     "1000:e4cb",
+     "1000:e4d2",
+     "1000:e528",
+     "1000:e52f",
+     "1000:e596",
+     "1000:e59d"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3b7a"
+   },
+   "written_in_range": [
+    "1000:e407",
+    "1000:e40e",
+    "1000:e45c",
+    "1000:e463",
+    "1000:e4cb",
+    "1000:e4d2",
+    "1000:e528",
+    "1000:e52f",
+    "1000:e596",
+    "1000:e59d"
+   ],
+   "read_sites_in_range": 5
+  },
+  {
+   "ds": "20ae:3e34",
+   "name": "trained armour -- gym-local scratch, NOT saved",
+   "named_from": "Seeded from the armour byte and reduced by the four clothing bonuses at gym entry, then read as a ceiling by the menu and the `5` arm and raised by that arm. Every reference in the image is inside `1000:e3a7`..`1000:e8da`; it appears nowhere in `data/save_layout.json`.",
+   "evidence": [
+    {
+     "addr": "1000:e3a7",
+     "text": "mov [0x3e34],al",
+     "what": "seeded from 20ae:38b2"
+    },
+    {
+     "addr": "1000:e586",
+     "text": "mov al,[0x3e34]",
+     "what": "the MENU row-5 ceiling read, against district*2"
+    },
+    {
+     "addr": "1000:e88d",
+     "text": "mov al,[0x3e34]",
+     "what": "the `5` ARM's ceiling read, against (district-2)*10"
+    },
+    {
+     "addr": "1000:e8da",
+     "text": "inc [0x3e34]",
+     "what": "the `5` arm raises it"
+    }
+   ],
+   "xrefs": {
+    "raw_hits": 8,
+    "accepted": 8,
+    "discarded": 0,
+    "writers_image_wide": [
+     "1000:e3a7",
+     "1000:e3b8",
+     "1000:e3c3",
+     "1000:e3d6",
+     "1000:e3e2",
+     "1000:e8da"
+    ],
+    "command": "python3 tools/re_query.py xrefs-to 20ae:3e34"
+   },
+   "written_in_range": [
+    "1000:e3a7",
+    "1000:e3b8",
+    "1000:e3c3",
+    "1000:e3d6",
+    "1000:e3e2",
+    "1000:e8da"
+   ],
+   "read_sites_in_range": 2
+  }
+ ],
+ "globals_not_memory_operands": {
+  "note": "Three DGROUP addresses are used in this range as IMMEDIATES (`mov di,imm16` / `push ds` / `push di`), so they never appear as a memory operand and neither the write sweep nor `xrefs-to`'s operand-field filter reports them the same way.",
+  "entries": [
+   {
+    "ds": "20ae:3972",
+    "what": "the STREET prompt buffer -- the `trn` and `kos` verbs are compared against this one, and the shared tail hands it to `1000:29c4`",
+    "pushed_at": [
+     "1000:e961",
+     "1000:e969",
+     "1000:ea8a"
+    ],
+    "note": "the `trn` verb's own push is at `1000:e386`, ten bytes BEFORE the range start, and is recorded under `verb.push_buffer`"
+   },
+   {
+    "ds": "20ae:3a72",
+    "what": "the gym's own submenu buffer; all six key compares read it",
+    "pushed_at": [
+     "1000:e602",
+     "1000:e61a",
+     "1000:e624",
+     "1000:e6b0",
+     "1000:e732",
+     "1000:e7e9",
+     "1000:e86b",
+     "1000:e932"
+    ]
+   },
+   {
+    "ds": "20ae:3ecc",
+    "what": "the input `Text` the gym's read is made from",
+    "pushed_at": [
+     "1000:e5fd"
+    ]
+   }
+  ]
+ },
+ "port_reachability": {
+  "claim": "No arm of the gym is unreachable in this port for want of a writer: every global a gym or joint gate reads is written somewhere in `src/`.",
+  "tier": "flow for the original addresses; the port half cites the command that recomputes it, per `docs/re/METHODOLOGY.md`",
+  "gated_globals": [
+   {
+    "ds": "20ae:369a",
+    "gate": "1000:e39a",
+    "port_command": "grep -n 'mark_found(Location::Gym)' src/game.rs"
+   },
+   {
+    "ds": "20ae:3692",
+    "gate": "1000:e4aa",
+    "port_command": "grep -n 'fn district_advance' src/game.rs"
+   },
+   {
+    "ds": "20ae:38a6",
+    "gate": "1000:e4be",
+    "port_command": "grep -n 'f.level += 1' src/progress.rs"
+   },
+   {
+    "ds": "20ae:38c7",
+    "gate": "1000:e635",
+    "port_command": "grep -n 'player.money -=' src/game.rs"
+   },
+   {
+    "ds": "20ae:394a",
+    "gate": "1000:e7fa",
+    "port_command": "grep -n 'tooth_guard' src/game.rs src/persist.rs"
+   },
+   {
+    "ds": "20ae:38d0",
+    "gate": "1000:e7d6",
+    "port_command": "grep -n 'threshold +=' src/progress.rs"
+   },
+   {
+    "ds": "20ae:38b0",
+    "gate": "1000:e97d",
+    "port_command": "grep -n 'broken_jaw = true' src/game.rs src/combat.rs"
+   },
+   {
+    "ds": "20ae:38cd",
+    "gate": "1000:e9a0",
+    "port_command": "grep -n 'buff_countdown =' src/game.rs src/persist.rs"
+   },
+   {
+    "ds": "20ae:38c5",
+    "gate": "1000:e9aa",
+    "port_command": "grep -n 'joints' src/game.rs"
+   }
+  ],
+  "one_exception": {
+   "ds": "20ae:3e34",
+   "gate": "1000:e88d",
+   "what": "The `5` arm's ceiling reads a value this port does not have. `Game::imm_row_visible` substitutes `armor` for it, which is the standing `docs/re/gaps.md` entry, and the ARM would need the same value against a DIFFERENT threshold. The four flags it is computed from ARE all writable in play as of Task 26 (`grep -n 'wear_suit_abibas_38b4 = true' src/game.rs`), so nothing blocks computing it -- this is missing code, not a missing input."
+  },
+  "note": "This is the answer to 'unreachable in this port': nothing here is dead for lack of a setter, and unlike the den there is no `FUN_1000_3d11` parameter to block anything -- the gym calls out exactly twice, to the level-up and to the beer sub-dispatcher, and both are already ported."
+ },
+ "what_the_port_must_change": [
+  {
+   "n": 1,
+   "blocked": false,
+   "what": "`Game::shop_turn` recognises NO gym key. Five exist and are established at compare addresses on the gym's own buffer: `1` (`1000:e62e`), `2` (`1000:e6ba`), `3` (`1000:e73c`), `4` (`1000:e7f3`), `5` (`1000:e875`). `w` (`1000:e93c`) is already handled by the shared exit arm. Verify with `grep -n 'Location::Gym' src/game.rs`: today the only matches are the prompt, the intro, the discovery line and the wander/den reveals -- no key arm."
+  },
+  {
+   "n": 2,
+   "blocked": false,
+   "what": "Arm `1`'s damage split. `1000:e68d` `jnz` skips exactly four bytes, and `1000:e68f inc [0x38a8]` is exactly four bytes long, so `урон min` rises only when the NEW strength is even while `урон max` (`1000:e693`) rises every time. Both-conditional and both-unconditional are equally wrong and equally invisible in a screen capture; assert them separately, e.g. buy twice from an odd starting strength and require `dmg_min` +1 and `dmg_max` +2."
+  },
+  {
+   "n": 3,
+   "blocked": false,
+   "what": "Arm `3` is the port's only new draw source in this range. The sequence is: `money -= 10` (`1000:e796`), `xp += 10` (`1000:e7b4`), PRINT the `+10 качков опыта` line (`1000:e7ce`, whose one `#` is filled from a separate `mov ax,0xa` at `1000:e7be` pushed at `1000:e7c1`, not from the xp total), and only THEN the level-up. In `crate::progress::apply_levels` terms that is `progress.xp += 10` and a later call with `award = 0, uncapped = false`, because `apply_levels` adds its own award before the threshold test. Passing `award = 10` to a call made after the manual `xp += 10` would double the grant."
+  },
+  {
+   "n": 4,
+   "blocked": false,
+   "what": "Arm `5` needs the trained-armour value `20ae:3e34`, and needs it against `(district - 2) * 10` (`1000:e87f`..`1000:e894`) -- NOT against `district * 2`, which is the MENU row's threshold (`1000:e57d`..`1000:e58d`). The two predicates differ by exactly `d1 e0` against `48 48 ba 0a 00 f7 e2`; everything else in them is byte-identical. Sharing one helper between the row and the arm is the mistake this entry exists to prevent. The arm must also raise BOTH `armor` (`1000:e8d6`) and the scratch (`1000:e8da`), or it never stops."
+  },
+  {
+   "n": 5,
+   "blocked": false,
+   "what": "Arm `4` refuses when the guard is already owned (`1000:e7fa`), and the MENU row has no such gate (`1000:e51a` is its only one). So after the purchase the row is still listed and the key still prints `^6У тебя есть эта штучка.` -- do not 'fix' the menu."
+  },
+  {
+   "n": 6,
+   "blocked": false,
+   "what": "The menu prints once, on entry (`1000:e400`..`1000:e5e4`), and the loop's back edge `1000:e943` returns to the PROMPT. An unrecognised key is silent -- there is no `Непонятно` string in the range for it to print. `Game::shop_turn`'s catch-all already behaves this way; recorded so a porting task does not add a message."
+  },
+  {
+   "n": 7,
+   "blocked": false,
+   "what": "At district 1 the keys `3`, `4` and `5` are not compared at all (`1000:e728`, `1000:e7e2`, `1000:e861` jump over the compares), so typing `3` there is silent rather than refused. A port that compares the key first and checks the district second would print a refusal the original has no path to."
+  },
+  {
+   "n": 8,
+   "blocked": false,
+   "what": "`kos` needs NO change. `Game::smoke` reproduces all four gates and all seven effects; `joint.port_equivalences` records the three places the port's representation differs from the original's and why each is equivalent. The four `port_touched: false` branches are missing CITATIONS, not missing behaviour."
+  },
+  {
+   "n": 9,
+   "blocked": false,
+   "what": "The gym's own `ReadLn` does not trim (`0eed:0216` at `1000:e61f` only lowercases). `Game::shop_turn` trims; `docs/re/gaps.md`'s trimmed-prompt entry already owns that divergence and this map adds the gym to its population rather than opening a new one."
+  }
+ ],
+ "known_not_boundaries": {
+  "note": "Addresses this artifact NAMES but does not claim are instruction boundaries reachable from a function entry. `tools/test_gym_arms.py` exempts exactly these from the boundary walk AND asserts each really is outside it, so the exemption cannot smuggle in a wrong address.",
+  "entries": [
+   {
+    "addr": "1000:e595",
+    "why": "the half-open END of `menu_vs_arm_finding.menu_span`. `1000:e594` is the last byte of the row-5 colour `jl` and `1000:e596` is the next instruction, so `1000:e595` is one byte into a two-byte `jcc`."
+   },
+   {
+    "addr": "1000:e942",
+    "why": "the half-open END of `menu_vs_arm_finding.arm_span`. `1000:e941` is the `w` hit `jz` and `1000:e943` the miss `jmp`, so `1000:e942` is that `jz`'s displacement byte."
+   }
+  ]
+ },
+ "spans": [
+  {
+   "name": "trn verb compare",
+   "start": "1000:e390",
+   "end": "1000:e39a"
+  },
+  {
+   "name": "discovery gate",
+   "start": "1000:e39a",
+   "end": "1000:e3a4"
+  },
+  {
+   "name": "trained-armour recompute",
+   "start": "1000:e3a4",
+   "end": "1000:e3e7"
+  },
+  {
+   "name": "intro line",
+   "start": "1000:e3e7",
+   "end": "1000:e400"
+  },
+  {
+   "name": "menu line 1",
+   "start": "1000:e400",
+   "end": "1000:e455"
+  },
+  {
+   "name": "menu line 2",
+   "start": "1000:e455",
+   "end": "1000:e4aa"
+  },
+  {
+   "name": "menu line 3",
+   "start": "1000:e4aa",
+   "end": "1000:e51a"
+  },
+  {
+   "name": "menu line 4",
+   "start": "1000:e51a",
+   "end": "1000:e576"
+  },
+  {
+   "name": "menu line 5",
+   "start": "1000:e576",
+   "end": "1000:e5e4"
+  },
+  {
+   "name": "prompt and ReadLn",
+   "start": "1000:e5e4",
+   "end": "1000:e624"
+  },
+  {
+   "name": "arm 1",
+   "start": "1000:e624",
+   "end": "1000:e6b0"
+  },
+  {
+   "name": "arm 2",
+   "start": "1000:e6b0",
+   "end": "1000:e728"
+  },
+  {
+   "name": "arm 3",
+   "start": "1000:e728",
+   "end": "1000:e7e2"
+  },
+  {
+   "name": "arm 4",
+   "start": "1000:e7e2",
+   "end": "1000:e861"
+  },
+  {
+   "name": "arm 5",
+   "start": "1000:e861",
+   "end": "1000:e932"
+  },
+  {
+   "name": "arm w",
+   "start": "1000:e932",
+   "end": "1000:e948"
+  },
+  {
+   "name": "undiscovered refusal",
+   "start": "1000:e948",
+   "end": "1000:e961"
+  },
+  {
+   "name": "shared tail",
+   "start": "1000:e961",
+   "end": "1000:e969"
+  },
+  {
+   "name": "kos verb compare",
+   "start": "1000:e969",
+   "end": "1000:e97d"
+  },
+  {
+   "name": "kos body",
+   "start": "1000:e97d",
+   "end": "1000:ea8a"
+  },
+  {
+   "name": "i verb setup",
+   "start": "1000:ea8a",
+   "end": "1000:ea94"
+  }
+ ],
+ "spans_note": "These 21 spans tile `1000:e390`..`1000:ea94` end to end with no gap and no overlap, which is what stops a block being dropped from the map by being left out of every span. `tools/test_gym_arms.py` asserts the tiling and that every boundary is an aligned instruction start.",
+ "sweeps": {
+  "note": "The anchors `tools/test_gym_arms.py` asserts SET EQUALITY against. Each is a count over the aligned decode of `1000:e390`..`1000:ea94`; a wrong count reds the sweep, which is the point -- an inventory guarded by nothing is the defect `docs/re/METHODOLOGY.md` names.",
+  "instructions": 790,
+  "cs_literal_pushes": 46,
+  "conditional_branches": 43,
+  "random_call_sites": 0,
+  "random_call_sites_note": "ZERO. The gym and the joint spend no `Random` draw of their own. The `3` arm can still move the stream, through `1000:2526`, which spends two draws per level gained at `1000:25fe` -- so 'no draws in range' is not 'no draws'.",
+  "absolute_memory_writes": 39,
+  "dgroup_addresses_touched": 23,
+  "ds_pointer_pushes": 12,
+  "shortstring_compares": 8,
+  "str_assign_calls": 5,
+  "char_to_str_calls": 5,
+  "str_append_calls": 10,
+  "writeln_calls": 31,
+  "write_calls": 2,
+  "near_calls_out": 2
+ },
+ "branch_census": {
+  "note": "Reproduced from `data/branches.json` at this commit, not copied from the task brief. `port_touched` is a CITATION proxy over `src/**/*.rs` -- `data/branches.json`'s `port_cross_reference.metric` says so in as many words -- so 'untouched' means 'no address citation', never 'unimplemented'.",
+  "trn": {
+   "range": [
+    "1000:e390",
+    "1000:e972"
+   ],
+   "branches": 38,
+   "port_touched_false": 37
+  },
+  "kos": {
+   "range": [
+    "1000:e973",
+    "1000:ea93"
+   ],
+   "branches": 5,
+   "port_touched_false": 4
+  },
+  "command": "python3 - <<'EOF'\nimport json\nB=json.load(open('data/branches.json'))['branches']\noff=lambda a:int(a.split(':')[1],16)\nfor n,lo,hi in (('trn',0xe390,0xe972),('kos',0xe973,0xea93)):\n    r=[b for b in B if lo<=off(b['addr'])<=hi]\n    print(n,len(r),'branches,',\n          sum(1 for b in r if not b['port_touched']),'untouched')\nEOF",
+  "the_briefs_numbers_are_a_different_measure": "Task 31's brief says 23 of 38 and 3 of 5 untouched. Neither is the `port_touched` column: that gives 37 and 4. The brief's pair is reproduced by a DIFFERENT rule -- scan `src/*.rs` for `1000:xxxx` citations and count a branch as touched when its own address OR its guard's address appears -- which is the rule `docs/re/branches.md`'s wander cross-check block uses. Both numbers are right about different questions; recorded so a later reader does not 'correct' one into the other."
+ }
+}
