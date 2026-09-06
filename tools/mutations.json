@@ -2604,24 +2604,28 @@
   },
   {
     "label": "club-arms-gates-completeness",
-    "defends": "Every CONDITIONAL branch in both ranges must be named somewhere in data/club_arms.json, cross-checked against the count.  The string sweep cannot see a SILENT gate, and `at district 1 typing 2 is silent` and `an unrecognised key is silent` are headline claims of docs/re/club.md.",
+    "defends": "Every CONDITIONAL branch in both ranges must be NAMED somewhere in data/club_arms.json.  The string sweep cannot see a SILENT gate, and `at district 1 typing 2 is silent` and `an unrecognised key is silent` are headline claims of docs/re/club.md.  1000:e0ca (the luck compare\u0027s second branch) is the one club branch the artifact names exactly once, so retargeting it to the neighbouring boundary 1000:e0cc drops it out of the named set without breaking any other structure -- and the branch-naming assertion is what has to notice, not the count beside it.",
     "artifact": "data/club_arms.json",
     "mutate": {
       "op": "json-set",
       "path": [
         "club",
-        "sweeps",
-        "conditional_branches"
+        "arms",
+        0,
+        "gates",
+        1,
+        "second_branch",
+        "addr"
       ],
-      "from": 20,
-      "to": 19
+      "from": "1000:e0ca",
+      "to": "1000:e0cc"
     },
     "test": [
       "python3",
       "tools/test_club_arms.py",
       "ClubTest.test_the_recorded_gates_are_every_conditional_branch"
     ],
-    "expect": "sweeps.conditional_branches says"
+    "expect": "that the artifact never names"
   },
   {
     "label": "club-arms-menu-is-not-the-arm-block",
@@ -2648,25 +2652,25 @@
   },
   {
     "label": "club-arms-longest-shared-run",
-    "defends": "`the two blocks share only print boilerplate` is a longest-common-substring RECOMPUTED over both spans, not remembered, and the run must stop on the `jbe` opcode with the two displacement bytes differing.  A span narrowed or widened to dodge a shared body would otherwise pass quietly.",
+    "defends": "`the two blocks share only print boilerplate` is a longest-common-substring RECOMPUTED over both spans, not remembered.  Review round 1 caught the first version of this case perturbing `arm_span.end` and leaving `byte_length` stale, so it red on the bookkeeping assertion and its `expect` named a length field rather than the run -- and a self-consistent gerrymandered span passed green.  This perturbs the recorded RUN LENGTH itself, so the assertion that reds is the substring search.",
     "artifact": "data/club_arms.json",
     "mutate": {
       "op": "json-set",
       "path": [
         "club",
         "menu_vs_arm_finding",
-        "arm_span",
-        "end"
+        "longest_common_byte_run",
+        "length"
       ],
-      "from": "1000:e357",
-      "to": "1000:e366"
+      "from": 26,
+      "to": 25
     },
     "test": [
       "python3",
       "tools/test_club_arms.py",
       "ClubTest.test_the_longest_run_the_two_blocks_share_is_the_recorded_one"
     ],
-    "expect": "byte_length"
+    "expect": "the two blocks share a"
   },
   {
     "label": "club-arms-stake-is-club-local",
@@ -2700,7 +2704,7 @@
   },
   {
     "label": "club-arms-forced-exit-argument-order",
-    "defends": "`the caught block writes w INTO 20ae:3a72` is only true because 0f78:0b01 fetches its SOURCE from ss:bx+0xa -- the FIRST push -- which is the reverse of how 0f78:0ae7 reads its two arguments.  Getting it backwards turns `the club ejects the player` into `the club overwrites a code-segment literal`, and no other check here reaches the callee.",
+    "defends": "`the caught block writes w INTO 20ae:3a72` is only true because 0f78:0b01 fetches its SOURCE from ss:bx+0xa -- the FIRST push -- which is the reverse of how 0f78:0ae7 reads its two arguments.  Getting it backwards turns `the club ejects the player` into `the club overwrites a code-segment literal`.  Review round 1 caught the first version of this case perturbing the call ADDRESS, which red on call identity and left the argument order defended by nothing; the artifact now records both fetch instructions and the mutation swaps the source fetch for the destination\u0027s, so the stack-depth assertion is what reds.",
     "artifact": "data/club_arms.json",
     "mutate": {
       "op": "json-set",
@@ -2710,18 +2714,17 @@
         0,
         "caught_block",
         "forced_exit",
-        "call",
-        "addr"
+        "source_fetch"
       ],
-      "from": "1000:e251",
-      "to": "1000:e24d"
+      "from": "lds si,[ss:bx+0xa]",
+      "to": "les di,[ss:bx+0x6]"
     },
     "test": [
       "python3",
       "tools/test_club_arms.py",
       "ClubTest.test_the_forced_exit_writes_w_into_the_clubs_own_buffer"
     ],
-    "expect": "call 0xf78:0xb01"
+    "expect": "the SOURCE must be fetched from the deeper stack slot"
   },
   {
     "label": "club-arms-announcement-copy-count",
@@ -2795,7 +2798,7 @@
       "tools/test_club_arms.py",
       "ClubTest.test_the_gate_order_is_not_the_flag_address_order"
     ],
-    "expect": "20ae:3698"
+    "expect": "is NOT the flag-address order"
   },
   {
     "label": "club-arms-range-instruction-count",
@@ -2878,6 +2881,51 @@
       "ClubTest.test_the_prose_count_tables_are_the_artifacts_sweeps"
     ],
     "expect": "count table says"
+  },
+  {
+    "label": "club-arms-menu-arm-spans-are-structural",
+    "defends": "The longest-common-substring finding is span-relative, so the two spans must not be free fields.  Review round 1 showed a span widened to 1000:e366 with its byte_length updated to match passing green -- a self-consistent gerrymander.  Each endpoint is now anchored to an address the artifact already carries for another reason (menu_lines[0].colour_digit.test.addr, stake_init.span.start, arms[1].miss_branch.addr, arms[2].span.end) and the anchors resolve BEFORE any length is looked at.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "club",
+        "menu_vs_arm_finding",
+        "arm_span",
+        "end"
+      ],
+      "from": "1000:e357",
+      "to": "1000:e366"
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_the_longest_run_the_two_blocks_share_is_the_recorded_one"
+    ],
+    "expect": "The span is not a free choice"
+  },
+  {
+    "label": "club-arms-counted-consequence-is-derived",
+    "defends": "A `what_the_port_must_change` consequence that states a COUNT is the one number the porting task is invited to test against, and review round 1 found one transcribed rather than derived: `on a fresh character with only Market and Vet found, the list must be eleven lines long` where flow says twelve, read by nothing.  Each such consequence now carries a `derived` block whose recipe is run against orig/g.exe, so a value that drifts from the decode reds.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "command_list",
+        "what_the_port_must_change",
+        0,
+        "derived",
+        "value"
+      ],
+      "from": 12,
+      "to": 11
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_every_counted_consequence_is_recomputed_from_the_decode"
+    ],
+    "expect": "recomputes to"
   }
  ]
 }

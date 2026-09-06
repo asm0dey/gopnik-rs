@@ -88,7 +88,7 @@
    "compare_addr": "1000:ea94",
    "token_file_off": "0xBFDE",
    "status": "confirmed",
-   "note": "prints the 13-line command list; NOT inventory"
+   "note": "prints the command list; NOT inventory.  This note said \"the 13-line command list\" until Task 33 decoded 1000:ea94..1000:ec82: SEVENTEEN lines, 1 ungated + 7 gated on the discovery flags 20ae:3694..369a + 9 ungated.  The thirteen were one oracle capture's screen.  See docs/re/club.md and data/club_arms.json."
   },
   {
    "verb": "s",

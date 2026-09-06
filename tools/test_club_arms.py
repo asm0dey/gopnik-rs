@@ -857,6 +857,40 @@ class ClubTest(unittest.TestCase):
         the finding is wrong.
         """
         f = self.club["menu_vs_arm_finding"]
+        # The two spans are anchored to addresses this artifact already
+        # carries for other reasons, and the anchors are resolved FIRST.
+        # Review round 1 showed the cost of leaving them free: widening
+        # `arm_span.end` to `1000:e366` and updating `byte_length` to match
+        # passed green, so the check proved only that two length fields agreed
+        # with each other.
+        anchors = {
+            "menu_span.start": (f["menu_span"]["start"],
+                                f["menu_span"]["start_is"],
+                                self.club["menu_lines"][0]["colour_digit"]
+                                ["test"]["addr"]),
+            "menu_span.end": (f["menu_span"]["end"], f["menu_span"]["end_is"],
+                              self.club["stake_init"]["span"]["start"]),
+            "arm_span.start": (f["arm_span"]["start"],
+                               f["arm_span"]["start_is"],
+                               self.arms()[1]["miss_branch"]["addr"]),
+            "arm_span.end": (f["arm_span"]["end"], f["arm_span"]["end_is"],
+                             self.arms()[2]["span"]["end"]),
+        }
+        want_is = {"menu_span.start": "menu_lines[0].colour_digit.test.addr",
+                   "menu_span.end": "stake_init.span.start",
+                   "arm_span.start": "arms[1].miss_branch.addr",
+                   "arm_span.end": "arms[2].span.end"}
+        for field, (got, says, anchor) in anchors.items():
+            self.assertEqual(
+                says, want_is[field],
+                "%s: the recorded anchor name is %r, this check resolves %r"
+                % (field, says, want_is[field]))
+            self.assertEqual(
+                got, anchor,
+                "%s is %s, but %s -- the address it is anchored to -- is %s.  "
+                "The span is not a free choice: a span moved to flatter the "
+                "longest-common-substring fails here"
+                % (field, got, says, anchor))
         X = self.img[off_of(f["menu_span"]["start"]):
                      off_of(f["menu_span"]["end"])]
         Y = self.img[off_of(f["arm_span"]["start"]):
@@ -986,12 +1020,31 @@ class ClubTest(unittest.TestCase):
         self.assertEqual(body[-1], "retf 0xa",
                          "0f78:0b01 takes two far pointers and a word, so it "
                          "must end in `retf 0xa`; it ends in %r" % body[-1])
-        self.assertIn("lds si,[ss:bx+0xa]", body,
-                      "0f78:0b01 does not take its SOURCE from ss:bx+0xa: %s"
-                      % body)
-        self.assertIn("les di,[ss:bx+0x6]", body,
-                      "0f78:0b01 does not take its DESTINATION from ss:bx+0x6: "
-                      "%s" % body)
+        self.assertEqual(
+            body[-1], fe["callee_return"],
+            "0f78:0b01 is recorded as ending in %r; it ends in %r"
+            % (fe["callee_return"], body[-1]))
+        self.assertIn(
+            fe["source_fetch"], body,
+            "the artifact records %r as how 0f78:0b01 fetches its SOURCE; the "
+            "decode of the callee is %s -- get this backwards and `the club "
+            "ejects the player` becomes `the club overwrites a code-segment "
+            "literal`" % (fe["source_fetch"], body))
+        self.assertIn(
+            fe["dest_fetch"], body,
+            "the artifact records %r as how 0f78:0b01 fetches its "
+            "DESTINATION; the decode of the callee is %s"
+            % (fe["dest_fetch"], body))
+        # The source must be the FIRST push and the destination the SECOND --
+        # the reverse of 0f78:0ae7's reading, which is the whole trap.
+        self.assertGreater(
+            int(re.search(r"bx\+0x([0-9a-f]+)", fe["source_fetch"]).group(1),
+                16),
+            int(re.search(r"bx\+0x([0-9a-f]+)", fe["dest_fetch"]).group(1),
+                16),
+            "the SOURCE must be fetched from the deeper stack slot (the first "
+            "push); %r against %r says otherwise"
+            % (fe["source_fetch"], fe["dest_fetch"]))
         # And the consequence: after the write the next compare on that buffer
         # is the `1` arm's, and the `w` compare is the last one in the range.
         after = self.at("1000:e256")
@@ -1186,9 +1239,13 @@ class ClubTest(unittest.TestCase):
         the swap.
         """
         order = [ln["gate"]["ds"] for ln in self.list["lines"] if ln["gate"]]
-        self.assertEqual(order,
-                         ["20ae:3694", "20ae:3695", "20ae:3698", "20ae:3697",
-                          "20ae:3696", "20ae:3699", "20ae:369a"])
+        want = ["20ae:3694", "20ae:3695", "20ae:3698", "20ae:3697",
+                "20ae:3696", "20ae:3699", "20ae:369a"]
+        self.assertEqual(
+            order, want,
+            "the seven gates are recorded in the order %s; the artifact now "
+            "says %s -- the gate order puts Vet before Girl before Den and is "
+            "NOT the flag-address order" % (want, order))
         self.assertNotEqual(order, sorted(order),
                             "the gate order is recorded as NOT the address "
                             "order; if it became sorted the finding is wrong")
@@ -1358,7 +1415,23 @@ class ClubTest(unittest.TestCase):
                 self.assertIn(ln["gate"]["test"]["addr"], self.md)
 
     def test_the_port_change_lists_are_addressed_and_falsifiable(self):
-        """Every numbered item names an original address and a consequence."""
+        """Every numbered item names an original address and a consequence.
+
+        **This is a lint over the artifact's own prose, not evidence about
+        `orig/g.exe`.**  It cannot judge whether a `do_not_fix` string really
+        describes a trap; what it does check is that the item is anchored to an
+        address and that its consequence is addressed to the PORTING task
+        rather than being a note about this RE task's scope.  Review round 1
+        found `command_list` item 4 satisfying the lint through a `do_not_fix`
+        whose content ("This RE task does not edit them") inverted the field's
+        name, so the second half is narrow by construction: it names one shape
+        that has actually occurred here, and it establishes nothing about the
+        other items beyond that they do not have that shape.  The numbers
+        those consequences quote are checked by
+        `test_every_counted_consequence_is_recomputed_from_the_decode`.
+        """
+        scope_note = re.compile(r"\bthis RE task\b|\bTask 33 (?:does|did) not\b",
+                                re.I)
         for key, least in (("club", 10), ("command_list", 4)):
             items = self.art[key]["what_the_port_must_change"]
             self.assertGreaterEqual(len(items), least)
@@ -1373,7 +1446,94 @@ class ClubTest(unittest.TestCase):
                     "falsifiable_as" in it or "do_not_fix" in it,
                     "%s item %d carries neither a falsifiable consequence nor "
                     "a do-not-fix trap" % (key, it["n"]))
+                for field in ("falsifiable_as", "do_not_fix"):
+                    if field in it:
+                        self.assertIsNone(
+                            scope_note.search(it[field]),
+                            "%s item %d's %s is a note about this RE task's "
+                            "own scope, not a consequence for the porting "
+                            "task: %r" % (key, it["n"], field, it[field]))
                 self.assertIn("blocked", it)
+        # And the pattern still matches the shape it hunts, so "no hits" can
+        # never be mistaken for "no defects".
+        self.assertIsNotNone(
+            scope_note.search("This RE task does not edit them"),
+            "the scope-note pattern no longer matches the string that "
+            "prompted it")
+
+    def test_every_counted_consequence_is_recomputed_from_the_decode(self):
+        """A consequence that states a COUNT has that count derived here.
+
+        Review round 1 found `command_list` item 1 promising "eleven lines"
+        where flow says twelve -- an off-by-one in the one number the porting
+        task is invited to test against, transcribed rather than derived, and
+        read by nothing.  So every item whose consequence quotes a number
+        carries a `derived` block naming the recipe, and the recipe is run
+        against `orig/g.exe` here.  The spelled form must also appear in the
+        item's own prose, or the block and the sentence could drift apart.
+        """
+        seen = []
+        for key in ("club", "command_list"):
+            for it in self.art[key]["what_the_port_must_change"]:
+                d = it.get("derived")
+                if d is None:
+                    continue
+                got = self.recompute(key, d)
+                self.assertEqual(
+                    got, d["value"],
+                    "%s item %d: %s recomputes to %d, the artifact records %d"
+                    % (key, it["n"], d["claim"], got, d["value"]))
+                prose = " ".join(it.get(f, "") for f in
+                                 ("what", "falsifiable_as", "do_not_fix"))
+                self.assertIn(
+                    d["spelled"], prose,
+                    "%s item %d: the derived value is spelled %r but the "
+                    "item's own prose does not carry it: %r"
+                    % (key, it["n"], d["spelled"], prose))
+                seen.append(d["kind"])
+        self.assertEqual(
+            sorted(seen),
+            ["abs_writes_to_in_span", "gated_line_count",
+             "keys_needing_dispatch", "random_sites_in_span"],
+            "the four counted consequences are %s; a `derived` block that "
+            "stopped being carried would make its number unchecked again"
+            % sorted(seen))
+
+    def recompute(self, key, d):
+        """Run one `derived` recipe against `orig/g.exe`."""
+        kind = d["kind"]
+        if kind == "keys_needing_dispatch":
+            swept = [cit(i.off) for i in self.run_of(CLO, CHI)
+                     if i.raw[:5] == STR_COMPARE]
+            verb = self.club["verb"]["compare_addr"]
+            exit_arm = next(a for a in self.arms() if a["key"] == "w")
+            return len([c for c in swept
+                        if c != verb and c != exit_arm["compare_addr"]])
+        if kind == "random_sites_in_span":
+            return len([i for i in self.run_of(off_of(d["span"]["start"]),
+                                               off_of(d["span"]["end"]))
+                        if i.raw[:5] == RANDOM_CALL])
+        if kind == "abs_writes_to_in_span":
+            dskey = "[0x%s]" % d["ds"].split(":")[1]
+            return len([i for i in self.run_of(off_of(d["span"]["start"]),
+                                               off_of(d["span"]["end"]))
+                        if WRITES_ABS_MEM.match(i.text) and dskey in i.text])
+        if kind == "gated_line_count":
+            lines = self.list["lines"]
+            gated = [ln for ln in lines if ln["gate"]]
+            head = len([ln for ln in lines if not ln["gate"]
+                        and ln["n"] < min(g["n"] for g in gated)])
+            tail = len([ln for ln in lines if not ln["gate"]
+                        and ln["n"] > max(g["n"] for g in gated)])
+            on = len([ln for ln in gated
+                      if ln["gate"]["ds"] in d["flags_set"]])
+            self.assertEqual(len(d["flags_set"]), len(set(d["flags_set"])))
+            self.assertEqual(
+                on, len(d["flags_set"]),
+                "the recipe names %d flags but only %d of them gate a line"
+                % (len(d["flags_set"]), on))
+            return head + on + tail
+        self.fail("%s: unknown derived kind %r" % (key, kind))
 
 
 if __name__ == "__main__":

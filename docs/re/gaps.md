@@ -2791,12 +2791,22 @@ three it prints unconditionally that the original gates — CS `0xa762` (`mar`),
 `docs/re/oracle-captures/command-table-and-combat.md` captures exactly these
 thirteen at district 1, under a preamble that says in bold that its screens are
 EVIDENCE and must never stand in for finding the branch. The thirteen are what
-that one flag configuration prints. `data/command_dispatch.json`'s `i` note,
-`docs/re/command-dispatch.md`'s `i` row and `src/commands.rs`'s two comments
-all still say "the 13-line command list"; **none of those four is corrected
-here**, because an RE task changing a `src/` comment would be a `src/` diff
-that is only comments. The porting task owns them, and this entry exists so it
-does not copy the number forward again.
+that one flag configuration prints.
+
+**FIVE places carried the number, not four**, and the fifth is the reason to
+say so: `src/game.rs` writes `13-line list`, not `13-line command list`, so a
+grep for the longer phrase misses it — which is how this entry's own first
+draft counted four. The command that finds all of them is
+`grep -rn '13-line' src/ data/ docs/`.
+
+* Corrected by Task 33, because a doc and a data note that contradict a decode
+  are the map being wrong: `docs/re/command-dispatch.md`'s `i` row and
+  `data/command_dispatch.json`'s `i` note now say seventeen and point at
+  `docs/re/club.md`.
+* Left for the porting task, because an RE task changing a `src/` comment would
+  be a `src/` diff that is only comments: two comments in `src/commands.rs` and
+  one in `src/game.rs`. `grep -rn '13-line' src/` prints three lines today and
+  must print none once `Game::show_command_list` is rewritten.
 
 ### The gate ORDER in the `i` list is not the flag-address order
 

@@ -910,6 +910,9 @@
        "addr": "1000:e251",
        "text": "call 0xf78:0xb01"
       },
+      "source_fetch": "lds si,[ss:bx+0xa]",
+      "dest_fetch": "les di,[ss:bx+0x6]",
+      "callee_return": "retf 0xa",
       "what": "`20ae:3a72 := \"w\"` -- the SUBMENU BUFFER is overwritten with the exit key.",
       "argument_order": "`0f78:0b01` takes source at `ss:bx+0xa`, destination at `ss:bx+0x6` and the maximum at `ss:bx+0x4` (`1000:e243` pushes the literal FIRST, so it is the source; `1000:e248` pushes `20ae:3a72` SECOND, so it is the destination; `1000:e24d` pushes 0xff).  Decoding the callee is what settles which pointer is which -- the push order is the reverse of `0f78:0ae7`'s reading.",
       "consequence": "Established from flow, not from a screen: after `1000:e256 jmp short 0xe274` the buffer holds `w`, so the `1` compare at `1000:e27e` misses, the `2` compare at `1000:e2f3` misses (or is skipped by the district gate), and the `w` compare at `1000:e361` HITS.  Being caught cheating ejects the player from the club unconditionally, at every district.",
@@ -1253,13 +1256,18 @@
    "menu_span": {
     "start": "1000:df6f",
     "end": "1000:e020",
-    "byte_length": 177
+    "byte_length": 177,
+    "start_is": "menu_lines[0].colour_digit.test.addr",
+    "end_is": "stake_init.span.start"
    },
    "arm_span": {
     "start": "1000:e283",
     "end": "1000:e357",
-    "byte_length": 212
+    "byte_length": 212,
+    "start_is": "arms[1].miss_branch.addr",
+    "end_is": "arms[2].span.end"
    },
+   "spans_are_structural": "Neither span is a free choice: each endpoint is an address this artifact already carries for another reason, named in `start_is` / `end_is` and re-resolved by `tools/test_club_arms.py`.  A span moved to flatter the longest-common-substring therefore fails the anchor check BEFORE its own byte_length is looked at -- review round 1 showed that a span widened to `1000:e366` with its `byte_length` updated to match passed green.",
    "pairs": [
     {
      "what": "row-1 / arm-1 price predicate",
@@ -2085,7 +2093,14 @@
     "n": 1,
     "blocked": false,
     "what": "`Game::shop_turn` recognises NO club key.  Four exist and are established at COMPARE addresses on `20ae:3a72`: `p` (`1000:e06f`), `1` (`1000:e27e`), `2` (`1000:e2f3`) and `w` (`1000:e361`, already the shared exit).  `grep -n 'Location::Club' src/game.rs` finds no arm in `shop_turn` today.",
-    "falsifiable_as": "typing `1` at the `^0Клуб\\` prompt must debit 15 and raise ловкость."
+    "falsifiable_as": "THREE keys have to be added; typing `1` at the `^0Клуб\\` prompt must debit 15 and raise ловкость.",
+    "derived": {
+     "kind": "keys_needing_dispatch",
+     "claim": "club keys that are not the shared `w` exit",
+     "recipe": "the shortstring-compare sweep over 1000:df06..1000:e390 minus the `kl` verb compare minus the `w` arm",
+     "value": 3,
+     "spelled": "THREE"
+    }
    },
    {
     "n": 2,
@@ -2103,7 +2118,18 @@
     "n": 4,
     "blocked": false,
     "what": "The `p` arm.  Order, exactly: money gate (`1000:e082`, `stake <= money`, SIGNED); print `Ты поставил # рублей` with `#` = stake; `money -= stake` (`1000:e0a8`); ONE draw `Random(district * 12)` (`1000:e0b7`); WIN iff `!luck_below_random_32(luck, draw)`.",
-    "falsifiable_as": "the draw count per `p` is exactly one, plus whatever `1000:2526`, `1000:0d14` and `1000:3d11` spend on the paths that reach them."
+    "falsifiable_as": "the draw count inside the `p` arm's own span is exactly ONE, plus whatever `1000:2526`, `1000:0d14` and `1000:3d11` spend on the paths that reach them.",
+    "derived": {
+     "kind": "random_sites_in_span",
+     "claim": "Random call sites inside the `p` arm's span",
+     "recipe": "sweep 1000:e065..1000:e274 for the five-byte `call 0f78:114b` signature",
+     "span": {
+      "start": "1000:e065",
+      "end": "1000:e274"
+     },
+     "value": 1,
+     "spelled": "ONE"
+    }
    },
    {
     "n": 5,
@@ -2115,7 +2141,19 @@
     "n": 6,
     "blocked": false,
     "what": "On a LOSS: `stake := 5` (`1000:e145`) and nothing else.  The money already left at `1000:e0a8`.",
-    "falsifiable_as": "no second money instruction exists on the lose path -- `effects[]` is a set-equality measurement over the whole range."
+    "falsifiable_as": "ZERO money instructions exist on the lose path `1000:e129`..`1000:e14a`; the debit already happened at `1000:e0a8`.",
+    "derived": {
+     "kind": "abs_writes_to_in_span",
+     "claim": "writes to the money word on the lose path",
+     "recipe": "sweep 1000:e129..1000:e14a for absolute-memory writes whose operand is [0x38c7]",
+     "span": {
+      "start": "1000:e129",
+      "end": "1000:e14a"
+     },
+     "ds": "20ae:38c7",
+     "value": 0,
+     "spelled": "ZERO"
+    }
    },
    {
     "n": 7,
@@ -2691,7 +2729,7 @@
      }
     ]
    },
-   "where_the_thirteen_came_from": "`docs/re/oracle-captures/command-table-and-combat.md` captures exactly these thirteen at district 1, and the capture's own preamble says in bold that these screens are EVIDENCE, not specification, and must never stand in for finding the branch.  The thirteen are consistent with `20ae:3694`, `20ae:3698` and `20ae:3696` set and the other four clear at capture time; the arithmetic (1 + 3 + 9 = 13) is corroboration of the flow reading, not its source.  `data/command_dispatch.json`, `docs/re/command-dispatch.md` and `src/commands.rs` all repeat 'the 13-line command list' from the same screen; the correction is recorded in `docs/re/gaps.md`."
+   "where_the_thirteen_came_from": "`docs/re/oracle-captures/command-table-and-combat.md` captures exactly these thirteen at district 1, and the capture's own preamble says in bold that these screens are EVIDENCE, not specification, and must never stand in for finding the branch.  The thirteen are consistent with `20ae:3694`, `20ae:3698` and `20ae:3696` set and the other four clear at capture time; the arithmetic (1 + 3 + 9 = 13) is corroboration of the flow reading, not its source.  FIVE places carried the thirteen from that same screen: `data/command_dispatch.json`, `docs/re/command-dispatch.md`, two comments in `src/commands.rs`, and one in `src/game.rs` -- which writes '13-line list' and so escapes a grep for the longer phrase, which is how the first draft of this artifact counted four.  Task 33 corrected the two outside `src/`; the three inside it are `what_the_port_must_change[3]`, whose `inventory_command` recomputes the set."
   },
   "spans": [
    {
@@ -2932,7 +2970,18 @@
     "n": 1,
     "blocked": false,
     "what": "`Game::show_command_list` must print SEVENTEEN lines, not thirteen: `1000:ea9e` ungated, then the seven gated on `Location::Market`, `Dealers`, `Vet`, `Girl`, `Den`, `Club`, `Gym` IN THAT ORDER, then the nine at `1000:eb97` onward ungated.",
-    "falsifiable_as": "on a fresh character with only Market and Vet found, the list must be eleven lines long."
+    "falsifiable_as": "with only Market and Vet found, the list must be TWELVE lines long: the ungated head, the two gated lines whose flags are set, and the nine ungated tail lines.",
+    "derived": {
+     "kind": "gated_line_count",
+     "claim": "lines printed when exactly Market and Vet are found",
+     "recipe": "ungated head + the gated lines whose flag is in flags_set + ungated tail, all three measured from lines[]",
+     "flags_set": [
+      "20ae:3694",
+      "20ae:3698"
+     ],
+     "value": 12,
+     "spelled": "TWELVE"
+    }
    },
    {
     "n": 2,
@@ -2949,8 +2998,21 @@
    {
     "n": 4,
     "blocked": false,
-    "what": "`data/command_dispatch.json`'s `i` note, `docs/re/command-dispatch.md`'s row and `src/commands.rs`'s two comments all say '13-line command list' beside the compare address `1000:ea94`.  All four come from the oracle capture, not from flow; the seventeen pushes between `1000:ea9e` and `1000:ec5f` are the list.",
-    "do_not_fix": "This RE task does not edit them; the correction is written into `docs/re/gaps.md` so the porting task reads it before it copies the number again."
+    "what": "THREE `src/` comments still carry the thirteen beside the compare address `1000:ea94`: two in `src/commands.rs` and one in `src/game.rs`.  The number came from the oracle capture, not from flow; the seventeen pushes between `1000:ea9e` and `1000:ec5f` are the list.  The two sites OUTSIDE `src/` -- `docs/re/command-dispatch.md`'s `i` row and `data/command_dispatch.json`'s `i` note -- were corrected by Task 33 itself and now point at `docs/re/club.md`.",
+    "falsifiable_as": "`grep -rn '13-line' src/` prints THREE lines at this commit and must print none after the port lands.  Grep for `13-line`, NOT for `13-line command list`: `src/game.rs` writes `13-line list`, and the longer phrase misses it -- which is how the first draft of this item counted four sites when there are five.",
+    "inventory_command": "grep -rn '13-line' src/ data/ docs/ | grep -v club_arms.json",
+    "inventory_at_this_commit": {
+     "outside_src_and_corrected_by_task_33": [
+      "data/command_dispatch.json",
+      "docs/re/command-dispatch.md"
+     ],
+     "in_src_and_left_to_the_porting_task": [
+      "src/commands.rs",
+      "src/commands.rs",
+      "src/game.rs"
+     ],
+     "note": "Line numbers are deliberately absent: `docs/re/METHODOLOGY.md` says a claim about the port cites the command that recomputes it, never the line the command happened to print."
+    }
    }
   ],
   "branch_census": {

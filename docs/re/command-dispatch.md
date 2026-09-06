@@ -63,7 +63,7 @@ compare instruction directly and reading the token bytes out of
 | `kl` | `1000:df06` | `0xB9BA` | club |
 | `trn` | `1000:e390` | `0xBC23` | gym |
 | `kos` | `1000:e973` | `0xBEEF` | smoke a joint |
-| `i` | `1000:ea94` | `0xBFDE` | prints the 13-line command list; **not inventory** |
+| `i` | `1000:ea94` | `0xBFDE` | prints the command list; **not inventory**. Earlier revisions of this row said "the 13-line command list"; that came from an oracle capture, and Task 33 decoded the handler: **seventeen** lines, one ungated plus seven gated on the discovery flags plus nine ungated -- `docs/re/club.md`, Part 2 |
 | `s` | `1000:ec82` | `0xB855` | stats |
 | `f` | `1000:ec96` | `0xC31C` | handler not traced past `jz`; corroborated as "shoot" by the adjacent refusal string at `0xC31E` |
 | `k` | `1000:ecc7` | `0xC341` | handler not traced past `jz`; corroborated as "fight" by the adjacent refusal string at `0xC343`, `^6Чё машешь копытами? Ищи мудака которого будешь пинать!` (colour code `^6`, **not** `^4`) |

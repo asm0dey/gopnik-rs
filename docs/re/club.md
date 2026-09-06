@@ -170,6 +170,17 @@ and those are the first two bytes at which the blocks differ.
 `tools/test_club_arms.py` recomputes the run rather than remembering it, and
 requires the two bytes past its end to differ.
 
+**Neither span is a free choice.** A longest-common-substring is span-relative,
+so a span moved to flatter the number would make the finding say less than it
+looks like it says: review round 1 showed that widening the arm span to
+`1000:e366` and updating its recorded length to match passed green. Each
+endpoint is now anchored to an address this map already carries for another
+reason — the menu span runs from menu row 1's colour test to the stake init,
+the arm span from arm `1`'s miss branch to arm `2`'s span end — and
+`tools/test_club_arms.py` resolves those four anchors BEFORE it looks at any
+length. The finding is also robust to the choice: the review measured the run
+over a second span pair and got the same 26 at the same two addresses.
+
 **What the identical predicates DO is different in kind:**
 
 * In the menu the price compare is **cosmetic**. Both arms of `1000:df74` and
@@ -670,9 +681,19 @@ screens are EVIDENCE, not specification, and must never stand in for finding the
 branch. The thirteen are consistent with `20ae:3694`, `20ae:3698` and
 `20ae:3696` set and the other four clear at capture time — 1 + 3 + 9 = 13 — but
 that arithmetic is corroboration of the flow reading above, not its source.
-`data/command_dispatch.json`, `docs/re/command-dispatch.md` and
-`src/commands.rs` all repeat "the 13-line command list" from the same screen;
-the correction is registered in `docs/re/gaps.md`.
+**FIVE places carried the thirteen** from that same screen, not four:
+`data/command_dispatch.json`'s `i` note, `docs/re/command-dispatch.md`'s `i`
+row, two comments in `src/commands.rs` and one in `src/game.rs`. The last of
+those writes `13-line list`, not `13-line command list`, so a grep for the
+longer phrase misses it — which is how the first draft of this document counted
+four. `grep -rn '13-line' src/ data/ docs/` is the command that finds all of
+them.
+
+Task 33 corrected the two outside `src/`: the `i` row in
+`docs/re/command-dispatch.md` and the `i` note in
+`data/command_dispatch.json` now say seventeen and point here. The three inside
+`src/` belong to the porting task and are left exactly as they are;
+`docs/re/gaps.md` names all five.
 
 ## The counts this map rests on
 
@@ -700,11 +721,16 @@ Four numbered items in `data/club_arms.json`'s
 
 1. Print seventeen lines, not thirteen: `1000:ea9e` ungated, then seven gated on
    Market, Dealers, Vet, Girl, Den, Club, Gym **in that order**, then the nine
-   from `1000:eb97` ungated.
+   from `1000:eb97` ungated. On a character with only Market and Vet found
+   that is `1 + 2 + 9` = **twelve** lines. `data/club_arms.json` derives that
+   twelve from the decoded partition rather than carrying it as prose — an
+   earlier draft said eleven, and nothing read it.
 2. Add the four lines the port has never had.
 3. Gate the three it prints unconditionally.
-4. Do not copy "13-line command list" forward from the four places that
-   currently say it.
+4. Stop the thirteen propagating: `grep -rn '13-line' src/` finds three
+   comments at this commit — two in `src/commands.rs`, one in `src/game.rs` —
+   and must find none after the port lands. The two sites outside `src/` are
+   already corrected.
 
 ## Branch coverage
 
