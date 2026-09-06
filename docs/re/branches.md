@@ -485,13 +485,52 @@ own columns when Ghidra last ran (`82a08d8`); the table below is recomputed from
 the shipped tree, and the block under *Recomputation* prints it. Quote the
 command, not the cell.
 
-After Task 32: 838 game branches; **476 touched (56.8%)**; 362 with no citation
+After Task 34: 838 game branches; **508 touched (60.6%)**; 330 with no citation
 at the branch or its guard.
 
-**The +27, decomposed — recomputed, not counted by eye.** The block under
+**The +32, decomposed — recomputed, not counted by eye.** The block under
 *Recomputation → Coverage → The per-task delta* differences `hit()` per branch
 between two revisions and buckets the gained ones by address; at
-`36137a0..fbae9c5` it prints, verbatim:
+`858f5fb..c581db3` it prints, verbatim:
+
+```
+base 858f5fb: touched 476 | head: touched 508 | gained 32 | lost 0
+  rep vet            12  1000:d3f2 1000:d4c1 1000:d4c8 1000:d4cf 1000:d543 1000:d54a 1000:d551 1000:d5ca 1000:d5d4 1000:d5ea 1000:d5fe 1000:d61e
+  kl arms            13  1000:e074 1000:e082 1000:e0c8 1000:e0ca 1000:e0ce 1000:e14f 1000:e156 1000:e179 1000:e283 1000:e28a 1000:e2e7 1000:e2ff 1000:e366
+  i list              7  1000:eabc 1000:eadc 1000:eafc 1000:eb1c 1000:eb3c 1000:eb5c 1000:eb7c
+```
+
+12 + 13 + 7 = 32, `lost 0`, and `elsewhere` is empty — no citation drifted in
+from outside the three ranges the task touched.
+
+**All 32 are behaviour the port now implements; none is commentary.** That is
+the split ruling R12 asks for, and it is unusual: Task 32's +27 was ~25
+behaviour and 2 comments recording branches the port deliberately does not
+implement, and Task 30's +61 carried 10 such. Here the classification is
+one-by-one, by the function each branch landed in:
+
+* **`rep vet`, 12** — `1000:d3f2` is `Game::print_shop_intro`'s menu skip;
+  `1000:d4c1`/`d4c8`/`d4cf` are `crate::vet::loop_top`'s three tests;
+  `1000:d543`/`d54a`/`d551` are the `r` arm's OR gate and price test;
+  `1000:d5ca`/`d5d4`/`d5ea` are the `h` arm's health gate, price test and
+  hpmax clamp; `1000:d5fe`/`d61e` are its `Random(3)` flavour dispatch.
+* **`kl arms`, 13** — `1000:e074` and `1000:e2e7` are
+  `crate::club::key_dispatches`; `1000:e082`, `1000:e28a` and `1000:e2ff` are
+  the three price gates; `1000:e0c8`/`e0ca`/`e0ce` are the three branches of
+  the 32-bit luck compare `Game::luck_below_random_32` models;
+  `1000:e14f`/`e156` bound the "stakes changed" line; `1000:e179` reaches the
+  caught-cheating block; `1000:e283` is arm `1`'s miss; `1000:e366` is the
+  shared `w` exit `Game::shop_turn` owns.
+* **`i list`, 7** — the seven discovery-flag gates
+  `Game::show_command_list` now evaluates.
+
+There is nothing in this task's diff of the shape "a comment naming a branch
+the port does not run": the two candidates would have been the club's ban gate
+`1000:df1f` and the vet's `al`-computing health test
+`1000:d3da`/`d3e1`/`d3e8`, and both were already touched at `858f5fb` through
+their guards, so neither appears in the +32 at all.
+
+**Before that, after Task 32: 476 touched (56.8%).** Its +27 decomposed as:
 
 ```
 base 36137a0: touched 449 | head: touched 476 | gained 27 | lost 0
@@ -733,25 +772,26 @@ of the dealers' body). Tasks 24 and 26 shattered all three with per-arm
 citations. Next after the twelve above: `1000:3dc8`..`1000:3fa6` (5, combat —
 `^4Я МАНЬЯК!!!`).
 
-**Four more spans have left the table since, and every one of them was a
+**Eight more spans have left the table since, and every one of them was a
 location handler.** `1000:d8c9`..`1000:dc0d` (rank 2, 22) and
 `1000:dd33`..`1000:ddf5` (rank 6, 9) went at Task 28 with the den's submenu;
 `1000:ced9`..`1000:d382` (rank 1, 24) went at Task 30 with the dealers' sell
 path; `1000:e590`..`1000:e947` (rank 3, 21) went at Task 32 with the gym's
-five arms and the joint's citations. Rank 5 shrank rather than vanishing:
-`1000:3d12`..`1000:3dc6` is now `1000:3d33`..`1000:3dc6` at eight. The head of
-the ranking is therefore combat, not a location: `1000:4169`..`1000:43f5`, the
-crowd lines, at seventeen.
+five arms and the joint's citations; and Task 34 took the last four at once —
+`1000:dfcc`..`1000:e180` (rank 7, 9) and `1000:e23f`..`1000:e36c` (rank 10, 6)
+with the club's arms, `1000:ea95`..`1000:ec81` (rank 8, 8) with the `i` list,
+and `1000:d5da`..`1000:d6c9` (5) with the vet. Rank 5 shrank rather than
+vanishing: `1000:3d12`..`1000:3dc6` is now `1000:3d33`..`1000:3dc6` at eight.
+The head of the ranking is therefore combat, not a location:
+`1000:4169`..`1000:43f5`, the crowd lines, at seventeen.
 
 Defensible order of work, from the recomputed ranking rather than from the
-snapshot above: the location handlers that headed it are done, so what is left
-at the top is inside `FUN_1000_3d11` — the crowd lines
+snapshot above: **no location handler contributes a span of five or more any
+more**, so what is left at the top is inside `FUN_1000_3d11` — the crowd lines
 (`1000:4169`..`1000:43f5`, 17) and the combat opening
-(`1000:3d33`..`1000:3dc6`, 8) — with the club (`1000:dfcc`..`1000:e180`, 9,
-the label rank 7 above already carries) and `1000:d5da`..`1000:d6c9` (5) as
-the remaining location work; that last span falls between `rep`'s compare at
-`1000:d3a6` and `girl`'s at `1000:d6ed`, so it is inside the vet's handler —
-which is a span boundary, not a traced dispatch. The
+(`1000:3d33`..`1000:3dc6`, 8) — followed by `FUN_1000_1a03`'s
+`1000:1e07`..`1000:1e34` (6) and four five-branch spans, two of them in the
+wander preamble (`1000:b35d`..`1000:b392` and `1000:b3dc`..`1000:b464`). The
 status screen, which headed this list for four tasks, is off it:
 `FUN_1000_1a03` is ported (`src/character_sheet.rs`, Task 22), 54 of its 83
 branches touched across 176 citation sites, and its largest remaining uncited
@@ -844,24 +884,26 @@ for s in spans[:12]:
 EOF
 ```
 
-At Task 32's tree that prints, verbatim, the numbers this document's tables
-carry. Task 32 ported the gym's five arms, which is why
-`1000:e590..1000:e947` -- the 21-branch span that headed this ranking at
-Task 30 -- is gone from it entirely, exactly as `1000:ced9..1000:d382` went at
-Task 30: all 43 game branches in `1000:e390`..`1000:ea93` are now cited, so no
-span survives across the gym or the joint. The head of the ranking is
-therefore a fight span now, not a street one. The Task 24, Task 26 and Task 30
-totals this block used to print are in the history sentence above, and in
+At Task 34's tree that prints, verbatim, the numbers this document's tables
+carry. Task 34 ported the club's arms, the `i` list and the vet, which is why
+every span Task 32's output still carried across those ranges --
+`1000:dfcc..1000:e180` (9), `1000:ea95..1000:ec81` (8),
+`1000:e23f..1000:e36c` (6) and `1000:d5da..1000:d6c9` (5) -- is gone from the
+ranking, exactly as `1000:e590..1000:e947` went at Task 32 and
+`1000:ced9..1000:d382` at Task 30. **Every span of five or more branches that
+sat inside a location handler is now shattered**, and what remains at the head
+is combat. The Task 24, Task 26, Task 30 and Task 32 totals this block used to
+print are in the history sentence above, and in
 `docs/superpowers/RESUME.md`'s measured-history table:
 
 ```
-game branches 838 | touched 476 (56.8%) | uncited 362
-1000:ab59    bytes 17143 branches 406 touched 265 citations 1764
+game branches 838 | touched 508 (60.6%) | uncited 330
+1000:ab59    bytes 17143 branches 406 touched 297 citations 2114
 1000:3d11    bytes  6971 branches 224 touched 107 citations 665
 1000:1a03    bytes  2700 branches  83 touched  54 citations 176
-1000:6a0d    bytes  2527 branches  33 touched  15 citations 159
+1000:6a0d    bytes  2527 branches  33 touched  15 citations 162
 1000:29c4    bytes   666 branches  19 touched   2 citations  26
-1000:0d14    bytes  1196 branches  17 touched  11 citations  58
+1000:0d14    bytes  1196 branches  17 touched  11 citations  59
 1000:2526    bytes   929 branches  17 touched   9 citations  61
 1000:7c67    bytes  1612 branches  16 touched  12 citations  39
 1000:1348    bytes   791 branches  11 touched   1 citations  18
@@ -872,6 +914,28 @@ game branches 838 | touched 476 (56.8%) | uncited 362
 1000:5f55    bytes  1000 branches   1 touched   0 citations   4
 1000:02c2    bytes   508 branches   0 touched   0 citations   0
 1000:0acc    bytes    15 branches   0 touched   0 citations   0
+418 spans hold 579 of the 838
+   17  1000:4169..1000:43f5     1000:3d11        653 bytes
+    8  1000:3d33..1000:3dc6     1000:3d11        148 bytes
+    6  1000:1e07..1000:1e34     1000:1a03         46 bytes
+    5  1000:0aec..1000:0d13     1000:0aec        552 bytes
+    5  1000:2bc0..1000:2c52     1000:29c4        147 bytes
+    5  1000:b35d..1000:b392     1000:ab59         54 bytes
+    5  1000:b3dc..1000:b464     1000:ab59        137 bytes
+    4  1000:0efe..1000:0fed     1000:0d14        240 bytes
+    4  1000:1437..1000:1541     1000:1348        267 bytes
+    4  1000:1afe..1000:1b18     1000:1a03         27 bytes
+    4  1000:5411..1000:5426     1000:3d11         22 bytes
+    4  1000:5463..1000:547d     1000:3d11         27 bytes
+```
+
+Task 32's own output, quoted so the difference above can be read against it
+rather than remembered -- the same block at `fbae9c5`, abridged to the lines
+that moved:
+
+```
+game branches 838 | touched 476 (56.8%) | uncited 362
+1000:ab59    bytes 17143 branches 406 touched 265 citations 1764
 422 spans hold 614 of the 838
    17  1000:4169..1000:43f5     1000:3d11        653 bytes
     9  1000:dfcc..1000:e180     1000:ab59        437 bytes
@@ -879,12 +943,7 @@ game branches 838 | touched 476 (56.8%) | uncited 362
     8  1000:ea95..1000:ec81     1000:ab59        493 bytes
     6  1000:1e07..1000:1e34     1000:1a03         46 bytes
     6  1000:e23f..1000:e36c     1000:ab59        302 bytes
-    5  1000:0aec..1000:0d13     1000:0aec        552 bytes
-    5  1000:2bc0..1000:2c52     1000:29c4        147 bytes
-    5  1000:b35d..1000:b392     1000:ab59         54 bytes
-    5  1000:b3dc..1000:b464     1000:ab59        137 bytes
     5  1000:d5da..1000:d6c9     1000:ab59        240 bytes
-    4  1000:0efe..1000:0fed     1000:0d14        240 bytes
 ```
 
 At `e657bbe` — and unchanged by the fix wave that followed it, which added no
@@ -968,8 +1027,8 @@ gained = [b for b in B if hit(b, new) and not hit(b, old)]
 lost = [b for b in B if hit(b, old) and not hit(b, new)]
 print('base %s: touched %d | head: touched %d | gained %d | lost %d'
       % (BASE, sum(hit(b, old) for b in B), sum(hit(b, new) for b in B), len(gained), len(lost)))
-BUCKETS = [('trn menu + entry', 0xe390, 0xe623), ('trn arms', 0xe624, 0xe947),
-           ('kos', 0xe948, 0xea93)]
+BUCKETS = [('rep vet', 0xd3a6, 0xd6ec), ('kl gates + menu', 0xdf06, 0xe064),
+           ('kl arms', 0xe065, 0xe36b), ('i list', 0xea94, 0xec81)]
 where = lambda b: next((n for n, lo, hi in BUCKETS
                         if lo <= int(b['addr'].split(':')[1], 16) <= hi), 'elsewhere')
 seen = collections.Counter(map(where, gained))
@@ -983,7 +1042,11 @@ EOF
 `BUCKETS` is the only per-task part: it is the address ranges the task
 touched, and anything outside them lands in `elsewhere` rather than being
 dropped, so a stray citation cannot vanish from the decomposition. The output
-at `36137a0..fbae9c5` is quoted in the coverage section above.
+at `858f5fb..c581db3` is quoted in the coverage section above, with the
+behaviour/commentary split of every one of its 32 branches; Task 32's
+`36137a0..fbae9c5` output is quoted beneath it and needs its own `BUCKETS`
+(`('trn menu + entry', 0xe390, 0xe623)`, `('trn arms', 0xe624, 0xe947)`,
+`('kos', 0xe948, 0xea93)`) to reproduce.
 
 ### The `strings loaded inside` column of the span ranking
 

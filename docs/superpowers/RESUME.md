@@ -511,8 +511,10 @@ for the right, `data/branches.json`'s `port_touched` over `src/**/*.rs` and
 | — | Task 30 (port, the dealers' sell path) | 446/838 | **449/838** |
 | `36137a0` | Task 31 (RE, the gym and the joint) | *not recomputed* | 449/838 |
 | `fbae9c5` | Task 32 (port, the gym's five arms) | *not recomputed* | **476/838** |
+| `858f5fb` | Task 33 (RE, the club and the `i` list) | *not recomputed* | 476/838 |
+| `c581db3` | Task 34 (port, the club, the `i` list and the vet) | *not recomputed* | **508/838** |
 
-**The two `not recomputed` cells are an honest gap, not a measurement.**
+**The four `not recomputed` cells are an honest gap, not a measurement.**
 Task 32 recomputed only the right column — `838 game branches | touched 476
 (56.8%)`, from the *Recomputation → Coverage* block against its own tree, and
 `449` re-derived the same way at `36137a0` before it started. The left column
@@ -523,7 +525,11 @@ measured. Task 31's `449` is not a measurement either but a consequence: it
 touches no path in `port_citation_sources` (`src/**/*.rs`,
 `data/command_dispatch.json`), so the scan's whole input is byte-identical to
 `36137a0`'s and the figure cannot have moved — the same argument
-`docs/re/branches.md` records for Tasks 29 and 31.
+`docs/re/branches.md` records for Tasks 29 and 31. Task 33's `476` is the
+same consequence for the same reason: it touches neither `src/**/*.rs` nor
+`data/command_dispatch.json`. Task 34's `508` IS a measurement, recomputed
+with the *Recomputation → Coverage* block against its own tree; its left
+column is not, for the same reason Task 32's is not.
 
 Read the alternating rows together. **Task 25 moved the documents metric by +42
 and the port metric by exactly 0**; **Task 26 moved the port metric by +40 and
@@ -563,7 +569,7 @@ and barely moves when the port advances — Task 22 ported a 2700-byte function
 and moved it by **one**. The metric that tracks the port is
 `data/branches.json`'s `port_touched` over `src/`, which went 280 → 305 across
 the same range, 305 → 388 across Tasks 23-26, 388 → 449 across Tasks 27-30 and
-449 → 476 across Tasks 31-32;
+449 → 476 across Tasks 31-32 and 476 → 508 across Tasks 33-34;
 see `docs/re/branches.md`
 under *Recomputation → Coverage*.
 

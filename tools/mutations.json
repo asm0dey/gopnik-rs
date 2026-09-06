@@ -2232,7 +2232,7 @@
       "tools/test_arms_artifacts.py",
       "ArmsArtifactTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
     ],
-    "expect": "orig/g.exe decodes"
+    "expect": "data/gym_arms.json says"
   },
   {
     "label": "gym-arms-parity-branch",
@@ -2301,7 +2301,7 @@
       "tools/test_arms_artifacts.py",
       "ArmsArtifactTest.test_the_recorded_strings_are_every_cs_literal_pushed"
     ],
-    "expect": "the CS-literal push sweep and the artifact disagree"
+    "expect": "data/gym_arms.json $: the CS-literal push sweep and the artifact disagree"
   },
   {
     "label": "gym-arms-global-writer-census",
@@ -2528,7 +2528,7 @@
       "tools/test_arms_artifacts.py",
       "ArmsArtifactTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
     ],
-    "expect": "orig/g.exe decodes"
+    "expect": "data/club_arms.json says"
   },
   {
     "label": "club-arms-literal-identity",
@@ -2576,7 +2576,7 @@
       "tools/test_arms_artifacts.py",
       "ArmsArtifactTest.test_the_recorded_effects_are_every_absolute_write_in_range"
     ],
-    "expect": "the absolute-write sweep and the artifact disagree"
+    "expect": "the absolute-write sweep and the artifact's EFFECT records disagree"
   },
   {
     "label": "club-arms-strings-completeness",
@@ -2600,7 +2600,7 @@
       "tools/test_arms_artifacts.py",
       "ArmsArtifactTest.test_the_recorded_strings_are_every_cs_literal_pushed"
     ],
-    "expect": "the CS-literal push sweep and the artifact disagree"
+    "expect": "data/club_arms.json $.command_list: the CS-literal push sweep and the artifact disagree"
   },
   {
     "label": "club-arms-gates-completeness",
@@ -2648,7 +2648,7 @@
       "tools/test_arms_artifacts.py",
       "ArmsArtifactTest.test_the_menu_and_arm_predicates_differ_exactly_as_recorded"
     ],
-    "expect": "told apart by these bytes"
+    "expect": "as the arm's `jcc`"
   },
   {
     "label": "club-arms-longest-shared-run",
