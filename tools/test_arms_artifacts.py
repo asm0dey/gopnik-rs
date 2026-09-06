@@ -66,9 +66,11 @@ from re_derive import (CITE, aligned_boundaries, load_image,  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 BRANCHES = REPO / "data" / "branches.json"
+DISPATCH = REPO / "data" / "command_dispatch.json"
 TABLES = REPO / "data" / "string_tables.json"
 
 RANDOM_CALL = b"\x9a\x4b\x11\x78\x0f"
+STR_COMPARE = b"\x9a\xd8\x0b\x78\x0f"
 
 #: Copied verbatim from the two suites this file replaces, including the
 #: reasons: the MNEMONIC decides, never operand order; `push [N]` is a read;
@@ -88,6 +90,12 @@ READS_ABS_MEM = re.compile(
 #: check here.  `tools/test_den_arms.py` found three such claims wrong in
 #: review round 1; the pattern is kept identical.
 PROSE_INSN = re.compile(r"`(1000:[0-9a-f]{4})\s+([a-z][^`]*)`")
+
+#: A BARE instruction claim -- a mnemonic and a hex operand with no address in
+#: front of it, as `data/club_arms.json`'s exemptions write their covering
+#: `jbe`. `PROSE_INSN` cannot see this form, which is why it has its own
+#: pattern and its own positive control.
+BARE_INSN = re.compile(r"^(?:j[a-z]{1,3}|jmp|call|loop[a-z]*)\s+0x[0-9a-f]+$")
 
 #: The JSON paths under which a recorded absolute WRITE counts as an EFFECT.
 #:
@@ -123,6 +131,7 @@ class Corpus:
     def __init__(self, art, doc, min_addresses, min_insn_records,
                  min_literals, min_prose_addresses, min_prose_insn,
                  min_fence_insn, min_prose_cs, min_prose_pairs,
+                 min_prose_cyrillic_pairs,
                  min_port_items, port_items_carry_consequences):
         self.art_path = REPO / art
         self.doc_path = REPO / doc
@@ -135,6 +144,14 @@ class Corpus:
         self.min_fence_insn = min_fence_insn
         self.min_prose_cs = min_prose_cs
         self.min_prose_pairs = min_prose_pairs
+        #: How many of those pairs must actually contain Cyrillic. Without
+        #: this floor the pair regex can start matching something that is not
+        #: a game literal at all -- an English phrase in backticks beside a
+        #: `(CS 0x....)` -- and every one of those matches would pass the
+        #: equality below vacuously. `tools/test_club_arms.py` carried it at
+        #: `858f5fb` and the first merge into this file dropped it; it is the
+        #: fourth assertion the merge lost.
+        self.min_prose_cyrillic_pairs = min_prose_cyrillic_pairs
         self.min_port_items = min_port_items
         #: Whether this artifact's `what_the_port_must_change` items follow
         #: the `falsifiable_as` / `do_not_fix` convention. Task 33 introduced
@@ -157,17 +174,20 @@ CORPUS = [
     Corpus("data/club_arms.json", "docs/re/club.md",
            min_addresses=180, min_insn_records=150, min_literals=45,
            min_prose_addresses=80, min_prose_insn=10, min_fence_insn=30,
-           min_prose_cs=30, min_prose_pairs=25, min_port_items=17,
+           min_prose_cs=30, min_prose_pairs=25, min_prose_cyrillic_pairs=20,
+           min_port_items=17,
            port_items_carry_consequences=True),
     Corpus("data/gym_arms.json", "docs/re/gym.md",
            min_addresses=180, min_insn_records=150, min_literals=40,
            min_prose_addresses=80, min_prose_insn=15, min_fence_insn=25,
-           min_prose_cs=25, min_prose_pairs=15, min_port_items=9,
+           min_prose_cs=25, min_prose_pairs=15, min_prose_cyrillic_pairs=12,
+           min_port_items=9,
            port_items_carry_consequences=False),
     Corpus("data/vet_arms.json", "docs/re/vet.md",
            min_addresses=90, min_insn_records=70, min_literals=20,
            min_prose_addresses=40, min_prose_insn=2, min_fence_insn=20,
-           min_prose_cs=20, min_prose_pairs=12, min_port_items=6,
+           min_prose_cs=20, min_prose_pairs=12, min_prose_cyrillic_pairs=10,
+           min_port_items=6,
            port_items_carry_consequences=True),
 ]
 
@@ -326,6 +346,68 @@ class ArmsArtifactTest(unittest.TestCase):
                 c.doc_path.is_file(),
                 "%s has no prose twin at %s" % (c.art_rel, c.doc_rel))
 
+    def test_each_range_is_anchored_to_the_verb_compares_not_to_itself(self):
+        """`each_block()` derives `lo`/`hi` from the block's own `range`.
+
+        So every "every X in range" sweep in this file moves with the
+        declaration, and a NARROWED range with its four counts updated to
+        match would pass all of them. The two bespoke suites carried a
+        `test_the_range_boundaries_are_verb_compares` that closed this;
+        `data/vet_arms.json` has no bespoke suite, and the first revision of
+        this file never mentioned `data/command_dispatch.json` at all, so the
+        vet's range was anchored to nothing.
+
+        Both endpoints are pinned three ways: they decode to the five-byte
+        `0f78:0bd8` shortstring compare, the token beside each is the verb's
+        own literal out of `orig/g.exe`, and `data/command_dispatch.json` --
+        an artifact this task did not touch and which no `*_arms.json`
+        derives from -- records the same two addresses for the same two
+        verbs.
+        """
+        chain = json.loads(DISPATCH.read_text(encoding="utf-8"))[
+            "confirmed_dispatch_chain"]
+        by_verb = {e["verb"]: e for e in chain}
+        checked = 0
+        for c, blk, path, lo, hi in self.each_block():
+            for node, key, want, side in (
+                    (blk["verb"], "key", lo, "start"),
+                    (blk["bounded_on_the_right_by"], "verb", hi, "end")):
+                verb = node[key]
+                with self.subTest(artifact=c.art_rel, block=path, verb=verb):
+                    addr = node["compare_addr"]
+                    self.assertEqual(
+                        off_of(addr), want,
+                        "%s %s: range.%s is %s but the %r verb compare this "
+                        "block is bounded by is %s -- the range is not a free "
+                        "choice" % (c.art_rel, path, side, cit(want), verb,
+                                    addr))
+                    ins = self.at(addr)
+                    self.assertEqual(
+                        ins.raw[:5], STR_COMPARE,
+                        "%s is recorded as the %r verb compare but decodes %r"
+                        % (addr, verb, ins.text))
+                    self.assertEqual(
+                        node["key_literal"]["text"], verb,
+                        "%s: the literal beside the compare is %r, not %r"
+                        % (addr, node["key_literal"]["text"], verb))
+                    self.assertEqual(
+                        self.at(node["key_literal"]["push"]["addr"]).text,
+                        "mov di,%s" % node["key_literal"]["cs_offset"])
+                    self.assertIn(
+                        verb, by_verb,
+                        "data/command_dispatch.json has no row for %r" % verb)
+                    self.assertEqual(
+                        by_verb[verb]["compare_addr"], addr,
+                        "%s: data/command_dispatch.json records the %r "
+                        "compare at %s, this artifact says %s -- the "
+                        "independent authority disagrees"
+                        % (path, verb, by_verb[verb]["compare_addr"], addr))
+                    checked += 1
+        self.assertGreaterEqual(
+            checked, 8,
+            "only %d range endpoints anchored; the corpus has four blocks and "
+            "two endpoints each" % checked)
+
     # ------------------------------------------------------------- decode set
     def test_each_range_decodes_as_one_aligned_run(self):
         """The instruction counts are the anchor every negative rests on.
@@ -379,7 +461,7 @@ class ArmsArtifactTest(unittest.TestCase):
         the covering instruction must be a real boundary, it must actually
         cover the exempt address, and the index must be the offset within it.
         """
-        checked = 0
+        checked, bare_seen = 0, [0]
         for c, art in self.each():
             for e in self.exemptions(art):
                 with self.subTest(artifact=c.art_rel, addr=e["addr"]):
@@ -402,11 +484,40 @@ class ArmsArtifactTest(unittest.TestCase):
                         "%s: %s is not a boundary, so %s cannot be interior "
                         "to a single instruction"
                         % (e["addr"], cit(hi), e["addr"]))
+                    # `why` is free prose, so the only part of it any other
+                    # check reaches is an `addr text` pair -- which the gym's
+                    # two entries write and the club's two do not. The club's
+                    # say "the displacement byte of `jbe 0xe020`": a BARE
+                    # instruction, no address beside it, invisible to
+                    # `PROSE_INSN`. Task 32's fix round found exactly this
+                    # surface carrying a byte role the binary contradicts, so
+                    # the bare form is re-derived here against the covering
+                    # instruction rather than left to a reader.
+                    bare = [t for t in re.findall(r"`([^`]+)`", e.get("why", ""))
+                            if BARE_INSN.match(t)]
+                    for t in bare:
+                        self.assertEqual(
+                            t, host.text,
+                            "%s: its `why` calls the covering instruction %r, "
+                            "but orig/g.exe decodes %r at %s"
+                            % (e["addr"], t, host.text, e["inside"]))
+                    bare_seen[0] += len(bare)
                     checked += 1
         self.assertGreaterEqual(
             checked, 3,
             "only %d exemptions across the corpus; the exemption walk has "
             "stopped finding them" % checked)
+        # And the bare-instruction pattern still matches the shape it hunts,
+        # so "no bare claims found" can never be mistaken for "no defects".
+        self.assertGreaterEqual(
+            bare_seen[0], 2,
+            "the bare-instruction sweep over `why` matched %d claims across "
+            "the corpus; the club's two entries carry one each, so a zero "
+            "means the pattern stopped matching" % bare_seen[0])
+        self.assertTrue(BARE_INSN.match("jbe 0xe020"))
+        self.assertIsNone(BARE_INSN.match("1000:e594 jl 0xe59d"),
+                          "the bare pattern must not swallow the `addr text` "
+                          "form `PROSE_INSN` already checks")
 
     def test_the_boundary_exemption_list_is_honest(self):
         """An exemption that names a real boundary would hide a wrong address.
@@ -414,6 +525,7 @@ class ArmsArtifactTest(unittest.TestCase):
         So each entry must actually be OUTSIDE the aligned set -- the
         exemption list cannot be used to smuggle one in.
         """
+        seen = 0
         for c, art in self.each():
             for e in self.exemptions(art):
                 with self.subTest(artifact=c.art_rel, addr=e["addr"]):
@@ -422,6 +534,14 @@ class ArmsArtifactTest(unittest.TestCase):
                         "%s is exempted from the boundary walk but IS a "
                         "boundary; the exemption is either stale or covering "
                         "for a wrong address" % e["addr"])
+                seen += 1
+        # Both bespoke suites carried `len(entries) >= 1` per artifact, which
+        # the vet cannot satisfy -- it exempts nothing, and that zero is a
+        # measurement. The population control moves to the corpus so an empty
+        # walk still cannot pass as an honest list.
+        self.assertGreaterEqual(
+            seen, 4, "only %d exemptions walked; the corpus carries four "
+                     "(two club, two gym)" % seen)
 
     @staticmethod
     def exemptions(art):
@@ -629,9 +749,40 @@ class ArmsArtifactTest(unittest.TestCase):
                     "%s" % (c.art_rel, path,
                             blk["sweeps"]["random_call_sites"], swept))
 
+    def test_every_recorded_draw_site_re_derives_its_n(self):
+        """`n_expr` is walked back out of the binary, not read off the file.
+
+        A draw's `n` is the one number a map can get wrong without any sweep
+        noticing: `sweeps.random_call_sites` counts the CALLS, not what they
+        push. `tools/re_query.py`'s `pushed-n` reproduces all 17 hand-written
+        `data/wander.json` sites byte for byte, so it is the authority here.
+        """
+        checked = 0
+        for c, art in self.each():
+            for node, path in self.walk(art, ("addr", "n_expr")):
+                with self.subTest(artifact=c.art_rel, at=node["addr"]):
+                    ins = self.at(node["addr"])
+                    self.assertEqual(
+                        ins.text, "call 0xf78:0x114b",
+                        "%s: an `n_expr` record must sit on a `Random` call "
+                        "site; %s decodes %r"
+                        % (path, node["addr"], ins.text))
+                    d = re_query.pushed_n(self.prog, node["addr"])
+                    got = str(d.get("n_expr") or d.get("n"))
+                    self.assertEqual(
+                        got, node["n_expr"],
+                        "%s: the walk-back derives n = %r at %s, the artifact "
+                        "records %r"
+                        % (path, got, node["addr"], node["n_expr"]))
+                    checked += 1
+        self.assertGreaterEqual(
+            checked, 2,
+            "only %d recorded draw sites across the corpus; the club's "
+            "1000:e0b7 and the vet's 1000:d5f6 are both `n_expr` records, so "
+            "a smaller number means the walk stopped finding them" % checked)
+
     # ---------------------------------------------------------------- effects
     def test_the_recorded_effects_are_every_absolute_write_in_range(self):
-        reads_total = [0]
         for c, blk, path, lo, hi in self.each_block():
             with self.subTest(artifact=c.art_rel, block=path):
                 writes, reads, unclassified = set(), set(), []
@@ -668,15 +819,27 @@ class ArmsArtifactTest(unittest.TestCase):
                     "finds %d" % (c.art_rel, path,
                                   blk["sweeps"]["absolute_memory_writes"],
                                   len(writes)))
-                reads_total[0] += len(reads)
-        # The READ bucket is not recorded anywhere, so it is not compared --
-        # but it must not be empty, or the classifier that sorts writes from
-        # reads was never exercised and the write set could be everything.
-        self.assertGreater(
-            reads_total[0], 40,
-            "the absolute-READ bucket holds %d instructions across the whole "
-            "corpus; the write/read classifier is not being exercised"
-            % reads_total[0])
+                # The READ bucket is not recorded anywhere, so it is not
+                # compared -- but it must not be empty IN THIS BLOCK, or the
+                # classifier that sorts writes from reads was never exercised
+                # here and the write set could be everything the block
+                # touches. A corpus-wide floor does not say that: the first
+                # revision of this restore used one, and under it the club
+                # could fall to zero reads while the gym's 56 carried the
+                # total. The floor is per block for the same reason every
+                # other sweep in this file is.
+                self.assertEqual(
+                    len(reads), blk["sweeps"]["absolute_memory_reads"],
+                    "%s %s: the absolute-READ sweep finds %d instructions, "
+                    "the artifact records %d"
+                    % (c.art_rel, path, len(reads),
+                       blk["sweeps"]["absolute_memory_reads"]))
+                self.assertGreater(
+                    len(reads), 0,
+                    "%s %s: the absolute-READ bucket is empty, so the "
+                    "write/read classifier was never exercised over this "
+                    "block and the write set could be everything it touches"
+                    % (c.art_rel, path))
 
     def test_the_effect_path_markers_are_all_exercised(self):
         """`EFFECT_PATH` must not grow a marker that matches nothing.
@@ -1081,7 +1244,13 @@ class ArmsArtifactTest(unittest.TestCase):
                 items = node["what_the_port_must_change"]
                 total += len(items)
                 with self.subTest(artifact=c.art_rel, block=path):
-                    self.assertTrue(items, "%s: an empty work order" % path)
+                    # Per BLOCK, not only per artifact: the two bespoke floors
+                    # this replaced were 10 for `club` and 4 for
+                    # `command_list`, and an artifact-total floor alone lets
+                    # one block empty out while the other grows.
+                    self.assertGreaterEqual(
+                        len(items), 4,
+                        "%s carries only %d work-order items" % (path, len(items)))
                     self.assertEqual([i["n"] for i in items],
                                      list(range(1, len(items) + 1)))
                     for it in items:
@@ -1199,6 +1368,12 @@ class ArmsArtifactTest(unittest.TestCase):
                 self.assertGreaterEqual(
                     len(pairs), c.min_prose_pairs,
                     "%s: only %d pairs" % (c.doc_rel, len(pairs)))
+                cyr = [p for p in pairs if re.search(r"[\u0400-\u04ff]", p[0])]
+                self.assertGreaterEqual(
+                    len(cyr), c.min_prose_cyrillic_pairs,
+                    "%s: only %d of the %d quoted literals are Russian; the "
+                    "pairing is matching something else"
+                    % (c.doc_rel, len(cyr), len(pairs)))
                 for text, o in pairs:
                     self.assertEqual(
                         self.cs_literal(int(o, 16)), text,
@@ -1270,7 +1445,8 @@ class ArmsArtifactTest(unittest.TestCase):
         #: prose keys. Anything outside both sets fails below.
         ELSEWHERE = {"instructions", "cs_literal_pushes",
                      "conditional_branches", "random_call_sites",
-                     "absolute_memory_writes", "dgroup_addresses_touched",
+                     "absolute_memory_writes", "absolute_memory_reads",
+                     "dgroup_addresses_touched",
                      "ds_pointer_pushes", "near_calls_out"}
         for c, blk, path, lo, hi in self.each_block():
             run = self.run_of(lo, hi)

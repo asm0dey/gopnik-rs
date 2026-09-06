@@ -195,9 +195,8 @@ is the only location in this port with a second exit key.
 
 ## The `h` arm's flavour draw
 
-`1000:d5f6` is the only `Random` call site in the range, and it is the only
-draw in any location handler whose `n` is a bare immediate rather than a
-district product: `1000:d5f2 mov ax,0x3` / `1000:d5f5 push ax`.
+`1000:d5f6` is the only `Random` call site in the range, and its `n` is the
+bare immediate 3: `1000:d5f2 mov ax,0x3` / `1000:d5f5 push ax`.
 
 ```
 1000:d5f2  mov ax,0x3
@@ -213,6 +212,20 @@ district product: `1000:d5f2 mov ax,0x3` / `1000:d5f5 push ax`.
 1000:d672  push [0x38ac]
 1000:d676  push [0x38ae]
 ```
+
+**A withdrawn claim.** The first revision of this section called that bare
+immediate unusual — "the only draw in any location handler whose `n` is a bare
+immediate rather than a district product". **It is false.** The same five-byte
+signature swept over the eight handler ranges `data/command_dispatch.json`
+bounds, with each `n` walked back by `tools/re_query.py`'s `pushed-n`, finds
+**20** draw sites of which **13** push a bare immediate — `mar 1000:bdbb n=2`,
+`mar 1000:be51 n=3`, `mar 1000:c361 n=10`, `bmar 1000:ca0c n=4`, the six `wes`
+sell offers, `girl 1000:d728 n=2` and `pr 1000:d83f n=6` (`mov ax,0x6` /
+`push ax`, the identical idiom). `data/vet_arms.json`'s `draw_n_finding`
+carries the whole census and the command that recomputes it. The artifact's
+`sweeps.random_call_sites` counts draws IN RANGE only, so no check here could
+have reached the comparative half — which is why a comparative claim needs its
+own census or no place in the map.
 
 **`ax` at the two dispatch compares is that draw's return value and nothing
 else.** No instruction between `1000:d5f6` and `1000:d61b` writes `ax` outside
@@ -302,16 +315,32 @@ calls into no unported routine, and its one draw goes through
 scratch, is modelled as a value by `Game::afford` rather than as a byte — the
 existing treatment for all 58 of its image-wide writers.
 
-## Branch coverage
+## Branch coverage — the stored number, the recomputed one, and the port
 
 `data/branches.json` holds 23 branches in `1000:d3a6`..`1000:d6ec` and its
 STORED `port_touched` column marks 20 of them untouched. That column is a
-snapshot taken when Ghidra last ran; the recomputed metric against a later tree
-is a different, larger number, and image-wide the same disagreement is 84 stored
-against 476 recomputed, so it is structural.
-`docs/re/gym.md`'s "Branch coverage, and why two numbers disagree" is the
-precedent and `data/vet_arms.json`'s `branch_census.command` recomputes the
-stored pair.
+snapshot taken when Ghidra last ran; the recomputed metric moves, and this
+range is where saying so instead of *giving* the number went wrong.
 
-Neither number is a to-do list. `port_touched == false` means "no address
-citation", never "unimplemented".
+| measure | touched | uncited |
+|---|---:|---:|
+| `data/branches.json`'s stored column | 3 | 20 |
+| recomputed at Task 34's first revision | **15** | **8** |
+| recomputed after Task 34's fix round | **23** | **0** |
+
+The eight were `1000:d3ab`, `1000:d3da`, `1000:d3e1`, `1000:d3e8`,
+`1000:d53c`, `1000:d5be`, `1000:d6b2` and `1000:d6c3`. **Every one of them was
+already implemented** — the verb-compare hit, the three compares of the
+`al`-spelled health predicate, the `r` miss, the `h` hit and the two exit hits
+— and every one was uncited only because the comment beside the code named an
+adjacent address instead of the branch's own. Writing the eight citations in
+the checked form changed no behaviour and closed the range.
+
+That is worth stating rather than hiding behind "the two measures disagree":
+`port_touched == false` means "no address citation", never "unimplemented", but
+a *map* that declines to print the recomputed number lets an implemented range
+look half-done, and lets an unimplemented one look finished. The command that
+recomputes both is `data/vet_arms.json`'s `branch_census.command` for the
+stored pair and `docs/re/branches.md`'s *Recomputation → Coverage* block for
+the live one. Image-wide the same disagreement is 84 stored against 519
+recomputed, so it is structural and not a property of this range.

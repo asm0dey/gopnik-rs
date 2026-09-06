@@ -1057,15 +1057,18 @@ impl Game {
             }
             Command::Market => self.enter_shop(Location::Market),
             Command::Dealers => self.enter_shop(Location::Dealers),
+            // `1000:d3a6` is the compare and `1000:d3ab jz 0xd3b0` its hit.
             Command::Vet => self.enter_shop(Location::Vet),
             Command::Girl => self.enter_shop(Location::Girl),
             Command::Den => self.enter_shop(Location::Den),
+            // `1000:df06` is the compare and `1000:df0b jz 0xdf10` its hit.
             Command::Club => self.enter_shop(Location::Club),
             // `trn`'s own compare is `1000:e390`, on the STREET buffer
             // `20ae:3972`; `1000:e395 jz 0xe39a` is the hit and reaches the
             // discovery gate at `1000:e39a`, while `1000:e397` misses into
             // the shared tail at `1000:e961`.
             Command::Gym => self.enter_shop(Location::Gym),
+            // `1000:ea94` is the compare and `1000:ea99 jz 0xea9e` its hit.
             Command::CommandList => self.show_command_list(),
             Command::Help => self.show_help(),
             Command::Version => self.banner(),
@@ -1335,8 +1338,15 @@ impl Game {
             }
             Location::Vet => {
                 term::println("Ты пришел на ремот, к ветеринару напиши  ^6w^7  чтобы уйти");
-                // 1000:d3d3: healthy (hp >= hpmax, no broken jaw, no broken
-                // leg) skips the whole menu.
+                // 1000:d3d3..1000:d3f2, the predicate spelled into `al`:
+                // `1000:d3d6 cmp ax,[0x38ae]` / `1000:d3da jl 0xd3ea`, then
+                // `1000:d3dc cmp byte [0x38b0],0x0` / `1000:d3e1 jnz 0xd3ea`,
+                // then `1000:d3e3 cmp byte [0x38b1],0x0` /
+                // `1000:d3e8 jz 0xd3ee`, and `1000:d3f2 jz 0xd3f7` prints the
+                // menu on `al == 0`. Healthy takes `1000:d3f4 jmp 0xd4ba`,
+                // which lands ON the loop top -- so this early return is the
+                // menu skip and NOT the eject; the eject is
+                // `crate::vet::loop_top`, which `Game::enter_shop` runs next.
                 if self.player.hp >= self.player.hpmax
                     && !self.player.broken_jaw
                     && !self.player.broken_leg
@@ -7522,6 +7532,154 @@ mod tests {
         assert_eq!(g.player.hp, 11, "the flat +10 heal");
         assert_eq!(g.buff_countdown, 3, "1000:4b52 stores 3, not 10");
         assert!(g.player.stoned);
+    }
+
+    /// The seventeen lines of `i`, in the order `1000:ea9e`..`1000:ec73`
+    /// prints them, with every discovery flag set.
+    ///
+    /// **This is the test that fails if the array literal is re-sorted.**
+    /// `data/club_arms.json`'s `command_list.what_the_port_must_change[2]`
+    /// carries a `do_not_fix`: the seven gates run `3694`, `3695`, **`3698`**,
+    /// `3697`, **`3696`**, `3699`, `369a` -- Vet before Girl before Den, where
+    /// the flag ADDRESSES go Den, Girl, Vet. Read as flow that confirms the
+    /// PLACES.SAV read order; read as an ordering it would reintroduce the
+    /// swap `src/locations.rs` records earlier revisions of this port
+    /// carrying. Asserting the whole sequence is what makes "do not tidy it"
+    /// executable: any re-sort of the seven tuples moves `rep`, `girl` or
+    /// `pr` and reds this.
+    #[test]
+    fn the_command_list_prints_seventeen_lines_in_the_originals_gate_order() {
+        let mut g = game();
+        for loc in crate::locations::TRACKED {
+            g.places.mark_found(loc);
+        }
+        let out = crate::term::capture::lines(|| {
+            g.dispatch(Command::CommandList, &mut no_input()).unwrap();
+        });
+        assert_eq!(
+            out,
+            vec![
+                "Напиши: ^6w^7    чтобы шататься по окрестностям - искать на свою жопу приключения",
+                "Напиши: ^6mar^7  чтобы идти на рынок",
+                "Напиши: ^6bmar^7 чтобы идти к барыгам",
+                "Напиши: ^6rep^7  чтобы идти к ветеринару",
+                "Напиши: ^6girl^7 чтобы завалиться к своей девчонке",
+                "Напиши: ^6pr^7   чтобы идти в местный притон гопоты",
+                "Напиши: ^6kl^7   чтобы идти в клуб",
+                "Напиши: ^6trn^7  чтобы идти в качалку",
+                "Напиши: ^6s^7    чтобы посмотреть в лужу на свою уродскую рожу",
+                "Напиши: ^6sv^7   чтобы приглядеться к пинаемому мудаку",
+                "Напиши: ^6k^7    чтобы гасить мудака который тебе попался на дороге",
+                "Напиши: ^6v^7    чтобы позвать подкрепление",
+                "Напиши: ^6kos^7  чтобы схавать косяк",
+                "Напиши: ^6h^7    чтобы выпить пиво (если не охото к ветеринару)",
+                "Напиши: ^6mh^7   чтобы набухаться до чёртиков",
+                "Напиши: ^6name^7 чтобы сменить погоняло",
+                "Напиши: ^6e^7    если захочешь выйти",
+            ],
+            "1000:ea9e ungated, then 1000:eab7/ead7/eaf7/eb17/eb37/eb57/eb77 \
+             in THAT order, then 1000:eb97 onward ungated"
+        );
+        assert_eq!(out.len(), 17);
+    }
+
+    /// The gate order really is not the flag-address order, spelled out so a
+    /// reader of the assertion above does not have to hold both sequences in
+    /// their head. Printing the two gated lines whose flags are `20ae:3698`
+    /// (Vet) and `20ae:3696` (Den) and nothing else, the VET line must come
+    /// first -- `1000:eaf7` precedes `1000:eb37` -- while
+    /// `crate::locations::TRACKED`, which is the flag-ADDRESS order, has Den
+    /// at slot 2 and Vet at slot 4.
+    #[test]
+    fn the_i_lists_gate_order_is_not_the_flag_address_order() {
+        let mut g = game();
+        g.places = Places::from_bytes(&[0u8; 7]);
+        g.places.mark_found(Location::Den);
+        g.places.mark_found(Location::Vet);
+        let out = crate::term::capture::lines(|| {
+            g.dispatch(Command::CommandList, &mut no_input()).unwrap();
+        });
+        let gated: Vec<&String> = out
+            .iter()
+            .filter(|l| l.contains("^6rep^7") || l.contains("^6pr^7"))
+            .collect();
+        assert_eq!(gated.len(), 2);
+        assert!(
+            gated[0].contains("^6rep^7"),
+            "1000:eaf7 (Vet) gates before 1000:eb37 (Den); got {gated:?}"
+        );
+        // And the flag-address order really is the other way round, so the
+        // assertion above is a contrast and not a restatement.
+        let den = crate::locations::TRACKED
+            .iter()
+            .position(|&l| l == Location::Den)
+            .unwrap();
+        let vet = crate::locations::TRACKED
+            .iter()
+            .position(|&l| l == Location::Vet)
+            .unwrap();
+        assert!(
+            den < vet,
+            "locations::TRACKED is the PLACES.SAV / flag-address order, Den \
+             at slot 2 and Vet at slot 4 -- do not reorder it to match the \
+             `i` list"
+        );
+    }
+
+    /// `data/club_arms.json`'s `command_list.what_the_port_must_change[0]`
+    /// `falsifiable_as`, made executable: **with only Market and Vet found
+    /// the list must be TWELVE lines** -- the ungated head, the two gated
+    /// lines whose flags are set, and the nine ungated tail lines. That is
+    /// the state `Game::new` leaves a fresh character in (`1000:6dc3` sets
+    /// `20ae:3698`, `1000:6dc8` sets `20ae:3694`), so it is also what a
+    /// player sees on turn one.
+    #[test]
+    fn the_command_list_is_twelve_lines_with_only_market_and_vet_found() {
+        let mut g = game();
+        assert!(g.places.is_found(Location::Market) && g.places.is_found(Location::Vet));
+        for loc in crate::locations::TRACKED {
+            if loc != Location::Market && loc != Location::Vet {
+                assert!(!g.places.is_found(loc), "{loc:?} must start clear");
+            }
+        }
+        let out = crate::term::capture::lines(|| {
+            g.dispatch(Command::CommandList, &mut no_input()).unwrap();
+        });
+        assert_eq!(out.len(), 12, "1 + 2 + 9, not 13 and not 17: {out:#?}");
+        assert_eq!(out[1], "Напиши: ^6mar^7  чтобы идти на рынок");
+        assert_eq!(out[2], "Напиши: ^6rep^7  чтобы идти к ветеринару");
+        for absent in ["^6bmar^7", "^6girl^7", "^6pr^7", "^6kl^7", "^6trn^7"] {
+            assert!(
+                !out.iter().any(|l| l.contains(absent)),
+                "{absent} is gated on a flag that is clear"
+            );
+        }
+    }
+
+    /// Each of the seven gates reads its OWN verb's flag: setting exactly one
+    /// must add exactly its own line to the twelve above. A gate wired to the
+    /// wrong flag passes every other test here.
+    #[test]
+    fn each_i_gate_reads_its_own_verbs_discovery_flag() {
+        for (loc, token) in [
+            (Location::Dealers, "^6bmar^7"),
+            (Location::Girl, "^6girl^7"),
+            (Location::Den, "^6pr^7"),
+            (Location::Club, "^6kl^7"),
+            (Location::Gym, "^6trn^7"),
+        ] {
+            let mut g = game();
+            g.places = Places::from_bytes(&[0u8; 7]);
+            g.places.mark_found(loc);
+            let out = crate::term::capture::lines(|| {
+                g.dispatch(Command::CommandList, &mut no_input()).unwrap();
+            });
+            assert_eq!(out.len(), 11, "1 + 1 + 9 for {loc:?}");
+            assert!(
+                out.iter().any(|l| l.contains(token)),
+                "{loc:?} found, but {token} is not listed"
+            );
+        }
     }
 
     #[test]

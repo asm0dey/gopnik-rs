@@ -485,50 +485,66 @@ own columns when Ghidra last ran (`82a08d8`); the table below is recomputed from
 the shipped tree, and the block under *Recomputation* prints it. Quote the
 command, not the cell.
 
-After Task 34: 838 game branches; **508 touched (60.6%)**; 330 with no citation
-at the branch or its guard.
+After Task 34: 838 game branches; **519 touched (61.9%)**; 319 with no
+citation at the branch or its guard.
 
-**The +32, decomposed — recomputed, not counted by eye.** The block under
+**The +43, decomposed — recomputed, not counted by eye.** The block under
 *Recomputation → Coverage → The per-task delta* differences `hit()` per branch
 between two revisions and buckets the gained ones by address; at
-`858f5fb..c581db3` it prints, verbatim:
+`858f5fb..HEAD` it prints, verbatim:
 
 ```
-base 858f5fb: touched 476 | head: touched 508 | gained 32 | lost 0
-  rep vet            12  1000:d3f2 1000:d4c1 1000:d4c8 1000:d4cf 1000:d543 1000:d54a 1000:d551 1000:d5ca 1000:d5d4 1000:d5ea 1000:d5fe 1000:d61e
-  kl arms            13  1000:e074 1000:e082 1000:e0c8 1000:e0ca 1000:e0ce 1000:e14f 1000:e156 1000:e179 1000:e283 1000:e28a 1000:e2e7 1000:e2ff 1000:e366
-  i list              7  1000:eabc 1000:eadc 1000:eafc 1000:eb1c 1000:eb3c 1000:eb5c 1000:eb7c
+base 858f5fb: touched 476 | head: touched 519 | gained 43 | lost 0
+  rep vet            20  1000:d3ab 1000:d3da 1000:d3e1 1000:d3e8 1000:d3f2 1000:d4c1 1000:d4c8 1000:d4cf 1000:d53c 1000:d543 1000:d54a 1000:d551 1000:d5be 1000:d5ca 1000:d5d4 1000:d5ea 1000:d5fe 1000:d61e 1000:d6b2 1000:d6c3
+  kl gates + menu     1  1000:df0b
+  kl arms            14  1000:e074 1000:e082 1000:e0c8 1000:e0ca 1000:e0ce 1000:e14f 1000:e156 1000:e179 1000:e283 1000:e28a 1000:e2e7 1000:e2f8 1000:e2ff 1000:e366
+  i list              8  1000:ea99 1000:eabc 1000:eadc 1000:eafc 1000:eb1c 1000:eb3c 1000:eb5c 1000:eb7c
 ```
 
-12 + 13 + 7 = 32, `lost 0`, and `elsewhere` is empty — no citation drifted in
-from outside the three ranges the task touched.
+20 + 1 + 14 + 8 = 43, `lost 0`, and `elsewhere` is empty — no citation drifted
+in from outside the three ranges the task touched. **All three ranges are now
+fully cited**: 23 of 23 in `1000:d3a6`..`1000:d6ec`, 20 of 20 in
+`1000:df06`..`1000:e38f`, 8 of 8 in `1000:ea94`..`1000:ec81`.
 
-**All 32 are behaviour the port now implements; none is commentary.** That is
-the split ruling R12 asks for, and it is unusual: Task 32's +27 was ~25
-behaviour and 2 comments recording branches the port deliberately does not
-implement, and Task 30's +61 carried 10 such. Here the classification is
-one-by-one, by the function each branch landed in:
+**All 43 are branches the port implements; none is commentary.** Every one is a
+condition some function in `src/` evaluates: `crate::vet::loop_top`'s three
+tests, the two vet arms' gates and the flavour dispatch,
+`Game::print_shop_intro`'s menu-skip predicate, the four verb-compare hits the
+three `Command::` dispatch arms take, `crate::vet::key_dispatches` and
+`crate::vet::exits`, `crate::club::key_dispatches`, the three club price gates,
+the three branches of the 32-bit luck compare, the "stakes changed" bounds, the
+caught-cheating entry, `Game::shop_turn`'s shared `w`, and the seven `i` gates.
 
-* **`rep vet`, 12** — `1000:d3f2` is `Game::print_shop_intro`'s menu skip;
-  `1000:d4c1`/`d4c8`/`d4cf` are `crate::vet::loop_top`'s three tests;
-  `1000:d543`/`d54a`/`d551` are the `r` arm's OR gate and price test;
-  `1000:d5ca`/`d5d4`/`d5ea` are the `h` arm's health gate, price test and
-  hpmax clamp; `1000:d5fe`/`d61e` are its `Random(3)` flavour dispatch.
-* **`kl arms`, 13** — `1000:e074` and `1000:e2e7` are
-  `crate::club::key_dispatches`; `1000:e082`, `1000:e28a` and `1000:e2ff` are
-  the three price gates; `1000:e0c8`/`e0ca`/`e0ce` are the three branches of
-  the 32-bit luck compare `Game::luck_below_random_32` models;
-  `1000:e14f`/`e156` bound the "stakes changed" line; `1000:e179` reaches the
-  caught-cheating block; `1000:e283` is arm `1`'s miss; `1000:e366` is the
-  shared `w` exit `Game::shop_turn` owns.
-* **`i list`, 7** — the seven discovery-flag gates
-  `Game::show_command_list` now evaluates.
+**A caveat the number does not carry, recorded here rather than left to be
+rediscovered.** The behaviour-versus-commentary split is **form-dependent, not
+principled**. A branch counts as "touched" when `src/` names *its own address
+or its guard's*, so which side of the line a branch falls on depends on which
+address a comment happened to write, not on whether the port implements it.
+Task 34's fix round is the demonstration: eleven of the 43 above moved from
+uncited to cited without one line of behaviour changing, purely by writing
+`1000:d5be` beside the `matches!` that already implemented it. Before that
+round the same eleven were implemented and uncounted; the split said "0
+commentary" then too, and it was true only because the *uncited* ones were
+invisible to it. So:
 
-There is nothing in this task's diff of the shape "a comment naming a branch
-the port does not run": the two candidates would have been the club's ban gate
-`1000:df1f` and the vet's `al`-computing health test
-`1000:d3da`/`d3e1`/`d3e8`, and both were already touched at `858f5fb` through
-their guards, so neither appears in the +32 at all.
+* "N behaviour, 0 commentary" is a statement about the branches that ARE
+  cited. It says nothing about branches the port implements and does not name.
+* The honest complement is the per-range `touched / uncited` pair, which is why
+  this section now prints it for all three of Task 34's ranges.
+* A later task that adds citations to already-working code will show a rise
+  here with no `src/` behaviour change. That is not padding and not progress;
+  it is the metric measuring what it measures.
+
+An earlier revision of this paragraph said the vet's `1000:d3da`, `1000:d3e1`
+and `1000:d3e8` "were already touched at `858f5fb` through their guards, so
+neither appears in the +32 at all". **That was false**, and it was exactly the
+sentence that would otherwise have surfaced the shortfall: run at a `858f5fb`
+worktree the index above reports `hit=False`, `self_cited=False`,
+`guard_cited=False` for all three. They were absent from the delta because they
+were **uncited**, not because they had already been counted — and the first
+revision of this task left 8 of the vet's 23, 2 of the club's 20 and 1 of the
+`i` list's 8 in that state without disclosing it. The claim was true of
+`1000:df1f` alone (`hit=True`, `guard_cited=True` through `1000:df1a`).
 
 **Before that, after Task 32: 476 touched (56.8%).** Its +27 decomposed as:
 
@@ -897,11 +913,11 @@ print are in the history sentence above, and in
 `docs/superpowers/RESUME.md`'s measured-history table:
 
 ```
-game branches 838 | touched 508 (60.6%) | uncited 330
-1000:ab59    bytes 17143 branches 406 touched 297 citations 2114
+game branches 838 | touched 519 (61.9%) | uncited 319
+1000:ab59    bytes 17143 branches 406 touched 308 citations 2134
 1000:3d11    bytes  6971 branches 224 touched 107 citations 665
 1000:1a03    bytes  2700 branches  83 touched  54 citations 176
-1000:6a0d    bytes  2527 branches  33 touched  15 citations 162
+1000:6a0d    bytes  2527 branches  33 touched  15 citations 164
 1000:29c4    bytes   666 branches  19 touched   2 citations  26
 1000:0d14    bytes  1196 branches  17 touched  11 citations  59
 1000:2526    bytes   929 branches  17 touched   9 citations  61
@@ -914,7 +930,7 @@ game branches 838 | touched 508 (60.6%) | uncited 330
 1000:5f55    bytes  1000 branches   1 touched   0 citations   4
 1000:02c2    bytes   508 branches   0 touched   0 citations   0
 1000:0acc    bytes    15 branches   0 touched   0 citations   0
-418 spans hold 579 of the 838
+409 spans hold 568 of the 838
    17  1000:4169..1000:43f5     1000:3d11        653 bytes
     8  1000:3d33..1000:3dc6     1000:3d11        148 bytes
     6  1000:1e07..1000:1e34     1000:1a03         46 bytes
@@ -1042,8 +1058,9 @@ EOF
 `BUCKETS` is the only per-task part: it is the address ranges the task
 touched, and anything outside them lands in `elsewhere` rather than being
 dropped, so a stray citation cannot vanish from the decomposition. The output
-at `858f5fb..c581db3` is quoted in the coverage section above, with the
-behaviour/commentary split of every one of its 32 branches; Task 32's
+at `858f5fb..HEAD` is quoted in the coverage section above, with the
+behaviour/commentary split of every one of its 43 branches and the caveat
+that split rests on; Task 32's
 `36137a0..fbae9c5` output is quoted beneath it and needs its own `BUCKETS`
 (`('trn menu + entry', 0xe390, 0xe623)`, `('trn arms', 0xe624, 0xe947)`,
 `('kos', 0xe948, 0xea93)`) to reproduce.

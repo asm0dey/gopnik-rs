@@ -1999,6 +1999,7 @@
    "random_call_sites": 1,
    "random_call_sites_note": "ONE, at `1000:e0b7`.  Every other club arm is deterministic, and the sweep that says so is the same signature run over the whole image and required to find the population `docs/re/METHODOLOGY.md` records.",
    "absolute_memory_writes": 17,
+   "absolute_memory_reads": 30,
    "dgroup_addresses_touched": 12,
    "ds_pointer_pushes": 9,
    "shortstring_compares": 5,
@@ -2134,7 +2135,7 @@
    {
     "n": 5,
     "blocked": false,
-    "what": "On a WIN: `money += stake * 2` (`1000:e0d7`), then `stake += 2` (`1000:e0f7`), then `xp += district` (`1000:e11d`), then `apply_levels` with `award = 0` (`1000:e124`, param set at `1000:e121`).  The `#` of `^2Ты выиграл # рублей ` is the STAKE (`1000:e0e0`), i.e. the net gain, not the doubled credit.",
+    "what": "On a WIN: `money += stake * 2` (`1000:e0d7`), then `stake += 2` (`1000:e0f7`), then `xp += district` (`1000:e11d`), then the level-up call at `1000:e124` whose `param_1` is the `0` set at `1000:e121` -- the CAPPED form, `crate::progress::apply_levels`'s `uncapped: false`.  **`param_1` is not the port's `award` parameter**, and an earlier revision of this item wrote `award = 0`, which invites the wrong reading: the original credits the xp with the `add` at `1000:e11d` and then calls, so the port may either add it first and pass `award = 0` or pass `award = district` and let the callee add it -- both reproduce `1000:e11d` + `1000:e124`, and `src/club.rs` takes the second, as `Game::den_job` does for `1000:debe` + `1000:dec5`.  The `#` of `^2Ты выиграл # рублей ` is the STAKE (`1000:e0e0`), i.e. the net gain, not the doubled credit.",
     "do_not_fix": "`money += stake * 2` after `money -= stake` is a NET `+stake`.  Collapsing the two into one `+= stake` changes nothing observable and loses the debit the refusal gate at `1000:e082` is measured against on the NEXT iteration; keep both."
    },
    {
@@ -2771,6 +2772,7 @@
    "conditional_branches": 8,
    "random_call_sites": 0,
    "absolute_memory_writes": 0,
+   "absolute_memory_reads": 7,
    "absolute_memory_writes_note": "ZERO.  The `i` handler is pure output: it reads the seven flags and writes nothing, spends no draw, calls nothing but `WriteLn`, and has no loop.  All four negatives are set-equality measurements over the range, not omissions.",
    "dgroup_addresses_touched": 7,
    "ds_pointer_pushes": 1,

@@ -2926,6 +2926,139 @@
       "ClubTest.test_every_counted_consequence_is_recomputed_from_the_decode"
     ],
     "expect": "recomputes to"
+  },
+  {
+    "label": "vet-arms-range-is-anchored-to-the-verb-compare",
+    "defends": "`each_block()` derives every sweep's bounds from the block's own `range`, so a NARROWED range with its counts updated to match would pass every 'every X in range' check. `data/vet_arms.json` has no bespoke suite, so the anchor to the `rep` compare and to `data/command_dispatch.json` is the only thing that pins it.",
+    "artifact": "data/vet_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "verb",
+        "compare_addr"
+      ],
+      "from": "1000:d3a6",
+      "to": "1000:d537"
+    },
+    "test": [
+      "python3",
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_each_range_is_anchored_to_the_verb_compares_not_to_itself"
+    ],
+    "expect": "the range is not a free choice"
+  },
+  {
+    "label": "vet-arms-both-breaks-cleared-by-one-price",
+    "defends": "The `r` arm clears BOTH break bytes -- `1000:d558` and `1000:d55d` -- behind the ONE price test at `1000:d54c`. Dropping either from `effects[]` is the shape of the reading this task corrected, where `r` healed one break per price.",
+    "artifact": "data/vet_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        0,
+        "effects",
+        2,
+        "addr"
+      ],
+      "from": "1000:d55d",
+      "to": "1000:d558"
+    },
+    "test": [
+      "python3",
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_recorded_effects_are_every_absolute_write_in_range"
+    ],
+    "expect": "the artifact's EFFECT records disagree"
+  },
+  {
+    "label": "vet-arms-heal-is-five-health",
+    "defends": "`1000:d5de` is `add word [0x38ac],0x5` -- the `h` arm adds five HEALTH and touches neither break byte. The port carried `h` as a jaw heal for four tasks; the instruction text is what settles it.",
+    "artifact": "data/vet_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        1,
+        "effects",
+        1,
+        "text"
+      ],
+      "from": "add word [0x38ac],0x5",
+      "to": "add word [0x38ac],0x3"
+    },
+    "test": [
+      "python3",
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
+    ],
+    "expect": "data/vet_arms.json says"
+  },
+  {
+    "label": "vet-arms-branch-inventory-is-complete",
+    "defends": "The branch inventory is a SET EQUALITY over the range, which is what makes \"both vet arms fail silently\" a measurement -- a string sweep cannot see a branch that prints nothing. `1000:d551` is the `r` arm's price branch and the artifact names it in exactly one place, so dropping it leaves a conditional branch the map never mentions.",
+    "artifact": "data/vet_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        0,
+        "gates",
+        2,
+        "branch",
+        "addr"
+      ],
+      "from": "1000:d551",
+      "to": "1000:d54c"
+    },
+    "test": [
+      "python3",
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_recorded_gates_are_every_conditional_branch_in_range"
+    ],
+    "expect": "that the artifact never names"
+  },
+  {
+    "label": "vet-arms-draw-n-is-walked-back",
+    "defends": "`1000:d5f6`'s `n` is the bare immediate 3 pushed at `1000:d5f2`. `sweeps.random_call_sites` counts the CALL and not what it pushes, so `n_expr` is the only place the value lives -- and it is walked back out of the binary by `re_query.pushed_n`, not read off the file.",
+    "artifact": "data/vet_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        1,
+        "draws",
+        0,
+        "n_expr"
+      ],
+      "from": "3",
+      "to": "4"
+    },
+    "test": [
+      "python3",
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_every_recorded_draw_site_re_derives_its_n"
+    ],
+    "expect": "the walk-back derives n ="
+  },
+  {
+    "label": "vet-arms-read-bucket-is-per-block",
+    "defends": "The absolute-READ count is recorded PER BLOCK, so the write/read classifier is shown to be exercised over this range and not merely somewhere in the corpus. The first restore of this assertion used a corpus-wide floor, under which one block could fall to zero reads.",
+    "artifact": "data/vet_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "sweeps",
+        "absolute_memory_reads"
+      ],
+      "from": 24,
+      "to": 23
+    },
+    "test": [
+      "python3",
+      "tools/test_arms_artifacts.py",
+      "ArmsArtifactTest.test_the_recorded_effects_are_every_absolute_write_in_range"
+    ],
+    "expect": "the absolute-READ sweep finds"
   }
  ]
 }

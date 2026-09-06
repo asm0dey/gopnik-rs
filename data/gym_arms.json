@@ -3418,6 +3418,7 @@
   "random_call_sites": 0,
   "random_call_sites_note": "ZERO. The gym and the joint spend no `Random` draw of their own. The `3` arm can still move the stream, through `1000:2526`, which spends two draws per level gained at `1000:25fe` -- so 'no draws in range' is not 'no draws'.",
   "absolute_memory_writes": 39,
+  "absolute_memory_reads": 56,
   "dgroup_addresses_touched": 23,
   "ds_pointer_pushes": 12,
   "shortstring_compares": 8,

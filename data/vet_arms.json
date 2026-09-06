@@ -11,7 +11,9 @@
   "note": "Half-open.  `1000:d3a6` IS the `rep` verb compare; `1000:d6ed` IS the `girl` verb compare and is NOT decoded here.  `data/command_dispatch.json` is the independent authority on both."
  },
  "verb": {
-  "token": {
+  "key": "rep",
+  "buffer": "20ae:3972",
+  "key_literal": {
    "role": "verb_token",
    "cs_offset": "0x9966",
    "file_offset": "0x0b236",
@@ -21,30 +23,30 @@
     "text": "mov di,0x9966"
    }
   },
-  "buffer": "20ae:3972",
-  "buffer_push": {
+  "push_buffer": {
    "addr": "1000:d39c",
    "text": "mov di,0x3972"
   },
+  "compare_addr": "1000:d3a6",
   "compare": {
    "addr": "1000:d3a6",
    "text": "call 0xf78:0xbd8"
   },
-  "hit": {
+  "hit_branch": {
    "addr": "1000:d3ab",
    "text": "jz 0xd3b0"
   },
-  "miss": {
+  "miss_branch": {
    "addr": "1000:d3ad",
    "text": "jmp 0xd6e3"
   },
   "note": "The token is read out of the STREET buffer `20ae:3972`, not the vet's own `20ae:3a72`; `data/command_dispatch.json` records the compare at `1000:d3a6` and the token at file `0xB236`."
  },
  "bounded_on_the_right_by": {
-  "addr": "1000:d6ed",
   "verb": "girl",
-  "text": "call 0xf78:0xbd8",
-  "token": {
+  "setup_addr": "1000:d6e3",
+  "compare_addr": "1000:d6ed",
+  "key_literal": {
    "role": "verb_token",
    "cs_offset": "0x9b9a",
    "file_offset": "0x0b46a",
@@ -54,7 +56,7 @@
     "text": "mov di,0x9b9a"
    }
   },
-  "note": "`1000:d6e3`..`1000:d6ed` is `girl`'s own setup and is the last span of the tiling."
+  "note": "`1000:d6e3` is the `girl` verb's own buffer push and is where every vet exit lands (`1000:d6c8 jmp short 0xd6e3`), so the range's right edge is an instruction boundary the handler itself jumps to.  `1000:d6ed` IS the `girl` compare and is not decoded here."
  },
  "discovery_gate": {
   "ds": "20ae:3698",
@@ -699,7 +701,7 @@
      "text": "call 0xf78:0x114b"
     },
     "n": 3,
-    "note": "The only `Random` site in the range, and the only one in a location handler whose `n` is a bare immediate rather than a district product.  `ax` at `1000:d5fb` and `1000:d61b` is this draw's return value: no instruction between `1000:d5f6` and `1000:d61b` writes `ax` outside the `1000:d600` arm that `1000:d5fe` skips."
+    "note": "The only `Random` site in the range.  `ax` at `1000:d5fb` and `1000:d61b` is this draw's return value: no instruction between `1000:d5f6` and `1000:d61b` writes `ax` outside the `1000:d600` arm that `1000:d5fe` skips.  For what is and is not unusual about a bare-immediate `n`, see `draw_n_finding` -- the first draft of this note got that comparison wrong."
    },
    "strings": [
     {
@@ -828,9 +830,147 @@
     "addr": "1000:d688",
     "text": "jmp short 0xd6a3"
    },
-   "finding": "`h` is a HEAL, not a jaw.  `1000:d5de` is `add word [0x38ac],0x5` and neither `20ae:38b0` nor `20ae:38b1` appears anywhere in `1000:d5af`..`1000:d6a3`.  The two menu rows say the same thing -- file `0xB2B2` is `3^7 рубля тебя залатают`, file `0xB2D9` is `7^7 рублей починят переломы` -- but the rows are OUTPUT and the `add` is the flow.  The `Random(3)` picks one of three flavour blocks, all three converge on `1000:d66d`, and only the `0` arm prints two lines."
+   "finding": "`h` is a HEAL, not a jaw.  `1000:d5de` is `add word [0x38ac],0x5` and neither `20ae:38b0` nor `20ae:38b1` appears anywhere in `1000:d5af`..`1000:d6a3`.  The two menu rows say the same thing -- file `0xB2B2` is `3^7 рубля тебя залатают`, file `0xB2D9` is `7^7 рублей починят переломы` -- but the rows are OUTPUT and the `add` is the flow.  The `Random(3)` picks one of three flavour blocks, all three converge on `1000:d66d`, and only the `0` arm prints two lines.",
+   "draws": [
+    {
+     "addr": "1000:d5f6",
+     "n_expr": "3",
+     "note": "The only `Random` call site in `1000:d3a6`..`1000:d6ed`.  See `draw_n_finding`."
+    }
+   ]
   }
  ],
+ "draw_n_finding": {
+  "tier": "flow",
+  "claim": "`1000:d5f6` is the vet's ONLY `Random` call site and its `n` is the bare immediate 3 pushed at `1000:d5f2`/`1000:d5f5`.  What is unusual about it is that the vet spends a draw at all and spends it on FLAVOUR -- all three arms of `1000:d5fb`/`1000:d61e` converge on `1000:d66d` and none touches a global.",
+  "withdrawn_claim": "The first revision of this map, of `docs/re/vet.md` and of `src/vet.rs`'s module doc said `1000:d5f6` was \"the only one in a location handler whose `n` is a bare immediate rather than a district product\".  **That is false.**  Swept with the same five-byte signature and `tools/re_query.py`'s `pushed-n` walk-back over the eight location handlers, 20 draw sites exist and 13 of them push a bare immediate -- the vet's is one of thirteen, not one of one.  The artifact's own `sweeps.random_call_sites` counts draws IN RANGE only, so nothing here could have caught the comparative half; it is now recorded as a census with the command that recomputes it.",
+  "census_command": "python3 - <<'EOF'\nimport re, sys\nsys.path.insert(0, 'tools')\nimport re_query\nprog = re_query.Program()\nimg = open('orig/g.exe', 'rb').read()\nSIG = b'\\x9a\\x4b\\x11\\x78\\x0f'\nHDR = 0x18d0\nsites = []\nk = img.find(SIG)\nwhile k >= 0:\n    sites.append(k - HDR)\n    k = img.find(SIG, k + 1)\nRANGES = [('mar',0xb94a,0xc4be), ('bmar',0xc4be,0xd3a6), ('rep',0xd3a6,0xd6ed),\n          ('girl',0xd6ed,0xd7d8), ('pr',0xd802,0xdf06), ('kl',0xdf06,0xe390),\n          ('trn',0xe390,0xe973), ('kos',0xe973,0xea94)]\nbare = 0\nfor name, lo, hi in RANGES:\n    for off in sites:\n        if lo <= off < hi:\n            c = '1000:%04x' % off\n            d = re_query.pushed_n(prog, c)\n            n = str(d.get('n_expr') or d.get('n'))\n            bare += bool(re.fullmatch(r'\\d+', n))\n            print(name, c, n)\nprint(len(sites), 'draw sites image-wide;', bare, 'bare immediates in the eight handlers')\nEOF",
+  "handler_ranges_note": "The eight ranges are each verb's own compare through, but not including, the next -- the boundaries `data/command_dispatch.json` records.",
+  "draw_sites": [
+   {
+    "verb": "mar",
+    "addr": "1000:bdbb",
+    "n": "2",
+    "bare_immediate": true
+   },
+   {
+    "verb": "mar",
+    "addr": "1000:be51",
+    "n": "3",
+    "bare_immediate": true
+   },
+   {
+    "verb": "mar",
+    "addr": "1000:c344",
+    "n": "None",
+    "bare_immediate": false
+   },
+   {
+    "verb": "mar",
+    "addr": "1000:c361",
+    "n": "10",
+    "bare_immediate": true
+   },
+   {
+    "verb": "mar",
+    "addr": "1000:c371",
+    "n": "word[0x38a4] * 2",
+    "bare_immediate": false
+   },
+   {
+    "verb": "bmar",
+    "addr": "1000:ca0c",
+    "n": "4",
+    "bare_immediate": true
+   },
+   {
+    "verb": "bmar",
+    "addr": "1000:cf58",
+    "n": "5",
+    "bare_immediate": true
+   },
+   {
+    "verb": "bmar",
+    "addr": "1000:d00d",
+    "n": "5",
+    "bare_immediate": true
+   },
+   {
+    "verb": "bmar",
+    "addr": "1000:d0c2",
+    "n": "8",
+    "bare_immediate": true
+   },
+   {
+    "verb": "bmar",
+    "addr": "1000:d185",
+    "n": "8",
+    "bare_immediate": true
+   },
+   {
+    "verb": "bmar",
+    "addr": "1000:d241",
+    "n": "15",
+    "bare_immediate": true
+   },
+   {
+    "verb": "bmar",
+    "addr": "1000:d2f6",
+    "n": "23",
+    "bare_immediate": true
+   },
+   {
+    "verb": "rep",
+    "addr": "1000:d5f6",
+    "n": "3",
+    "bare_immediate": true
+   },
+   {
+    "verb": "girl",
+    "addr": "1000:d728",
+    "n": "2",
+    "bare_immediate": true
+   },
+   {
+    "verb": "pr",
+    "addr": "1000:d83f",
+    "n": "6",
+    "bare_immediate": true
+   },
+   {
+    "verb": "pr",
+    "addr": "1000:dd97",
+    "n": "byte[0x3692] * 15",
+    "bare_immediate": false
+   },
+   {
+    "verb": "pr",
+    "addr": "1000:ddda",
+    "n": "byte[0x3692] * 15",
+    "bare_immediate": false
+   },
+   {
+    "verb": "pr",
+    "addr": "1000:de5a",
+    "n": "byte[0x3692] * 10",
+    "bare_immediate": false
+   },
+   {
+    "verb": "pr",
+    "addr": "1000:de7c",
+    "n": "byte[0x3692] * 10",
+    "bare_immediate": false
+   },
+   {
+    "verb": "kl",
+    "addr": "1000:e0b7",
+    "n": "byte[0x3692] * 12",
+    "bare_immediate": false
+   }
+  ],
+  "bare_immediates": 13,
+  "draw_sites_total": 20
+ },
  "key_set": [
   {
    "key": "r",
@@ -1352,6 +1492,7 @@
   "random_call_sites": 1,
   "random_call_sites_note": "ONE, at `1000:d5f6`, and its `n` is the bare immediate 3 pushed at `1000:d5f2`.  The sweep that says so is the same signature run image-wide and required to find the 86-call population `docs/re/METHODOLOGY.md` records.",
   "absolute_memory_writes": 10,
+  "absolute_memory_reads": 24,
   "dgroup_addresses_touched": 7,
   "ds_pointer_pushes": 8,
   "shortstring_compares": 5,

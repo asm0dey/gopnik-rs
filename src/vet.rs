@@ -69,8 +69,7 @@
 //! ## The `h` arm's flavour draw
 //!
 //! `1000:d5f6` is the only `Random` call site in the range and its `n` is
-//! the immediate 3 pushed at `1000:d5f2`/`1000:d5f5` -- not a district
-//! product, unlike every other draw in a location handler. `ax` at the two
+//! the immediate 3 pushed at `1000:d5f2`/`1000:d5f5`. `ax` at the two
 //! dispatch compares `1000:d5fb` and `1000:d61b` is that draw's return
 //! value and nothing else: no instruction between `1000:d5f6` and
 //! `1000:d61b` writes `ax` (the run is `cmp ax,0x1` / `jnz` / the push
@@ -78,6 +77,17 @@
 //! `1000:d600` arm that `1000:d5fe` skips on the way to `1000:d61b`).
 //! It picks one of three flavour blocks and changes nothing else; the
 //! `^2Здоровья #/#` line after it prints on all three paths.
+//!
+//! **A withdrawn claim.** The first revision of this comment called the bare
+//! immediate unusual -- "not a district product, unlike every other draw in
+//! a location handler". That is false: sweeping the same five-byte
+//! signature over the eight handler ranges and walking each `n` back with
+//! `tools/re_query.py`'s `pushed-n` finds **20** draw sites of which **13**
+//! push a bare immediate, `mar 1000:bdbb n=2` and `pr 1000:d83f n=6` among
+//! them. `data/vet_arms.json`'s `draw_n_finding` carries the census and the
+//! command that recomputes it. The artifact's `sweeps.random_call_sites`
+//! counts draws IN RANGE only, so nothing could have caught the comparative
+//! half -- which is exactly why it should not have been written.
 //!
 //! Address convention: `docs/re/METHODOLOGY.md`, "Address convention, and
 //! its range of validity". Every string literal below is quoted from
@@ -100,6 +110,10 @@ use crate::text;
 /// and inside the arm, which is why they live in [`run_key`] and not here.
 /// The two exits are [`exits`]'.
 pub(crate) fn key_dispatches(key: &str) -> bool {
+    // `1000:d5be` is the `h` compare's HIT and `1000:d53c` the `r` compare's
+    // MISS into it, so this `matches!` is the whole two-key chain: a `true`
+    // for `h` is `1000:d5be` taken, and a `false` for anything the chain
+    // does not match falls through `1000:d5c0 jmp 0xd6a3` to the exits.
     matches!(key, "r" | "h")
 }
 
@@ -109,6 +123,9 @@ pub(crate) fn key_dispatches(key: &str) -> bool {
 /// `e` at `1000:d6be` is the vet's own second one and has no counterpart at
 /// the den, the club or the gym. Both hits reach `1000:d6c8`.
 pub(crate) fn exits(key: &str) -> bool {
+    // The two hit branches are `1000:d6b2 jz 0xd6c8` (`w`) and
+    // `1000:d6c3 jz 0xd6c8` (`e`); a `false` here is `1000:d6c5 jmp 0xd4ba`,
+    // the loop's back edge.
     key == "w" || key == "e"
 }
 
@@ -229,7 +246,10 @@ fn fix_fractures(g: &mut Game) {
 /// **The `Random(3)` is flavour only**: all three arms converge on
 /// `1000:d66d` and none of them touches a global. The `0` arm is the only
 /// one with two lines. The draw still moves the RNG stream, which is why it
-/// goes through [`crate::rng::Rng::below_at`] rather than being elided.
+/// goes through [`crate::rng::Rng::below_at`] rather than being elided --
+/// and it is the only draw in `1000:d3a6`..`1000:d6ed`, which
+/// `data/vet_arms.json`'s `sweeps.random_call_sites` asserts by set
+/// equality.
 ///
 /// **The clamp is `jle`, not `jl`.** At exactly hpmax the store at
 /// `1000:d5ef` is skipped, which is the same value either way -- but the

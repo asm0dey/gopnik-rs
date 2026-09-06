@@ -100,7 +100,8 @@ pub(crate) fn key_dispatches(g: &Game, key: &str) -> bool {
         // 1000:e27e / 1000:e283 -- no gate of its own.
         "1" => true,
         // 1000:e2e2 gates the compare at 1000:e2f3; 1000:e2e7 jumps past it
-        // to the `w` compare's own setup at 1000:e357.
+        // to the `w` compare's own setup at 1000:e357, and 1000:e2f8 is the
+        // compare's own miss to the same place when the district opens it.
         "2" => g.district > 1,
         // 1000:e361: the shared `w` compare, then 1000:e368 back to the
         // prompt.
@@ -224,9 +225,15 @@ fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>)
             "^6Ты получаешь # качков опыта",
             &[i64::from(xp)],
         ));
-        // 1000:e11d `add [0x38ce],ax` is the award; 1000:e121/1000:e124
-        // call FUN_1000_2526(0), the CAPPED form, with no outer threshold
-        // guard of its own.
+        // 1000:e11d `add [0x38ce],ax` is the xp credit and 1000:e124 is the
+        // level-up call. **The two parameters are not the same thing**:
+        // `xp` here is [`progress::apply_levels`]'s `award`, which models the
+        // `add` at 1000:e11d, while the `false` is the original's own
+        // `param_1 = 0` set at 1000:e121 -- the CAPPED form (1000:257a),
+        // not an award of zero. `Game::den_job` pairs 1000:debe with
+        // 1000:dec5 the same way; `crate::gym`'s `3` arm adds first and
+        // passes `award = 0` instead, which is the other faithful spelling.
+        // 1000:e124 has no outer threshold guard of its own.
         progress::apply_levels(&mut g.progress, &mut g.player, &mut g.rng, xp, false);
     }
 
@@ -326,7 +333,9 @@ fn caught_cheating(
         "^6Ты получаешь # качков опыта за победу в игре",
         &[i64::from(xp)],
     ));
-    // 1000:e215 is the award; 1000:e219/1000:e21c call FUN_1000_2526(0).
+    // 1000:e215 is the credit and 1000:e21c the call; `xp` is
+    // `apply_levels`'s `award` (modelling the `add`) and `false` is the
+    // original's `param_1 = 0` from 1000:e219 -- see `play_cards` above.
     progress::apply_levels(&mut g.progress, &mut g.player, &mut g.rng, xp, false);
 
     // 1000:e21f / 1000:e222 -- FUN_1000_3d11(2), AFTER the level-up.
