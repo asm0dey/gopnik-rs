@@ -2457,6 +2457,54 @@
       "district_one_swallows_three_four_and_five_in_silence"
     ],
     "expect": "must print nothing"
+  },
+  {
+    "label": "gym-string-offsets-resolve",
+    "defends": "src/gym.rs carries 18 `file 0x...` string citations and shipped OUTSIDE tools/test_string_citations.py's SOURCES list, so both halves of that guard were no-ops on the newest and most text-dense module in the tree -- the same omission Task 20's review round M6 found for src/game.rs.  This perturbs the OFFSET half: a cited offset changed to a neighbouring real one, which is exactly the shape of the four wrong offsets Task 19's review found and which no grep can catch.",
+    "artifact": "src/gym.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "file `0xBE07` `^2Ты купил защиту.`",
+      "to": "file `0xBE1A` `^2Ты купил защиту.`"
+    },
+    "test": [
+      "python3",
+      "tools/test_string_citations.py",
+      "StringCitationTest.test_no_cited_offset_in_the_tree_holds_the_wrong_string"
+    ],
+    "expect": "but the line cites it for"
+  },
+  {
+    "label": "gym-comment-and-code-literal-agree",
+    "defends": "The other half of the same guard: `scan` proves a cited offset holds the backticked text, and says nothing about the Rust literal the port actually prints, so editing the string in the code and leaving its comment alone stayed green until comment_code_pairs was added.  This perturbs the CODE literal of the gym's `4` arm and leaves its citation comment untouched.",
+    "artifact": "src/gym.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "term::println(\"^2Ты купил защиту.\");",
+      "to": "term::println(\"^2Ты купил НЕ защиту.\");"
+    },
+    "test": [
+      "python3",
+      "tools/test_string_citations.py",
+      "StringCitationTest.test_a_backticked_citation_agrees_with_the_literal_beside_it"
+    ],
+    "expect": "but the code beside it prints"
+  },
+  {
+    "label": "string-citation-sources-list-cannot-go-stale",
+    "defends": "SOURCES is hand-written and has now rotted twice -- src/game.rs (Task 20 review M6) and src/gym.rs (Task 32 review) -- each time letting a whole module's string citations past both halves of the guard.  test_every_src_file_with_checkable_citations_is_accounted_for walks src/*.rs and requires every file with a RESOLVABLE citation to be named in SOURCES or in NOT_YET_SCANNED.  Dropping a file from SOURCES must therefore red, not silently reduce coverage.",
+    "artifact": "tools/test_string_citations.py",
+    "mutate": {
+      "op": "text-replace",
+      "from": "    \"src/gym.rs\",\n",
+      "to": ""
+    },
+    "test": [
+      "python3",
+      "tools/test_string_citations.py",
+      "StringCitationTest.test_every_src_file_with_checkable_citations_is_accounted_for"
+    ],
+    "expect": "named in neither SOURCES nor NOT_YET_SCANNED"
   }
  ]
 }

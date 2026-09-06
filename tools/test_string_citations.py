@@ -40,11 +40,20 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 #: citations there and none was machine-checked, because nothing pointed
 #: this scanner at the file that carries the game's own text -- the single
 #: largest source of string citations in the tree.
+#:
+#: `src/gym.rs` was added in Task 32's review round for the SAME reason,
+#: which is why the M6 sentence above is quoted rather than paraphrased: a
+#: new module carrying 18 string citations shipped outside this list, and the
+#: task that shipped it edited this very file without noticing. **A
+#: hard-coded list is the failure mode**, so `test_every_src_file_with_string
+#: _citations_is_in_sources` below now walks `src/*.rs` and fails on any file
+#: this list omits, rather than trusting the next author to remember.
 SOURCES = [
     "src/persist.rs",
     "src/save.rs",
     "src/locations.rs",
     "src/game.rs",
+    "src/gym.rs",
     "src/character_sheet.rs",
     "docs/re/save-format.md",
 ]
@@ -281,6 +290,76 @@ class StringCitationTest(unittest.TestCase):
                 # report it as a real failure, not an unguarded crash.
                 self.fail("%s: shortstring failed to decode (cp866)" % hex(off))
             self.assertTrue(got.startswith(want), (hex(off), got[:40]))
+
+    def test_every_src_file_with_checkable_citations_is_accounted_for(self):
+        """`SOURCES` is a hand-written list, and a hand-written list rots.
+
+        Task 20's review found `src/game.rs` outside it; Task 32's review
+        found `src/gym.rs` outside it, eighteen string citations later, in a
+        round whose own diff edited this file. Twice is a pattern, so the
+        list stops being trusted here: every `src/*.rs` file carrying at
+        least one CHECKABLE citation -- one `file`/`image`/`CS` offset with a
+        game-text literal beside it, i.e. one this scanner could resolve --
+        must be named either in `SOURCES` or in `NOT_YET_SCANNED` below. A
+        new module lands in neither and fails this test.
+
+        `NOT_YET_SCANNED` is deliberately not empty and deliberately not a
+        to-do list dressed as a pass: each entry carries what pointing the
+        scanner at it currently reports, so the finding is recorded with its
+        numbers rather than remembered. Two of the three are clean today and
+        could be promoted in any task that touches them; `src/commands.rs`
+        is not, and its two mismatches are quoted in full because they are
+        the defect class this whole file exists for -- a doc comment quoting
+        a LOSSY version of the string at an offset that is itself correct:
+
+          * `src/commands.rs:56` cites `file 0xB58A` for
+            `^6Пережитки прошлого жми w чтобы искать врагов`; the bytes hold
+            `^6Пережитки прошлого жми ^6w^7 чтобы искать врагов` -- the
+            inner colour markup is missing from the quote. `src/game.rs`'s
+            `Command::LegacyFight` prints the full form, so the port is
+            right and the quote beside the citation is not.
+          * `src/commands.rs:164` cites `file 0xC210` for
+            `"чтобы позвать подкрепление"`, a fragment of
+            `Напиши: ^6v^7    чтобы позвать подкрепление`, quoted as prose
+            rather than as the literal.
+
+        Neither is a wrong offset and neither reaches `src/`'s behaviour, so
+        fixing them is a separate change from the one that found them.
+        """
+        checkable = set()
+        for p in sorted((ROOT / "src").glob("*.rs")):
+            lines = p.read_text(encoding="utf-8").splitlines()
+            for i, line in enumerate(lines):
+                if not CITE.search(line):
+                    continue
+                if any(GAME_TEXT.match(t) for t in literals_near(lines, i)):
+                    checkable.add("src/" + p.name)
+                    break
+        missing = sorted(checkable - set(SOURCES) - set(NOT_YET_SCANNED))
+        self.assertEqual(
+            missing, [],
+            "these src/*.rs files carry citations this scanner could resolve "
+            "and are named in neither SOURCES nor NOT_YET_SCANNED: %r" % missing)
+        # And the other direction: an entry parked in NOT_YET_SCANNED that no
+        # longer has anything to check is a stale excuse, not an exemption.
+        stale = sorted(set(NOT_YET_SCANNED) - checkable)
+        self.assertEqual(
+            stale, [],
+            "NOT_YET_SCANNED names files with no checkable citation left; "
+            "delete the entry: %r" % stale)
+
+
+#: `src/*.rs` files with checkable string citations that `SOURCES` does not
+#: yet scan, each with what the scanner reports today. See
+#: `test_every_src_file_with_checkable_citations_is_accounted_for`, which is
+#: what forbids this dictionary from being a silent omission.
+NOT_YET_SCANNED = {
+    "src/combat_dispatch.rs": "checked 9, unchecked 10, 0 bad -- clean today",
+    "src/commands.rs": "checked 1, unchecked 11, 2 bad: two lossy quotes at "
+                       "correct offsets (lines 56 and 164), enumerated in the "
+                       "test's docstring",
+    "src/main.rs": "checked 3, unchecked 0, 0 bad -- clean today",
+}
 
 
 #: `docs/re/gaps.md`'s trimmed-prompt entry publishes this command instead of

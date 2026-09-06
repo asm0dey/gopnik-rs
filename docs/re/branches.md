@@ -486,14 +486,43 @@ the shipped tree, and the block under *Recomputation* prints it. Quote the
 command, not the cell.
 
 After Task 32: 838 game branches; **476 touched (56.8%)**; 362 with no citation
-at the branch or its guard. **Two of Task 32's +27 are branches the port does
-NOT implement** — `1000:e3b6` and `1000:e3d4`, two of the eight compares of the
-gym's trained-armour recompute (`1000:e3a4`..`1000:e3e2`), which
-`Game::imm_row_visible`'s doc comment now names one by one so the standing
-`docs/re/gaps.md` gap is recorded per branch instead of per range. The other
-six of those eight were already cited the same way before this task. Every
-other one of the +27 is an implemented branch: twenty in the gym's arms
-(`crate::gym`), four in `kos` (`Game::smoke`, whose behaviour Task 32 did not
+at the branch or its guard.
+
+**The +27, decomposed — recomputed, not counted by eye.** The block under
+*Recomputation → Coverage → The per-task delta* differences `hit()` per branch
+between two revisions and buckets the gained ones by address; at
+`36137a0..fbae9c5` it prints, verbatim:
+
+```
+base 36137a0: touched 449 | head: touched 476 | gained 27 | lost 0
+  trn menu + entry    3  1000:e395 1000:e3b6 1000:e3d4
+  trn arms           20  1000:e633 1000:e63a 1000:e68d 1000:e6bf 1000:e6c6 1000:e72d 1000:e741 1000:e757 1000:e779 1000:e7da 1000:e7e7 1000:e7f8 1000:e7ff 1000:e806 1000:e866 1000:e87a 1000:e894 1000:e89b 1000:e917 1000:e941
+  kos                 3  1000:e978 1000:e9a5 1000:e9d5
+  elsewhere           1  1000:47d3
+```
+
+3 + 20 + 3 + 1 = 27, and `lost 0` says no branch stopped being cited. **The
+first revision of this paragraph counted by hand and got two of the four
+buckets wrong**, enumerating 28 against a stated total of 27 — the defect
+`docs/re/METHODOLOGY.md` names as an inventory whose completeness claim
+stopped the next search, in the paragraph whose whole job is to show the rise
+is not padding. The two errors were "four in `kos`" (it is three:
+`1000:e9af`'s guard `1000:e9aa` was already cited at `36137a0`, in an
+unrelated comment — `git show 36137a0:src/game.rs | grep -n '1000:e9aa'`) and
+"the eight compares" of the recompute (there are six — see below).
+
+**Two of the 27 are branches the port does NOT implement**: `1000:e3b6` and
+`1000:e3d4`, two of the **six** branches of the gym's trained-armour recompute
+`1000:e3a4`..`1000:e3e2` (six compares, six branches:
+`python3 tools/re_query.py resolve 1000:e3a4 -n 70 -i 40`).
+`Game::imm_row_visible`'s doc comment names all twelve addresses one by one so
+the standing `docs/re/gaps.md` gap is recorded per branch instead of per
+range; the other four (`1000:e3af`, `e3c1`, `e3cd`, `e3e0`) were already cited
+the same way before this task. That is the over-reporting failure direction
+`data/branches.json`'s `port_cross_reference` records.
+
+**The other 25 are implemented branches**: twenty in the gym's arms
+(`crate::gym`), three in `kos` (`Game::smoke`, whose behaviour Task 32 did not
 change — the citations were what was missing), `1000:e395` (the `trn` verb
 dispatch, `Game::enter_shop`) and `1000:47d3` (the tooth guard's own split in
 `crate::combat`, reached from the `4` arm's doc).
@@ -530,7 +559,7 @@ Task 32 (the gym's five arms ported into `src/gym.rs`, `kos` cited) **476
 (56.8%)**, +27, of which +26 land in `1000:ab59` (239 → 265) and the last one
 in `1000:3d11` (106 → 107). **The `touched` column moved in exactly those two
 functions and nowhere else.** The `citations` column moved in three:
-`1000:ab59` 1523 → 1745, `1000:3d11` 663 → 665, and `1000:2526` 55 → 61 —
+`1000:ab59` 1523 → 1764, `1000:3d11` 663 → 665, and `1000:2526` 55 → 61 —
 that third one with no `touched` movement at all, which is the usual gap
 between *citing an address* and *citing a branch*, and which the paragraph
 below about that cell goes into.
@@ -827,7 +856,7 @@ totals this block used to print are in the history sentence above, and in
 
 ```
 game branches 838 | touched 476 (56.8%) | uncited 362
-1000:ab59    bytes 17143 branches 406 touched 265 citations 1745
+1000:ab59    bytes 17143 branches 406 touched 265 citations 1764
 1000:3d11    bytes  6971 branches 224 touched 107 citations 665
 1000:1a03    bytes  2700 branches  83 touched  54 citations 176
 1000:6a0d    bytes  2527 branches  33 touched  15 citations 159
@@ -896,6 +925,65 @@ game branches 838 | touched 305 (36.4%) | uncited 533
 
 At `3981f74` the first line is `touched 280 (33.4%) | uncited 558` and
 `1000:1a03` reads `touched 29 citations 39`, which is where the +25 comes from.
+
+#### The per-task delta
+
+The totals block above answers "how many"; **this one answers "which"**, and
+it exists because the totals do not constrain a decomposition written beside
+them. Task 32's first revision decomposed its own +27 by hand into buckets
+that summed to 28, with two of the four counts wrong, and every headline
+figure on the page stayed correct while it did — so the sum is the check, and
+the sum has to be printed rather than asserted.
+
+It reuses the citation index above, builds it a second time over
+`git show <BASE>:<file>`, and differences `hit()` per branch. `lost` is
+printed as well as `gained`: a citation deleted somewhere else in the same
+commit would otherwise hide inside a net figure.
+
+```bash
+python3 - 36137a0 <<'EOF'
+import json, glob, re, collections, subprocess, sys
+BASE = sys.argv[1] if len(sys.argv) > 1 else 'HEAD~1'
+d = json.load(open('data/branches.json'))
+CITE = re.compile(r'\b([0-9a-fA-F]{4}):([0-9a-fA-F]{1,4})\b', re.ASCII)
+flat = lambda a: int(a[:4], 16) * 16 + int(a[5:], 16)
+def index(get):
+    c = collections.defaultdict(set)
+    for pat in d['port_citation_sources']:
+        for p in sorted(glob.glob(pat, recursive=True)):
+            t = get(p)
+            if t is None: continue                     # a file the base lacks
+            for i, ln in enumerate(t.splitlines(), 1):
+                for s, o in CITE.findall(ln):
+                    s = int(s, 16)
+                    c[(s + 0x1000 if s < 0x1000 else s) * 16 + int(o, 16)].add('%s:%d' % (p, i))
+    return c
+def at_base(p):
+    r = subprocess.run(['git', 'show', '%s:%s' % (BASE, p)], capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else None
+new, old = index(lambda p: open(p, encoding='utf-8').read()), index(at_base)
+B = [b for b in d['branches'] if b['class'] == 'game']
+hit = lambda b, c: flat(b['addr']) in c or bool(b['guard']) and flat(b['guard']['addr']) in c
+gained = [b for b in B if hit(b, new) and not hit(b, old)]
+lost = [b for b in B if hit(b, old) and not hit(b, new)]
+print('base %s: touched %d | head: touched %d | gained %d | lost %d'
+      % (BASE, sum(hit(b, old) for b in B), sum(hit(b, new) for b in B), len(gained), len(lost)))
+BUCKETS = [('trn menu + entry', 0xe390, 0xe623), ('trn arms', 0xe624, 0xe947),
+           ('kos', 0xe948, 0xea93)]
+where = lambda b: next((n for n, lo, hi in BUCKETS
+                        if lo <= int(b['addr'].split(':')[1], 16) <= hi), 'elsewhere')
+seen = collections.Counter(map(where, gained))
+for k in [n for n, _, _ in BUCKETS] + ['elsewhere']:
+    if seen[k]:
+        print('  %-18s %2d  %s' % (k, seen[k],
+              ' '.join(b['addr'] for b in gained if where(b) == k)))
+EOF
+```
+
+`BUCKETS` is the only per-task part: it is the address ranges the task
+touched, and anything outside them lands in `elsewhere` rather than being
+dropped, so a stray citation cannot vanish from the decomposition. The output
+at `36137a0..fbae9c5` is quoted in the coverage section above.
 
 ### The `strings loaded inside` column of the span ranking
 

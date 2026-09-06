@@ -752,6 +752,22 @@ future split of the two fields cannot silently drop the scratch's increment
 and leave the arm running for ever. The three tables above are unaffected —
 they are about the menu row, which nothing here changed.
 
+**The direction argument has a precondition, and it is worth writing down
+because it can be removed by a change that looks unrelated.** "The port's
+`abs` is never smaller than the original's" holds only while the port's
+`armor` actually carries the equipment bonuses the original subtracts back
+out. It does, since Task 26: the command is
+`grep -n 'player.armor +=' src/game.rs`, whose hits inside
+`Game::buy_market_row` are the `mar` rows that also set the four flags —
+`+1` beside `1000:bf80`, `+2` at `1000:c107` beside `1000:c0e0`,
+`+1`-or-`+2` beside `1000:c183` and `+2`-or-`+4` beside `1000:c2ca`. **If a
+later task made those purchases set the flag without adding the armour**, the
+port's `armor` would become exactly the trained armour, the substitution
+would stop being a substitution, and this entry would be closable rather than
+merely one-directional — but until the recompute is written, the two would
+agree by accident rather than by construction, so the entry should be
+re-derived at that point and not simply deleted.
+
 ## ~~The gym's five keys are dispatched by nothing~~ — CLOSED by Task 32
 
 *Cited from `src/gym.rs` and `src/game.rs`'s `Game::shop_turn`; the map is

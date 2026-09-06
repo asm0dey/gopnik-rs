@@ -1509,15 +1509,25 @@ impl Game {
     /// 2") and `1000:c2ca` sets `[0x38b9]` (row 9, "Броня +4") -- the four
     /// subtrahends are those four rows' own advertised bonuses.
     ///
-    /// Each bullet above names its own compare and its own branch, and those
-    /// **eight addresses are branches this method does not implement**: they
-    /// are written out one by one so the gap below is recorded per branch
-    /// rather than per range. `data/branches.json`'s `port_cross_reference`
-    /// calls that the over-reporting direction of its citation proxy ("a
-    /// citation can be a record of a gap"), and `docs/re/branches.md`'s
-    /// coverage sentence names the two of the eight that Task 32 added --
-    /// `1000:e3b6` and `1000:e3d4` -- among the branches of its `+27` that
-    /// record a gap rather than an implementation.
+    /// The bullets name **twelve** addresses, and they are not twelve
+    /// branches: `1000:e3a4`..`1000:e3e2` holds **six** compares
+    /// (`1000:e3aa`, `e3b1`, `e3bc`, `e3c8`, `e3cf`, `e3db`) and the **six**
+    /// branches that follow them (`1000:e3af`, `e3b6`, `e3c1`, `e3cd`,
+    /// `e3d4`, `e3e0`) -- one compare/branch pair per bullet clause, two
+    /// clauses in the first and third bullets and one in the second and
+    /// fourth. An earlier revision of this paragraph said "eight", which was
+    /// a count by eye of a thing the image answers; the command that answers
+    /// it is `python3 tools/re_query.py resolve 1000:e3a4 -n 70 -i 40`.
+    ///
+    /// **None of those six branches is implemented here**; they are written
+    /// out one by one so the gap below is recorded per branch rather than
+    /// per range. `data/branches.json`'s `port_cross_reference` calls that
+    /// the over-reporting direction of its citation proxy ("a citation can
+    /// be a record of a gap"). Four of the six were already cited before
+    /// Task 32 (`1000:e3af`, `e3c1`, `e3cd`, `e3e0`); Task 32 added the
+    /// other two, `1000:e3b6` and `1000:e3d4`, which are the two branches
+    /// `docs/re/branches.md`'s coverage sentence names as records of a gap
+    /// rather than implementations.
     ///
     /// **The port carries all four flags and this method still ignores
     /// them**, so `abs` is exactly `armor` here, where the original computes

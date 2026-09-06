@@ -509,6 +509,21 @@ for the right, `data/branches.json`'s `port_touched` over `src/**/*.rs` and
 | `c5f1f2e` | Task 28 (port, the den's submenu) | 433/838 | **424/838** |
 | `e6b62eb` | Task 29 (RE, the dealers' sell path) | **446/838** | 424/838 |
 | — | Task 30 (port, the dealers' sell path) | 446/838 | **449/838** |
+| `36137a0` | Task 31 (RE, the gym and the joint) | *not recomputed* | 449/838 |
+| `fbae9c5` | Task 32 (port, the gym's five arms) | *not recomputed* | **476/838** |
+
+**The two `not recomputed` cells are an honest gap, not a measurement.**
+Task 32 recomputed only the right column — `838 game branches | touched 476
+(56.8%)`, from the *Recomputation → Coverage* block against its own tree, and
+`449` re-derived the same way at `36137a0` before it started. The left column
+needs the `docs/re/*.md` snippet below run against a worktree of each commit,
+which that task did not do. Leaving the rows out entirely would have made the
+table quietly stop at Task 30; leaving the cells blank says which half is
+measured. Task 31's `449` is not a measurement either but a consequence: it
+touches no path in `port_citation_sources` (`src/**/*.rs`,
+`data/command_dispatch.json`), so the scan's whole input is byte-identical to
+`36137a0`'s and the figure cannot have moved — the same argument
+`docs/re/branches.md` records for Tasks 29 and 31.
 
 Read the alternating rows together. **Task 25 moved the documents metric by +42
 and the port metric by exactly 0**; **Task 26 moved the port metric by +40 and
@@ -547,7 +562,8 @@ globs `docs/re/*.md` and nothing else, so it rises when a document is written
 and barely moves when the port advances — Task 22 ported a 2700-byte function
 and moved it by **one**. The metric that tracks the port is
 `data/branches.json`'s `port_touched` over `src/`, which went 280 → 305 across
-the same range, 305 → 388 across Tasks 23-26 and 388 → 449 across Tasks 27-30;
+the same range, 305 → 388 across Tasks 23-26, 388 → 449 across Tasks 27-30 and
+449 → 476 across Tasks 31-32;
 see `docs/re/branches.md`
 under *Recomputation → Coverage*.
 

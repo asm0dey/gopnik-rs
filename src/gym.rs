@@ -49,6 +49,41 @@
 //! converts one and prints the bytes there. Every string literal below is
 //! quoted from `data/strings.json` at the file offset its `mov di,<n>` push
 //! resolves to, markup and trailing spaces included.
+//!
+//! ## Why the string citations are written the way they are
+//!
+//! `tools/test_string_citations.py` scans this file (Task 32's review round
+//! added it to that scanner's `SOURCES`, which had let the whole module
+//! through — the same omission its own docstring records for `src/game.rs`
+//! at Task 20). It checks two things and both need a particular shape:
+//! `scan` resolves a `file 0xNNNN` citation only when a backtick-quoted
+//! literal sits within one line of it, and `comment_code_pairs` binds that
+//! quoted literal to the Rust literal on a code line within two below. So
+//! each of the **18** inline citations here is written as
+//! `file `0xNNNN` `^Nthe string``, on one line, directly above the
+//! `term::println` that prints it. Written the shorter way — the offset in
+//! the comment and the text only inside the `println` — both halves report
+//! nothing at all, which is how a module with 18 of them passed a guard
+//! whose entire purpose is to catch a wrong one.
+//!
+//! **The citations that stay `unchecked` here are of two kinds, and neither
+//! is a gap.** Most are inside the `text` disassembly fences of the arm docs
+//! below (`mov di,0xa47e (file 0xBD4E)` and its like) — transcript lines,
+//! where quoting the string beside the offset would corrupt the transcript —
+//! and the rest are prose mentions in this doc and the arm docs. **Every
+//! offset in both kinds is checked elsewhere in this file** by an inline
+//! citation of the same offset, so `unchecked` here means "cited twice, once
+//! in a checkable form", not "unverified". The one exception is `CS 0x848e`,
+//! the shared `w` exit token, whose string is the single character `w` and
+//! therefore can never match the scanner's game-text rule at all.
+//!
+//! Both statements are recomputable rather than counted here: the per-kind
+//! tally and the "checked elsewhere" containment come from running
+//! `tools/test_string_citations.py`'s `scan` and `literals_near` over this
+//! file, which is what the Task 32 fix-round report shows. A raw count in
+//! this comment would go stale on the next edit, which is the defect
+//! `docs/re/METHODOLOGY.md` warns about under "A port citation cites the
+//! command, not the line it printed".
 
 use crate::game::Game;
 use crate::progress;
@@ -150,13 +185,15 @@ fn train_strength(g: &mut Game) {
     // 1000:e635 / 1000:e63a -- a signed word compare in the original; money
     // is an i32 here, which is the standing width divergence, not a new one.
     if g.player.money < 20 {
-        // 1000:e63c, file 0xA71D, printed by 1000:e650; 1000:e655 leaves.
+        // 1000:e63c pushes file `0xA71D` `^4Не хватает`, printed by
+        // 1000:e650; 1000:e655 leaves.
         term::println("^4Не хватает");
         return;
     }
     g.player.money -= 20; // 1000:e657
 
-    // 1000:e65c, file 0xBD4E, printed by 1000:e670 -- BEFORE the six stores.
+    // 1000:e65c pushes file `0xBD4E` `^2Ты прокачиваешь силу.`, printed by
+    // 1000:e670 -- BEFORE the six stores.
     term::println("^2Ты прокачиваешь силу.");
     g.player.strength += 1; // 1000:e675
     g.player.hpmax += 1; // 1000:e679
@@ -168,8 +205,8 @@ fn train_strength(g: &mut Game) {
     }
     g.player.dmg_max += 1; // 1000:e693 -- outside the branch, every time.
 
-    // 1000:e697, file 0xACD2 (the trailing space is the original's),
-    // printed by 1000:e6ab.
+    // 1000:e697 pushes file `0xACD2` `^1Сила +1 ` (the trailing space is
+    // the original's), printed by 1000:e6ab.
     term::println("^1Сила +1 ");
 }
 
@@ -195,19 +232,22 @@ fn train_strength(g: &mut Game) {
 fn train_stamina(g: &mut Game) {
     // 1000:e6c1 / 1000:e6c6.
     if g.player.money < 20 {
-        // 1000:e6c8, file 0xA71D, printed by 1000:e6dc; 1000:e6e1 leaves.
+        // 1000:e6c8 pushes file `0xA71D` `^4Не хватает`, printed by
+        // 1000:e6dc; 1000:e6e1 leaves.
         term::println("^4Не хватает");
         return;
     }
     g.player.money -= 20; // 1000:e6e3
 
-    // 1000:e6e8, file 0xBD66, printed by 1000:e6fc.
+    // 1000:e6e8 pushes file `0xBD66` `^2Ты прокачиваешь выносливость.`,
+    // printed by 1000:e6fc.
     term::println("^2Ты прокачиваешь выносливость.");
     g.player.vitality += 1; // 1000:e701 -- 20ae:38a2 is `+0x06`, живучесть
     g.player.hpmax += 5; // 1000:e705
     g.player.hp += 5; // 1000:e70a
 
-    // 1000:e70f, file 0xBD86 (trailing space is the original's), 1000:e723.
+    // 1000:e70f pushes file `0xBD86` `^1Выносливость +1 ` (trailing space
+    // is the original's), printed by 1000:e723.
     term::println("^1Выносливость +1 ");
 }
 
@@ -267,24 +307,28 @@ fn train_xp(g: &mut Game) {
     // 1000:e746..1000:e753 / 1000:e757 `jnle`. `mul dx` is unsigned and the
     // compare is signed; district is 1..5, so neither can wrap.
     if i32::from(g.district) * 10 - 3 <= i32::from(g.player.level) {
-        // 1000:e759, file 0xBD99, printed by 1000:e76d; 1000:e772 leaves.
+        // 1000:e772 leaves. file `0xBD99` `^6Ты слишком крутой чтобы тренироваться здесь.`,
+        // pushed at 1000:e759 and printed by 1000:e76d.
         term::println("^6Ты слишком крутой чтобы тренироваться здесь.");
         return;
     }
     // 1000:e774 / 1000:e779 -- second, so the line above wins when both fail.
     if g.player.money < 10 {
-        // 1000:e77b, file 0xAD43, printed by 1000:e78f; 1000:e794 leaves.
+        // 1000:e77b pushes file `0xAD43` `^4Не хватает деньжат`, printed by
+        // 1000:e78f; 1000:e794 leaves.
         term::println("^4Не хватает деньжат");
         return;
     }
     g.player.money -= 10; // 1000:e796
 
-    // 1000:e79b, file 0xBDC8, printed by 1000:e7af.
+    // 1000:e79b pushes file `0xBDC8` `^2Ты тренируешься.`, printed by
+    // 1000:e7af.
     term::println("^2Ты тренируешься.");
     g.progress.xp += 10; // 1000:e7b4
 
-    // 1000:e7b9, file 0xBDDB, printed by 1000:e7ce; the `#` is 1000:e7be's
-    // own `mov ax,0xa`, pushed at 1000:e7c1 -- not [0x38ce].
+    // The `#` is 1000:e7be's own `mov ax,0xa`, pushed at 1000:e7c1 -- not
+    // [0x38ce]. file `0xBDDB` `^1 +# качков опыта `, pushed at 1000:e7b9
+    // and printed by 1000:e7ce.
     term::println(&text::fill("^1 +# качков опыта ", &[10]));
     // 1000:e7d3 / 1000:e7d6 / 1000:e7da.
     if g.progress.xp < g.progress.threshold {
@@ -329,20 +373,23 @@ fn train_xp(g: &mut Game) {
 fn buy_tooth_guard(g: &mut Game) {
     // 1000:e7fa / 1000:e7ff -- first, so it wins over the money test below.
     if g.tooth_guard {
-        // 1000:e848, file 0xBE1A, printed by 1000:e85c.
+        // 1000:e848 pushes file `0xBE1A` `^6У тебя есть эта штучка.`,
+        // printed by 1000:e85c.
         term::println("^6У тебя есть эта штучка.");
         return;
     }
     // 1000:e801 / 1000:e806.
     if g.player.money < 30 {
-        // 1000:e808, file 0xBDEF, printed by 1000:e81c; 1000:e821 leaves.
+        // 1000:e808 pushes file `0xBDEF` `^4А не хватает рубликов`, printed
+        // by 1000:e81c; 1000:e821 leaves.
         term::println("^4А не хватает рубликов");
         return;
     }
     g.player.money -= 30; // 1000:e823
     g.tooth_guard = true; // 1000:e828
 
-    // 1000:e82d, file 0xBE07, printed by 1000:e841.
+    // 1000:e82d pushes file `0xBE07` `^2Ты купил защиту.`, printed by
+    // 1000:e841.
     term::println("^2Ты купил защиту.");
 }
 
@@ -403,30 +450,34 @@ fn train_abs(g: &mut Game) {
     let ceiling = (i32::from(g.district) - 2) * 10;
     // 1000:e88d reads 20ae:3e34; see the doc above for the substitution.
     if i32::from(g.player.armor) >= ceiling {
-        // 1000:e8f9, file 0xBE6E, printed by 1000:e90d.
+        // file `0xBE6E` `^6Ты максимально прокачал пресс для своего уровня`,
+        // pushed at 1000:e8f9 and printed by 1000:e90d.
         term::println("^6Ты максимально прокачал пресс для своего уровня");
         // 1000:e912 / 1000:e917 -- inside the ceiling branch only.
         if g.district < 4 {
-            // 1000:e919, file 0xBEA0, printed by 1000:e92d.
+            // file `0xBEA0` `^6Качай дальше в следующем районе`, pushed at
+            // 1000:e919 and printed by 1000:e92d.
             term::println("^6Качай дальше в следующем районе");
         }
         return;
     }
     // 1000:e896 / 1000:e89b -- second, so the ceiling line wins over it.
     if g.player.money < 20 {
-        // 1000:e89d, file 0xBE34, printed by 1000:e8b1; 1000:e8b6 leaves.
+        // 1000:e89d pushes file `0xBE34` `^4Не хватает рубликов`, printed
+        // by 1000:e8b1; 1000:e8b6 leaves.
         term::println("^4Не хватает рубликов");
         return;
     }
     g.player.money -= 20; // 1000:e8b8
 
-    // 1000:e8bd, file 0xBE4A, printed by 1000:e8d1.
+    // 1000:e8bd pushes file `0xBE4A` `^2Ты прокачиваешь пресс.`, printed by
+    // 1000:e8d1.
     term::println("^2Ты прокачиваешь пресс.");
     // 1000:e8d6 `inc [0x38b2]`, the visible Броня, AND 1000:e8da
     // `inc [0x3e34]`, the scratch this arm's own ceiling is tested against.
     // They are one statement here because the port has one value for both.
     g.player.armor += 1;
-    // 1000:e8de, file 0xBE63, printed by 1000:e8f2.
+    // 1000:e8de pushes file `0xBE63` `^1Броня +1`, printed by 1000:e8f2.
     term::println("^1Броня +1");
 }
 
