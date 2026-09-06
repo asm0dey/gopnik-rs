@@ -4,7 +4,7 @@ Two independent checkers live here, joined only by the theme
 `docs/re/METHODOLOGY.md` names: *a check that cannot fail, presented as
 verification*.
 
-1. `annotations()` / `alignment_report()` -- the per-line address annotation in
+1. `read_annotations()` / `alignment_report()` -- the per-line address annotation in
    `build/decomp/*.c`.  Every address it emits is re-decoded from `orig/g.exe`
    and required to be an ALIGNED INSTRUCTION START, anchored at a function
    entry from the Ghidra export.  "Well-formed `SEG:OFF`" is not the check;
@@ -32,6 +32,15 @@ import dis16
 
 REPO = Path(__file__).resolve().parent.parent
 DECOMP_DIR = REPO / "build" / "decomp"
+
+# A COMMITTED slice of the same export.  `build/decomp/` is gitignored, so on a
+# fresh clone every assertion over it skips and the suite still reports OK --
+# a green run that validated nothing.  These few files are tracked so at least
+# the alignment half always executes, and a separate test (which does skip)
+# requires each of them to be byte-identical to its `build/decomp/`
+# counterpart wherever that tree exists, so the fixture cannot silently rot.
+FIXTURE_DIR = REPO / "tools" / "fixtures" / "decomp"
+
 DOCS_DIR = REPO / "docs"
 BRANCHES = REPO / "data" / "branches.json"
 FUNCTIONS = REPO / "data" / "functions.json"
@@ -86,8 +95,12 @@ def parse_file(path: Path):
 _ANNOTATION_CACHE = {}
 
 
-def annotations(decomp_dir: Path = DECOMP_DIR):
+def read_annotations(decomp_dir: Path = DECOMP_DIR):
     """`{filename: [Annotation, ...]}` plus every malformed token, over a tree.
+
+    NOT named `annotations`: that shadows the `from __future__ import
+    annotations` binding at the top of this module, which is harmless at
+    runtime and is flagged by pyright.
 
     Memoised on the directory AND the modification time of its newest `.c`
     file, so a re-export (or a deliberate corruption, which is how this suite
@@ -186,7 +199,7 @@ class Image:
 
 def alignment_report(decomp_dir: Path = DECOMP_DIR, image: "Image | None" = None):
     """Every distinct annotated address, and which ones are not real starts."""
-    per_file, malformed = annotations(decomp_dir)
+    per_file, malformed = read_annotations(decomp_dir)
     image = image or Image()
     distinct = set()
     for toks in per_file.values():
@@ -238,7 +251,7 @@ def handler_coverage(decomp_dir: Path = DECOMP_DIR, branches_path=BRANCHES):
     A `guard` is the flag-setting instruction `EnumerateBranches.java` paired
     with the conditional jump; both are addresses a doc cites, so both count.
     """
-    per_file, _ = annotations(decomp_dir)
+    per_file, _ = read_annotations(decomp_dir)
     have = {t.text for t in per_file.get(HANDLER_FILE, [])}
     records = json.loads(Path(branches_path).read_text())["branches"]
     out = {}
@@ -268,16 +281,20 @@ def handler_coverage(decomp_dir: Path = DECOMP_DIR, branches_path=BRANCHES):
     return out
 
 
-def orphaned_pairs(coverage):
+def orphaned_pairs(coverage, decomp_dir: Path = DECOMP_DIR):
     """Branch/guard pairs where NEITHER address is annotated.
 
-    The 29 misses this annotation has are all one half of a compare-and-branch
-    the decompiler folded onto the other half's address, so every pair keeps at
-    least one address.  A pair that loses both is a different failure -- a whole
-    conditional missing from the annotation -- and is worth separating from the
-    fold, which is why it is counted apart rather than folded into a percentage.
+    The WEAK form of the fold check, kept because the golden records it and
+    because it names the failure in the pair's own vocabulary.  It is subsumed
+    by `fold_partners` below, which fires on a pair that loses ONE half for a
+    reason other than the fold; this one fires only when a pair loses both.
+
+    `decomp_dir` is a parameter rather than the module default because
+    `coverage` may have been computed over a different tree, and comparing one
+    tree's coverage against another tree's annotation is a silent cross-tree
+    read waiting for the first caller that parameterises the directory.
     """
-    per_file, _ = annotations()
+    per_file, _ = read_annotations(decomp_dir)
     have = {t.text for t in per_file.get(HANDLER_FILE, [])}
     orphans = []
     for name, rec in sorted(coverage.items()):
@@ -288,6 +305,55 @@ def orphaned_pairs(coverage):
                 continue
             orphans.append("%s %s (guard %s)" % (name, branch, guard))
     return sorted(orphans)
+
+
+def fold_partners(coverage, decomp_dir: Path = DECOMP_DIR, branches_path=BRANCHES):
+    """For every UNANNOTATED handler address, its `data/branches.json` partner.
+
+    The partner of a branch address is its guard's address, and the partner of
+    a guard address is every branch that guard resolves.  This is the property
+    that makes "the decompiler folded the pair onto one address" a claim that
+    can be wrong: a miss caused by the fold necessarily leaves its partner in
+    the annotation, and a miss caused by anything else does not have to.
+
+    It replaces a proximity test that could not discriminate.  That test asked
+    whether a missing address had ANY annotated address within 10 bytes; over
+    `1000:b94a`..`1000:e972` the largest gap between consecutive annotated
+    offsets is 11, so every one of the 12328 byte offsets in the span passed it,
+    not just the 29 misses.  It would have fired only on a contiguous
+    unannotated run of 21 bytes or more -- a different failure from the one it
+    was presented as testing, and a threshold picked so it passes.
+
+    Returns `{missing_address: {"partners": [...], "unannotated_partners": [...],
+    "max_delta": int}}`.  `unannotated_partners` non-empty is the finding.
+    """
+    per_file, _ = read_annotations(decomp_dir)
+    have = {t.text for t in per_file.get(HANDLER_FILE, [])}
+    records = json.loads(Path(branches_path).read_text())["branches"]
+
+    partners = {}
+    for b in records:
+        branch = b["addr"].lower()
+        guard = (b.get("guard") or {}).get("addr")
+        if not guard:
+            continue
+        guard = guard.lower()
+        partners.setdefault(branch, set()).add(guard)
+        partners.setdefault(guard, set()).add(branch)
+
+    out = {}
+    for rec in coverage.values():
+        for miss in rec["missing"]:
+            mine = sorted(partners.get(miss, ()))
+            off = addr.image_off_of_citation(miss)
+            out[miss] = {
+                "partners": mine,
+                "unannotated_partners": [p for p in mine if p not in have],
+                "max_delta": max(
+                    (abs(addr.image_off_of_citation(p) - off) for p in mine),
+                    default=None),
+            }
+    return out
 
 
 # --- half two: `src/f.rs:NNN` citations in docs/ -----------------------------
@@ -496,6 +562,14 @@ def build_golden():
             "present": sum(c["present"] for c in cov.values()),
         },
         "branch_guard_pairs_with_neither_half_annotated": orphaned_pairs(cov),
+        "fold_partners": fold_partners(cov),
+        "fixture": {
+            "files": sorted(p.name for p in FIXTURE_DIR.glob("*.c")),
+            "annotated_tokens": sum(
+                len(v) for v in read_annotations(FIXTURE_DIR)[0].values()),
+            "not_instruction_starts":
+                alignment_report(FIXTURE_DIR)["not_instruction_starts"],
+        },
         "src_citations": src_citations(),
     }
 
@@ -525,10 +599,17 @@ def _main(argv=None):  # pragma: no cover - a reporting entry point
         for name, c in sorted(cov.items()):
             print("  %-7s %3d/%3d" % (name, c["present"], c["wanted"]))
         print("  TOTAL %d/%d = %.2f%%" % (got, tot, 100.0 * got / tot))
+        fp = fold_partners(cov)
         for name, c in sorted(cov.items()):
             for a in c["missing"]:
-                print("    missing %s %s" % (name, a))
+                r = fp[a]
+                print("    missing %-7s %s  partner(s) %s%s"
+                      % (name, a, " ".join(r["partners"]) or "(NONE)",
+                         "  UNANNOTATED: " + " ".join(r["unannotated_partners"])
+                         if r["unannotated_partners"] else ""))
         print("  pairs with NEITHER half annotated: %d" % len(orphaned_pairs(cov)))
+        print("  misses whose branches.json partner is NOT annotated: %d"
+              % sum(1 for r in fp.values() if r["unannotated_partners"] or not r["partners"]))
     if what in ("all", "src"):
         rep = src_citations()
         for k in ("verified", "mismatch", "unbound", "unreadable"):

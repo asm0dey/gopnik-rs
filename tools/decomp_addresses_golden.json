@@ -27,6 +27,222 @@
     }
   },
   "branch_guard_pairs_with_neither_half_annotated": [],
+  "fixture": {
+    "annotated_tokens": 51,
+    "files": [
+      "FUN_1000_11c2_1000_11c2.c",
+      "FUN_1f78_1111_1f78_1111.c",
+      "FUN_1f78_114b_1f78_114b.c"
+    ],
+    "not_instruction_starts": {
+      "2000:f88f": "image offset 0x1f88f is past the end of the load image (0x14180)"
+    }
+  },
+  "fold_partners": {
+    "1000:ceec": {
+      "max_delta": 5,
+      "partners": [
+        "1000:cee7"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:cfa1": {
+      "max_delta": 5,
+      "partners": [
+        "1000:cf9c"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d056": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d051"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d10b": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d106"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d115": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d110"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d11c": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d117"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d1ce": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d1c9"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d1d8": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d1d3"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d28a": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d285"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d3e1": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d3dc"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d4c8": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d4c3"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d543": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d53e"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d8ed": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d8e8"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d914": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d90f"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d91b": {
+      "max_delta": 5,
+      "partners": [
+        "1000:d916"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:d93e": {
+      "max_delta": 3,
+      "partners": [
+        "1000:d941"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:da73": {
+      "max_delta": 5,
+      "partners": [
+        "1000:da6e"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:da7a": {
+      "max_delta": 5,
+      "partners": [
+        "1000:da75"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:da9d": {
+      "max_delta": 3,
+      "partners": [
+        "1000:daa0"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:dcbf": {
+      "max_delta": 5,
+      "partners": [
+        "1000:dcba"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:dda8": {
+      "max_delta": 2,
+      "partners": [
+        "1000:dda6"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:ddaa": {
+      "max_delta": 4,
+      "partners": [
+        "1000:dda6"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:ddeb": {
+      "max_delta": 2,
+      "partners": [
+        "1000:dde9"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:dded": {
+      "max_delta": 4,
+      "partners": [
+        "1000:dde9"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:e14f": {
+      "max_delta": 5,
+      "partners": [
+        "1000:e14a"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:e3af": {
+      "max_delta": 5,
+      "partners": [
+        "1000:e3aa"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:e3cd": {
+      "max_delta": 5,
+      "partners": [
+        "1000:e3c8"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:e58b": {
+      "max_delta": 2,
+      "partners": [
+        "1000:e58d"
+      ],
+      "unannotated_partners": []
+    },
+    "1000:e892": {
+      "max_delta": 2,
+      "partners": [
+        "1000:e894"
+      ],
+      "unannotated_partners": []
+    }
+  },
   "handler_total": {
     "present": 345,
     "wanted": 374

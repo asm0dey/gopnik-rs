@@ -20,7 +20,26 @@ before an address is written into a claim. `tools/test_decomp_addresses.py`
 re-decodes every annotated address out of `orig/g.exe` and checks the six
 hand-mapped handlers' branch and guard addresses against it; run
 `PYTHONPATH=tools python3 tools/decomp_addresses.py all` for the current
-figures.
+figures. `tools/fixtures/decomp/` is a committed three-file slice of the same
+export, so those checks still run where `build/decomp/` has not been generated.
+
+**How to read a missing address.** 345 of the 374 branch and guard addresses
+`data/branches.json` records inside those six handlers appear in the
+annotation. The other 29 are one half of an **adjacent compare-and-branch that
+Ghidra folded onto a single address** — and the fold runs in **both**
+directions, which matters when interpreting a miss:
+
+* 25 keep the compare and lose the jump — `1000:cee7 CMP byte [0x38b4],0x0`
+  is annotated, its `1000:ceec JNZ` is not;
+* 4 keep the jump and lose the compare — `1000:d941 jl 0xd95c` is annotated,
+  its `1000:d93e cmp ax,0x28` is not, and likewise at `1000:daa0`/`1000:da9d`,
+  `1000:e58d`/`1000:e58b` and `1000:e894`/`1000:e892`.
+
+So a citation that does not appear in the annotation is not evidence the branch
+is absent; look for its `data/branches.json` partner within a few bytes. The
+test asserts exactly that property — every missing address's partner IS
+annotated — rather than mere proximity, which over that span is true of every
+byte offset and therefore proves nothing.
 
 ## Ten largest functions by body size (bytes)
 

@@ -266,6 +266,14 @@ class TestHandlerCoverage(unittest.TestCase):
             present += rec["present"]
         self.assertEqual(wanted, GOLDEN["handler_total"]["wanted"])
         self.assertEqual(present, GOLDEN["handler_total"]["present"])
+        # Deliberately a SECOND home for the number, hand-written, and it will
+        # need hand-editing when the coverage genuinely moves. That is the
+        # point: every other assertion here compares the report against a file
+        # `--write-golden` rewrites, so a regeneration run that silently moved
+        # the total would leave them all green. This literal is the one thing
+        # in the suite that a regeneration cannot update, so it forces the
+        # human to notice. The report's figure and this literal are the same
+        # fact recorded in two places on purpose.
         self.assertEqual((present, wanted), (345, 374))
 
     def test_the_market_is_covered_whole(self):
@@ -274,37 +282,188 @@ class TestHandlerCoverage(unittest.TestCase):
         show the same 12-per-hundred hole the den does."""
         self.assertEqual(self.cov["market"]["missing"], [])
 
-    def test_no_branch_guard_pair_loses_both_halves(self):
-        """The 29 misses are one half of a folded compare-and-branch.
+    def test_every_missing_address_has_its_partner_annotated(self):
+        """This is what "the decompiler folded the pair" MEANS, as a property.
 
-        Ghidra attributes the CBRANCH's p-code to the compare's address when
-        the two are adjacent, so e.g. `1000:cee7 CMP byte [0x38b4],0x0` is
-        annotated and its `1000:ceec JNZ` is not. That is a fold, not a loss:
-        every pair keeps at least one address, and a pair that lost both would
-        be a whole conditional missing from the annotation.
+        The partner of a branch address is its guard's address and vice versa,
+        from `data/branches.json`. A miss caused by the fold necessarily leaves
+        its partner in the annotation; a miss caused by anything else -- a lost
+        region, a dropped statement, an exporter bug -- does not have to. So an
+        unannotated partner is the finding, and there are none: 29 misses, 29
+        partners, all annotated, at |delta| <= 5.
+
+        It replaces a proximity test that could not discriminate. That one
+        asked whether a missing address had ANY annotated address within 10
+        bytes, and over `1000:b94a`..`1000:e972` the largest gap between
+        consecutive annotated offsets is 11 -- so all 12328 byte offsets in the
+        span passed it, not just the 29. It would have fired only on a
+        contiguous unannotated run of 21 bytes or more, which is a different
+        failure from the one it was presented as testing.
+
+        This assertion also SUBSUMES `orphaned_pairs`: a pair that lost both
+        halves is a miss whose partner is itself missing, so it fails here
+        first. `orphaned_pairs` is still checked below, in the pair's own
+        vocabulary, but it is the weak form.
         """
+        got = da.fold_partners(self.cov)
+        # Property first, golden second, deliberately: the golden comparison
+        # prints a 3800-character dict diff, which buries the one address that
+        # actually broke. Asserting the property first makes the failure name
+        # the address.
+        for miss, rec in sorted(got.items()):
+            with self.subTest(address=miss):
+                self.assertNotEqual(rec["partners"], [],
+                                    "%s has no branches.json partner at all, so "
+                                    "the fold cannot explain it" % miss)
+                self.assertEqual(rec["unannotated_partners"], [],
+                                 "%s is missing AND so is its partner" % miss)
+        self.maxDiff = None
+        self.assertEqual(got, GOLDEN["fold_partners"])
+
+    def test_the_fold_runs_in_both_directions(self):
+        """25 misses are the jump; 4 are the compare. Not one mechanism.
+
+        Ghidra usually attributes the CBRANCH's p-code to the compare's
+        address, so the jump vanishes (`1000:cee7 CMP byte [0x38b4],0x0` kept,
+        `1000:ceec JNZ` gone). Four go the other way -- the guard vanishes and
+        the branch is kept: `1000:d93e cmp ax,0x28` / `1000:d941 jl 0xd95c`,
+        and the same shape at `da9d`/`daa0`, `e58b`/`e58d`, `e892`/`e894`.
+        The general claim (one half of an adjacent compare-and-branch survives)
+        holds for all 29; the DIRECTION does not, and a reader who takes the
+        usual direction as the rule will misread those four.
+        """
+        import addr as addrmod
+        forward = backward = 0
+        for miss, rec in sorted(GOLDEN["fold_partners"].items()):
+            off = addrmod.image_off_of_citation(miss)
+            partner = addrmod.image_off_of_citation(rec["partners"][0])
+            if partner < off:
+                forward += 1          # guard kept, jump missing
+            else:
+                backward += 1         # jump kept, guard missing
+        self.assertEqual((forward, backward), (25, 4))
+
+    def test_no_branch_guard_pair_loses_both_halves(self):
+        """The weak form of the assertion above, kept for its vocabulary."""
         self.assertEqual(da.orphaned_pairs(self.cov), [])
         self.assertEqual(
             GOLDEN["branch_guard_pairs_with_neither_half_annotated"], [])
 
-    def test_every_missing_address_has_an_annotated_neighbour(self):
-        """...within 10 bytes, which is what "folded onto the compare" means.
 
-        Stated as a property rather than as prose so it can fail: an address
-        missing because the annotation lost a whole REGION would have no
-        annotated neighbour, and would not be explained by the fold.
+class TestTheCommittedFixture(unittest.TestCase):
+    """Runs on a FRESH CLONE. `build/decomp/` does not have to exist.
+
+    Without this, 11 of the suite's tests skip on a clone and the runner still
+    prints OK -- and in the 597-test `unittest discover` run that skip count
+    merges with unrelated ones, so nothing distinguishes "annotation checked"
+    from "annotation absent". `tools/fixtures/decomp/` is three committed
+    files from the same export, chosen to cover the interesting shapes:
+    `FUN_1f78_114b` is Borland's `Random` (`docs/re/rng.md`), it has a line
+    carrying three addresses, and `FUN_1f78_1111` carries the `2000:f88f`
+    decode-failure sentinel.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.report = da.alignment_report(da.FIXTURE_DIR)
+        cls.golden = GOLDEN["fixture"]
+
+    def test_the_fixture_exists_and_is_annotated(self):
+        self.assertEqual(sorted(p.name for p in da.FIXTURE_DIR.glob("*.c")),
+                         self.golden["files"])
+        self.assertEqual(self.report["annotated_tokens"],
+                         self.golden["annotated_tokens"])
+        self.assertGreater(self.report["annotated_tokens"], 0)
+
+    def test_the_parser_understood_every_fixture_token(self):
+        self.assertEqual(self.report["malformed"], [])
+
+    def test_every_fixture_address_is_an_aligned_instruction_start(self):
+        """Same check as over `build/decomp/`, on committed bytes.
+
+        `2000:f88f` is expected here too -- the fixture deliberately includes
+        the file that carries the sentinel, so the exception path is exercised
+        on a fresh clone rather than only where the gitignored tree exists.
         """
-        import addr as addrmod
-        per_file, _ = da.annotations()
-        have = {addrmod.image_off_of_citation(t.text)
-                for t in per_file[da.HANDLER_FILE]}
-        for name, rec in sorted(self.cov.items()):
-            for cit in rec["missing"]:
-                off = addrmod.image_off_of_citation(cit)
-                with self.subTest(handler=name, address=cit):
-                    self.assertTrue(
-                        any(abs(h - off) <= 10 for h in have),
-                        "%s has no annotated address within 10 bytes" % cit)
+        self.assertEqual(self.report["not_instruction_starts"],
+                         self.golden["not_instruction_starts"])
+        for cit, why in self.report["not_instruction_starts"].items():
+            self.assertIn("past the end of the load image", why, cit)
+
+    def test_the_fixture_carries_a_multi_address_line(self):
+        """`FUN_1f78_114b`'s return merges three instructions.
+
+        A set, not a minimum -- asserted on committed bytes so the property
+        cannot go unchecked on a clone.
+        """
+        self.assertGreater(da.multi_address_lines(da.FIXTURE_DIR), 0)
+
+    @unittest.skipUnless(_decomp_present(), "build/decomp/ is gitignored scratch")
+    def test_the_fixture_matches_the_live_export(self):
+        """The fixture cannot silently rot behind a re-export.
+
+        This one DOES skip on a clone, and that is correct: it is the only
+        assertion here that needs the gitignored tree.
+        """
+        for name in self.golden["files"]:
+            with self.subTest(file=name):
+                self.assertEqual((da.FIXTURE_DIR / name).read_bytes(),
+                                 (da.DECOMP_DIR / name).read_bytes(),
+                                 "%s drifted from build/decomp/; re-copy it" % name)
+
+
+class TestTheGoldenIsSelfConsistent(unittest.TestCase):
+    """Runs on a FRESH CLONE, over the committed golden alone.
+
+    Without it, `test_the_golden_totals_are_arithmetic_over_the_parts`
+    recomputes from the live report and therefore skips with everything else,
+    leaving NOTHING validating the committed file. These assertions read only
+    `tools/decomp_addresses_golden.json`, so a hand-edited or half-regenerated
+    golden is caught whether or not `build/decomp/` exists.
+    """
+
+    def test_every_site_key_has_a_reason(self):
+        ann = GOLDEN["annotation"]
+        self.assertEqual(sorted(ann["not_instruction_start_sites"]),
+                         sorted(ann["not_instruction_starts"]))
+
+    def test_the_recorded_exception_class_is_outside_the_image(self):
+        for cit, why in GOLDEN["annotation"]["not_instruction_starts"].items():
+            self.assertIn("past the end of the load image", why, cit)
+
+    def test_each_handler_total_is_arithmetic_over_its_own_parts(self):
+        for name, rec in sorted(GOLDEN["handlers"].items()):
+            with self.subTest(handler=name):
+                self.assertEqual(rec["present"] + len(rec["missing"]),
+                                 rec["wanted"])
+
+    def test_the_grand_total_is_the_sum_of_the_handlers(self):
+        self.assertEqual(
+            sum(r["wanted"] for r in GOLDEN["handlers"].values()),
+            GOLDEN["handler_total"]["wanted"])
+        self.assertEqual(
+            sum(r["present"] for r in GOLDEN["handlers"].values()),
+            GOLDEN["handler_total"]["present"])
+
+    def test_the_fold_partner_map_covers_exactly_the_missing_addresses(self):
+        missing = sorted(a for r in GOLDEN["handlers"].values()
+                         for a in r["missing"])
+        self.assertEqual(sorted(GOLDEN["fold_partners"]), missing)
+        for miss, rec in sorted(GOLDEN["fold_partners"].items()):
+            with self.subTest(address=miss):
+                self.assertNotEqual(rec["partners"], [])
+                self.assertEqual(rec["unannotated_partners"], [])
+
+    def test_the_src_citation_buckets_are_disjoint(self):
+        seen = set()
+        for bucket, records in sorted(GOLDEN["src_citations"].items()):
+            for r in records:
+                self.assertNotIn(r, seen, "%s appears in two buckets" % r)
+                seen.add(r)
+
+    def test_the_fixture_is_recorded(self):
+        self.assertNotEqual(GOLDEN["fixture"]["files"], [])
+        self.assertGreater(GOLDEN["fixture"]["annotated_tokens"], 0)
 
 
 if __name__ == "__main__":  # pragma: no cover
