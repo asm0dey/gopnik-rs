@@ -205,6 +205,24 @@ citation.
 A disagreement between the annotation and a known-good citation is the finding
 this task exists to surface. If one turns up, report it — do not tune it away.
 
+**Second checker, same theme — `src/` line-number citations.** `docs/` cites
+`src/<file>:<line>` in many places and those line numbers drift every time
+`src/` changes. Four were already stale when this task was written, found by
+decoding rather than by any test: `docs/re/gaps.md` cites `src/save.rs:257`
+for `beer_half_litres` (actually 255) and `src/persist.rs:345` for
+`joints: it.joints.max(0) as u16` (actually 357), with `:350` and `:352`
+shifted by the same amount. Every claim still held; only the line numbers had
+moved. This plan then adds three modules and moves handler code, which will
+invalidate more of them.
+
+Extend `tools/test_decomp_addresses.py` (or add a sibling) to parse the
+`` `src/f.rs:NNN` `symbol` `` pairs the docs already write and assert the symbol
+appears at that line. Report the count checked and every pair that failed.
+The same rule applies as above: no hand-picked pass threshold, and a pair the
+parser cannot understand is reported, never silently skipped — an inventory
+whose completeness claim stopped the next search is the defect this project
+keeps finding.
+
 **Docs:** one line in `docs/re/functions.md` stating that the annotation makes a
 citation cheap to *verify*, not pre-verified, and that
 `python3 tools/re_query.py resolve <citation>` is still required. The
