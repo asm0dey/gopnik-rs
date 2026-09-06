@@ -2389,6 +2389,74 @@
       "GymTest.test_the_broken_jaw_byte_only_ever_holds_0_or_1"
     ],
     "expect": "the jaw gate is recorded as a port equivalence"
+  },
+  {
+    "label": "gym-arm-1-dmg-split-is-ported",
+    "defends": "Task 31's work-order item 2, in the PORT rather than the artifact (gym-arms-parity-branch is its twin over data/gym_arms.json).  1000:e68d's jnz skips exactly the four bytes of 1000:e68f inc [0x38a8], so урон max rises on EVERY purchase of the gym's `1` and урон min only when the NEW strength is even.  Both-conditional and both-unconditional are equally wrong and neither shows on a screen capture.  This mutation is the both-unconditional reading.",
+    "artifact": "src/gym.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "    if g.player.strength.is_multiple_of(2) {\n        g.player.dmg_min += 1; // 1000:e68f\n    }\n",
+      "to": "    g.player.dmg_min += 1; // 1000:e68f\n"
+    },
+    "test": [
+      "cargo",
+      "test",
+      "--lib",
+      "arm_1_raises_dmg_max_every_time_and_dmg_min_only_on_an_even_strength"
+    ],
+    "expect": "1000:e68d skips 1000:e68f"
+  },
+  {
+    "label": "gym-arm-5-ceiling-is-not-the-menu-rows",
+    "defends": "Task 31's work-order item 4, in the PORT.  The `5` arm's ceiling is (district-2)*10 at 1000:e87f..1000:e894 and the MENU row's is district*2 at 1000:e57d..1000:e58d; sharing one predicate between the row and the arm is the mistake that item exists to prevent.  At district 3 the row disappears at trained armour 6 while the arm keeps working to 10, which is the state the test drives.  This mutation makes the arm read the row's predicate.",
+    "artifact": "src/gym.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "    let ceiling = (i32::from(g.district) - 2) * 10;",
+      "to": "    let ceiling = i32::from(g.district) * 2;"
+    },
+    "test": [
+      "cargo",
+      "test",
+      "--lib",
+      "arm_5_keeps_working_after_its_menu_row_has_gone"
+    ],
+    "expect": "the ARM's ceiling is 10"
+  },
+  {
+    "label": "gym-arm-3-does-not-grant-its-award-twice",
+    "defends": "Task 31's work-order item 3.  The gym's `3` credits the xp itself at 1000:e7b4 and only then calls the level-up at 1000:e7df, so crate::progress::apply_levels -- which adds its own `award` BEFORE the threshold test -- must be given award = 0.  Passing 10 grants twenty and no printed line changes.  This mutation passes 10.",
+    "artifact": "src/gym.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "progress::apply_levels(&mut g.progress, &mut g.player, &mut g.rng, 0, false);",
+      "to": "progress::apply_levels(&mut g.progress, &mut g.player, &mut g.rng, 10, false);"
+    },
+    "test": [
+      "cargo",
+      "test",
+      "--lib",
+      "arm_3_does_not_grant_the_award_twice_at_the_level_up"
+    ],
+    "expect": "award must be 0, not 10"
+  },
+  {
+    "label": "gym-district-gate-runs-before-the-key-compare",
+    "defends": "Task 31's work-order item 7, a DO-NOT-FIX trap.  At district 1 the `3`, `4` and `5` compares are jumped over (1000:e72d, 1000:e7e7, 1000:e866), so typing `3` there is SILENT rather than refused; a port that compared the key first and the district second would print a refusal the original has no path to.  This mutation drops the district gate from key `3`, which makes the arm run and print at district 1.",
+    "artifact": "src/gym.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "        \"3\" => g.district > 1,",
+      "to": "        \"3\" => true,"
+    },
+    "test": [
+      "cargo",
+      "test",
+      "--lib",
+      "district_one_swallows_three_four_and_five_in_silence"
+    ],
+    "expect": "must print nothing"
   }
  ]
 }

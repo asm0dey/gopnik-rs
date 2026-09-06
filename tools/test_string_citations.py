@@ -289,9 +289,16 @@ TRIM_GREP = re.compile(r"\.trim\(\)")
 TRIM_NOT = re.compile(r"trim_end_matches|trim_start_matches")
 #: A line is PROSE when the `.trim()` sits inside a `//` or `///` comment.
 TRIM_COMMENT = re.compile(r"^\s*//")
-#: `fn foo(` / `pub fn foo(` at any indent -- enough to name the enclosing
-#: item for every hit in `src/*.rs`; there are no nested `fn`s among them.
-TRIM_FN = re.compile(r"^\s*(?:pub\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)")
+#: `fn foo(` / `pub fn foo(` / `pub(crate) fn foo(` at any indent -- enough to
+#: name the enclosing item for every hit in `src/*.rs`; there are no nested
+#: `fn`s among them.  The restricted-visibility form is NOT cosmetic: without
+#: it, Task 32's `pub(crate) fn shop_turn` stopped matching and the trim at
+#: its first statement was attributed to `den_menu_reveal_hint`, the previous
+#: `fn` the scan had seen -- a mis-attribution the table check reported as a
+#: disagreement with the document.  Any `pub(...)` restriction is accepted, so
+#: `pub(super)` and `pub(in path)` cannot reintroduce it.
+TRIM_FN = re.compile(
+    r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)")
 
 #: The entry writes its counts as English words, so read them as written.
 WORDS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
@@ -409,6 +416,11 @@ class TrimInventoryTest(unittest.TestCase):
             "sell_offer", [fn for _, _, fn in self.calls],
             "the Task 30 call site this guard was written for is gone; if "
             "that is deliberate, drop its row from docs/re/gaps.md too")
+        self.assertIn(
+            "shop_turn", [fn for _, _, fn in self.calls],
+            "the submenu-key trim is attributed to no `shop_turn` -- the "
+            "usual cause is TRIM_FN failing on its declaration, which "
+            "silently reassigns the hit to whatever `fn` came before it")
 
 
 if __name__ == "__main__":

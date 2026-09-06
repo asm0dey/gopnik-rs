@@ -736,19 +736,60 @@ is a change to the gym's recompute (`1000:e3a4`..`1000:e3e2`) plus a place to
 keep the result — which is also what the `5` arm needs. Task 31's map supplies
 both; see the next entry.
 
-## The gym's five keys are dispatched by nothing (mapped, Task 31)
+**Task 32 ported the `5` arm and made the same substitution there, so the
+population of this entry is now TWO readers, not one.** `crate::gym`'s
+`train_abs` tests `armor` against its own threshold `(district - 2) * 10`
+(`1000:e87f`..`1000:e894`) where `imm_row_visible` tests the same `armor`
+against the row's `district * 2` (`1000:e57d`..`1000:e58d`); the two
+thresholds are deliberately not shared, and it is only the *value* that is
+substituted. The direction is unchanged for both: the port's `abs` is never
+smaller than the original's, so the row can only be hidden earlier and the arm
+can only stop earlier. One consequence is new and worth naming: `1000:e8da`
+`inc [0x3e34]` and `1000:e8d6` `inc [0x38b2]` become **one** statement under
+the substitution, because the port has one value where the original has two.
+`arm_5_stops_when_the_ceiling_is_reached` counts the purchases so that a
+future split of the two fields cannot silently drop the scratch's increment
+and leave the arm running for ever. The three tables above are unaffected —
+they are about the menu row, which nothing here changed.
 
-*Cited from `src/game.rs`'s `Game::shop_turn`; the map is `docs/re/gym.md` and
-`data/gym_arms.json`.*
+## ~~The gym's five keys are dispatched by nothing~~ — CLOSED by Task 32
 
-**Established from flow.** `Game::enter_shop(Location::Gym)` puts the port in
-`Mode::Shop(Location::Gym)`, prints the intro and the five `IMM_ROWS` rows, and
-then `Game::shop_turn` recognises **no gym key at all**. The command that shows
-it is `grep -nE '^\s+\(Location::' src/game.rs`, which lists every arm of that
-function's key `match`: eleven of them, for the vet, the dealers, the den and
-the shared Market|Dealers digit arm, and not one for `Location::Gym`. Typing
-`1`..`5` at `^0Качалка\` falls into the catch-all and is silently ignored, so
-the whole gym is a menu that does nothing.
+*Cited from `src/gym.rs` and `src/game.rs`'s `Game::shop_turn`; the map is
+`docs/re/gym.md` and `data/gym_arms.json`.*
+
+**What the gap was.** `Game::enter_shop(Location::Gym)` put the port in
+`Mode::Shop(Location::Gym)`, printed the intro and the five `IMM_ROWS` rows,
+and then `Game::shop_turn` recognised **no gym key at all**: typing `1`..`5`
+at `^0Качалка\` fell into the catch-all and was silently ignored, so the whole
+gym was a menu that did nothing.
+
+**Closed by Task 32.** The five arms are `crate::gym`, a module of their own,
+and `Game::shop_turn` delegates to it through one arm guarded on
+`crate::gym::key_dispatches` — the compare CHAIN, district gate before key
+compare, so a key the district hides is silent rather than refused. The
+command that shows the wiring is
+`grep -n 'Location::Gym' src/game.rs src/gym.rs`; the arms and their citations
+are `src/gym.rs`, and `cargo test --lib gym::` is its suite.
+
+**Three of Task 31's nine work-order items were DO-NOT-FIX traps, and the port
+kept all three:** the menu has no ownership gate on row 4 (`1000:e51a` is its
+only gate) and it still lists the row after the purchase; an unrecognised key
+prints nothing, because no such literal exists in `1000:e390`..`1000:ea94`;
+and at district 1 the `3`, `4` and `5` compares are jumped over, so those keys
+are silent there rather than refused. Each is pinned by a named test in
+`src/gym.rs` (`arm_4_stays_listed_and_refuses_after_the_purchase`,
+`an_unrecognised_key_prints_nothing_and_stays_in_the_gym`,
+`district_one_swallows_three_four_and_five_in_silence`).
+
+**One divergence stays open and it is not a new one:** the `5` arm's ceiling
+reads the trained-armour scratch `20ae:3e34`, which this port does not have,
+so the arm substitutes `armor` exactly as `Game::imm_row_visible` does for the
+menu row. That is the entry above, whose population the arm joins; the
+threshold itself is the arm's own `(district - 2) * 10` and is NOT shared with
+the row's `district * 2`.
+
+The record of what the gap was, below, is kept because the work order was
+written against it.
 
 The original dispatches five keys on its own buffer `20ae:3a72`: `1`
 (`1000:e62e`), `2` (`1000:e6ba`), `3` (`1000:e73c`), `4` (`1000:e7f3`) and `5`
@@ -758,33 +799,46 @@ each does, its gates in order, its price, its effects and its strings are in
 order, written so a later port can falsify it.
 
 Three of the nine items there are things a port will get wrong by default rather
-than by omission, so they are repeated here:
+than by omission, so they are repeated here — each now with the test in
+`src/gym.rs` that would have caught it:
 
 * **Arm `1`'s damage split.** `1000:e68d`'s `jnz` skips exactly the four bytes
   of `1000:e68f inc [0x38a8]`, so урон min rises only when the NEW strength is
   even while урон max (`1000:e693`) rises every time. Both-conditional and
   both-unconditional are equally wrong and invisible on screen.
+  (`arm_1_raises_dmg_max_every_time_and_dmg_min_only_on_an_even_strength`
+  buys twice from an odd strength and requires +1 against +2.)
 * **Arm `5`'s ceiling is not the menu row's.** `(district - 2) * 10` at
   `1000:e87f`..`1000:e894`, against `district * 2` at `1000:e57d`..`1000:e58d`.
   Sharing one predicate is wrong in both directions; at district 3 the row
   disappears at trained armour 6 while the arm keeps working to 10.
+  (`arm_5_keeps_working_after_its_menu_row_has_gone` drives exactly that
+  state, and `arm_5_stops_when_the_ceiling_is_reached` counts the ten.)
 * **Arm `3`'s ordering.** `money -= 10` (`1000:e796`), `xp += 10`
   (`1000:e7b4`), print, and only then the level-up call `1000:e7df` with
   `param_1 = 0`. In `progress::apply_levels` terms that is a manual `xp += 10`
   and a later call with `award = 0`, because `apply_levels` adds its own award
   before the threshold test.
+  (`arm_3_does_not_grant_the_award_twice_at_the_level_up` fixes the threshold
+  before the turn and requires the xp left afterwards to be
+  `(xp + 10) - threshold`; passing `award = 10` leaves ten more.)
 
 `kos` is **not** part of this gap: `Game::smoke` reproduces it in full, and the
 four branches `data/branches.json` marks `port_touched: false` there are missing
 citations, not missing behaviour (`data/gym_arms.json`'s
 `joint.port_equivalences` records the three representation differences and why
-each is equivalent).
+each is equivalent). Task 32 added those four citations — `1000:e978`,
+`1000:e9a5`, `1000:e9af` and `1000:e9d5` — to `Game::smoke` and to the
+`Command::Joint` dispatch arm, together with the equivalence table that says
+why the port's `bool`s decide as the original's bytes do. **No `kos`
+behaviour changed**, which is the point: that half of the task was a citation
+task by design and the porting half is the gym's.
 
-Nothing here is blocked. Every global a gym gate reads is written somewhere in
+Nothing here was blocked. Every global a gym gate reads is written somewhere in
 `src/` (`data/gym_arms.json`'s `port_reachability`), and the two routines the
 range calls out to — `1000:2526` and `1000:29c4` — are both already ported. The
 one value the port lacks is the trained armour `20ae:3e34`, which is the entry
-above.
+above and which the `5` arm now shares.
 
 ## The district-advance autosave — wired (Task 21)
 
@@ -1069,8 +1123,13 @@ at file `0x9BF3` (`01 79`), except the mage's, whose copy is file `0x8D79`:
 This is **not** introduced by the autosave: it is the port's house idiom for
 every typed compare, `crate::commands::parse` (its
 `input.trim().to_lowercase()`) included, and it therefore also widens the
-street verb table, `Game::shop_turn`'s key match, and the two in-combat verb
-compares `run_combat` handles itself (`run` at `1000:48e1` and `e` at
+street verb table, `Game::shop_turn`'s key match — whose population Task 32
+widened again, the gym's own `ReadLn` case-folding at `1000:e61f` with
+`0eed:0216` and stripping nothing, exactly as the den's `1000:db1d` does, so
+` 1` is a miss in the original and a hit here
+(`the_gym_prompt_accepts_untrimmed_input_the_original_refuses` in
+`src/gym.rs` measures it rather than remembering it) — and the two in-combat
+verb compares `run_combat` handles itself (`run` at `1000:48e1` and `e` at
 `1000:4c56` — two rows of the nine-row compare-site table in "The in-combat
 verb set", below; that nine counts the original's `0f78:0bd8` sites inside
 `FUN_1000_3d11` and is unrelated to the nine trim sites counted here). The
@@ -1088,7 +1147,7 @@ and the counts are what to check, not the line numbers.
 | `crate::commands::parse` | the street verb table |
 | `main.rs`'s `read_number` | `Val()` on the class answer — a number, not a token |
 | `Game::district_advance` | the district autosave's `y` |
-| `Game::shop_turn` | the location submenu key |
+| `Game::shop_turn` | the location submenu key — the vet's, the dealers', the den's and, since Task 32, the gym's |
 | `Game::walk` | the encounter accept's `y` |
 | `Game::mage` | the mage's `y` |
 | `Game::wander_girl` | wander bucket 2's `y` |

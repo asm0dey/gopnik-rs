@@ -4,6 +4,7 @@ pub mod combat_dispatch;
 pub mod commands;
 pub mod data;
 pub mod game;
+pub mod gym;
 pub mod locations;
 pub mod model;
 pub mod persist;

@@ -66,6 +66,7 @@ use crate::combat::{blows_per_round, resolve_blow_nth, Break, Swing};
 use crate::combat_dispatch::{self, Backup, Called, Shot, Status};
 use crate::commands::{parse, Command};
 use crate::data;
+use crate::gym;
 use crate::locations::{Location, Places};
 use crate::model::Fighter;
 use crate::progress::{self, Progress};
@@ -1019,11 +1020,21 @@ impl Game {
             Command::Girl => self.enter_shop(Location::Girl),
             Command::Den => self.enter_shop(Location::Den),
             Command::Club => self.enter_shop(Location::Club),
+            // `trn`'s own compare is `1000:e390`, on the STREET buffer
+            // `20ae:3972`; `1000:e395 jz 0xe39a` is the hit and reaches the
+            // discovery gate at `1000:e39a`, while `1000:e397` misses into
+            // the shared tail at `1000:e961`.
             Command::Gym => self.enter_shop(Location::Gym),
             Command::CommandList => self.show_command_list(),
             Command::Help => self.show_help(),
             Command::Version => self.banner(),
             Command::Name => self.rename(lines)?,
+            // `kos`'s own compare is `1000:e973` on the street buffer
+            // `20ae:3972`; `1000:e978 jz 0xe97d` is the hit and `1000:e97a`
+            // misses to the next verb's setup at `1000:ea8a`. It is a
+            // one-shot STREET verb, not a submenu: `1000:e97d`..`1000:ea8a`
+            // holds no prompt literal, no `0eed:0000`-then-`ReadLn` pair and
+            // no back edge, and every path in it ends at `1000:ea8a`.
             Command::Joint => self.smoke(Joint::Street),
             Command::Drink => self.beer(Beer::One),
             Command::BingeDrink => self.beer(Beer::Binge),
@@ -1479,12 +1490,16 @@ impl Game {
     /// `20ae:38b2` and then has the armour that came from *equipment*
     /// subtracted back out --
     ///
-    /// * `1000:e3aa`..`1000:e3b8`: `-1` when `[0x38b4]` is set and
-    ///   `[0x38b7]` is not,
-    /// * `1000:e3bc`..`1000:e3c3`: `-2` when `[0x38b7]` is set,
-    /// * `1000:e3c8`..`1000:e3d6`: `-2` when `[0x38b6]` is set and
-    ///   `[0x38b9]` is not,
-    /// * `1000:e3db`..`1000:e3e2`: `-4` when `[0x38b9]` is set,
+    /// * `1000:e3aa`..`1000:e3b8`: `-1` when `[0x38b4]` is set
+    ///   (`1000:e3aa`/`1000:e3af`) and `[0x38b7]` is not
+    ///   (`1000:e3b1`/`1000:e3b6`),
+    /// * `1000:e3bc`..`1000:e3c3`: `-2` when `[0x38b7]` is set
+    ///   (`1000:e3bc`/`1000:e3c1`),
+    /// * `1000:e3c8`..`1000:e3d6`: `-2` when `[0x38b6]` is set
+    ///   (`1000:e3c8`/`1000:e3cd`) and `[0x38b9]` is not
+    ///   (`1000:e3cf`/`1000:e3d4`),
+    /// * `1000:e3db`..`1000:e3e2`: `-4` when `[0x38b9]` is set
+    ///   (`1000:e3db`/`1000:e3e0`),
     ///
     /// so it is the part of the armour the player trained rather than
     /// bought. Those four bytes are the ownership flags for four `mar` rows:
@@ -1493,6 +1508,16 @@ impl Game {
     /// `1000:c0e0` sets `[0x38b6]` (row 6, the leather jacket, "защиты ... на
     /// 2") and `1000:c2ca` sets `[0x38b9]` (row 9, "Броня +4") -- the four
     /// subtrahends are those four rows' own advertised bonuses.
+    ///
+    /// Each bullet above names its own compare and its own branch, and those
+    /// **eight addresses are branches this method does not implement**: they
+    /// are written out one by one so the gap below is recorded per branch
+    /// rather than per range. `data/branches.json`'s `port_cross_reference`
+    /// calls that the over-reporting direction of its citation proxy ("a
+    /// citation can be a record of a gap"), and `docs/re/branches.md`'s
+    /// coverage sentence names the two of the eight that Task 32 added --
+    /// `1000:e3b6` and `1000:e3d4` -- among the branches of its `+27` that
+    /// record a gap rather than an implementation.
     ///
     /// **The port carries all four flags and this method still ignores
     /// them**, so `abs` is exactly `armor` here, where the original computes
@@ -1504,6 +1529,13 @@ impl Game {
     /// `abs < district * 2`. This method implements both; the prose used to
     /// fold them into one. So the whole consequence is that this port can
     /// HIDE a gym row the original shows.
+    ///
+    /// **The `5` ARM reads `20ae:3e34` too, against a different threshold**
+    /// (`(district - 2) * 10` at `1000:e87f`..`1000:e894`, where this row's
+    /// is `district * 2`). [`crate::gym`]'s `train_abs` makes the same
+    /// `armor` substitution against its own threshold, so the population of
+    /// this divergence is two readers; the two predicates are deliberately
+    /// NOT shared, because they are different numbers.
     ///
     /// **This became live in Task 19 and is not fixed here.** Before it,
     /// nothing in the port could set the four bytes (buying a `mar` row
@@ -1524,7 +1556,7 @@ impl Game {
     /// would make the gym row depend on a flag the player cannot earn.
     /// Registered in `docs/re/gaps.md`, "The four armour flags are carried
     /// but the gym's `abs` ignores them".
-    fn imm_row_visible(&self, row: &ImmRow) -> bool {
+    pub(crate) fn imm_row_visible(&self, row: &ImmRow) -> bool {
         let district = i32::from(self.district);
         let level = i32::from(self.player.level);
         let abs = i32::from(self.player.armor);
@@ -1778,7 +1810,20 @@ impl Game {
     /// existing trimmed-prompt divergence in `docs/re/gaps.md`, which the
     /// den now joins; the `.trim()` below is deliberately left alone rather
     /// than special-cased for one location.
-    fn shop_turn(
+    ///
+    /// ## The gym's five keys
+    ///
+    /// Same shape and the same buffer: `1` `1000:e62e`, `2` `1000:e6ba`,
+    /// `3` `1000:e73c`, `4` `1000:e7f3`, `5` `1000:e875`, and the shared
+    /// `w` at `1000:e93c`. Three of the six sit behind a district test that
+    /// decides whether the compare happens at all, so the arm below guards
+    /// on [`crate::gym::key_dispatches`] -- the chain, gate before key --
+    /// rather than on the key alone. The arms themselves are
+    /// [`crate::gym::run_key`]; `docs/re/gym.md` and `data/gym_arms.json`
+    /// are the map. **The gym's `ReadLn` does not trim either**
+    /// (`1000:e61f call 0eed:0216` lowercases and nothing else), so it joins
+    /// the den in the same `docs/re/gaps.md` entry.
+    pub(crate) fn shop_turn(
         &mut self,
         loc: Location,
         line: &str,
@@ -1812,6 +1857,14 @@ impl Game {
             (Location::Den, "a") => self.den_reveal(),
             // 1000:dd3c, key literal CS 0xa036.
             (Location::Den, "d") => return self.den_job(lines),
+            // The gym's five keys -- `1000:e624`..`1000:e932`, ported by
+            // [`crate::gym`], which owns the district gates and the arms.
+            // The guard is the compare CHAIN (gate then key, as
+            // `1000:e728`/`1000:e73c` are ordered) and is side-effect-free;
+            // a `false` falls into the catch-all below, which is the
+            // original's own fall-through to the `w` compare at
+            // `1000:e93c`.
+            (Location::Gym, k) if gym::key_dispatches(self, k) => gym::run_key(self, k),
             (Location::Market | Location::Dealers, k)
                 if k.len() == 1 && k.chars().all(|c| c.is_ascii_digit()) =>
             {
@@ -1921,7 +1974,10 @@ impl Game {
     /// not assumed from the wording. Nothing one-shot is consumed, so the
     /// arm is repeatable, and it spends no `Random` draw
     /// (`data/den_arms.json`'s draw sweep puts all four of the handler's
-    /// unported draws in the `d` arm).
+    /// draws in the `d` arm -- all four ported by Task 28, `1000:dd97` and
+    /// `1000:ddda` on the cop paths and `1000:de5a` and `1000:de7c` on the
+    /// haul, in [`Game::den_job`]. "Unported" here was left over from the
+    /// plan that preceded that task).
     ///
     /// `1000:db38` is `jle`, a SIGNED compare against zero, so a negative
     /// count would refuse too. `beer_dl` is a `u16` here, matching the
@@ -3572,15 +3628,39 @@ impl Game {
     /// `crate::model::Fighter` has a `stoned: bool`, not the original's
     /// countdown, so the flag is modelled as "stoned or not" and the
     /// countdown itself lives in [`Game::buff_countdown`].
+    ///
+    /// ## The four gates, and why three of them are spelled differently here
+    ///
+    /// Task 31 mapped the handler branch by branch
+    /// (`data/gym_arms.json`'s `joint` block) and found **no missing
+    /// behaviour**: all four gates and all seven effects were already here.
+    /// What was missing was citations, so the branch addresses are on the
+    /// code below. Three of the four are written with a different predicate
+    /// from the original's, and `joint.port_equivalences` records why each
+    /// decides alike:
+    ///
+    /// | original | here | why it is the same decision |
+    /// |---|---|---|
+    /// | `1000:e97d` `cmp byte [0x38b0],0x1` / `1000:e982 jnz` -- runs iff the byte is **not 1** | `broken_jaw`, a `bool`, refusing iff true | all five image-wide writers store 0 or 1 (`1000:47ee` and `1000:4820` store 1; `1000:5031`, `1000:b2ae` and `1000:d558` store 0 -- `python3 tools/re_query.py xrefs-to 20ae:38b0` recomputes the set), so `!= 1` and `== 0` agree |
+    /// | `1000:e9a0` `cmp byte [0x38cd],0x0` / `1000:e9a5 jz` -- the buff COUNTDOWN | `stoned`, a `bool` | the two are written and cleared together and never independently: the setter is below, the clear is in [`Game::wander_preamble`] when the countdown hits zero, and `Game::from_save` loads `stoned: save.buff_countdown != 0` |
+    /// | `1000:e9aa` `cmp word [0x38c5],0x0` / `1000:e9af jnle` -- SIGNED | `joints == 0` | `Fighter::joints` is a `u16`, so the negative half of the signed test is unrepresentable |
+    /// | `1000:e9d2` `cmp ax,0xa` / `1000:e9d5 jnl` on a SIGNED shortfall | `saturating_sub(..) < 10` | when hp > hpmax the original's `ax` is negative, `jnl` fails and it takes the top-up branch, which LOWERS hp to hpmax; `saturating_sub` gives 0, also < 10, so the port takes the same branch and makes the same assignment |
+    ///
+    /// A writer that stored 2 into `20ae:38b0`, or a change of `joints` to a
+    /// signed type, would break the first and third of those; that is why
+    /// they are written down rather than assumed.
     fn smoke(&mut self, site: Joint) {
+        // 1000:e97d / 1000:e982 -- the fallthrough 1000:e984 is the refusal.
         if self.player.broken_jaw {
             term::println("^4Ты не схавать колёса из-за сломаной челюсти.");
             return;
         }
+        // 1000:e9a0 / 1000:e9a5 -- 1000:e9a7 jumps to 1000:ea71.
         if self.player.stoned {
             term::println("^6Ты неможешь схавать ещё один косяк.");
             return;
         }
+        // 1000:e9aa / 1000:e9af -- 1000:e9b1 jumps to 1000:ea56.
         if self.player.joints == 0 {
             term::println("^4У тебя нет косяков");
             return;
@@ -3595,6 +3675,8 @@ impl Game {
         self.player.strength += 2;
         self.player.dmg_min += 1;
         self.player.dmg_max += 2;
+        // 1000:e9cb..1000:e9ce build the shortfall; 1000:e9d2 / 1000:e9d5
+        // pick the branch, and a NEGATIVE shortfall lands on this one too.
         let shortfall = self.player.hpmax.saturating_sub(self.player.hp);
         if shortfall < 10 {
             term::print(&text::fill("^2Колёса прибавляют #з. ", &[shortfall as i64]));

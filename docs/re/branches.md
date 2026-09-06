@@ -485,9 +485,22 @@ own columns when Ghidra last ran (`82a08d8`); the table below is recomputed from
 the shipped tree, and the block under *Recomputation* prints it. Quote the
 command, not the cell.
 
-After Task 30: 838 game branches; **449 touched (53.6%)**; 389 with no citation
-at the branch or its guard. **Ten of this branch's +61 are branches the port
-explicitly does NOT implement** — the `FUN_1000_3d11` `param_1` residue that
+After Task 32: 838 game branches; **476 touched (56.8%)**; 362 with no citation
+at the branch or its guard. **Two of Task 32's +27 are branches the port does
+NOT implement** — `1000:e3b6` and `1000:e3d4`, two of the eight compares of the
+gym's trained-armour recompute (`1000:e3a4`..`1000:e3e2`), which
+`Game::imm_row_visible`'s doc comment now names one by one so the standing
+`docs/re/gaps.md` gap is recorded per branch instead of per range. The other
+six of those eight were already cited the same way before this task. Every
+other one of the +27 is an implemented branch: twenty in the gym's arms
+(`crate::gym`), four in `kos` (`Game::smoke`, whose behaviour Task 32 did not
+change — the citations were what was missing), `1000:e395` (the `trn` verb
+dispatch, `Game::enter_shop`) and `1000:47d3` (the tooth guard's own split in
+`crate::combat`, reached from the `4` arm's doc).
+
+Before that, after Task 30: 449 touched (53.6%). **Ten of that branch's +61
+are branches the port explicitly does NOT implement** — the `FUN_1000_3d11`
+`param_1` residue that
 `Game::den_beat_up`'s and `Game::den_job`'s doc comments enumerate precisely
 to say so. That is the over-reporting failure direction above, at ~16% of the
 +61, and it belongs at the headline rather than only in Task 28's paragraph
@@ -510,7 +523,17 @@ again; Task 28 (the den's submenu ported) 424 (50.6%); `ccbccf7` and `e6b62eb`
 it needed no worktree measurement at all: neither commit touches a path in
 `port_citation_sources` (`src/**/*.rs`, `data/command_dispatch.json`), so the
 scan's whole input is byte-identical; Task 30 (the sell path ported) 449
-(53.6%).
+(53.6%); `77c443f` and `36137a0` (Task 31, the gym and the joint MAPPED)
+**still 449** — a fourth time, and again with no worktree needed, since
+neither commit touches `src/**/*.rs` or `data/command_dispatch.json`;
+Task 32 (the gym's five arms ported into `src/gym.rs`, `kos` cited) **476
+(56.8%)**, +27, of which +26 land in `1000:ab59` (239 → 265) and the last one
+in `1000:3d11` (106 → 107). **The `touched` column moved in exactly those two
+functions and nowhere else.** The `citations` column moved in three:
+`1000:ab59` 1523 → 1745, `1000:3d11` 663 → 665, and `1000:2526` 55 → 61 —
+that third one with no `touched` movement at all, which is the usual gap
+between *citing an address* and *citing a branch*, and which the paragraph
+below about that cell goes into.
 
 **Task 28's +36 splits across two functions.** `1000:ab59` goes 188 → 214
 (+26, the den's own gates and arms) and `1000:3d11` goes 96 → 106 (+10, from
@@ -556,14 +579,26 @@ gap again.
 
 **One cell above does not reproduce, and is recorded rather than overwritten.**
 The Task 28 table says `1000:2526` went `51 → 54`; the *Recomputation* block
-prints **55** for that function both at `e6b62eb` (before Task 30) and at this
-tree, and Task 30 changed it by zero. The discrepancy is one citation site and
-predates Task 30.
+printed **55** for that function both at `e6b62eb` (before Task 30) and at
+`36137a0` (before Task 32), and Task 30 changed it by zero. The discrepancy is
+one citation site and predates Task 30. It prints **61** at this tree: the
+column counts citation LINES, and the six added are the six lines of
+`crate::gym`'s `train_xp` doc that reach into the level-up. Three addresses
+there are newly named image-wide — `1000:2587` (`jmp 0x28a0`, the tail of the
+level-cap block `1000:257a`..`1000:2587`), `1000:28a6` (`mov di,0x24ea`, the
+push of file `0x3DBA`, `^6Сейчас у тебя # качков опыта. До слеующей прокачки
+надо #`) and `1000:28c1` (`mov sp,bp`, where the callee's own entry test
+early-outs, past that message, which is why the gym's duplicate guard at
+`1000:e7da` changes nothing observable). **None of the three is a branch
+address or a branch's guard**, which is why `touched` for that function is
+still 9: citing the inside of a routine is not the same as touching a branch
+in it.
 
 **The per-entry table below is Task 26's and is NOT recomputed here.** Every
-cell Tasks 28 and 30 changed is in the two blocks just above; the rest of the
-columns are byte-for-byte what the *Recomputation* block prints at this tree.
-Quote the command, not the cell.
+cell Tasks 28, 30 and 32 changed is in the blocks just above; the rest of the
+columns are byte-for-byte what the *Recomputation* block prints at this tree,
+with the one recorded exception in the paragraph above. Quote the command, not
+the cell.
 
 **Over the whole shop-arms branch the figure is +83, and it does NOT all land
 in one function.** `bfad0b4` → `e4e929b` is 305 → 388, splitting **+81 in
@@ -621,8 +656,15 @@ shatters it into many small ones. After Task 26, 421 spans hold 698 of the 838
 game branches (at `e657bbe`, 416 spans held 767; at `82a08d8`, when
 `data/branches.json` was generated, 191 spans held 822 and the `uncited_spans`
 array in that file still says so). **More spans, fewer branches in them** is
-what porting looks like on this metric. The top 12 below is recomputed from the
-shipped tree by the block under *Recomputation*.
+what porting looks like on this metric. **The table below is Task 26's
+snapshot and is NOT recomputed here** — the top 12 at the shipped tree is the
+one the block under *Recomputation* prints, and at Task 32's tree that is
+422 spans holding 614 branches, headed by `1000:4169`..`1000:43f5` at
+seventeen. An earlier revision of this sentence said the table itself was
+recomputed; it was already untrue at Task 30, whose own +25 had shattered the
+table's rank 1, and this task's +27 shattered its rank 3. Same rule as the
+per-entry table above: the snapshot stays, the deltas are written out in
+prose, and the command is what to quote.
 
 The three largest spans in the `e657bbe` ranking — `1000:c53b..1000:cb04` (30
 branches), `1000:bd22..1000:bf7f` (17) and `1000:cb06..1000:ccd7` (13) — are
@@ -662,13 +704,29 @@ of the dealers' body). Tasks 24 and 26 shattered all three with per-arm
 citations. Next after the twelve above: `1000:3dc8`..`1000:3fa6` (5, combat —
 `^4Я МАНЬЯК!!!`).
 
-Defensible order of work, from this table alone: the **dealers' sell path**
-(`1000:ced9`..`1000:d382`, 24 branches — the `x`/`wes` arms `docs/re/gaps.md`
-still lists as open), then the den and the gym as a block of location menus.
-The status screen, which headed this list for four tasks, is off it:
+**Four more spans have left the table since, and every one of them was a
+location handler.** `1000:d8c9`..`1000:dc0d` (rank 2, 22) and
+`1000:dd33`..`1000:ddf5` (rank 6, 9) went at Task 28 with the den's submenu;
+`1000:ced9`..`1000:d382` (rank 1, 24) went at Task 30 with the dealers' sell
+path; `1000:e590`..`1000:e947` (rank 3, 21) went at Task 32 with the gym's
+five arms and the joint's citations. Rank 5 shrank rather than vanishing:
+`1000:3d12`..`1000:3dc6` is now `1000:3d33`..`1000:3dc6` at eight. The head of
+the ranking is therefore combat, not a location: `1000:4169`..`1000:43f5`, the
+crowd lines, at seventeen.
+
+Defensible order of work, from the recomputed ranking rather than from the
+snapshot above: the location handlers that headed it are done, so what is left
+at the top is inside `FUN_1000_3d11` — the crowd lines
+(`1000:4169`..`1000:43f5`, 17) and the combat opening
+(`1000:3d33`..`1000:3dc6`, 8) — with the club (`1000:dfcc`..`1000:e180`, 9,
+the label rank 7 above already carries) and `1000:d5da`..`1000:d6c9` (5) as
+the remaining location work; that last span falls between `rep`'s compare at
+`1000:d3a6` and `girl`'s at `1000:d6ed`, so it is inside the vet's handler —
+which is a span boundary, not a traced dispatch. The
+status screen, which headed this list for four tasks, is off it:
 `FUN_1000_1a03` is ported (`src/character_sheet.rs`, Task 22), 54 of its 83
-branches touched across 174 citation sites, and its largest remaining uncited
-span is rank 9 at six branches.
+branches touched across 176 citation sites, and its largest remaining uncited
+span is six branches.
 
 ## Recomputation, from the shipped artifacts
 
@@ -757,23 +815,25 @@ for s in spans[:12]:
 EOF
 ```
 
-At Task 30's tree that prints, verbatim, the numbers this document's tables
-carry. Task 30 ported the dealers' sell path, which is why
-`1000:ced9..1000:d382` -- the 24-branch span that headed this ranking at
-Task 26 -- is gone from it entirely: all 26 game branches in
-`1000:ce76`..`1000:d383` are now cited, so no span survives there. The Task 24
-and Task 26 totals this block used to print are in the history sentence above,
-and in `docs/superpowers/RESUME.md`'s measured-history table:
+At Task 32's tree that prints, verbatim, the numbers this document's tables
+carry. Task 32 ported the gym's five arms, which is why
+`1000:e590..1000:e947` -- the 21-branch span that headed this ranking at
+Task 30 -- is gone from it entirely, exactly as `1000:ced9..1000:d382` went at
+Task 30: all 43 game branches in `1000:e390`..`1000:ea93` are now cited, so no
+span survives across the gym or the joint. The head of the ranking is
+therefore a fight span now, not a street one. The Task 24, Task 26 and Task 30
+totals this block used to print are in the history sentence above, and in
+`docs/superpowers/RESUME.md`'s measured-history table:
 
 ```
-game branches 838 | touched 449 (53.6%) | uncited 389
-1000:ab59    bytes 17143 branches 406 touched 239 citations 1523
-1000:3d11    bytes  6971 branches 224 touched 106 citations 663
+game branches 838 | touched 476 (56.8%) | uncited 362
+1000:ab59    bytes 17143 branches 406 touched 265 citations 1745
+1000:3d11    bytes  6971 branches 224 touched 107 citations 665
 1000:1a03    bytes  2700 branches  83 touched  54 citations 176
 1000:6a0d    bytes  2527 branches  33 touched  15 citations 159
 1000:29c4    bytes   666 branches  19 touched   2 citations  26
 1000:0d14    bytes  1196 branches  17 touched  11 citations  58
-1000:2526    bytes   929 branches  17 touched   9 citations  55
+1000:2526    bytes   929 branches  17 touched   9 citations  61
 1000:7c67    bytes  1612 branches  16 touched  12 citations  39
 1000:1348    bytes   791 branches  11 touched   1 citations  18
 1000:0aec    bytes   552 branches   5 touched   0 citations   0
@@ -783,8 +843,7 @@ game branches 838 | touched 449 (53.6%) | uncited 389
 1000:5f55    bytes  1000 branches   1 touched   0 citations   4
 1000:02c2    bytes   508 branches   0 touched   0 citations   0
 1000:0acc    bytes    15 branches   0 touched   0 citations   0
-430 spans hold 647 of the 838
-   21  1000:e590..1000:e947     1000:ab59        952 bytes
+422 spans hold 614 of the 838
    17  1000:4169..1000:43f5     1000:3d11        653 bytes
     9  1000:dfcc..1000:e180     1000:ab59        437 bytes
     8  1000:3d33..1000:3dc6     1000:3d11        148 bytes
@@ -796,6 +855,7 @@ game branches 838 | touched 449 (53.6%) | uncited 389
     5  1000:b35d..1000:b392     1000:ab59         54 bytes
     5  1000:b3dc..1000:b464     1000:ab59        137 bytes
     5  1000:d5da..1000:d6c9     1000:ab59        240 bytes
+    4  1000:0efe..1000:0fed     1000:0d14        240 bytes
 ```
 
 At `e657bbe` — and unchanged by the fix wave that followed it, which added no
