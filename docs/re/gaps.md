@@ -1681,6 +1681,13 @@ anywhere in `src/` — the port's `enter_shop` gates on the discovery flag only.
 Implementing the two setters without the two gates would be worse than the
 present state, so this entry lists them as one omission, not five.
 
+**Task 33 settled WHEN `1000:e23e` runs**, which this entry never said:
+it is the last effect of the club's caught-cheating block, reached only when
+the card game's stake `20ae:3c82` reaches 17 at `1000:e179` — six consecutive
+wins. `docs/re/club.md` and `data/club_arms.json` have the whole arm. So the
+club setter is not a loose end waiting on new research; it is one item in the
+`p` arm's port, and the gate at `1000:df1a` must land in the same change.
+
 **Consequence, stated plainly:** `src/game.rs`'s two "it blew over" phone
 messages (`1000:b11e`, `1000:b145`) can never print in this port, and the
 decrements they share a preamble with can never run. They are left in place —
@@ -2756,3 +2763,78 @@ modelled, and not observable: `20ae:3b7a` has 87 image-wide references and
 every one is the same store-store-load triple (`docs/re/tables.md`'s priced
 row idiom), so no reader reaches the byte without its own writer running
 first.
+
+---
+
+## Opened by Task 33 (mapping the club and the command list)
+
+`docs/re/club.md` and `data/club_arms.json` are the map;
+`python3 tools/test_club_arms.py` re-derives both from `orig/g.exe`. Task 33
+changed no `src/`, so everything below is an omission the porting task
+inherits.
+
+### `Game::show_command_list` prints one screen's worth of a gated list
+
+**Established from flow**, `1000:ea94`..`1000:ec82`. The `i` handler prints
+**seventeen** lines: one ungated at `1000:ea9e`, then seven gated on the seven
+discovery flags at `1000:eab7`, `1000:ead7`, `1000:eaf7`, `1000:eb17`,
+`1000:eb37`, `1000:eb57` and `1000:eb77`, then nine more ungated from
+`1000:eb97`. `Game::show_command_list` prints thirteen with no gating.
+
+All thirteen are verbatim original lines in the original's relative order, so
+the divergence is exactly two things: four lines the port never prints — CS
+`0xa787` (`bmar`), `0xa7d6` (`girl`), `0xa83d` (`kl`), `0xa860` (`trn`) — and
+three it prints unconditionally that the original gates — CS `0xa762` (`mar`),
+`0xa7ad` (`rep`), `0xa809` (`pr`).
+
+**Where the thirteen came from, and why it is worth writing down.**
+`docs/re/oracle-captures/command-table-and-combat.md` captures exactly these
+thirteen at district 1, under a preamble that says in bold that its screens are
+EVIDENCE and must never stand in for finding the branch. The thirteen are what
+that one flag configuration prints. `data/command_dispatch.json`'s `i` note,
+`docs/re/command-dispatch.md`'s `i` row and `src/commands.rs`'s two comments
+all still say "the 13-line command list"; **none of those four is corrected
+here**, because an RE task changing a `src/` comment would be a `src/` diff
+that is only comments. The porting task owns them, and this entry exists so it
+does not copy the number forward again.
+
+### The gate ORDER in the `i` list is not the flag-address order
+
+**Established from flow.** The seven gates read `20ae:3694`, `3695`, **`3698`**,
+`3697`, **`3696`**, `3699`, `369a` — Vet before Girl before Den, where the
+addresses go Den, Girl, Vet. `src/locations.rs` already records that earlier
+revisions of this port carried Den and Vet swapped at slots 2 and 4, on exactly
+that ordering as it appears in `data/strings.json`. Read as flow the list
+CONFIRMS the PLACES.SAV reading (`1000:eaf7` gates the `rep` line on `3698`,
+`1000:eb37` gates the `pr` line on `3696`, and each is the same compare its
+verb's own handler makes). Read as an ordering it would reintroduce the swap.
+**Do not reorder `locations::TRACKED` to match the `i` list.**
+
+### The club's three keys are dispatched by nothing
+
+**Established from flow.** `1000:e06f` (`p`), `1000:e27e` (`1`) and
+`1000:e2f3` (`2`) are shortstring compares against the club's own buffer
+`20ae:3a72`; `Game::shop_turn` has no `Location::Club` arm at all
+(`grep -n 'Location::Club' src/game.rs`). The `w` exit is already shared. The
+club's two menu ROWS are ported (`IMM_ROWS`), so today the club prints a menu
+whose every key does nothing.
+
+The `p` arm is the substantial one: a stake that starts at 5, doubles the bet
+on a win against `luck >= Random(district * 12)`, grows by 2 per win, resets to
+5 on a loss, and at 17 triggers a forced fight, a five-turn club ban
+(`1000:e23e`) and an ejection implemented by writing `w` into the input buffer
+(`1000:e251`). Nothing in it is blocked: `Game::roll_enemy`,
+`progress::apply_levels`, `Game::run_combat`, `Game::luck_below_random_32`,
+`club_ban_countdown` and `fight_accepted_3b72` all exist. The one missing input
+is the stake byte itself, and it is per-visit and unsaved, so it belongs in the
+club module rather than in `Game`'s persisted state.
+
+### `20ae:3c82` is no longer unnamed
+
+**Established from flow.** `docs/re/tables.md`'s "the one debited byte
+variable" said twice that what the byte prices was not established. It is the
+club card game's stake; the census (`python3 tools/re_query.py xrefs-to
+20ae:3c82`) puts all fourteen references between `1000:e020` and `1000:e25d`.
+`data/other_price_sites.json` still carries `what: null` for file `0xf978`
+because Task 33 did not regenerate it; `docs/re/club.md` is the authority until
+it is.

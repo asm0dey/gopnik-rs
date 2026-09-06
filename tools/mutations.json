@@ -2505,6 +2505,379 @@
       "StringCitationTest.test_every_src_file_with_checkable_citations_is_accounted_for"
     ],
     "expect": "named in neither SOURCES nor NOT_YET_SCANNED"
+  },
+  {
+    "label": "club-arms-instruction-identity",
+    "defends": "tools/test_club_arms.py walks every {addr,text} record in data/club_arms.json and requires orig/g.exe to decode that instruction at that address -- the identity half of the two signals docs/re/METHODOLOGY.md keeps apart.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "club",
+        "arms",
+        1,
+        "effects",
+        1,
+        "text"
+      ],
+      "from": "inc [0x38a0]",
+      "to": "inc [0x38a4]"
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_every_cited_instruction_decodes_to_what_the_artifact_says"
+    ],
+    "expect": "orig/g.exe decodes"
+  },
+  {
+    "label": "club-arms-literal-identity",
+    "defends": "Every {cs_offset,text} record must be the Pascal shortstring actually at that CS offset.  The club's `1` and `2` arms SHARE one refusal literal (CS 0x8e4d) and differ only in their confirmation and closing lines, so attributing the wrong text to an arm is invisible to every other check here.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "club",
+        "arms",
+        1,
+        "strings",
+        1,
+        "text"
+      ],
+      "from": "^2Ты прокачиваешь ловкость.",
+      "to": "^2Ты прокачиваешь удачу."
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_every_literal_decodes_to_the_recorded_text"
+    ],
+    "expect": "the artifact records"
+  },
+  {
+    "label": "club-arms-effects-completeness",
+    "defends": "effects[] is set-equal to every instruction in 1000:df06..1000:e390 that WRITES an absolute-memory operand, with the read and write buckets asserted EXHAUSTIVE so an unclassified shape fails instead of vanishing.  This is what makes `the w arm writes nothing` and `there is no second money instruction on the lose path` measurements.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "club",
+        "arms",
+        0,
+        "effects",
+        4,
+        "addr"
+      ],
+      "from": "1000:e145",
+      "to": "1000:e0f7"
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_the_recorded_effects_are_every_absolute_write_in_the_club"
+    ],
+    "expect": "the absolute-write sweep and the artifact disagree"
+  },
+  {
+    "label": "club-arms-strings-completeness",
+    "defends": "strings[] is the WHOLE set of CS literals each range pushes, measured by decoding it and collecting every `mov di,imm` followed by `push cs`/`push di`.  So `the w arm prints nothing` and `the i list is seventeen lines, not the thirteen the oracle capture shows` are measurements over the range, not lists that stopped being written.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "command_list",
+        "lines",
+        16,
+        "string",
+        "push",
+        "addr"
+      ],
+      "from": "1000:ec5f",
+      "to": "1000:ec46"
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_the_recorded_strings_are_every_cs_literal_pushed"
+    ],
+    "expect": "the CS-literal push sweep and the artifact disagree"
+  },
+  {
+    "label": "club-arms-gates-completeness",
+    "defends": "Every CONDITIONAL branch in both ranges must be named somewhere in data/club_arms.json, cross-checked against the count.  The string sweep cannot see a SILENT gate, and `at district 1 typing 2 is silent` and `an unrecognised key is silent` are headline claims of docs/re/club.md.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "club",
+        "sweeps",
+        "conditional_branches"
+      ],
+      "from": 20,
+      "to": 19
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_the_recorded_gates_are_every_conditional_branch"
+    ],
+    "expect": "sweeps.conditional_branches says"
+  },
+  {
+    "label": "club-arms-menu-is-not-the-arm-block",
+    "defends": "THE headline: 1000:e283..1000:e366 is the key DISPATCH, not a copy of the menu print at 1000:df74..1000:dfd0, even though both read [0x38c7] against 0xf and 0x16 and both read the [0x3692] district gate.  The three shared predicates are re-sliced out of orig/g.exe and each `jcc` beside them is REQUIRED to differ, so a pair recorded with a jcc that matches its twin fails.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "club",
+        "menu_vs_arm_finding",
+        "pairs",
+        2,
+        "jcc_arm"
+      ],
+      "from": "76 6e",
+      "to": "76 55"
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_the_menu_and_arm_predicates_differ_exactly_as_recorded"
+    ],
+    "expect": "told apart by these bytes"
+  },
+  {
+    "label": "club-arms-longest-shared-run",
+    "defends": "`the two blocks share only print boilerplate` is a longest-common-substring RECOMPUTED over both spans, not remembered, and the run must stop on the `jbe` opcode with the two displacement bytes differing.  A span narrowed or widened to dodge a shared body would otherwise pass quietly.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "club",
+        "menu_vs_arm_finding",
+        "arm_span",
+        "end"
+      ],
+      "from": "1000:e357",
+      "to": "1000:e366"
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_the_longest_run_the_two_blocks_share_is_the_recorded_one"
+    ],
+    "expect": "byte_length"
+  },
+  {
+    "label": "club-arms-stake-is-club-local",
+    "defends": "`20ae:3c82 is the club's stake` rests on containment: every accepted reference image-wide falls between 1000:e020 and 1000:e25d, and the three writers are exactly the entry reset, the +2 and the loss reset.  docs/re/tables.md carried this byte as `what: null`; a writer list that quietly shrank would break the naming.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "club",
+        "globals",
+        11,
+        "xrefs",
+        "writers_image_wide"
+      ],
+      "from": [
+        "1000:e020",
+        "1000:e0f7",
+        "1000:e145"
+      ],
+      "to": [
+        "1000:e020",
+        "1000:e0f7"
+      ]
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_every_globals_xref_census_is_what_re_query_reports"
+    ],
+    "expect": "xrefs-to` finds"
+  },
+  {
+    "label": "club-arms-forced-exit-argument-order",
+    "defends": "`the caught block writes w INTO 20ae:3a72` is only true because 0f78:0b01 fetches its SOURCE from ss:bx+0xa -- the FIRST push -- which is the reverse of how 0f78:0ae7 reads its two arguments.  Getting it backwards turns `the club ejects the player` into `the club overwrites a code-segment literal`, and no other check here reaches the callee.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "club",
+        "arms",
+        0,
+        "caught_block",
+        "forced_exit",
+        "call",
+        "addr"
+      ],
+      "from": "1000:e251",
+      "to": "1000:e24d"
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_the_forced_exit_writes_w_into_the_clubs_own_buffer"
+    ],
+    "expect": "call 0xf78:0xb01"
+  },
+  {
+    "label": "club-arms-announcement-copy-count",
+    "defends": "`the opponent announcement has exactly three copies` is a SEARCH over orig/g.exe for the 66-byte run, not a list, and each hit must be preceded by a near call that wraps to 1000:0d14.  docs/re/den.md named two of the three sites in prose; a list that dropped one would read as authoritative.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "club",
+        "announcement_finding",
+        "occurrences"
+      ],
+      "from": [
+        "1000:c3f1",
+        "1000:dc16",
+        "1000:e1a2"
+      ],
+      "to": [
+        "1000:dc16",
+        "1000:e1a2"
+      ]
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_the_opponent_announcement_has_exactly_three_copies"
+    ],
+    "expect": "the artifact records"
+  },
+  {
+    "label": "club-arms-command-list-gate-chain",
+    "defends": "`the seven i-list gates are independent -- no gate can hide another line` is arithmetic over seven decoded rel8 displacements, each of which must land on the NEXT gate.  A skips_to copied from the wrong neighbour would make the list look like a nested chain.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "command_list",
+        "lines",
+        3,
+        "gate",
+        "skips_to"
+      ],
+      "from": "1000:eb17",
+      "to": "1000:eb37"
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_each_command_list_gate_skips_exactly_its_own_line"
+    ],
+    "expect": "it must land on"
+  },
+  {
+    "label": "club-arms-command-list-gate-order",
+    "defends": "The i list gates Vet (20ae:3698) BEFORE Den (20ae:3696), which is not the flag-address order.  src/locations.rs records that earlier revisions of this port carried Den and Vet swapped on exactly that ordering, so a list `tidied` into address order silently reintroduces the swap.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "command_list",
+        "lines",
+        3,
+        "gate",
+        "ds"
+      ],
+      "from": "20ae:3698",
+      "to": "20ae:3696"
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_the_gate_order_is_not_the_flag_address_order"
+    ],
+    "expect": "20ae:3698"
+  },
+  {
+    "label": "club-arms-range-instruction-count",
+    "defends": "Every sweep in this file rests on the aligned decode covering the whole range.  The two instruction counts are the anchor that proves it did, so a walk that stopped early cannot pass as a search that found nothing -- which is exactly what the `i` handler's `writes nothing, draws nothing` depends on.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "command_list",
+        "range",
+        "instruction_count"
+      ],
+      "from": 261,
+      "to": 260
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_both_ranges_decode_as_one_aligned_run"
+    ],
+    "expect": "every sweep"
+  },
+  {
+    "label": "club-arms-spans-tile",
+    "defends": "The fifteen club spans and the five list spans must chain end-to-start across their whole ranges, so a block cannot be dropped out of the map by being left out of every span -- which is how the effects and strings sweeps could be narrowed without any of them going red.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "club",
+        "spans",
+        8,
+        "start"
+      ],
+      "from": "1000:e065",
+      "to": "1000:e06f"
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_the_spans_tile_both_ranges"
+    ],
+    "expect": "the tiling has a"
+  },
+  {
+    "label": "club-arms-boundary-exemption-is-honest",
+    "defends": "known_not_boundaries lets the artifact NAME two addresses it does not claim are boundaries -- the two `jbe` displacement bytes where the menu block and the arm block first differ.  Each entry is asserted to really NOT be a boundary, so the exemption cannot be used to park a good address and skip the check on it.",
+    "artifact": "data/club_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "club",
+        "known_not_boundaries",
+        "entries",
+        0,
+        "addr"
+      ],
+      "from": "1000:dfca",
+      "to": "1000:dfc9"
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_the_boundary_exemption_list_is_honest"
+    ],
+    "expect": "IS a boundary"
+  },
+  {
+    "label": "club-arms-prose-count-table",
+    "defends": "docs/re/club.md's two `counts this map rests on` tables are the numbers a reader quotes, and nothing else in the suite reads them -- the artifact's sweeps are checked against orig/g.exe, the prose was checked against nobody.  test_the_prose_count_tables_are_the_artifacts_sweeps parses the table rows and compares each against data/club_arms.json's sweeps, so a doc number drifting from the binary it summarises reds.",
+    "artifact": "docs/re/club.md",
+    "mutate": {
+      "op": "text-replace",
+      "from": "| absolute-memory writes | 17 |",
+      "to": "| absolute-memory writes | 16 |"
+    },
+    "test": [
+      "python3",
+      "tools/test_club_arms.py",
+      "ClubTest.test_the_prose_count_tables_are_the_artifacts_sweeps"
+    ],
+    "expect": "count table says"
   }
  ]
 }
