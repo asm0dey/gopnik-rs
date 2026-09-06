@@ -185,60 +185,74 @@ the two handlers.
 
 ---
 
-### Task 34: Port the club and the command list
+### Task 34: Port the club and the command list, then map and port the vet
 
-**Consumes Task 33.** Target: the 23 branches Task 33 mapped become
-`port_touched`.
+**Collapsed from Tasks 34, 35 and 36 by ruling R13.** Measured cause: Task 31
+produced 5,298 lines and zero game logic, Task 33 produced 5,535 and zero, and
+Task 32 produced 1,260 of which ~101 are game logic. ~11k lines of map bought
+~100 lines of behaviour. Per-task overhead — brief, dispatch, review, fix round,
+re-review, gate run — is roughly constant regardless of a handler's size, and
+the machine-readable twin's main consumer is the *next* agent. When one agent
+maps and ports, it already holds those facts in context.
 
-- New module `src/club.rs`; `src/game.rs` delegates.
-- `Game::show_command_list` rewritten against the flow Task 33 established:
-  the ungated line, then one gated line per discovery flag, each citing its
-  compare address. A test that turns each flag on and off independently and
-  asserts the printed list changes — `term::capture` already exists for this
-  (added in Task 28, `src/term.rs`).
-- Update `docs/re/branches.md`'s recomputation block and coverage sentence, and
-  `docs/re/gaps.md` for any kept divergence.
+**Part A — port the club (`kl`) and the `i` command list.** Task 33 mapped both;
+`data/club_arms.json`'s two `what_the_port_must_change` blocks are the work
+order. 15 club branches and 8 `i` branches.
 
----
+The `i` handler is a **behaviour bug, not a citation gap**. The original prints
+seventeen lines — one ungated at `1000:eab2`, seven gated on the discovery flags
+at `1000:eab7`/`ead7`/`eaf7`/`eb17`/`eb37`/`eb57`/`eb77`, and nine ungated from
+`1000:eb97`. `Game::show_command_list` prints thirteen, taken verbatim from an
+oracle screen capture — output used as an establishing source, which
+`docs/re/METHODOLOGY.md` forbids. Four lines are never printed by the original
+(CS `0xa787` `bmar`, `0xa7d6` `girl`, `0xa83d` `kl`, `0xa860` `trn`) and three
+are wrongly ungated (`0xa762` `mar`, `0xa7ad` `rep`, `0xa809` `pr`). With only
+Market and Vet found the list must be **twelve** lines.
 
-### Task 35: Map the vet (`rep`)
+Correct the three surviving "13-line" claims in `src/` while you are there —
+`src/commands.rs:61`, `:168` and `src/game.rs:2443`. Task 33 left them for this
+task deliberately; it corrected the two non-`src/` sites itself.
 
-**RE only. This task changes no line of `src/`.**
+**Part B — map AND port the vet (`rep`), `1000:d3a6`..`1000:d6ec`**, 20 untouched
+of 23. Only the entry gate (`1000:d3b0`) and the two price checks at `1000:d410`
+and `1000:d465` are cited. Unported: `1000:d3da`..`1000:d3f2` (HP against
+`[0x38ae]`, then `[0x38b0]` and `[0x38b1]`), the 13-branch block
+`1000:d4c1`..`1000:d61e` (the same three globals, then `cmp word [0x38c7],7`,
+then an `ax` dispatch against 1 and 2 at `1000:d5fb`/`1000:d61b`), and
+`1000:d6b2`/`1000:d6c3`.
 
-**Range:** `1000:d3a6`..`1000:d6ec` — 23 branches, 20 untouched. The most
-nearly-unported handler on the board: only the entry gate (`1000:d3b0`
-`cmp byte [0x3698],1`) and the two price checks at `1000:d410`
-(`cmp word [0x38c7],3`) and `1000:d465` (`cmp word [0x38c7],7`) are cited.
+Recover every arm's gates in order, price, effect on HP and on
+`[0x38b0]`/`[0x38b1]`, and its string; `xrefs-to` censuses for `20ae:38ae`,
+`20ae:38b0`, `20ae:38b1` (the last two are read by the vet, by `kos` at
+`1000:e97d` and by the wander handler at `1000:b27b`/`1000:b282`, so the census
+spans handlers); and what `ax` holds at the `1000:d5fb`/`1000:d61b` dispatch and
+where it was set.
 
-Unported: `1000:d3da`..`1000:d3f2` (HP against `[0x38ae]`, then `[0x38b0]` and
-`[0x38b1]`), the 13-branch block `1000:d4c1`..`1000:d61e` (the same three
-globals again, then `cmp word [0x38c7],7`, then an `ax` dispatch against 1 and
-2 at `1000:d5fb`/`1000:d61b`), and `1000:d6b2`/`1000:d6c3`.
+The map still lands in two places per the Global Constraints — `docs/re/vet.md`
+and `data/vet_arms.json` — but it is written for a port that happens in the same
+task, not for a stranger. It does not need to re-serialise every byte it already
+proved.
 
-**Recover:** every arm, its gates in order, its price, its effect on HP and on
-`[0x38b0]`/`[0x38b1]`, and its string; the identity of `20ae:38ae`,
-`20ae:38b0` and `20ae:38b1` with an `xrefs-to` census — `[0x38b0]` and
-`[0x38b1]` are read by the vet, by `kos` (`1000:e97d`) and by the wander
-handler (`1000:b27b`, `1000:b282`), so the census spans handlers; the `ax`
-dispatch at `1000:d5fb`/`1000:d61b` — what `ax` holds and where it was set.
+**Part C — one generic artifact verifier (ruling R14).** 18 of
+`tools/test_gym_arms.py`'s 38 tests are identically named to tests in
+`tools/test_club_arms.py`; 972 + 1380 lines, roughly half the same shape over a
+different JSON file. Write ONE verifier parametrised over `data/*_arms.json` and
+remove the duplicated halves of both suites. Handler-specific assertions stay
+handler-specific.
 
-**Deliverables:** `docs/re/vet.md`, `data/vet_arms.json`,
-`tools/test_vet_arms.py`, and a `what_the_port_must_change` block.
+This is the opposite of ruling R5, and both are right: R5 refused to extract shop
+scaffolding when one implementation existed, because one implementation is not a
+pattern. Three handlers with 18 identically-named tests is.
 
----
+**New modules** `src/club.rs` and `src/vet.rs`; `src/game.rs` delegates. `i`
+stays in `src/game.rs` (ruling R3 — a printer with no state is not a handler).
 
-### Task 36: Port the vet
-
-**Consumes Task 35.** Target: the 20 branches Task 35 mapped become
-`port_touched`.
-
-- New module `src/vet.rs`; `src/game.rs` delegates.
-- Every arm with its gates in the original's order, the `ax` dispatch, and the
-  verbatim strings.
-- Tests that fail on a wrong gate order or a wrong price.
-- Final coverage recomputation: re-run the `docs/re/branches.md` block and
-  replace both the headline sentence and the verbatim output block with what
-  this task's tree prints, plus one line in the measured-history sentence.
+**Report the delta split (ruling R12).** `docs/re/branches.md`'s per-task delta
+block must print, and the report must state, how many newly-touched branches are
+**behaviour the port now implements** versus **cited only in commentary**. Task
+32's +27 was ~20 behaviour and ~7 commentary — two of those seven being comments
+that say the port deliberately does not implement them. A citation count that
+does not distinguish these flatters itself.
 
 ---
 
