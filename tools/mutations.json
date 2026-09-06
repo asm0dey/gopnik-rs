@@ -2625,7 +2625,7 @@
       "tools/test_arms_artifacts.py",
       "ArmsArtifactTest.test_the_recorded_gates_are_every_conditional_branch_in_range"
     ],
-    "expect": "that the artifact never names"
+    "expect": "data/club_arms.json $.club: conditional branches"
   },
   {
     "label": "club-arms-menu-is-not-the-arm-block",
@@ -3015,7 +3015,7 @@
       "tools/test_arms_artifacts.py",
       "ArmsArtifactTest.test_the_recorded_gates_are_every_conditional_branch_in_range"
     ],
-    "expect": "that the artifact never names"
+    "expect": "data/vet_arms.json $: conditional branches"
   },
   {
     "label": "vet-arms-draw-n-is-walked-back",
