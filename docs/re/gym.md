@@ -225,10 +225,15 @@ field for it — it is rebuilt on every entry. Two of the eight are reads, and
 | `1000:e88d` — the `5` ARM's own ceiling | `(district - 2) * 10` | `1000:e892` |
 
 `docs/re/gaps.md` said "Exactly one thing reads the result", which stopped one
-search short; the entry is corrected there. At district 3 the row disappears at
-trained armour 6 while the arm keeps working to 10, so the arm stays usable
-through a menu that no longer lists it — which is consistent with the loop
-reprinting only the prompt.
+search short; the entry is corrected there.
+
+**Established from flow** — the composite, and it is a deduction from three
+addresses with no output anywhere in the chain: `1000:e58d` hides the row once
+trained armour reaches `district * 2`, `1000:e894` keeps the arm working until
+it reaches `(district - 2) * 10`, and `1000:e943` returns to the prompt rather
+than the menu. At district 3 that is 6 against 10, so between those two values
+the `5` key still works while the menu no longer lists it. Task 31's first
+report called this an inference; it is not one — nothing in it rests on a screen.
 
 The remaining six references are writes: the seed `1000:e3a7`, the four
 subtractions above, and `1000:e8da`, where the `5` arm raises it in step with
@@ -448,15 +453,26 @@ Strings: `^4А не хватает рубликов` (CS `0xa51f`, file `0x0BDEF
 `^6У тебя есть эта штучка.` (CS `0xa54a`).
 
 The only purchase in the gym that sets a flag rather than bumping a number.
-`python3 tools/re_query.py xrefs-to 20ae:394a` reports five references, of which
-`1000:e828 mov byte [0x394a],0x1` is the **only** absolute-memory write
-image-wide — nothing clears
-it, not even the district reset at `1000:abbd` that clears the discovery flags.
-(The save loader restores it as part of the 182-byte state block,
-`data/save_layout.json` `.SAV` offset 686; that is a block copy, not an
+`python3 tools/re_query.py xrefs-to 20ae:394a` reports five references, and here
+is all five:
+
+| at | what |
+|---|---|
+| `1000:e828` | `mov byte [0x394a],0x1` — the **only** absolute-memory write image-wide |
+| `1000:e7fa` | this arm's own already-own gate |
+| `1000:47ce` | combat, when a jaw would break |
+| `1000:47f3` | combat, the second half of the same split |
+| `1000:2068` | the character sheet `FUN_1000_1a03`, which prints `^1Зубная защита  ` (CS `0x18c8`, file `0x03198`) |
+
+Nothing clears it — not even the district reset at `1000:abbd` that clears the
+discovery flags. (The save loader restores it as part of the 182-byte state
+block, `data/save_layout.json` `.SAV` offset 686; that is a block copy, not an
 absolute-memory operand, so it is outside that census by construction.) What the
-flag buys is `1000:47ce`/`1000:47f3`: it splits a jaw break into the plain arm
-and a `Random(4)` — a draw-count difference, not flavour.
+flag *buys* is `1000:47ce`/`1000:47f3`: it splits a jaw break into the plain arm
+and a `Random(4)` — a draw-count difference, not flavour. `1000:2068` only
+displays it. Fix round 1 caught this paragraph naming the two combat readers and
+reading as if that were the whole consumer set; `data/gym_arms.json`'s
+`globals[].evidence` had `1000:2068` all along.
 
 ### `5` — прокачать пресс, 20 rubles
 

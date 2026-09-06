@@ -1664,7 +1664,7 @@
    "menu_at": "1000:e496",
    "arm_at": "1000:e714",
    "bytes": "31 c0 50 31 c0 50 31 c0 50 31 c0 50 31 c0 50 9a c2 01 ed 0e 80 3e 92 36 01",
-   "what_it_is": "five zeroed `WriteLn` format words, the `call 0eed:01c2` after them, and the first five bytes of a `cmp byte [0x3692],0x1` -- boilerplate every print in the image shares, not a shared body"
+   "what_it_is": "five zeroed `WriteLn` format words (15 bytes), the five-byte `call 0eed:01c2` after them, and a whole five-byte `cmp byte [0x3692],0x1` -- the run stops there because the `jcc` that follows the compare differs (`76 69` in the menu, `77 03` in the arm). Boilerplate every print in the image shares, not a shared body"
   },
   "pairs": [
    {
@@ -2074,6 +2074,11 @@
     "original": "1000:e9af -- `cmp word [0x38c5],0` / `jnle`, SIGNED",
     "port": "`self.player.joints == 0`",
     "why_equivalent": "`Fighter::joints` is `u16` (`grep -n 'pub joints' src/model.rs`), so the negative half of the signed test is unrepresentable and `== 0` and `<= 0` decide the same way. A future change of that field to a signed type would break the equivalence, which is why it is written down rather than assumed"
+   },
+   {
+    "original": "1000:e97d -- `cmp byte [0x38b0],0x1` / `jnz`, so the arm runs iff the BYTE is not 1",
+    "port": "`self.player.broken_jaw`, a bool, refusing iff it is true",
+    "why_equivalent": "the same shape of argument as the `u16 joints` entry below: the byte only ever holds 0 or 1, so `!= 1` and `== 0` decide alike. All five image-wide writers store one of those two -- `1000:47ee` and `1000:4820` store 1, `1000:5031`, `1000:b2ae` and `1000:d558` store 0 -- and `python3 tools/re_query.py xrefs-to 20ae:38b0` is the command that recomputes the set. A writer storing 2 would make the original run the arm and the port refuse it"
    },
    {
     "original": "1000:e9d5 -- `cmp ax,0xa` on a SIGNED shortfall",
@@ -3280,15 +3285,20 @@
   }
  ],
  "known_not_boundaries": {
-  "note": "Addresses this artifact NAMES but does not claim are instruction boundaries reachable from a function entry. `tools/test_gym_arms.py` exempts exactly these from the boundary walk AND asserts each really is outside it, so the exemption cannot smuggle in a wrong address.",
+  "note": "Addresses this artifact NAMES but does not claim are instruction boundaries reachable from a function entry. `tools/test_gym_arms.py` exempts exactly these from the boundary walk AND asserts each really is outside it, so the exemption cannot smuggle in a wrong address. Each entry also names the instruction that COVERS it and the byte index it falls at, and both are re-derived from the aligned decode -- fix round 1 found the prose here asserting a byte role the binary contradicts (`1000:e594` called the LAST byte of a two-byte `jl` whose next instruction is at `1000:e596`), which is exactly the authored-prose surface no other check in `tools/test_gym_arms.py` reached. `inside`/`byte_index` are the executable replacement; `why` no longer carries the byte arithmetic on its own.",
+  "tier": "flow",
   "entries": [
    {
     "addr": "1000:e595",
-    "why": "the half-open END of `menu_vs_arm_finding.menu_span`. `1000:e594` is the last byte of the row-5 colour `jl` and `1000:e596` is the next instruction, so `1000:e595` is one byte into a two-byte `jcc`."
+    "inside": "1000:e594",
+    "byte_index": 1,
+    "why": "the half-open END of `menu_vs_arm_finding.menu_span`. It falls inside the row-5 colour branch `1000:e594 jl 0xe59d`, whose opcode byte is `1000:e594` and whose rel8 is `1000:e595`; the next boundary is `1000:e596`."
    },
    {
     "addr": "1000:e942",
-    "why": "the half-open END of `menu_vs_arm_finding.arm_span`. `1000:e941` is the `w` hit `jz` and `1000:e943` the miss `jmp`, so `1000:e942` is that `jz`'s displacement byte."
+    "inside": "1000:e941",
+    "byte_index": 1,
+    "why": "the half-open END of `menu_vs_arm_finding.arm_span`. It falls inside the `w` hit branch `1000:e941 jz 0xe946`, whose opcode byte is `1000:e941` and whose rel8 is `1000:e942`; the next boundary is `1000:e943`, the miss `jmp`."
    }
   ]
  },

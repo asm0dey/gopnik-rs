@@ -1127,7 +1127,10 @@ receipt that it can go red.
 now a command.** The listing went stale three times in three consecutive
 review rounds, each time because an edit anywhere above the first hit in
 `src/game.rs` shifts every number below it: first by one (a comment inserted
-above `src/game.rs:883`), then by three (`git diff --numstat
+above what was then `src/game.rs:883` — that number is quoted as it stood at
+the revision the drift happened at and is deliberately NOT re-synchronised,
+since a live line number is the very thing this paragraph exists to warn
+about), then by three (`git diff --numstat
 ee785f6..05ed2d3 -- src/game.rs` prints `4  1  src/game.rs`, one line
 replaced by four), then by twenty-plus when the final review's own fixes
 landed in the same file. Two of the three were caught only by re-running the
@@ -2439,12 +2442,17 @@ decided rather than established.
   (`git grep -n 'pub joints\|pub beer_dl\|pub junk\|pub level' src/model.rs`),
   so on its face a word holding `>= 0x8000` reads as negative to the original
   and as a large positive to the port. But `.SAV` itself stores косяки, пиво
-  and хлам as `i16` (`src/save.rs:257` `beer_half_litres`, `src/save.rs:262`
+  and хлам as `i16` (`src/save.rs:255` `beer_half_litres`, `src/save.rs:262`
   `junk`, and the sibling `joints` field alongside them), and the load path
   clamps each through `.max(0) as u16` before it ever reaches `Fighter`
-  (`src/persist.rs:345` `joints: it.joints.max(0) as u16`, `:350`
-  `beer_dl: it.beer_half_litres.max(0) as u16`, `:352`
-  `junk: it.junk.max(0) as u16`). A `.SAV` word `>= 0x8000` in any of those
+  (`src/persist.rs:357` `joints: it.joints.max(0) as u16`, `:362`
+  `beer_dl: it.beer_half_litres.max(0) as u16`, `:364`
+  `junk: it.junk.max(0) as u16`). Those five line numbers are
+  stale-by-construction, exactly as `docs/re/METHODOLOGY.md` says; four of them
+  had already drifted when Task 31 checked them. The command that recomputes
+  all of them is
+  `grep -n 'pub beer_half_litres\|pub junk\|max(0) as u16' src/save.rs src/persist.rs`.
+  A `.SAV` word `>= 0x8000` in any of those
   three reads negative as `i16`, clamps to `0`, and the port's `> 0` check is
   then false — the **same** arm the original's signed `JLE` takes on a
   negative value. Those three are **closed by the load path**, not merely

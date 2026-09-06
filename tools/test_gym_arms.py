@@ -256,6 +256,42 @@ class GymTest(unittest.TestCase):
         for c in cits:
             self.at(c)
 
+    def test_each_exemption_names_the_instruction_that_covers_it(self):
+        """The byte role in an exemption's prose is re-derived, not authored.
+
+        Fix round 1 found `1000:e594` described as "the last byte of the row-5
+        colour `jl`" when it is the OPCODE byte -- the conclusion beside it was
+        right and the sentence was not, and no check here reached it because
+        `why` is free prose with no `addr`/`text` pair inside it. So each entry
+        now carries `inside` (the covering instruction) and `byte_index`, and
+        both are decoded: the covering instruction must be a real boundary, it
+        must actually cover the exempt address, and the index must be the
+        offset within it. That turns "one byte into a two-byte `jcc`" from a
+        sentence into a measurement.
+        """
+        entries = self.art["known_not_boundaries"]["entries"]
+        self.assertGreaterEqual(len(entries), 1)
+        for e in entries:
+            host = self.at(e["inside"])
+            lo, hi = host.off, host.off + host.length
+            self.assertTrue(
+                lo < off_of(e["addr"]) < hi,
+                "%s: the artifact says it falls inside %s (%s, %d bytes), but "
+                "that instruction spans %s..%s"
+                % (e["addr"], e["inside"], host.text, host.length,
+                   cit(lo), cit(hi)))
+            self.assertEqual(
+                off_of(e["addr"]) - lo, e["byte_index"],
+                "%s: the artifact records byte_index %d inside %s; it is at "
+                "byte %d" % (e["addr"], e["byte_index"], e["inside"],
+                             off_of(e["addr"]) - lo))
+            # And the instruction AFTER the host is a boundary, which is the
+            # half of the old sentence that was true and is worth keeping.
+            self.assertIn(
+                cit(hi), self.aligned,
+                "%s: %s is not a boundary, so %s cannot be interior to a "
+                "single instruction" % (e["addr"], cit(hi), e["addr"]))
+
     def test_the_boundary_exemption_list_is_honest(self):
         """An exemption that names a real boundary would hide a wrong address.
 
@@ -519,6 +555,44 @@ class GymTest(unittest.TestCase):
             "20ae:3e34 is read at %s, the artifact records %s"
             % (readers, self.art["abs_recompute_finding"]["readers"]))
 
+    def test_the_broken_jaw_byte_only_ever_holds_0_or_1(self):
+        """The fourth `kos` representation difference, made executable.
+
+        `1000:e97d` runs the arm iff `20ae:38b0` is **not 1**; `Game::smoke`
+        refuses iff a bool is **true**. The two agree only while the byte holds
+        nothing but 0 and 1, which is the same shape of argument the `u16
+        joints` entry makes. So every image-wide absolute write to the byte is
+        re-derived and its stored immediate required to be 0 or 1 -- a writer
+        storing 2 would make the original RUN the arm where the port refuses
+        it, and that is what this check would catch.
+        """
+        eq = [e for e in self.art["joint"]["port_equivalences"]
+              if e["original"].startswith("1000:e97d")]
+        self.assertEqual(len(eq), 1,
+                         "the jaw gate is recorded as a port equivalence")
+        scan = re_query.xrefs_to(self.prog, "20ae:38b0")["scan"]
+        writers = [a for a in scan["accepted"] if WRITES_ABS_MEM.match(a["text"])]
+        self.assertGreaterEqual(
+            len(writers), 5,
+            "only %d writers of 20ae:38b0; a sweep that finds nothing cannot "
+            "support a 'the byte only ever holds 0 or 1' claim" % len(writers))
+        for w in writers:
+            m = re.match(r"^mov byte \[0x38b0\],0x([0-9a-f]+)$", w["text"])
+            self.assertIsNotNone(
+                m, "%s writes 20ae:38b0 as %r -- not an immediate store, so "
+                   "the value it leaves is not bounded by this check"
+                   % (w["at"], w["text"]))
+            assert m is not None
+            self.assertIn(
+                int(m.group(1), 16), (0, 1),
+                "%s stores %s into 20ae:38b0; the jaw equivalence holds only "
+                "for 0 and 1" % (w["at"], m.group(1)))
+        # And the writer set itself, so the census cannot silently shrink.
+        self.assertEqual(
+            [w["at"] for w in writers],
+            ["1000:47ee", "1000:4820", "1000:5031", "1000:b2ae", "1000:d558"],
+            "the image-wide writer set of 20ae:38b0 changed")
+
     def test_the_tooth_guard_has_exactly_one_absolute_write(self):
         scan = re_query.xrefs_to(self.prog, "20ae:394a")["scan"]
         writers = [a["at"] for a in scan["accepted"]
@@ -610,14 +684,50 @@ class GymTest(unittest.TestCase):
         """"At district 1 the key is not even compared" is a flow claim.
 
         It holds only if the district gate's failure target is PAST the arm's
-        own compare, so it is checked rather than described.
+        own compare, so `on_fail` is DECODED rather than read out of the
+        artifact and compared with other artifact fields. Two shapes exist and
+        the test requires each arm to match exactly one, naming which:
+
+        * arm `4` -- the recorded branch IS the failure direction
+          (`1000:e7e7 jbe 0xe861`), so its own rel8 target is `on_fail`;
+        * arms `3` and `5` -- the recorded branch is the PASS direction
+          (`1000:e72d ja 0xe732`, `1000:e866 ja 0xe86b`) and the failure is the
+          `jmp` sitting at its fallthrough (`1000:e72f`, `1000:e868`). Fix
+          round 1 found that `jmp` decoded by nothing: `on_fail` was correct
+          and unverified, which is a strength-of-evidence hole of exactly the
+          kind `docs/re/METHODOLOGY.md` names.
         """
-        checked = 0
+        checked, shapes = 0, {}
         for a in self.arms():
             if not a["own_gate"]:
                 continue
             checked += 1
             fail = off_of(a["own_gate"]["on_fail"])
+            br = self.at(a["own_gate"]["branch"]["addr"])
+            self.assertEqual(
+                br.text, a["own_gate"]["branch"]["text"],
+                "arm %s: the gate branch does not decode as recorded" % a["key"])
+            branch_target = int(br.text.split()[-1], 16) & 0xFFFF
+            if branch_target == fail:
+                shapes[a["key"]] = "branch is the failure direction"
+            else:
+                after = self.at(cit(br.off + br.length))
+                self.assertTrue(
+                    after.text.startswith("jmp"),
+                    "arm %s: the gate branch at %s is the PASS direction "
+                    "(target %s), so its fallthrough %s must be the failure "
+                    "jump; it decodes %r"
+                    % (a["key"], a["own_gate"]["branch"]["addr"],
+                       cit(branch_target), cit(after.off), after.text))
+                jmp_target = int(after.text.split()[-1], 16) & 0xFFFF
+                self.assertEqual(
+                    cit(jmp_target), a["own_gate"]["on_fail"],
+                    "arm %s: the failure jump at %s targets %s, the artifact "
+                    "records on_fail %s"
+                    % (a["key"], cit(after.off), cit(jmp_target),
+                       a["own_gate"]["on_fail"]))
+                shapes[a["key"]] = ("branch is the pass direction, failure "
+                                    "jump at " + cit(after.off))
             self.assertGreater(
                 fail, off_of(a["compare_addr"]),
                 "arm %s: the district gate's failure target %s is BEFORE the "
@@ -630,6 +740,14 @@ class GymTest(unittest.TestCase):
         self.assertEqual(checked, 3,
                          "three arms are recorded with a district gate of "
                          "their own, found %d" % checked)
+        # Both shapes must actually occur, or one of the two branches of the
+        # check above has never run and the test is narrower than it reads.
+        self.assertEqual(
+            sorted({s.split(",")[0] for s in shapes.values()}),
+            ["branch is the failure direction",
+             "branch is the pass direction"],
+            "only one gate shape occurs (%s); half of this check is dead"
+            % shapes)
 
     def test_the_spans_tile_the_range(self):
         spans = self.art["spans"]
@@ -849,12 +967,32 @@ class GymTest(unittest.TestCase):
         this routine, so the routine is decoded rather than described: it must
         contain the A..Z range compares and the `add ax,0x20`, and it must
         contain no compare against 0x20 (space) at all.
+
+        **The negative is scoped to the ROUTINE, not to a round number.** The
+        first revision decoded a fixed `start + 0x60` window and asserted the
+        absence over it; the routine runs to a `retf 0x4` at `+0x72`, so 0x13
+        bytes of it sat outside the window and "contains no compare against
+        0x20" was asserted over 83% of what it named. The walk now stops ON the
+        `retf` and the test asserts it reached one, so a window that ends early
+        fails instead of quietly narrowing the claim.
         """
         self.assertEqual(self.at(self.art["input_read"]["case_fold"]["addr"])
                          .text, "call 0xeed:0x216")
         start = addrmod.image_off_of_citation("1eed:0216")
-        body = list(dis16.decode_run(self.img, start, start + 0x60))
+        body = []
+        for ins in dis16.decode_run(self.img, start, start + 0x100):
+            body.append(ins)
+            if ins.text.startswith("retf") or ins.text.startswith("ret"):
+                break
         texts = [i.text for i in body]
+        self.assertTrue(
+            texts and texts[-1].startswith("ret"),
+            "the walk over 0eed:0216 never reached a return, so the negative "
+            "below would be scoped to an arbitrary window: %s" % texts)
+        self.assertEqual(
+            texts[-1], "retf 0x4",
+            "0eed:0216 is expected to end in `retf 0x4` (it takes one far "
+            "string pointer); it ends in %r" % texts[-1])
         self.assertIn("cmp byte [es:di],0x41", texts,
                       "0eed:0216 has no 'A' bound: %s" % texts)
         self.assertIn("cmp byte [es:di],0x5a", texts,

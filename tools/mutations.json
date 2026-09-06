@@ -2323,6 +2323,72 @@
       "GymTest.test_every_globals_xref_census_is_what_re_query_reports"
     ],
     "expect": "as its image-wide writers"
+  },
+  {
+    "label": "gym-arms-exemption-byte-role",
+    "defends": "Each known_not_boundaries entry names the instruction that COVERS the exempt address and the byte index it falls at, and tools/test_gym_arms.py decodes both.  Fix round 1 found the free prose beside them asserting a byte role the binary contradicts (1000:e594 called the LAST byte of a two-byte jl whose next instruction is at 1000:e596) with nothing able to catch it; inside/byte_index are the executable replacement.",
+    "artifact": "data/gym_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "known_not_boundaries",
+        "entries",
+        0,
+        "byte_index"
+      ],
+      "from": 1,
+      "to": 0
+    },
+    "test": [
+      "python3",
+      "tools/test_gym_arms.py",
+      "GymTest.test_each_exemption_names_the_instruction_that_covers_it"
+    ],
+    "expect": "the artifact records byte_index"
+  },
+  {
+    "label": "gym-arms-district-gate-on-fail",
+    "defends": "own_gate.on_fail is DECODED, not read out of the artifact and compared with another artifact field.  For arms `3` and `5` the failure direction is the `jmp` at the gate branch's fallthrough (1000:e72f, 1000:e868), which nothing decoded in the first revision -- the recorded targets were right and unverified, the strength-of-evidence hole docs/re/METHODOLOGY.md names.",
+    "artifact": "data/gym_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        2,
+        "own_gate",
+        "on_fail"
+      ],
+      "from": "1000:e7e2",
+      "to": "1000:e7e1"
+    },
+    "test": [
+      "python3",
+      "tools/test_gym_arms.py",
+      "GymTest.test_the_district_gates_skip_the_key_compare"
+    ],
+    "expect": "the artifact records on_fail"
+  },
+  {
+    "label": "gym-arms-jaw-gate-equivalence",
+    "defends": "The jaw gate 1000:e97d runs the arm iff 20ae:38b0 is NOT 1 while Game::smoke refuses iff a bool is true; the equivalence holds only because every image-wide writer of that byte stores 0 or 1.  tools/test_gym_arms.py re-derives the writer set and its immediates, so the fourth kos representation difference is recorded AND measured rather than reasoned about in prose.",
+    "artifact": "data/gym_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "joint",
+        "port_equivalences",
+        2,
+        "original"
+      ],
+      "from": "1000:e97d -- `cmp byte [0x38b0],0x1` / `jnz`, so the arm runs iff the BYTE is not 1",
+      "to": "1000:e97e -- not the gate address"
+    },
+    "test": [
+      "python3",
+      "tools/test_gym_arms.py",
+      "GymTest.test_the_broken_jaw_byte_only_ever_holds_0_or_1"
+    ],
+    "expect": "the jaw gate is recorded as a port equivalence"
   }
  ]
 }
