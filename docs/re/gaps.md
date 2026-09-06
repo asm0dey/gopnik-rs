@@ -1660,11 +1660,23 @@ pins the 11 bytes against `orig/g.exe`, so this needs no library to re-check.
 
 `20ae:3b76` (market) and `20ae:3b77` (club) are two byte cooldowns. The port
 declares both at the right addresses, ticks both down once per walk, and reads
-both for a phone message — but **nothing in `src/` ever assigns either a
-non-zero value**, so the two `== 1` message branches and both `> 0` decrements
-are currently dead code. That is a real omission, registered here rather than
-left implicit; all six sites below are **established from flow** and were
-re-derived from `orig/g.exe` for this entry.
+both for a phone message.
+
+**The club's half is live.** `grep -rn 'club_ban_countdown = 5' src/` finds one
+site, in `crate::club`'s caught-cheating block, commented `1000:e23e`; the `kl`
+gate at `1000:df1a` is in `Game::enter_shop`. So the club's `== 1` message
+branch and its `> 0` decrement are both reachable.
+
+**The market's half is not.** `grep -rn 'market_ban_countdown = ' src/` prints
+exactly two assignments — the district-advance clear (`= 0`, `1000:abce`) and a
+`= 4` inside `the_advance_clears_both_ban_countdowns`, a `#[test]` that plants
+the value in order to watch the clear remove it. **No production path assigns
+it a non-zero value**, so the market's `== 1` message branch and its `> 0`
+decrement are still dead code. Three sites remain unported: `1000:c465`
+(the setter), `1000:b95e` (`mar`'s gate) and `1000:d793` (`girl`'s clear).
+That is a real omission, registered here rather than left implicit; all six
+sites below are **established from flow** and were re-derived from
+`orig/g.exe` for this entry.
 
 | what | site | bytes | in the port? |
 |---|---|---|---|
@@ -1676,10 +1688,11 @@ re-derived from `orig/g.exe` for this entry.
 | both tick down, once per walk | `1000:b173` / `1000:b17e` | `fe 0e 76 3b` / `fe 0e 77 3b` | yes |
 | the district advance clears both | `1000:abce` / `1000:abd3` | `c6 06 76 3b 00` / `c6 06 77 3b 00` | yes (Task 21) |
 
-The last row is new and does **not** change the verdict: clearing a byte that
-nothing ever sets is still inert. It is listed because the two clears are
-now genuinely executed by `Game::district_advance`, so when the setters do
-land they will already be reset on every promotion.
+The last row does **not** change the verdict for the MARKET: clearing a byte
+that nothing ever sets is still inert, so `1000:abce` starts mattering only
+when `1000:c465` lands. For the CLUB it is already load-bearing —
+`1000:abd3` now clears a byte `crate::club` really writes, so a promotion
+genuinely lifts a club ban.
 
 The gates are what the countdowns are *for*, and each has its own refusal
 line. `1000:b95e` runs immediately after `mar`'s discovery-flag check at
@@ -1713,8 +1726,9 @@ port. The club half now can, because `1000:e23e` lands: a player caught
 cheating carries a countdown of 5 into the walk preamble, where `1000:b17e`
 ticks it down and the `== 1` branch fires. They are left in place —
 at the right addresses, in the right order in the walk preamble — so that
-implementing the two setters and the `girl` clear is the only work needed to
-make them live. Nothing about them is *wrong*; they are unreachable.
+implementing the market setter at `1000:c465` and the `girl` clear at
+`1000:d793` is the only work needed to make the market half live too. Nothing
+about the market half is *wrong*; it is unreachable.
 
 `Game::visit_girl`'s doc previously said the clear at `1000:d793` was "not
 modelled here" without saying that the field it would clear exists; it now
@@ -2850,24 +2864,34 @@ CONFIRMS the PLACES.SAV reading (`1000:eaf7` gates the `rep` line on `3698`,
 verb's own handler makes). Read as an ordering it would reintroduce the swap.
 **Do not reorder `locations::TRACKED` to match the `i` list.**
 
-### The club's three keys are dispatched by nothing
+### ~~The club's three keys are dispatched by nothing~~ — CLOSED by Task 34
 
-**Established from flow.** `1000:e06f` (`p`), `1000:e27e` (`1`) and
-`1000:e2f3` (`2`) are shortstring compares against the club's own buffer
-`20ae:3a72`; `Game::shop_turn` has no `Location::Club` arm at all
-(`grep -n 'Location::Club' src/game.rs`). The `w` exit is already shared. The
-club's two menu ROWS are ported (`IMM_ROWS`), so today the club prints a menu
-whose every key does nothing.
+**What the gap was. Established from flow.** `1000:e06f` (`p`), `1000:e27e`
+(`1`) and `1000:e2f3` (`2`) are shortstring compares against the club's own
+buffer `20ae:3a72`; `Game::shop_turn` had no `Location::Club` arm at all. The
+`w` exit was already shared, and the club's two menu ROWS were already ported
+(`IMM_ROWS`), so the club printed a menu whose every key did nothing.
 
 The `p` arm is the substantial one: a stake that starts at 5, doubles the bet
 on a win against `luck >= Random(district * 12)`, grows by 2 per win, resets to
 5 on a loss, and at 17 triggers a forced fight, a five-turn club ban
 (`1000:e23e`) and an ejection implemented by writing `w` into the input buffer
-(`1000:e251`). Nothing in it is blocked: `Game::roll_enemy`,
+(`1000:e251`). Nothing in it was blocked: `Game::roll_enemy`,
 `progress::apply_levels`, `Game::run_combat`, `Game::luck_below_random_32`,
-`club_ban_countdown` and `fight_accepted_3b72` all exist. The one missing input
-is the stake byte itself, and it is per-visit and unsaved, so it belongs in the
-club module rather than in `Game`'s persisted state.
+`club_ban_countdown` and `fight_accepted_3b72` all existed. The one missing
+input was the stake byte itself.
+
+**CLOSED by Task 34.** `grep -n 'Location::Club' src/game.rs` now finds the
+`Game::shop_turn` arm, guarded by `club::key_dispatches` and delegating to
+`club::run_key`; `grep -n 'fn key_dispatches' -A 15 src/club.rs` shows the
+three compares in the original's chain order, with `2` carrying its district
+gate at `1000:e2e2`. The stake byte landed as `Game::club_stake`
+(`grep -rn 'club_stake' src/game.rs src/club.rs`) — in `Game` after all, not
+in the club module, because it is set once per VISIT at `1000:e020` and the
+entry path that resets it is `Game::enter_shop`. It is still not persisted:
+`src/persist.rs`'s out-of-record table carries its row, which is what
+`tests/save_load.rs` requires of any `struct Game` field that names a `20ae:`
+address `Game::to_save` does not write.
 
 ### `20ae:3c82` is no longer unnamed
 

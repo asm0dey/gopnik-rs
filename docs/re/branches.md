@@ -200,7 +200,7 @@ Top level:
 | `branches` | the 1119 records |
 | `uncited_spans` | maximal intervals of game functions containing no port citation, with the branches inside |
 | `unresolved_indirect_control_flow_detail` | the 32 indirect calls / interrupts |
-| `port_cross_reference` | the metric, `is_proxy: true`, and both observed failure directions — so a consumer that never opens this document still gets the caveat |
+| `port_cross_reference` | the metric, `is_proxy: true`, both observed failure directions, and — since the whole-branch fix wave — `snapshot_revision`, `staleness` and `recompute`, so a consumer that never opens this document gets the caveat *and* learns that the 84 / 10.0% inside the object is a `82a08d8` snapshot rather than current coverage |
 
 A branch record:
 
@@ -665,9 +665,15 @@ gap again.
 The Task 28 table says `1000:2526` went `51 → 54`; the *Recomputation* block
 printed **55** for that function both at `e6b62eb` (before Task 30) and at
 `36137a0` (before Task 32), and Task 30 changed it by zero. The discrepancy is
-one citation site and predates Task 30. It prints **61** at this tree: the
-column counts citation LINES, and the six added are the six lines of
-`crate::gym`'s `train_xp` doc that reach into the level-up. Three addresses
+one citation site and predates Task 30. It prints **62** at this tree, and
+seven lines have arrived since the 55: the column counts citation LINES, and
+six of the seven are the six lines of `crate::gym`'s `train_xp` doc that reach
+into the level-up — those six took it to **61** at `fbae9c5`, which is what an
+earlier revision of this paragraph wrote as "at this tree" and then never
+re-measured. The seventh is the one line `grep -n '1000:257a' src/club.rs`
+finds — `crate::club`'s `play_cards` doc naming the same capped level-up form
+its `apply_levels` call passes. The block prints `62` at `8064aeb`, the commit
+that wrote the `61`, and at HEAD. Three addresses
 there are newly named image-wide — `1000:2587` (`jmp 0x28a0`, the tail of the
 level-cap block `1000:257a`..`1000:2587`), `1000:28a6` (`mov di,0x24ea`, the
 push of file `0x3DBA`, `^6Сейчас у тебя # качков опыта. До слеующей прокачки
@@ -914,13 +920,13 @@ print are in the history sentence above, and in
 
 ```
 game branches 838 | touched 519 (61.9%) | uncited 319
-1000:ab59    bytes 17143 branches 406 touched 308 citations 2134
+1000:ab59    bytes 17143 branches 406 touched 308 citations 2140
 1000:3d11    bytes  6971 branches 224 touched 107 citations 665
 1000:1a03    bytes  2700 branches  83 touched  54 citations 176
 1000:6a0d    bytes  2527 branches  33 touched  15 citations 164
 1000:29c4    bytes   666 branches  19 touched   2 citations  26
 1000:0d14    bytes  1196 branches  17 touched  11 citations  59
-1000:2526    bytes   929 branches  17 touched   9 citations  61
+1000:2526    bytes   929 branches  17 touched   9 citations  62
 1000:7c67    bytes  1612 branches  16 touched  12 citations  39
 1000:1348    bytes   791 branches  11 touched   1 citations  18
 1000:0aec    bytes   552 branches   5 touched   0 citations   0
@@ -946,8 +952,13 @@ game branches 838 | touched 519 (61.9%) | uncited 319
 ```
 
 Task 32's own output, quoted so the difference above can be read against it
-rather than remembered -- the same block at `fbae9c5`, abridged to the lines
-that moved:
+rather than remembered -- the same block at **`74d9b63`**, Task 32's last
+commit, abridged to the lines that moved. (This block was labelled `fbae9c5`
+for two revisions. Every line below reproduces at `74d9b63` and one does not
+reproduce at `fbae9c5`: the block prints `citations 1745` there, because Task
+32's review round added 19 citing lines inside `1000:ab59`. The `1523 -> 1764`
+in the history sentence above is the same end-of-task figure, so the label was
+the wrong half of the pair.)
 
 ```
 game branches 838 | touched 476 (56.8%) | uncited 362

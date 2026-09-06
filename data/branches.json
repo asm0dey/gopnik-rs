@@ -127,7 +127,10 @@
   ],
   "game_branches": 838,
   "game_branches_touched": 84,
-  "game_branches_touched_pct": 10.0
+  "game_branches_touched_pct": 10.0,
+  "snapshot_revision": "82a08d8",
+  "staleness": "game_branches_touched, game_branches_touched_pct and every per-function branches_touched_by_port / port_citation_count / port_citations below are a SNAPSHOT of the src/ tree at snapshot_revision, written by the Ghidra export that produced this file. Nothing in this repo recomputes them in place, so they only ever go stale downward: they under-report the port. Do not read them as current coverage. At 82a08d8 the recompute prints `game branches 838 | touched 84 (10.0%) | uncited 754`, which is what these two fields hold. Run against any later tree it prints that tree's figure instead: after the service-handlers branch (the club, the command list, the vet, the gym and kos) it prints `game branches 838 | touched 519 (61.9%) | uncited 319`.",
+  "recompute": "docs/re/branches.md, section `Recomputation, from the shipped artifacts` -> `Coverage: the totals, the per-entry columns and the span ranking`. That block is the command of record: a standard-library-only python3 heredoc, run from the repo root, that reimplements tools/ghidra/EnumerateBranches.java's rule over this file plus the port_citation_sources globs. It needs no Ghidra."
 },
 "functions": [
   {"name": "FUN_1000_02c2", "entry": "1000:02c2", "seg": "1000", "real_seg": "0000", "entry_file_off": 7058, "size": 508, "class": "game", "caller_count": 1, "calls_segment_1000": false, "branch_count": 0, "branches_touched_by_port": 0, "port_citation_count": 0, "cited_in_port": false, "port_citations": []},

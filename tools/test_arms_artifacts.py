@@ -902,9 +902,27 @@ class ArmsArtifactTest(unittest.TestCase):
                         "%d" % (path, g["ds"], reads,
                                 g["read_sites_in_range"]))
 
+    #: The globals-census population, PER BLOCK. The club suite's own
+    #: `assertEqual(checked, 19, ...)` became a corpus-wide
+    #: `assertGreaterEqual(checked, 25)` in the merge into this file, and a
+    #: corpus-wide floor does not say what it looks like it says: the
+    #: population is 49, so 49 - 19 = 30 >= 25 and BOTH club blocks could
+    #: empty out with the gym's 23 and the vet's 7 carrying the total. That
+    #: is the shape the reads bucket above refuses for exactly this reason.
+    #: These four numbers are `len(block["globals"])` per block, and the
+    #: failure message below prints the walked side against this one, so a
+    #: block that legitimately grows is re-counted from the artifact rather
+    #: than guessed at.
+    GLOBALS_PER_BLOCK = {
+        ("data/club_arms.json", "$.club"): 12,
+        ("data/club_arms.json", "$.command_list"): 7,
+        ("data/gym_arms.json", "$"): 23,
+        ("data/vet_arms.json", "$"): 7,
+    }
+
     def test_every_globals_xref_census_is_what_re_query_reports(self):
         """`named_from` and "the only writer" are re-derived, not trusted."""
-        checked = 0
+        seen = {}
         for c, blk, path, lo, hi in self.each_block():
             for g in blk["globals"]:
                 with self.subTest(artifact=c.art_rel, ds=g["ds"]):
@@ -940,11 +958,15 @@ class ArmsArtifactTest(unittest.TestCase):
                             "%s: evidence at %s says %r, orig/g.exe decodes "
                             "%r" % (g["ds"], e["addr"], e["text"],
                                     self.at(e["addr"]).text))
-                    checked += 1
-        self.assertGreaterEqual(
-            checked, 25,
-            "only %d global censuses across the corpus were checked; the "
-            "walk has stopped finding them" % checked)
+                    seen[(c.art_rel, path)] = seen.get((c.art_rel, path), 0) + 1
+        self.assertEqual(
+            seen, self.GLOBALS_PER_BLOCK,
+            "the globals-census walk covered %s; the expected population is "
+            "%s. A block missing from the left side had its globals[] emptied "
+            "and the walk said nothing about it -- which is what a corpus-wide "
+            "floor here would have allowed"
+            % (dict(sorted(seen.items())),
+               dict(sorted(self.GLOBALS_PER_BLOCK.items()))))
 
     # ------------------------------------------------------------------ spans
     def test_the_spans_tile_each_range(self):

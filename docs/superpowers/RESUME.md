@@ -29,6 +29,33 @@ python3 -m unittest discover -s tools -p 'test_*.py'    -> Ran 404 tests, OK
                                                           (380 + 3 after Task 18)
 ```
 
+**The Python totals are NOT reproducible from a clean checkout, and the gap is
+one file.** `tools/test_decomp_addresses.py` has 34 tests, **13** of them
+behind `@unittest.skipUnless(_decomp_present(), ...)` — two class decorators
+and one method decorator — and `_decomp_present()` reads `build/decomp/`,
+which is git-ignored (`git check-ignore -v build/decomp` prints
+`.gitignore:3:/build`). Measured by moving the directory aside and back:
+
+```
+.venv/bin/pytest tools/test_decomp_addresses.py -q
+  with the 123 local *.c files  -> 34 passed,               73 subtests passed
+  with build/decomp/ moved away -> 21 passed, 13 skipped,   35 subtests passed
+```
+
+So every Python total published from this repo — the two in the block above,
+and the `624 passed, 3 skipped` the service-handlers branch reported — was
+obtained on a machine that had run the decompiler. A fresh clone or a CI runner
+gets **13 fewer passing tests and 13 more skips**. Measured the same way over
+the whole suite at `689e0d7` + this fix wave: `.venv/bin/pytest tools/ -q`
+prints `624 passed, 3 skipped, 967 subtests passed` with `build/decomp/` in
+place and `611 passed, 16 skipped, 929 subtests passed` with it moved aside —
+627 collected either way. **The `skipped` count in a published figure is the
+tell**: `3` means the decomp files were present, `16` means they were not.
+Regenerating them is
+`bash tools/ghidra/run_ghidra.sh --decomp-only`, i.e. Ghidra; nothing else in
+the suite needs it, and `tools/decomp_addresses.py` keeps a committed slice of
+the same export so the other 21 tests still run without it.
+
 **State the runner with the number, always.** The two disagree by design, both
 are right, and the whole gap is one thing: pytest also collects the **17
 module-level `def test_*` functions across 6 files** that `unittest` cannot see
@@ -525,9 +552,21 @@ measured. Task 31's `449` is not a measurement either but a consequence: it
 touches no path in `port_citation_sources` (`src/**/*.rs`,
 `data/command_dispatch.json`), so the scan's whole input is byte-identical to
 `36137a0`'s and the figure cannot have moved — the same argument
-`docs/re/branches.md` records for Tasks 29 and 31. Task 33's `476` is the
-same consequence for the same reason: it touches neither `src/**/*.rs` nor
-`data/command_dispatch.json`. Task 34's `519` IS a measurement, recomputed
+`docs/re/branches.md` records for Tasks 29 and 31 — and that one holds:
+`git show --stat --oneline 0f6749a 77c443f` lists no path under `src/` and not
+`data/command_dispatch.json`. **Task 33's `476` is NOT the same consequence,
+and the argument this paragraph used to make for it was false.**
+`git show --stat --oneline ae51c74 | grep command_dispatch` prints
+`data/command_dispatch.json | 2 +-`, so Task 33 did touch one of the two
+`port_citation_sources` and the byte-identical-input argument does not apply
+to it. The number is right anyway, and it is a measurement: the
+*Recomputation → Coverage* block run against a worktree of `08dfb09` and of
+`ae51c74` prints `game branches 838 | touched 476 (56.8%) | uncited 362` at
+both. What that edit changed is a note's prose, not the citation set — the
+same block instrumented to print `len(cite)` reports **2170 distinct cited
+addresses at both revisions, with a symmetric difference of 0** between the
+two sets, so `port_touched` could not have moved. Task 34's `519` IS a
+measurement, recomputed
 with the *Recomputation → Coverage* block against its own tree; its left
 column is not, for the same reason Task 32's is not.
 

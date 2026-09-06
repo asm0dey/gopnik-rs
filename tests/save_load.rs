@@ -952,7 +952,9 @@ fn every_game_field_is_either_persisted_or_named_out_of_record() {
         );
     }
     // Positive control: the rule above is vacuous if the parse found nothing.
-    // 32 of `struct Game`'s 43 fields name at least one `20ae:` address. The
+    // 33 of `struct Game`'s 44 fields name at least one `20ae:` address --
+    // Task 34 added `Game::club_stake` (`20ae:3c82`) to both counts, which is
+    // why this comment read 32 of 43 until the whole-branch fix wave. The
     // eleven that do not are the composites and the port-only bookkeeping --
     // `player`, `progress`, `places`, `district`, `rng`, `location`,
     // `save_dir`, `mode`, `fight_log`, `last_enemy`, `running` -- which is
