@@ -142,6 +142,76 @@ what it must do — written so a later port can falsify it.
 
 ---
 
+### Task 32b: Address-annotated decompilation
+
+**Tooling task. It moves `port_touched` by zero and that is expected** — the
+port work it unblocks is named below, per `CLAUDE.md`'s requirement that an
+instrument declare one before it is built.
+
+**Why.** Every wrong citation this project has shipped came from a hand-derived
+or byte-scanned address: the `0x18d0` header-size miss; the misaligned
+`1000:ce99`, which is the last byte of `1000:ce97 mov [0x38c9],ax`; three of the
+four bad citations caught in Task 19, which carried no literal at all and so no
+textual scan could have found them. **An address Ghidra emits from its own
+instruction listing is aligned by construction**, so this removes that defect
+class at the source instead of catching it in review. The secondary gain is
+speed: it cuts the arm-finding half of every later RE task.
+
+**Port work unblocked:** combat, `1000:3d11` — 224 branches, **118 untouched**,
+the one slice where hand-walking disassembly is the actual bottleneck. Tasks 33
+and 35 take a smaller share of the same gain.
+
+**Files:** modify `tools/ghidra/ExportAll.java` and `tools/ghidra/run_ghidra.sh`;
+create `tools/test_decomp_addresses.py` and its golden file.
+
+`ExportAll.java` already calls `DecompInterface` and writes 123 files to
+`build/decomp/` — gitignored, documented in `docs/re/functions.md`, and cited by
+`docs/re/rng.md` and `docs/re/command-dispatch.md`. That C carries no addresses
+today, which is why `docs/superpowers/RESUME.md` ranks it a lead rather than a
+citation.
+
+**Build:**
+
+1. Annotate each emitted C line with the **set** of machine addresses that
+   contributed to it, from `DecompileResults.getCCodeMarkup()` and the
+   `ClangLine` tokens' addresses.
+   **`getMinAddress()` alone is forbidden.** A decompiled line merges several
+   instructions; emitting one confident-looking address for it is exactly the
+   "check that cannot fail, presented as verification" that
+   `docs/re/METHODOLOGY.md` names. Emit every contributing address.
+2. Give `run_ghidra.sh` a decomp-only mode that does **not** rewrite
+   `data/branches.json`, `data/functions.json` or `data/string_pointers.json`.
+   Those are committed, and this plan's whole coverage baseline is measured
+   against them. If a full run is performed instead, show that
+   `git diff --stat` over those three paths is empty.
+3. The five oracles under `data/` are never regenerated.
+
+**Falsification — this is the task, not a postscript.**
+`tools/test_decomp_addresses.py`, over the shipped `build/decomp/`, must:
+
+- assert every annotated address is a real **aligned instruction start**,
+  decoded from `orig/g.exe` — not merely well-formed;
+- for the three handlers already mapped and reviewed by hand — the den
+  (`1000:d802`..`1000:df05`), the dealers' sell path
+  (`1000:ce76`..`1000:d383`) and the market (`1000:b94a`..`1000:c4bd`) — take
+  every branch address and guard address `data/branches.json` records in range
+  and check it appears in the annotation of the enclosing function's file;
+- record the resulting coverage as a **golden set** checked into the test, so
+  later drift fails. Do **not** assert a hand-picked percentage threshold: a
+  threshold chosen so it passes is the same defect one level up. Report the
+  exact figure with the command that produced it, and list every address that
+  did not appear.
+
+A disagreement between the annotation and a known-good citation is the finding
+this task exists to surface. If one turns up, report it — do not tune it away.
+
+**Docs:** one line in `docs/re/functions.md` stating that the annotation makes a
+citation cheap to *verify*, not pre-verified, and that
+`python3 tools/re_query.py resolve <citation>` is still required. The
+lead-not-evidence ranking in `docs/superpowers/RESUME.md` does not move.
+
+---
+
 ### Task 33: Map the club (`kl`) and the command list (`i`)
 
 **RE only. This task changes no line of `src/`.**
