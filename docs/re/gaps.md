@@ -3037,3 +3037,40 @@ src/game.rs` finds both, in `Game::spoil_blade`'s doc and body) while
 describing the artefact, which is correct and must not be confused with citing
 `1000:56ba` or `1000:5760`. The test above scopes its exclusion to the two
 addresses the rule actually reads, for that reason.
+
+## `mh` with a broken jaw skips the tail the original still runs (Task 41)
+
+**Opened by Task 41; behaviour, not documentation.** For Task 42, Half 1.
+
+**Established from flow.** `1000:2a18 cmp byte [0x38b0],0x1` is the broken-jaw
+gate and `1000:2a1d jnz 0x2a3b` its miss. Fall through it and the routine
+prints the refusal at CS `0x28cc` and then executes
+`1000:2a38 jmp 0x2baa` — into the `mh` **tail**, not to the return at
+`1000:2c58`. That matters because the hp snapshot at `[bp-0x102]` was already
+taken, one instruction earlier, by `1000:2a11 mov ax,[0x38ac]` /
+`1000:2a14 mov [bp-0x102],ax`.
+
+So for `mh` the tail then runs with hp untouched: `1000:2bba jz 0x2bbf` admits
+it, `1000:2bc6 jz 0x2c06` and `1000:2c0d jz 0x2c2f` both take (hp == hp0),
+`1000:2c36 jnz 0x2c58` does not, and `1000:2c3d jnle 0x2c58` falls through
+whenever `20ae:38c3` is at or below zero — printing `^4Пива нету` (CS `0x2970`,
+pushed at `1000:2c3f`) **after** the jaw refusal.
+
+The shipped `Game::beer` prints the refusal and returns:
+`grep -n -A3 'let hp0 = self.player.hp;' src/game.rs` shows the `return` inside
+`if self.player.broken_jaw`. So `mh` + broken jaw + no beer writes **two** lines
+in the original and **one** in the port. `h` is unaffected: the tail's own
+`1000:2bb0` compare fails for it and `1000:2bbc jmp 0x2c58` returns.
+
+**Reachable.** `20ae:38b0` is set by combat at `1000:47ee` and `1000:4820`
+(`docs/re/gym.md`'s writer census for that byte lists both), the beer counter
+is routinely zero, and `mh` is accepted inside a fight through the second call
+site `1000:4b00`. This is an ordinary end-of-fight state, not a hand-built one.
+
+**What would close it.** Fall into the tail instead of returning — the shape
+`Game::beer` already has for its `single` early return — and a test that runs
+`Beer::Binge` with `broken_jaw` set and `beer_dl == 0` and asserts both lines,
+in that order. `data/beer_uncited.json`'s `divergences[0]` is the
+machine-readable form and `tools/test_beer_arms.py`'s
+`test_the_recorded_divergence_is_in_gaps` keeps this section and that record
+from drifting apart.

@@ -1,0 +1,598 @@
+{
+ "note": "`FUN_1000_29c4` of `orig/g.exe` -- the `h` (drink one half-litre) and `mh` (drink until full or dry) routine -- the half-open image range `1000:29c4`..`1000:2c5e`, all 666 bytes and all 298 instructions, mapped by Task 41 from an aligned decode and never from a screen. Prose twin: `docs/re/beer.md`; classification twin: `data/beer_uncited.json`; re-derived from `orig/g.exe` by `tools/test_beer_arms.py`. `data/gym_arms.json` is the shape this follows. IT DECLARES NO `handlers` KEY ON PURPOSE: `tools/test_arms_artifacts.py`'s `test_the_corpus_is_every_arms_artifact_declaring_handlers` is a set equality over `data/*_arms.json` that declare `handlers`, and this artifact does not fit that file's schema -- it maps a CALLED ROUTINE bounded by its own function extent, not a verb-compare-bounded slice of `entry`, so `test_each_range_is_anchored_to_the_verb_compares_not_to_itself` has nothing to anchor. `data/den_arms.json` and `data/shop_arms.json` sit outside that corpus for the same kind of reason and keep their own suites; this one keeps `tools/test_beer_arms.py`. COVERAGE BOUNDARY: this artifact covers exactly that range. It says nothing about the four routines it CALLS (`0f78:02cd` the stack check, `0f78:0bd8` the Borland shortstring compare, `0eed:0000` Write and `0eed:01c2` WriteLn), whose bodies were not decoded here; `docs/re/character-sheet.md` and `docs/re/rtl.md` are the authorities for those four.",
+ "address_forms": "`1000:xxxx` is a Ghidra label (Form A of `docs/re/METHODOLOGY.md`) and, because the game's code segment is the load base, its OFF is also the image offset. `20ae:xxxx` is DGROUP. `0eed:` and `0f78:` are Form B runtime segments. `cs_offset` is the image offset of a Pascal shortstring's LENGTH byte -- the exact immediate of the `mov di,imm16` that pushes it -- and `file_offset` is that plus the 0x18d0-byte MZ header, which is what `data/strings.json` keys on. ONE of the two call sites encodes a `rel16` that WRAPS: `1000:e966` (`0xe969 + 0x405b == 0x129c4`) reaches `1000:29c4` only modulo 64 KiB, which is the mistake `tools/re_derive.py`'s `near_calls_to` exists to avoid. `1000:4b00` calls BACKWARD (`0x4b03 - 0x213f == 0x29c4`) and needs no wrap. An earlier draft of this artifact said both wrapped; `tools/test_beer_arms.py` caught it.",
+ "range": {
+  "start": "1000:29c4",
+  "end": "1000:2c5e",
+  "size_bytes": 666,
+  "instruction_count": 298,
+  "note": "Half-open, and it is the function extent `data/branches.json` records (`entry` 1000:29c4, `size` 666). `1000:2c5b ret 0x4` is the last instruction; `1000:2c5e` is the first byte of the 4275-byte literal run `docs/re/branches.md`'s undefined-run table lists at file 17710. The plan's brief writes the end as `1000:2c61`; the decode puts it at `1000:2c5e`, and 0x2c5e - 0x29c4 is exactly the 666 the same brief quotes."
+ },
+ "call_sites": {
+  "census": {
+   "near": [
+    "1000:4b00",
+    "1000:e966"
+   ],
+   "far": [],
+   "method": "tools/re_derive.py `near_calls_to` / `far_calls_to` over the whole image; the near scan compares the 16-bit-WRAPPED target.",
+   "agrees_with": "data/branches.json's `caller_count: 2` for this entry."
+  },
+  "sites": [
+   {
+    "addr": "1000:e966",
+    "bytes": "e8 5b 40",
+    "caller": "entry",
+    "pushes": [
+     {
+      "addr": "1000:e961",
+      "text": "mov di,0x3972"
+     },
+     {
+      "addr": "1000:e964",
+      "text": "push ds"
+     },
+     {
+      "addr": "1000:e965",
+      "text": "push di"
+     }
+    ],
+    "buffer": "20ae:3972",
+    "note": "The shared street tail: `docs/re/gym.md` records that a `trn` miss and the gym's own `w` exit both land at 1000:e961, so this call is on every street line's path, not only the gym's. Its `rel16` is 0x405b and `0xe969 + 0x405b == 0x129c4`, so only the 16-bit wrap lands on the entry.",
+    "wraps": true
+   },
+   {
+    "addr": "1000:4b00",
+    "bytes": "e8 c1 de",
+    "caller": "FUN_1000_3d11",
+    "pushes": [
+     {
+      "addr": "1000:4afb",
+      "text": "mov di,0x3a72"
+     },
+     {
+      "addr": "1000:4afe",
+      "text": "push ds"
+     },
+     {
+      "addr": "1000:4aff",
+      "text": "push di"
+     }
+    ],
+    "buffer": "20ae:3a72",
+    "note": "Combat's own input buffer, which is why beer works inside a fight. Its `rel16` is 0xdec1 = -0x213f and `0x4b03 - 0x213f == 0x29c4`: this one calls BACKWARD and does NOT wrap.",
+    "wraps": false
+   }
+  ],
+  "difference_the_port_must_model": "NONE. Both sites push `ds` and a DGROUP offset -- the same far-pointer shape -- and the routine's first act is to COPY the shortstring into its own frame (1000:29de `lds si,[bp+0x4]`), so the only thing that differs is which buffer the text came from. The routine reads no other caller state and writes only 20ae:38ac and 20ae:38c3, which are global. The port's two `self.beer(..)` call sites -- `grep -rn 'self\\.beer(' src/` -- match that: one in `Game::run_command`, one in `Game::run_combat`, both passing only the `Beer` discriminant."
+ },
+ "argument": {
+  "what": "one Pascal shortstring, by FAR pointer at [bp+0x4]; `1000:2c5b ret 0x4` pops it.",
+  "copied_to": "[bp-0x100], by 1000:29e1..1000:29e6",
+  "frame": "`sub sp,0x102` at 1000:29cf -- 256 bytes of buffer at [bp-0x100] plus one word at [bp-0x102].",
+  "es_is_ss": {
+   "addr": "1000:29d3",
+   "text": "mov bx,ss",
+   "then": {
+    "addr": "1000:29d5",
+    "text": "mov es,bx"
+   },
+   "why": "so the `stosb` / `rep movsb` destination is the STACK, not DGROUP -- which is what keeps them out of the store scan below."
+  }
+ },
+ "stack_slot_bp_minus_0x102": {
+  "what": "hp (20ae:38ac) as it stood on entry, before a drop of beer is drunk.",
+  "written_at": [
+   {
+    "addr": "1000:2a11",
+    "text": "mov ax,[0x38ac]"
+   },
+   {
+    "addr": "1000:2a14",
+    "text": "mov [bp-0x102],ax"
+   }
+  ],
+  "written_once": "An aligned decode of all 298 instructions finds exactly ONE instruction whose destination is this slot: 1000:2a14. So every read below sees the entry value.",
+  "read_at": [
+   {
+    "addr": "1000:2bc2",
+    "text": "cmp ax,[bp-0x102]"
+   },
+   {
+    "addr": "1000:2bd0",
+    "text": "sub ax,[bp-0x102]"
+   },
+   {
+    "addr": "1000:2c09",
+    "text": "cmp ax,[bp-0x102]"
+   },
+   {
+    "addr": "1000:2c32",
+    "text": "cmp ax,[bp-0x102]"
+   }
+  ],
+  "stored_before_the_jaw_test": "1000:2a14 precedes 1000:2a18, so the snapshot exists even on the path that refuses to serve -- which is why the broken-jaw arm can fall into the tail at 1000:2baa and have the three compares mean `nothing was drunk`.",
+  "the_three_compares": [
+   {
+    "branch": "1000:2bc6",
+    "guard": "1000:2bc2",
+    "decides": "hp == hp0 -> skip the aggregate CS 0x2938 line",
+    "taken": "1000:2c06",
+    "fallthrough": "1000:2bc8"
+   },
+   {
+    "branch": "1000:2c0d",
+    "guard": "1000:2c09",
+    "decides": "hp == hp0 -> skip CS 0x29b3 `ran out of beer`",
+    "taken": "1000:2c2f",
+    "fallthrough": "1000:2c0f"
+   },
+   {
+    "branch": "1000:2c36",
+    "guard": "1000:2c32",
+    "decides": "hp != hp0 -> skip CS 0x2970 `no beer`",
+    "taken": "1000:2c58",
+    "fallthrough": "1000:2c38"
+   }
+  ],
+  "three_way_versus_the_ports_two_way": "The original re-READS 20ae:38ac at 1000:2bbf, 1000:2c06 and 1000:2c2f and re-compares it three times; `Game::beer` binds `healed` once and writes `if healed != 0 { .. } else if beer_dl == 0 { .. }`. The hoist is sound because nothing between the three reads writes 20ae:38ac: the store scan below finds the routine's only two writes to it at 1000:2a97 and 1000:2ae7, both inside the loop, and the only calls between the reads are `0eed:01c2`. The three-way is therefore three tests of TWO independent predicates -- (hp != hp0) and (beer <= 0) -- and the port's nesting reproduces all four of their combinations: healed -> summary; healed and dry -> `ran out`; not healed and dry -> `no beer`; not healed and beer left -> silence."
+ },
+ "literal_pool": {
+  "start": "0x28c7",
+  "end": "0x29c4",
+  "records": [
+   "0x28c7",
+   "0x28c9",
+   "0x28cc",
+   "0x28fd",
+   "0x2914",
+   "0x2938",
+   "0x2970",
+   "0x297c",
+   "0x29b3"
+  ],
+  "record_count": 9,
+  "residual_bytes": 0,
+  "note": "The 253 bytes immediately before the function entry are the routine's own literal pool, and they TILE: walking `p += 1 + img[p]` from 0x28c7 lands exactly on 0x29c4 with nothing left over. That is what makes `strings[]` a census rather than a list -- there is no room for a tenth literal. It is also the run `docs/re/branches.md`'s undefined-run table records at file 16791, length 253, `records 9`, `residual 0`.",
+  "strings_json_gap": "`data/strings.json` is MISSING the two verb tokens (file 0x04197 `h` and 0x04199 `mh`, 5 bytes together). That is exactly the `1000:28c7 | 0x4197 | 5` row of `docs/re/branches.md`'s unaccounted-bytes table -- so the two artifacts corroborate each other, and the doc comment this task audits was right to cite the file offsets rather than `strings.json`."
+ },
+ "strings": [
+  {
+   "cs_offset": "0x28c7",
+   "file_offset": "0x04197",
+   "length": 1,
+   "text": "h",
+   "role": "token",
+   "note": "the `h` verb; compared at 1000:29f0 and at the five later `h` gates",
+   "pushed_at": [
+    "1000:29f0",
+    "1000:2a6a",
+    "1000:2aa0",
+    "1000:2af2",
+    "1000:2b40",
+    "1000:2b89"
+   ]
+  },
+  {
+   "cs_offset": "0x28c9",
+   "file_offset": "0x04199",
+   "length": 2,
+   "text": "mh",
+   "role": "token",
+   "note": "the `mh` verb; compared at 1000:2a02 and again at 1000:2bb0",
+   "pushed_at": [
+    "1000:2a02",
+    "1000:2bb0"
+   ]
+  },
+  {
+   "cs_offset": "0x28cc",
+   "file_offset": "0x0419c",
+   "length": 48,
+   "text": "^4Ты не можешь пить пиво из-за сломаной челюсти.",
+   "role": "message",
+   "note": "the broken-jaw refusal -- the ONLY arm reached with 20ae:38b0 == 1",
+   "pushed_at": [
+    "1000:2a1f"
+   ]
+  },
+  {
+   "cs_offset": "0x28fd",
+   "file_offset": "0x041cd",
+   "length": 22,
+   "text": "^2Пиво прибавляет #з. ",
+   "role": "message",
+   "note": "the partial arm's first half, written by `0eed:0000` (Write, NO newline) so the next message continues the line",
+   "pushed_at": [
+    "1000:2a76"
+   ]
+  },
+  {
+   "cs_offset": "0x2914",
+   "file_offset": "0x041e4",
+   "length": 35,
+   "text": "^2Здоровья:#/#. Осталось #.#л. пива",
+   "role": "message",
+   "note": "the partial arm's second half; four `#` = hp, hpmax, litres, tenths",
+   "pushed_at": [
+    "1000:2aac"
+   ]
+  },
+  {
+   "cs_offset": "0x2938",
+   "file_offset": "0x04208",
+   "length": 55,
+   "text": "^2Пиво прибавляет #з. Здоровья:#/#. Осталось #.#л. пива",
+   "role": "message",
+   "note": "the five-field line: gained, hp, hpmax, litres, tenths -- pushed TWICE, by the flat-5 arm (1000:2afe, gained = the literal 5) and by the `mh` tail (1000:2bc8, gained = hp - hp0)",
+   "pushed_at": [
+    "1000:2afe",
+    "1000:2bc8"
+   ]
+  },
+  {
+   "cs_offset": "0x2970",
+   "file_offset": "0x04240",
+   "length": 11,
+   "text": "^4Пива нету",
+   "role": "message",
+   "note": "`no beer` -- pushed TWICE, by the in-loop arm (1000:2b4c, `h` only) and by the `mh` tail (1000:2c3f, nothing drunk AND beer exhausted)",
+   "pushed_at": [
+    "1000:2b4c",
+    "1000:2c3f"
+   ]
+  },
+  {
+   "cs_offset": "0x297c",
+   "file_offset": "0x0424c",
+   "length": 54,
+   "text": "^6Блин только тупить не надо - и так здоровья до фига.",
+   "role": "message",
+   "note": "already at full health; the ONLY message in the routine that is NOT gated on `h`/`mh`, and its arm returns without reaching the tail",
+   "pushed_at": [
+    "1000:2b67"
+   ]
+  },
+  {
+   "cs_offset": "0x29b3",
+   "file_offset": "0x04283",
+   "length": 16,
+   "text": "^4Кончилось пиво",
+   "role": "message",
+   "note": "`ran out of beer` -- printed only when something WAS drunk and 20ae:38c3 is now <= 0",
+   "pushed_at": [
+    "1000:2c16"
+   ]
+  }
+ ],
+ "gates": {
+  "addresses": [
+   "1000:29fa",
+   "1000:2a0c",
+   "1000:2a1d",
+   "1000:2a42",
+   "1000:2a4c",
+   "1000:2a5f",
+   "1000:2a74",
+   "1000:2aaa",
+   "1000:2afc",
+   "1000:2b4a",
+   "1000:2b93",
+   "1000:2b9e",
+   "1000:2ba5",
+   "1000:2bba",
+   "1000:2bc6",
+   "1000:2c0d",
+   "1000:2c14",
+   "1000:2c36",
+   "1000:2c3d"
+  ],
+  "count": 19,
+  "note": "Every CONDITIONAL branch in the range, by aligned decode. `tools/test_beer_arms.py` requires this list to EQUAL the `class == \"game\"` branch set `data/branches.json` records for `func_entry == \"1000:29c4\"`, and `data/beer_uncited.json` to cover the same set -- no count is written by hand."
+ },
+ "effects": {
+  "absolute_writes": [
+   {
+    "addr": "1000:2a51",
+    "text": "dec [0x38c3]",
+    "ds": "20ae:38c3"
+   },
+   {
+    "addr": "1000:2a97",
+    "text": "mov [0x38ac],ax",
+    "ds": "20ae:38ac"
+   },
+   {
+    "addr": "1000:2ae7",
+    "text": "add word [0x38ac],0x5",
+    "ds": "20ae:38ac"
+   }
+  ],
+  "count": 3,
+  "note": "The COMPLETE set of instructions in the range whose destination is an absolute DGROUP address. The routine writes hp and beer and nothing else -- not hpmax, not the jaw byte, not money. The two string-move instructions (1000:29e2 `stosb`, 1000:29e6 `rep movsb`) write ES:DI and ES is SS (see `argument.es_is_ss`), so they land on the frame; 1000:2a14 writes [bp-0x102], also the frame. Nothing else in the 298 instructions has a memory destination at all."
+ },
+ "globals": [
+  {
+   "ds": "20ae:38ac",
+   "what": "hp",
+   "read_at": [
+    "1000:2a11",
+    "1000:2a3b",
+    "1000:2a58",
+    "1000:2a7e",
+    "1000:2ab1",
+    "1000:2b07",
+    "1000:2b97",
+    "1000:2bbf",
+    "1000:2bcd",
+    "1000:2bd5",
+    "1000:2c06",
+    "1000:2c2f"
+   ],
+   "written_at": [
+    "1000:2a97",
+    "1000:2ae7"
+   ],
+   "identity": "`python3 tools/re_query.py xrefs-to 20ae:38ac` accepts 74 references, 33 of them writes. The level-up `FUN_1000_2526` raises it and 20ae:38ae together (1000:2695/1000:2699 `inc` both, 1000:27c3/1000:27c8 `add 5` to both) while combat's damage line `1000:4783 sub [0x38ac],ax` moves only this one -- so this is the CURRENT value and 20ae:38ae the ceiling. `docs/re/save-format.md` and `src/persist.rs` agree.",
+   "xrefs_accepted": 74,
+   "xrefs_writes": 33,
+   "xrefs_command": "python3 tools/re_query.py xrefs-to 20ae:38ac"
+  },
+  {
+   "ds": "20ae:38ae",
+   "what": "hpmax",
+   "read_at": [
+    "1000:2a3e",
+    "1000:2a55",
+    "1000:2a7b",
+    "1000:2a94",
+    "1000:2ab5",
+    "1000:2b0b",
+    "1000:2b9a",
+    "1000:2bd9"
+   ],
+   "written_at": [],
+   "identity": "`xrefs-to` accepts 59 references, 15 of them writes, and NONE of the 15 is in this range -- the beer routine only ever reads it, which is the ceiling behaviour. The `dec` at 1000:49ca and `sub 5` at 1000:4a30 in combat are the only writers that LOWER it.",
+   "xrefs_accepted": 59,
+   "xrefs_writes": 15,
+   "xrefs_command": "python3 tools/re_query.py xrefs-to 20ae:38ae"
+  },
+  {
+   "ds": "20ae:38b0",
+   "what": "the broken-jaw flag",
+   "read_at": [
+    "1000:2a18"
+   ],
+   "written_at": [],
+   "identity": "`xrefs-to` accepts 17 references and exactly 5 writes, all immediate stores of 0 or 1: `mov byte [0x38b0],0x1` at 1000:47ee and 1000:4820 (combat) and `,0x0` at 1000:5031, 1000:b2ae and 1000:d558. `tools/test_gym_arms.py`'s `test_the_broken_jaw_byte_only_ever_holds_0_or_1` already defends that writer set; the beer routine's `cmp byte [0x38b0],0x1` at 1000:2a18 reads it the same way `Game::smoke`'s gate does.",
+   "xrefs_accepted": 17,
+   "xrefs_writes": 5,
+   "xrefs_command": "python3 tools/re_query.py xrefs-to 20ae:38b0"
+  },
+  {
+   "ds": "20ae:38c3",
+   "what": "beer, in HALF-litres",
+   "read_at": [
+    "1000:2a47",
+    "1000:2ab9",
+    "1000:2ac3",
+    "1000:2b0f",
+    "1000:2b19",
+    "1000:2ba0",
+    "1000:2bdd",
+    "1000:2be7",
+    "1000:2c0f",
+    "1000:2c38"
+   ],
+   "written_at": [
+    "1000:2a51"
+   ],
+   "identity": "`xrefs-to` accepts 19 references and 4 writes: this routine's `dec [0x38c3]` at 1000:2a51, the loot credit `add [0x38c3],ax` at 1000:5241, the shop purchase `inc [0x38c3]` at 1000:beb4 and `dec [0x38c3]` at 1000:db3a. Half-litres, not litres: the sheet prints `[0x38c3] div 2` with a `.5` for the odd half (`data/save_layout.json`, `docs/re/character-sheet.md`), and this routine spends exactly ONE unit per iteration for 5 hp.",
+   "xrefs_accepted": 19,
+   "xrefs_writes": 4,
+   "xrefs_command": "python3 tools/re_query.py xrefs-to 20ae:38c3"
+  }
+ ],
+ "arithmetic": {
+  "litres_and_tenths": {
+   "litres": {
+    "expr": "[0x38c3] div 2 (SIGNED `idiv`)",
+    "sites": [
+     "1000:2ab9",
+     "1000:2b0f",
+     "1000:2bdd"
+    ]
+   },
+   "tenths": {
+    "expr": "(([0x38c3] mod 2) * 5) mod 10",
+    "sites": [
+     "1000:2ac3",
+     "1000:2b19",
+     "1000:2be7"
+    ],
+    "shape": "`idiv 2` / `xchg ax,dx` for the remainder, then `mov si,ax` / `shl ax,1` / `shl ax,1` / `add ax,si` for the *5, then `idiv 10` / `xchg ax,dx`."
+   },
+   "note": "The `mod 10` is real and is at 1000:2ad5..1000:2adb, 1000:2b2b..1000:2b31 and 1000:2bf9..1000:2bff -- three copies. `Game::beer_numbers` writes `(beer_dl % 2) * 5` WITHOUT it, which is not a divergence for any value a `u16` can hold (the product is 0 or 5, and `x mod 10 == x` there) but is inconsistent with `src/character_sheet.rs`, which does spell the `% 10`. Recorded as an observation, not a defect: `grep -n '% 2) \\* 5' src/game.rs src/character_sheet.rs`."
+  },
+  "no_other_arithmetic": "No `mul`, no `imul`, no `div`, no shift other than the two `shl ax,1` of the *5 idiom, and no `Random`. The drink is a flat 5 hp or a top-up to hpmax; nothing is scaled and nothing is rolled."
+ },
+ "draws": {
+  "count": 0,
+  "method": "Two independent sweeps, both required: (1) the aligned decode of all 298 instructions holds exactly four distinct CALL targets -- `0f78:02cd`, `0f78:0bd8`, `0eed:0000`, `0eed:01c2` -- and `0f78:114b` is not among them; (2) a byte scan for the five-byte `Random` far call `9a 4b 11 78 0f` over [0x29c4, 0x2c62) returns zero hits. The byte scan alone would be a check that cannot fail, so the same scan over the whole image is required to return the 86 sites `docs/re/METHODOLOGY.md` names -- that is the negative control.",
+  "call_targets": [
+   "0f78:02cd",
+   "0f78:0bd8",
+   "0eed:0000",
+   "0eed:01c2"
+  ],
+  "image_wide_random_sites": 86,
+  "consequence": "`tests/combat_sequence.rs` and `tests/wander_sequence.rs` must stay green draw-for-draw across any change to `Game::beer`; movement in either is a bug, never a rebaseline."
+ },
+ "spans": [
+  {
+   "start": "1000:29c4",
+   "end": "1000:29ee",
+   "name": "prologue",
+   "instruction_count": 18,
+   "note": "`push bp` / `mov bp,sp`, the `0f78:02cd` stack check for a 0x102-byte frame, `sub sp,0x102`, then ES:=SS and a `lodsb`/`stosb`/`rep movsb` copy of the caller's shortstring (far pointer at [bp+0x4]) into the local buffer at [bp-0x100]."
+  },
+  {
+   "start": "1000:29ee",
+   "end": "1000:2a11",
+   "name": "the two token compares",
+   "instruction_count": 16,
+   "note": "`\"h\"` at 1000:29f0 then `\"mh\"` at 1000:2a02, both through `0f78:0bd8` on the local copy. 1000:2a0e `jmp 0x2c58` is the neither-token return: no store, no output."
+  },
+  {
+   "start": "1000:2a11",
+   "end": "1000:2a1f",
+   "name": "hp snapshot and the jaw gate",
+   "instruction_count": 4,
+   "note": "1000:2a11/1000:2a14 copy 20ae:38ac into [bp-0x102] -- the value the whole `mh` tail compares against -- and 1000:2a18 tests the broken-jaw byte."
+  },
+  {
+   "start": "1000:2a1f",
+   "end": "1000:2a3b",
+   "name": "the broken-jaw refusal",
+   "instruction_count": 15,
+   "note": "CS 0x28cc through `0eed:01c2` with five zeroed format words, then 1000:2a38 `jmp 0x2baa` -- into the TAIL, not to the return."
+  },
+  {
+   "start": "1000:2a3b",
+   "end": "1000:2a51",
+   "name": "loop top: the two continue gates",
+   "instruction_count": 7,
+   "note": "hp < hpmax (1000:2a3e/1000:2a42, SIGNED) else `jmp 0x2b67`; beer > 0 (1000:2a47/1000:2a4c, SIGNED) else `jmp 0x2b3a`."
+  },
+  {
+   "start": "1000:2a51",
+   "end": "1000:2a64",
+   "name": "spend one half-litre, then size the drink",
+   "instruction_count": 6,
+   "note": "`dec [0x38c3]`, then shortfall := hpmax - hp and `cmp ax,5` at 1000:2a5c."
+  },
+  {
+   "start": "1000:2a64",
+   "end": "1000:2ae7",
+   "name": "the partial arm -- shortfall < 5",
+   "instruction_count": 61,
+   "note": "`h` writes CS 0x28fd through `0eed:0000` (no newline) with the shortfall; hp := hpmax (1000:2a94/1000:2a97); `h` writes CS 0x2914 with hp, hpmax, beer div 2 and ((beer mod 2) * 5) mod 10."
+  },
+  {
+   "start": "1000:2ae7",
+   "end": "1000:2b3a",
+   "name": "the flat arm -- shortfall >= 5",
+   "instruction_count": 37,
+   "note": "`add word [0x38ac],0x5`, then `h` writes the combined CS 0x2938 with the literal 5 and the same four trailing fields."
+  },
+  {
+   "start": "1000:2b3a",
+   "end": "1000:2b67",
+   "name": "the no-beer arm",
+   "instruction_count": 23,
+   "note": "reached only from 1000:2a4e. `h` writes CS 0x2970; `mh` writes nothing here and lets the loop-continue test end the loop."
+  },
+  {
+   "start": "1000:2b67",
+   "end": "1000:2b83",
+   "name": "the already-healthy arm",
+   "instruction_count": 15,
+   "note": "reached only from 1000:2a44. CS 0x297c UNCONDITIONALLY -- no `h`/`mh` gate -- then 1000:2b80 `jmp 0x2c58` returns, so this arm never reaches the tail."
+  },
+  {
+   "start": "1000:2b83",
+   "end": "1000:2baa",
+   "name": "the loop-continue test",
+   "instruction_count": 15,
+   "note": "`h` leaves after one unit (1000:2b93 / 1000:2b95); `mh` loops back through 1000:2ba7 `jmp 0x2a3b` while hp < hpmax AND beer > 0."
+  },
+  {
+   "start": "1000:2baa",
+   "end": "1000:2bbf",
+   "name": "the tail's `mh` gate",
+   "instruction_count": 9,
+   "note": "1000:2bb0 compares the buffer against `\"mh\"`; 1000:2bbc `jmp 0x2c58` is `h`'s exit, so everything below is `mh`-only."
+  },
+  {
+   "start": "1000:2bbf",
+   "end": "1000:2c06",
+   "name": "tail 1 of 3 -- the aggregate line",
+   "instruction_count": 31,
+   "note": "hp != [bp-0x102] -> CS 0x2938 with hp - hp0 in the first field."
+  },
+  {
+   "start": "1000:2c06",
+   "end": "1000:2c2f",
+   "name": "tail 2 of 3 -- `ran out`",
+   "instruction_count": 19,
+   "note": "hp != [bp-0x102] AND beer <= 0 -> CS 0x29b3."
+  },
+  {
+   "start": "1000:2c2f",
+   "end": "1000:2c58",
+   "name": "tail 3 of 3 -- `no beer`",
+   "instruction_count": 19,
+   "note": "hp == [bp-0x102] AND beer <= 0 -> CS 0x2970."
+  },
+  {
+   "start": "1000:2c58",
+   "end": "1000:2c5e",
+   "name": "epilogue",
+   "instruction_count": 3,
+   "note": "`mov sp,bp` / `pop bp` / `ret 0x4` -- the 4 bytes are the caller's far pointer."
+  }
+ ],
+ "what_the_port_must_change": [
+  {
+   "what": "`mh` with a broken jaw must fall into the tail, not return.",
+   "original": "1000:2a38 `jmp 0x2baa`",
+   "port": "`Game::beer`'s `return` inside `if self.player.broken_jaw`",
+   "consequence": "`mh` + broken jaw + 20ae:38c3 <= 0 writes `^4Пива нету` (CS 0x2970, 1000:2c3f) after the refusal in the original and nothing after it in the port.",
+   "falsifiable_as": "a test that runs `mh` with `broken_jaw` set and `beer_dl == 0` and asserts TWO lines.",
+   "blocked": false,
+   "recorded_in": "docs/re/gaps.md"
+  },
+  {
+   "what": "The `Game::beer` doc comment says `Six later \"h\" compares` and then lists five addresses.",
+   "original": "the census: `\"h\"` (CS 0x28c7) is pushed at 1000:29f0, 1000:2a6a, 1000:2aa0, 1000:2af2, 1000:2b40 and 1000:2b89 -- six in TOTAL, five AFTER the token compare.",
+   "port": "the same sentence appears twice: in `Game::beer`'s doc comment and in `src/commands.rs`'s module doc.",
+   "consequence": "an off-by-one that reads as a completed census.",
+   "falsifiable_as": "`data/beer_arms.json`'s `strings[0].pushed_at` has six entries and `tools/test_beer_arms.py` derives it from the binary.",
+   "blocked": false,
+   "recorded_in": "docs/re/beer.md, `The audit of the shipped doc comment`"
+  },
+  {
+   "what": "Three of the doc comment's block-head addresses are not the guard or the branch they are attached to.",
+   "original": "1000:2a3b is the `mov ax,[0x38ac]` and 1000:2a3e the guard; 1000:2a55 is the `mov ax,[0x38ae]` and 1000:2a5c the guard; 1000:2b83 is a `lea` and 1000:2b93 the branch.",
+   "port": "the `Game::beer` doc comment's bullet list.",
+   "consequence": "`docs/re/METHODOLOGY.md`: a near-miss reads as authoritative. None of the three is citable for the coverage metric either -- `port_touched` reads the branch's own address and its guard's and nothing else -- which is why this entry's per-branch replacements are in `data/beer_uncited.json`. A fourth address of the same shape, `1000:2ab9`, is filed under the arithmetic item instead because its main defect is the dropped `mod 10`, not the offset. An earlier revision of this record said `Six` in `what` while `consequence` said `the three` -- the same miscount this entry is about, in the entry about it.",
+   "falsifiable_as": "every address in `data/beer_uncited.json` is a `data/branches.json` branch or guard address.",
+   "blocked": false,
+   "recorded_in": "docs/re/beer.md, `The audit of the shipped doc comment`"
+  },
+  {
+   "what": "`Game::beer`'s doc says the `mh` tail writes CS 0x2970 `if nothing was drunk at all`, omitting the second conjunct.",
+   "original": "1000:2c36 AND 1000:2c3d -- nothing drunk AND beer <= 0. With beer left and nothing drunk the tail is silent.",
+   "port": "the shipped CODE is right (`else if self.player.beer_dl == 0`); only the prose drops the conjunct.",
+   "consequence": "prose that a reader would implement wrongly.",
+   "falsifiable_as": "`data/beer_uncited.json`'s rows for 1000:2c36 and 1000:2c3d name two separate constructs.",
+   "blocked": false,
+   "recorded_in": "docs/re/beer.md, `The audit of the shipped doc comment`"
+  }
+ ],
+ "sweeps": {
+  "instructions": 298,
+  "bytes": 666,
+  "conditional_branches": 19,
+  "unconditional_jumps": 12,
+  "returns": 1,
+  "cs_literal_pushes": 17,
+  "distinct_cs_literals": 9,
+  "shortstring_compares": 8,
+  "writeln_calls": 8,
+  "write_calls": 1,
+  "absolute_writes": 3,
+  "random_calls": 0,
+  "note": "Every one of these is the aligned decode's own count, asserted by `tools/test_beer_arms.py` against a fresh walk of `orig/g.exe`."
+ }
+}

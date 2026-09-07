@@ -324,10 +324,14 @@ class ArmsArtifactTest(unittest.TestCase):
         """A fourth artifact must not be able to escape this file.
 
         `handlers` is the marker: `data/club_arms.json`, `data/gym_arms.json`
-        and `data/vet_arms.json` carry it, `data/den_arms.json` and
-        `data/shop_arms.json` -- whose schemas predate this shape and whose
-        own suites still own them in full -- do not. So the test is a set
-        equality over the glob, not a reading of `CORPUS`.
+        and `data/vet_arms.json` carry it, `data/den_arms.json`,
+        `data/shop_arms.json` and `data/beer_arms.json` -- whose schemas do
+        not fit this shape and whose own suites still own them in full -- do
+        not. (`data/beer_arms.json` maps a CALLED ROUTINE bounded by its own
+        function extent rather than a verb-compare-bounded slice of `entry`,
+        so `test_each_range_is_anchored_to_the_verb_compares_not_to_itself`
+        would have nothing to anchor; `tools/test_beer_arms.py` owns it.) So
+        the test is a set equality over the glob, not a reading of `CORPUS`.
         """
         declaring = sorted(
             "data/" + p.name

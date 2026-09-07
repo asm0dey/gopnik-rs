@@ -1,0 +1,390 @@
+{
+ "note": "Every game branch of `FUN_1000_29c4` -- the `h` / `mh` beer routine, image `1000:29c4`..`1000:2c5e` -- classified against the port by Task 41. All 19 carried no `SEG:OFF` citation at the branch or its guard when Task 41 ran EXCEPT `1000:2a1d` and `1000:2a4c`, whose guards (`1000:2a18`, `1000:2a47`) the shipped `Game::beer` doc comment already names; those two are the `touched 2` in `docs/re/branches.md`'s per-entry row for this entry. The row set is therefore the whole branch population of the function, not the uncited subset -- `data/combat_uncited.json` is the shape, and the difference is deliberate: Task 42 has to cite 17 and must not re-cite the two, so both halves have to be present and derived. `tools/test_beer_arms.py` re-derives the population from `data/branches.json` and requires this file to cover it EXACTLY; no count here is hard-coded.",
+ "classes": {
+  "implemented": "`src/` evaluates this condition NOW. `src.module`, `src.function` and `src.expr` name the construct that does, and `src.recompute` is the command that finds it -- never a `src/` line number, which `docs/re/METHODOLOGY.md` forbids. `src.expr` is a paraphrase close enough to locate the construct and never a substitute for reading it.",
+  "unimplemented": "`src/` does not evaluate it. NO ROW USES THIS CLASS -- see `empty_classes_are_reported`.",
+  "unreachable-in-port": "the port deliberately diverges and `docs/re/gaps.md` records it. NO ROW USES THIS CLASS -- see `empty_classes_are_reported`."
+ },
+ "empty_classes_are_reported": "Two of the three classes are empty and that is stated rather than filled, because an escape-hatch class is how an inventory stops being falsifiable. The candidates were checked and rejected one by one. `1000:2a1d` (broken jaw) looked like `unreachable-in-port`: the port DOES evaluate the condition, so the class does not fit -- what diverges is the code AFTER the refusal prints, and that is recorded as a divergence in `divergences` and in `docs/re/gaps.md` instead of by mislabelling a branch. The six `h`/`mh` selections (`1000:2a74`, `2aaa`, `2afc`, `2b4a`, `2b93`, `2bba`) looked like `unimplemented` because one `single` boolean stands for six separate shortstring compares; `one_boolean_for_six_compares` is the flow argument that they are the same predicate, so they are `implemented`. Nothing in this routine is unported behaviour.",
+ "one_boolean_for_six_compares": {
+  "claim": "`Game::beer`'s single `single` boolean is faithful to the six later `call 0f78:0bd8` compares at `1000:2a6a`, `2aa0`, `2af2`, `2b40`, `2b89` (against `\"h\"`, CS 0x28c7) and `1000:2bb0` (against `\"mh\"`, CS 0x28c9).",
+  "established_from_flow": [
+   "1000:29fa and 1000:2a0c admit exactly two lines into the body; 1000:2a0e `jmp 0x2c58` returns for every other line, so on every path past 1000:2a11 the buffer holds `\"h\"` or `\"mh\"` and nothing else.",
+   "the buffer at [bp-0x100] is written only by the prologue's `1000:29e2 stosb` and `1000:29e6 rep movsb`, whose destination is ES:DI with ES set to SS at 1000:29d3/1000:29d5 -- and an aligned decode of all 298 instructions finds no other instruction in the routine whose destination is that buffer.",
+   "so each of the six compares re-evaluates a predicate that cannot have changed since 1000:29fa, and `single` == (`\"h\"`) is that predicate."
+  ],
+  "recompute": "python3 tools/test_beer_arms.py BeerTest.test_the_input_buffer_is_written_only_by_the_prologue"
+ },
+ "divergences": [
+  {
+   "id": "mh-with-a-broken-jaw-skips-the-tail",
+   "found_by": "Task 41",
+   "original": "1000:2a1d not taken -> 1000:2a1f prints CS 0x28cc (`^4Ты не можешь пить пиво из-за сломаной челюсти.`) and 1000:2a38 `jmp 0x2baa` enters the `mh` TAIL. For `mh` the tail then runs 1000:2bba..1000:2c53 with hp untouched, so 1000:2bc6 and 1000:2c0d both take, 1000:2c36 does not, and 1000:2c3d prints `^4Пива нету` (CS 0x2970) whenever 20ae:38c3 <= 0.",
+   "port": "`Game::beer` prints the jaw refusal and `return`s, so `mh` + broken jaw + no beer writes one line where the original writes two.",
+   "reachable": "yes -- 20ae:38b0 is set by combat at 1000:47ee / 1000:4820 and the beer counter is routinely 0; `mh` is accepted in combat through the second call site 1000:4b00.",
+   "recorded_in": "docs/re/gaps.md, `mh` with a broken jaw skips the tail the original still runs",
+   "for": "Task 42, Half 1"
+  }
+ ],
+ "derivation": {
+  "source": "data/branches.json",
+  "rule": "`class == \"game\"` and `func_entry == \"1000:29c4\"`. Every such row must appear here exactly once and vice versa.",
+  "recomputed_by": "tools/test_beer_arms.py",
+  "block": "docs/re/branches.md, 'Recomputation, from the shipped artifacts -> Coverage'"
+ },
+ "counts": {
+  "total": 19,
+  "implemented": 19,
+  "unimplemented": 0,
+  "unreachable-in-port": 0
+ },
+ "counts_note": "Tallies of the rows' `class`, checked against the rows by `tools/test_beer_arms.py`'s `test_the_recorded_counts_are_the_tally_of_the_rows`. `total` is ALSO derived: the same test requires it to equal the number of `class == \"game\"` branches `data/branches.json` records for `func_entry == \"1000:29c4\"`. A literal 19 in an assertion would be a check that cannot fail; the number is read from the artifact both times.",
+ "branches": [
+  {
+   "addr": "1000:29fa",
+   "text": "JZ 0x2a11",
+   "guard": null,
+   "guard_text": null,
+   "guard_status": "blocked_by_call",
+   "guard_flag_source_call": "1f78:0bd8",
+   "taken": "1000:2a11",
+   "fallthrough": "1000:29fc",
+   "class": "implemented",
+   "what": "the typed line equals the shortstring `\"h\"` at CS 0x28c7 (file 0x4197) -- taken, it enters the body at 1000:2a11; missed, the `\"mh\"` compare at 1000:2a02 gets the next word.",
+   "src": {
+    "module": "src/commands.rs",
+    "function": "commands::parse",
+    "expr": "\"h\" => Command::Drink",
+    "recompute": "grep -n '\"h\" => Command::Drink' src/commands.rs",
+    "why": "The port hoists BOTH token compares out of the routine into the dispatcher: `Game::beer` is reached only through `Command::Drink` / `Command::BingeDrink`, so `parse`'s two arms are exactly the disjunction 1000:29fa and 1000:2a0c form. Nothing else in `src/` calls `Game::beer` -- `grep -n 'self.beer(' src/game.rs` returns the two call sites and no third."
+   }
+  },
+  {
+   "addr": "1000:2a0c",
+   "text": "JZ 0x2a11",
+   "guard": null,
+   "guard_text": null,
+   "guard_status": "blocked_by_call",
+   "guard_flag_source_call": "1f78:0bd8",
+   "taken": "1000:2a11",
+   "fallthrough": "1000:2a0e",
+   "class": "implemented",
+   "what": "the typed line equals the shortstring `\"mh\"` at CS 0x28c9 (file 0x4199) -- taken, it joins `\"h\"` at 1000:2a11; missed, 1000:2a0e `jmp 0x2c58` returns without writing anything.",
+   "src": {
+    "module": "src/commands.rs",
+    "function": "commands::parse",
+    "expr": "\"mh\" => Command::BingeDrink",
+    "recompute": "grep -n '\"mh\" => Command::BingeDrink' src/commands.rs",
+    "why": "See 1000:29fa. The neither-token fallthrough at 1000:2a0e is `Command::Unknown(_) => {}` in `Game::run_command`, which writes nothing either."
+   }
+  },
+  {
+   "addr": "1000:2a1d",
+   "text": "JNZ 0x2a3b",
+   "guard": "1000:2a18",
+   "guard_text": "CMP byte ptr [0x38b0],0x1",
+   "guard_status": "resolved",
+   "taken": "1000:2a3b",
+   "fallthrough": "1000:2a1f",
+   "class": "implemented",
+   "what": "the broken-jaw byte 20ae:38b0 is 1 -- not taken, the refusal at CS 0x28cc prints and control falls to 1000:2baa, the `mh` tail; taken, the drink loop starts at 1000:2a3b.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if self.player.broken_jaw { term::println(\"^4Ты не можешь пить пиво из-за сломаной челюсти.\"); return; }",
+    "recompute": "grep -n -A2 'let hp0 = self.player.hp;' src/game.rs",
+    "why": "The condition is evaluated, and first, exactly as at 1000:2a18. What follows it DIVERGES -- the port returns where the original enters the tail; see `divergences` and the `docs/re/gaps.md` entry it names."
+   }
+  },
+  {
+   "addr": "1000:2a42",
+   "text": "JL 0x2a47",
+   "guard": "1000:2a3e",
+   "guard_text": "CMP AX,word ptr [0x38ae]",
+   "guard_status": "resolved",
+   "taken": "1000:2a47",
+   "fallthrough": "1000:2a44",
+   "class": "implemented",
+   "what": "loop top: hp (20ae:38ac) < hpmax (20ae:38ae), SIGNED -- taken, drinking continues at 1000:2a47; missed, 1000:2a44 `jmp 0x2b67` prints CS 0x297c and returns.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if self.player.hp >= self.player.hpmax { term::println(\"^6Блин только тупить не надо - и так здоровья до фига.\"); return; }",
+    "recompute": "grep -n 'if self.player.hp >= self.player.hpmax {' src/game.rs",
+    "why": "The port writes the complement of the original's `jl` and puts the message and the `return` in the taken arm, which is the same partition."
+   }
+  },
+  {
+   "addr": "1000:2a4c",
+   "text": "JG 0x2a51",
+   "guard": "1000:2a47",
+   "guard_text": "CMP word ptr [0x38c3],0x0",
+   "guard_status": "resolved",
+   "taken": "1000:2a51",
+   "fallthrough": "1000:2a4e",
+   "class": "implemented",
+   "what": "beer (20ae:38c3) > 0, SIGNED -- taken, one half-litre is spent at 1000:2a51; missed, 1000:2a4e `jmp 0x2b3a` runs the no-beer arm.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if self.player.beer_dl == 0 { if single { term::println(\"^4Пива нету\"); } break; }",
+    "recompute": "grep -n -A2 'if self.player.beer_dl == 0 {' src/game.rs",
+    "why": "The first of the two hits is the loop gate. `== 0` on a `u16` versus the original's signed `jg` is the posture `docs/re/gaps.md` already records for 20ae:38c3 under the sheet's quantity gates, closed by the load path's `.max(0) as u16`."
+   }
+  },
+  {
+   "addr": "1000:2a5f",
+   "text": "JL 0x2a64",
+   "guard": "1000:2a5c",
+   "guard_text": "CMP AX,0x5",
+   "guard_status": "resolved",
+   "taken": "1000:2a64",
+   "fallthrough": "1000:2a61",
+   "class": "implemented",
+   "what": "hpmax - hp < 5 (the shortfall computed at 1000:2a55/1000:2a58) -- taken, the partial arm at 1000:2a64 tops hp up to hpmax; missed, 1000:2a61 `jmp 0x2ae7` adds a flat 5.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "let shortfall = self.player.hpmax - self.player.hp; if shortfall < 5 { .. } else { self.player.hp += 5; .. }",
+    "recompute": "grep -n 'if shortfall < 5 {' src/game.rs"
+   }
+  },
+  {
+   "addr": "1000:2a74",
+   "text": "JNZ 0x2a94",
+   "guard": null,
+   "guard_text": null,
+   "guard_status": "blocked_by_call",
+   "guard_flag_source_call": "1f78:0bd8",
+   "taken": "1000:2a94",
+   "fallthrough": "1000:2a76",
+   "class": "implemented",
+   "what": "the line is NOT `\"h\"` -- taken, the partial arm's first message (CS 0x28fd, written by `0eed:0000`, no newline) is skipped; `mh` prints nothing per unit.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if single { term::print(&text::fill(\"^2Пиво прибавляет #з. \", &[shortfall as i64])); }",
+    "recompute": "grep -nF -B1 'term::print(&text::fill(\"^2Пиво прибавляет #з. \"' src/game.rs",
+    "why": "`single` is faithful to this compare because the buffer at [bp-0x100] is written only by the prologue (1000:29e2/1000:29e6) and 1000:29fa/1000:2a0c already restricted it to one of exactly two literals -- see `one_boolean_for_six_compares`."
+   }
+  },
+  {
+   "addr": "1000:2aaa",
+   "text": "JNZ 0x2ae5",
+   "guard": null,
+   "guard_text": null,
+   "guard_status": "blocked_by_call",
+   "guard_flag_source_call": "1f78:0bd8",
+   "taken": "1000:2ae5",
+   "fallthrough": "1000:2aac",
+   "class": "implemented",
+   "what": "the line is NOT `\"h\"` -- taken, the partial arm's second message (CS 0x2914) is skipped.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if single { term::println(&text::fill(\"^2Здоровья:#/#. Осталось #.#л. пива\", &self.beer_numbers())); }",
+    "recompute": "grep -nF -B2 '\"^2Здоровья:#/#. Осталось #.#л. пива\",' src/game.rs"
+   }
+  },
+  {
+   "addr": "1000:2afc",
+   "text": "JNZ 0x2b38",
+   "guard": null,
+   "guard_text": null,
+   "guard_status": "blocked_by_call",
+   "guard_flag_source_call": "1f78:0bd8",
+   "taken": "1000:2b38",
+   "fallthrough": "1000:2afe",
+   "class": "implemented",
+   "what": "the line is NOT `\"h\"` -- taken, the flat-5 arm's combined message (CS 0x2938) is skipped.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if single { let n = self.beer_numbers(); term::println(&text::fill(\"^2Пиво прибавляет #з. Здоровья:#/#. Осталось #.#л. пива\", &[5, n[0], n[1], n[2], n[3]])); }",
+    "recompute": "grep -nF -B4 '&[5, n[0], n[1], n[2], n[3]],' src/game.rs"
+   }
+  },
+  {
+   "addr": "1000:2b4a",
+   "text": "JNZ 0x2b65",
+   "guard": null,
+   "guard_text": null,
+   "guard_status": "blocked_by_call",
+   "guard_flag_source_call": "1f78:0bd8",
+   "taken": "1000:2b65",
+   "fallthrough": "1000:2b4c",
+   "class": "implemented",
+   "what": "the line is NOT `\"h\"` -- taken, the in-loop `^4Пива нету` (CS 0x2970) is skipped; `mh` reports emptiness only from its tail.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if single { term::println(\"^4Пива нету\"); }",
+    "recompute": "grep -nF -B1 'term::println(\"^4Пива нету\");' src/game.rs",
+    "why": "The FIRST of the two hits -- the one whose preceding line is `if single {`, inside `if self.player.beer_dl == 0 {` in the loop. The second hit is 1000:2c3d's tail arm."
+   }
+  },
+  {
+   "addr": "1000:2b93",
+   "text": "JNZ 0x2b97",
+   "guard": null,
+   "guard_text": null,
+   "guard_status": "blocked_by_call",
+   "guard_flag_source_call": "1f78:0bd8",
+   "taken": "1000:2b97",
+   "fallthrough": "1000:2b95",
+   "class": "implemented",
+   "what": "the line is NOT `\"h\"` -- taken, the loop-continue tests at 1000:2b97 run; missed, 1000:2b95 `jmp 0x2baa` leaves the loop after exactly one half-litre.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 { break; }",
+    "recompute": "grep -n 'if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {' src/game.rs",
+    "why": "This row is the `single` disjunct of that condition; 1000:2b9e and 1000:2ba5 are the other two, in the original's own order."
+   }
+  },
+  {
+   "addr": "1000:2b9e",
+   "text": "JGE 0x2baa",
+   "guard": "1000:2b9a",
+   "guard_text": "CMP AX,word ptr [0x38ae]",
+   "guard_status": "resolved",
+   "taken": "1000:2baa",
+   "fallthrough": "1000:2ba0",
+   "class": "implemented",
+   "what": "hp >= hpmax, SIGNED -- taken, the loop ends at 1000:2baa; missed, the beer test at 1000:2ba0 is tried next.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 { break; }",
+    "recompute": "grep -n 'if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {' src/game.rs",
+    "why": "This row is the `self.player.hp >= self.player.hpmax` disjunct."
+   }
+  },
+  {
+   "addr": "1000:2ba5",
+   "text": "JLE 0x2baa",
+   "guard": "1000:2ba0",
+   "guard_text": "CMP word ptr [0x38c3],0x0",
+   "guard_status": "resolved",
+   "taken": "1000:2baa",
+   "fallthrough": "1000:2ba7",
+   "class": "implemented",
+   "what": "beer <= 0, SIGNED -- taken, the loop ends at 1000:2baa; missed, 1000:2ba7 `jmp 0x2a3b` is the back edge to the loop top.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 { break; }",
+    "recompute": "grep -n 'if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {' src/game.rs",
+    "why": "This row is the `self.player.beer_dl == 0` disjunct."
+   }
+  },
+  {
+   "addr": "1000:2bba",
+   "text": "JZ 0x2bbf",
+   "guard": null,
+   "guard_text": null,
+   "guard_status": "blocked_by_call",
+   "guard_flag_source_call": "1f78:0bd8",
+   "taken": "1000:2bbf",
+   "fallthrough": "1000:2bbc",
+   "class": "implemented",
+   "what": "the line IS `\"mh\"` -- taken, the summary tail at 1000:2bbf runs; missed, 1000:2bbc `jmp 0x2c58` returns, so `h` never reaches the tail at all.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if single { return; }",
+    "recompute": "grep -nF -A1 'if single {' src/game.rs | grep -B1 -F 'return;'",
+    "why": "The guard between the loop and the tail. `!single` is `\"mh\"` because 1000:29fa and 1000:2a0c admit nothing else."
+   }
+  },
+  {
+   "addr": "1000:2bc6",
+   "text": "JZ 0x2c06",
+   "guard": "1000:2bc2",
+   "guard_text": "CMP AX,word ptr [BP + 0xfefe]",
+   "guard_status": "resolved",
+   "taken": "1000:2c06",
+   "fallthrough": "1000:2bc8",
+   "class": "implemented",
+   "what": "hp equals the entry snapshot at [bp-0x102] (stored at 1000:2a14) -- taken, the aggregate `^2Пиво прибавляет #з. ..` line (CS 0x2938) is skipped; missed, it prints hp-hp0 as the first field.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "let healed = i64::from(self.player.hp) - i64::from(hp0); if healed != 0 { .. }",
+    "recompute": "grep -n -A1 'let healed = i64::from(self.player.hp) - i64::from(hp0);' src/game.rs",
+    "why": "`hp0` is the port's [bp-0x102]: bound before the jaw test, as 1000:2a11/1000:2a14 store before 1000:2a18."
+   }
+  },
+  {
+   "addr": "1000:2c0d",
+   "text": "JZ 0x2c2f",
+   "guard": "1000:2c09",
+   "guard_text": "CMP AX,word ptr [BP + 0xfefe]",
+   "guard_status": "resolved",
+   "taken": "1000:2c2f",
+   "fallthrough": "1000:2c0f",
+   "class": "implemented",
+   "what": "hp equals the entry snapshot -- a SECOND re-read of the same predicate; taken, `^4Кончилось пиво` is skipped.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if healed != 0 { term::println(..); if self.player.beer_dl == 0 { term::println(\"^4Кончилось пиво\"); } }",
+    "recompute": "grep -nF -B4 'term::println(\"^4Кончилось пиво\");' src/game.rs",
+    "why": "This row is the OUTER `healed != 0` test, re-evaluated. The port evaluates the hp-vs-hp0 predicate ONCE and nests; the original re-reads 20ae:38ac at 1000:2bbf, 1000:2c06 and 1000:2c2f. The hoist is sound because nothing between them writes 20ae:38ac -- the store scan finds the routine's only writes at 1000:2a97 and 1000:2ae7, both inside the loop, and the only call in between is `0eed:01c2`."
+   }
+  },
+  {
+   "addr": "1000:2c14",
+   "text": "JG 0x2c2f",
+   "guard": "1000:2c0f",
+   "guard_text": "CMP word ptr [0x38c3],0x0",
+   "guard_status": "resolved",
+   "taken": "1000:2c2f",
+   "fallthrough": "1000:2c16",
+   "class": "implemented",
+   "what": "beer > 0, SIGNED -- taken, `^4Кончилось пиво` (CS 0x29b3) is skipped; so the line means 'that emptied it', not 'you drank'.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "if self.player.beer_dl == 0 { term::println(\"^4Кончилось пиво\"); }",
+    "recompute": "grep -nF -B4 'term::println(\"^4Кончилось пиво\");' src/game.rs"
+   }
+  },
+  {
+   "addr": "1000:2c36",
+   "text": "JNZ 0x2c58",
+   "guard": "1000:2c32",
+   "guard_text": "CMP AX,word ptr [BP + 0xfefe]",
+   "guard_status": "resolved",
+   "taken": "1000:2c58",
+   "fallthrough": "1000:2c38",
+   "class": "implemented",
+   "what": "hp does NOT equal the entry snapshot -- a THIRD re-read; taken, 1000:2c58 returns, so `^4Пива нету` is the nothing-was-drunk branch.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "} else if self.player.beer_dl == 0 { term::println(\"^4Пива нету\"); }",
+    "recompute": "grep -n '} else if self.player.beer_dl == 0 {' src/game.rs",
+    "why": "The `else` arm is reached exactly when `healed == 0`, which is 1000:2c36's NOT-taken direction. This branch is one of the 192 addresses Ghidra folded out of `build/decomp/FUN_1000_29c4_1000_29c4.c`."
+   }
+  },
+  {
+   "addr": "1000:2c3d",
+   "text": "JG 0x2c58",
+   "guard": "1000:2c38",
+   "guard_text": "CMP word ptr [0x38c3],0x0",
+   "guard_status": "resolved",
+   "taken": "1000:2c58",
+   "fallthrough": "1000:2c3f",
+   "class": "implemented",
+   "what": "beer > 0, SIGNED -- taken, 1000:2c58 returns; missed, `^4Пива нету` (CS 0x2970) prints, the second site for that literal.",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::beer",
+    "expr": "} else if self.player.beer_dl == 0 { term::println(\"^4Пива нету\"); }",
+    "recompute": "grep -n '} else if self.player.beer_dl == 0 {' src/game.rs",
+    "why": "This row is the `self.player.beer_dl == 0` test of that `else if`; 1000:2c36 is the `healed != 0` half."
+   }
+  }
+ ]
+}

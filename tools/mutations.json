@@ -3492,6 +3492,281 @@
       "CombatOpenerTest.test_the_arms_ds_pointer_pushes_are_every_push_ds_in_range"
     ],
     "expect": "`ds_pointer_pushes` disagree"
+  },
+  {
+    "label": "beer-uncited-row-set",
+    "defends": "tools/test_beer_arms.py re-derives the FUN_1000_29c4 branch population from data/branches.json and requires data/beer_uncited.json's rows to equal it -- so an omitted, invented or misfiled row reds instead of the file quietly covering 18 of 19.  The count is derived on both sides; a literal 19 would be the check that cannot fail.",
+    "artifact": "data/beer_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "branches",
+        0,
+        "addr"
+      ],
+      "from": "1000:29fa",
+      "to": "1000:29fb"
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "BeerTest.test_the_rows_cover_the_branch_population_exactly"
+    ],
+    "expect": "the classification and the branch population disagree"
+  },
+  {
+    "label": "beer-uncited-class-tally",
+    "defends": "data/beer_uncited.json's counts.implemented / unimplemented / unreachable-in-port must be a TALLY of the rows' own class field, so a headline count cannot drift from the classification it summarises.",
+    "artifact": "data/beer_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "counts",
+        "implemented"
+      ],
+      "from": 19,
+      "to": 18
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "BeerTest.test_the_recorded_counts_are_the_tally_of_the_rows"
+    ],
+    "expect": "counts.implemented says"
+  },
+  {
+    "label": "beer-uncited-src-function",
+    "defends": "every `implemented` row is pinned to the FUNCTION that evaluates the condition, not merely to the module -- src/game.rs is 11000 lines, so a module-wide check would accept a row filed against any function in it.",
+    "artifact": "data/beer_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "branches",
+        2,
+        "src",
+        "function"
+      ],
+      "from": "Game::beer",
+      "to": "Game::sell_junk"
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "SrcPairingTest.test_every_implemented_row_names_the_function_that_evaluates_it"
+    ],
+    "expect": "which occurs ELSEWHERE IN THE MODULE"
+  },
+  {
+    "label": "beer-uncited-recompute-command",
+    "defends": "docs/re/METHODOLOGY.md forbids citing a src/ line number, so each implemented row carries a COMMAND instead -- and the command is RUN, because a citation that no longer matches is a broken citation whether it is a number or a grep.",
+    "artifact": "data/beer_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "branches",
+        5,
+        "src",
+        "recompute"
+      ],
+      "from": "grep -n 'if shortfall < 5 {' src/game.rs",
+      "to": "grep -n 'if shortfall < 6 {' src/game.rs"
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "SrcPairingTest.test_every_recompute_command_still_finds_its_construct"
+    ],
+    "expect": "the citation no longer finds the construct"
+  },
+  {
+    "label": "beer-arms-string-census",
+    "defends": "data/beer_arms.json's strings[] is a SET EQUALITY against every `mov di,imm16` / `push cs` / `push di` in the range, in both directions -- which is what makes 'the h token is compared six times' and 'this arm prints nothing else' measurements rather than notes.",
+    "artifact": "data/beer_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "strings",
+        0,
+        "pushed_at"
+      ],
+      "from": [
+        "1000:29f0",
+        "1000:2a6a",
+        "1000:2aa0",
+        "1000:2af2",
+        "1000:2b40",
+        "1000:2b89"
+      ],
+      "to": [
+        "1000:29f0",
+        "1000:2a6a",
+        "1000:2aa0",
+        "1000:2af2",
+        "1000:2b40"
+      ]
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "BeerTest.test_the_recorded_strings_are_every_cs_literal_pushed"
+    ],
+    "expect": "the CS-literal push sweep and the artifact disagree"
+  },
+  {
+    "label": "beer-arms-literal-pool-tiling",
+    "defends": "the 253-byte literal pool before the entry must TILE end to end with zero residue, which is the structural reason there is no tenth literal.  A census that merely LISTS nine would pass with a tenth in the binary; this cannot.",
+    "artifact": "data/beer_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "literal_pool",
+        "record_count"
+      ],
+      "from": 9,
+      "to": 8
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "BeerTest.test_the_literal_pool_tiles_with_no_residue"
+    ],
+    "expect": "the string census is not complete"
+  },
+  {
+    "label": "beer-arms-effect-inventory",
+    "defends": "'the routine writes hp and beer and nothing else' is the store scan, asserted as a set equality over every instruction in the range with a memory destination -- an unclassified shape fails loudly rather than passing as a read.",
+    "artifact": "data/beer_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "effects",
+        "absolute_writes",
+        0,
+        "addr"
+      ],
+      "from": "1000:2a51",
+      "to": "1000:2a52"
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "BeerTest.test_the_recorded_effects_are_every_absolute_write_in_range"
+    ],
+    "expect": "the absolute-write sweep and the artifact disagree"
+  },
+  {
+    "label": "beer-arms-call-site-wrap",
+    "defends": "a call site recorded as WRAPPING must actually need the 16-bit wrap.  The first draft of data/beer_arms.json and docs/re/beer.md both said BOTH sites wrapped; 1000:4b00 calls backward and does not, and this is the check that caught it.",
+    "artifact": "data/beer_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "call_sites",
+        "sites",
+        1,
+        "wraps"
+      ],
+      "from": false,
+      "to": true
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "BeerTest.test_both_call_sites_wrap_to_the_entry_and_there_is_no_third"
+    ],
+    "expect": "exactly one of the two call sites needs the 16-bit wrap"
+  },
+  {
+    "label": "beer-arms-globals-xref-census",
+    "defends": "each global's identity rests on its image-wide xref census -- 'the level-up raises hp and hpmax together' and 'the jaw byte only ever holds 0 or 1' -- so the accepted and writer counts are re-derived by running re_query.xrefs_to rather than quoted.",
+    "artifact": "data/beer_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "globals",
+        1,
+        "xrefs_writes"
+      ],
+      "from": 15,
+      "to": 14
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "BeerTest.test_the_globals_xref_census_is_what_re_query_reports"
+    ],
+    "expect": "and xrefs-to reports"
+  },
+  {
+    "label": "beer-arms-sweep-counts",
+    "defends": "all twelve of data/beer_arms.json's sweep counts are the aligned decode's own tallies, so a negative like 'zero absolute writes' or 'zero draws' rests on a walk known to have covered all 666 bytes.",
+    "artifact": "data/beer_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "sweeps",
+        "shortstring_compares"
+      ],
+      "from": 8,
+      "to": 7
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "BeerTest.test_every_recorded_sweep_count_is_the_aligned_decode"
+    ],
+    "expect": "sweeps.shortstring_compares records"
+  },
+  {
+    "label": "beer-doc-prose-address",
+    "defends": "every 1000:xxxx in docs/re/beer.md is resolved against an aligned decode from every segment-1000 function entry, so the two-to-five-byte near miss docs/re/METHODOLOGY.md calls authoritative-looking cannot ship in the prose.",
+    "artifact": "docs/re/beer.md",
+    "mutate": {
+      "op": "text-replace",
+      "from": "`1000:2ba7 jmp 0x2a3b`",
+      "to": "`1000:2ba8 jmp 0x2a3b`",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "ProseTest.test_every_prose_address_is_an_instruction_boundary"
+    ],
+    "expect": "is not an instruction boundary reached by decoding"
+  },
+  {
+    "label": "beer-doc-prose-instruction",
+    "defends": "every `1000:xxxx <text>` span in docs/re/beer.md is re-decoded out of orig/g.exe, so an address that IS a boundary but carries the wrong instruction -- the shape the shipped Game::beer doc comment shipped six times -- goes red too.",
+    "artifact": "docs/re/beer.md",
+    "mutate": {
+      "op": "text-replace",
+      "from": "`1000:2a51 dec [0x38c3]`",
+      "to": "`1000:2a51 dec [0x38c5]`",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "ProseTest.test_every_prose_instruction_says_what_the_binary_says"
+    ],
+    "expect": "and orig/g.exe decodes"
+  },
+  {
+    "label": "beer-gaps-divergence-entry",
+    "defends": "the one divergence Task 41 found between the shipped Game::beer and the recovered flow -- `mh` with a broken jaw skips the tail -- is recorded in docs/re/gaps.md AND in data/beer_uncited.json, and the two are kept from drifting apart.  A divergence recorded in only one of them is how a finding gets lost between tasks.",
+    "artifact": "docs/re/gaps.md",
+    "mutate": {
+      "op": "text-replace",
+      "from": "## `mh` with a broken jaw skips the tail the original still runs (Task 41)",
+      "to": "## `mh` with a broken jaw: a note (Task 41)",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "BeerTest.test_the_recorded_divergence_is_in_gaps"
+    ],
+    "expect": "the divergence names docs/re/gaps.md and the entry is not there"
   }
  ]
 }
