@@ -81,15 +81,24 @@ it as progress on its own. **Progress is behaviour in `src/`.**
   answer is "it would improve confidence in claims we already believe", that is a
   deferred-minor, not a task.
 - **Reach for the existing instrument.** `tools/rngtrace/verbprobe.py`,
-  `tools/re_query.py`, `tools/addr.py`, `tools/dis16.py`, `tools/mutate.py` and
-  the five frozen oracles already cover most questions. Re-point them; do not
-  build a sibling.
+  `tools/re_query.py`, `tools/addr.py`, `tools/dis16.py`, `tools/mutate.py`,
+  `tools/decomp_addresses.py` and the five frozen oracles already cover most
+  questions. Re-point them; do not build a sibling.
+- **Read the disassembly through the annotated decompilation before walking it
+  by hand.** `build/decomp/<name>_<entry>.c` carries Ghidra's C with every line
+  annotated by the **set** of machine addresses that produced it. It is
+  gitignored — regenerate with `./tools/ghidra/run_ghidra.sh --decomp-only`,
+  which writes nothing under `data/`. It is a **lead, not evidence**: it makes a
+  citation cheap to *verify*, never pre-verified, so
+  `python3 tools/re_query.py resolve <citation>` still runs before an address
+  enters a claim. A branch absent from the annotation is usually one half of an
+  adjacent compare-and-branch Ghidra folded, not a gap —
+  `docs/re/functions.md` has the rule and the census.
 - **Fixing a document that contradicts itself is not yak shaving** — a wrong
   address propagates into every task that reads it. Correctness of the map is
   part of the port. Growing the map for its own sake is not.
 
 <!-- jbcontext-instructions-start -->
-
 # Tools
 
 ## Code discovery: context-explorer first
