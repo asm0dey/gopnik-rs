@@ -342,7 +342,9 @@
       "docs/superpowers/plans/2026-09-06-service-handlers.md `src/game.rs:2443` -> src/game.rs:2443 -- no symbol span adjacent to it",
       "docs/superpowers/plans/2026-09-06-service-handlers.md `src/game.rs:9541` -> src/game.rs:9541 -- no symbol span adjacent to it",
       "docs/superpowers/plans/2026-09-06-service-handlers.md `src/persist.rs:345` -> src/persist.rs:345 -- no symbol span adjacent to it",
-      "docs/superpowers/plans/2026-09-06-service-handlers.md `src/save.rs:257` -> src/save.rs:257 -- no symbol span adjacent to it"
+      "docs/superpowers/plans/2026-09-06-service-handlers.md `src/save.rs:257` -> src/save.rs:257 -- no symbol span adjacent to it",
+      "docs/superpowers/plans/2026-09-07-beer-handler.md `src/game.rs:3951` -> src/game.rs:3951 -- no symbol span adjacent to it",
+      "docs/superpowers/plans/2026-09-07-beer-handler.md `src/game.rs:8080` -> src/game.rs:8080 -- no symbol span adjacent to it"
     ],
     "unreadable": [],
     "verified": [
