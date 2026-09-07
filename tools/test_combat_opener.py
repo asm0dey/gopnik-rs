@@ -109,11 +109,34 @@ TRANSFER = re.compile(r"^(j[a-z]+|call|loop[a-z]*)\s+(?:short\s+)?"
 CITATION = re.compile(r"\b([0-9a-fA-F]{4}):([0-9a-fA-F]{1,4})\b", re.ASCII)
 
 #: Rust keywords and prelude names that a `src.expr` can mention without
-#: saying anything about the module it is filed against.  Everything else an
-#: expression names has to be findable there -- see
-#: `test_every_implemented_row_names_a_module_and_function_that_exist`.
+#: saying anything about the construct it is filed against.  Everything else
+#: an expression names has to be findable inside that FUNCTION'S BODY -- see
+#: `test_every_implemented_row_names_the_function_that_evaluates_it`.
 RUST_NOISE = {"return", "match", "false", "break", "while", "continue",
-              "matches", "println", "print", "self", "value"}
+              "matches", "println", "print", "self", "value", "else",
+              "Some", "None", "Self", "Vec", "String", "true"}
+
+#: What counts as a name in a `src.expr`.  Three things this has to get right,
+#: each of which a previous revision got wrong:
+#:
+#:   * **both cases.**  snake_case catches fields, methods and locals;
+#:     CamelCase catches the enum variants and types.  Without the second
+#:     half, `b'2' => Some(Stat::Agility)` names nothing checkable at all and
+#:     its row's pairing is asserted by nothing.
+#:   * **word boundaries.**  Unanchored, `[a-z][a-z0-9_]{4,}` matches the
+#:     SUFFIX `ommand` inside `Command::Fight` -- a token that occurs in the
+#:     module for the wrong reason, so the check passed on a string that is
+#:     not an identifier at all.
+#:   * **four characters, not five.**  `mine`, `roll`, `luck`, `line`, `rank`
+#:     and `blow` are load-bearing names in these expressions; at a five-char
+#:     floor three rows had nothing checkable left.
+EXPR_IDENT = re.compile(r"\b[a-z][a-z0-9_]{3,}\b|\b[A-Z][A-Za-z0-9_]{3,}\b")
+
+#: One `fn` definition, with the indentation that decides where its body ends.
+FN_DEF = re.compile(
+    r"^(?P<indent>[ \t]*)(?:pub(?:\([^)]*\))?\s+)?(?:const\s+)?"
+    r"(?:async\s+)?(?:unsafe\s+)?(?:extern\s+\"[^\"]*\"\s+)?"
+    r"fn\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)")
 
 
 def cit(off):
@@ -128,11 +151,44 @@ def flat(a):
     return int(a[:4], 16) * 16 + int(a[5:], 16)
 
 
+def fn_bodies(text):
+    """`{name: (first_line, body_text)}` for every `fn` the module defines.
+
+    The span runs from the `fn` line to the first later line that is EXACTLY
+    the `fn`'s own indentation followed by `}`.  That is rustfmt's guarantee --
+    an item's closing brace sits in the item's indentation column and every
+    line of its body is indented deeper -- and `cargo fmt --check` is one of
+    this repo's gates, so the rule holds by construction rather than by
+    convention.
+
+    A name defined twice in one module maps to `None`, and the caller fails on
+    it rather than picking one: an ambiguous span would silently widen the
+    scope this whole check exists to narrow.
+    """
+    lines = text.splitlines()
+    out = {}
+    for i, ln in enumerate(lines):
+        m = FN_DEF.match(ln)
+        if not m:
+            continue
+        close = m.group("indent") + "}"
+        span = None
+        for j in range(i + 1, len(lines)):
+            if lines[j] == close:
+                span = (i + 1, "\n".join(lines[i:j + 1]))
+                break
+        name = m.group("name")
+        out[name] = None if name in out else span
+    return out
+
+
 def uncited_branches(branches, repo):
     """The uncited game branches of `FUN_1000_3d11`, recomputed.
 
     This reimplements `tools/ghidra/EnumerateBranches.java`'s rule rather than
     reading its answer, exactly as `docs/re/branches.md`'s Coverage block does.
+    Returns the rows AND the citation index they were filtered with, so a
+    caller can say WHERE a row that is no longer uncited is now cited.
     """
     cite = collections.defaultdict(set)
     for pat in branches["port_citation_sources"]:
@@ -152,7 +208,7 @@ def uncited_branches(branches, repo):
         if not touched:
             out.append(b)
     out.sort(key=lambda b: flat(b["addr"]))
-    return out
+    return out, cite
 
 
 class CombatOpenerTest(unittest.TestCase):
@@ -205,7 +261,7 @@ class CombatOpenerTest(unittest.TestCase):
     # ----------------------------------------------------- alignment/identity
     def test_every_recorded_address_is_an_aligned_instruction_boundary(self):
         seen = 0
-        for path, c in self.walk_citations(self.art):
+        for _path, c in self.walk_citations(self.art):
             self.at(c)
             seen += 1
         self.assertGreater(seen, 40,
@@ -465,6 +521,39 @@ class CombatOpenerTest(unittest.TestCase):
             "sweeps.cs_literal_pushes is not the number of CS-literal "
             "pushes in the range")
 
+    def test_the_arms_ds_pointer_pushes_are_every_push_ds_in_range(self):
+        """SET EQUALITY, because the cardinalities used to match by accident.
+
+        One revision held `mov di` operands and `push ds` in a single arm-level
+        `ds_pointer_pushes` array -- three entries, matching
+        `sweeps.ds_pointer_pushes: 3` while sharing exactly one address with
+        it.  Nothing related the two, so the matching count read as a
+        cross-check that did not exist.  These are now two fields, and this is
+        the measurement that ties one of them to the sweep.
+        """
+        swept = sorted((cit(i.off), i.text) for i in self.insns
+                       if i.text == "push ds")
+        recorded = sorted((x["addr"], x["text"]) for arm in self.art["arms"]
+                          for x in arm.get("ds_pointer_pushes", []))
+        self.assertEqual(swept, recorded,
+                         "the `push ds` sweep and the arms' "
+                         "`ds_pointer_pushes` disagree")
+        self.assertEqual(len(swept),
+                         self.art["sweeps"]["ds_pointer_pushes"],
+                         "sweeps.ds_pointer_pushes is not the number of "
+                         "`push ds` in the range")
+        operands = sorted((x["addr"], x["text"]) for arm in self.art["arms"]
+                          for x in arm.get("ds_operands", []))
+        self.assertTrue(operands, "no arm records a DGROUP operand")
+        self.assertEqual(
+            set(a for a, _ in operands) & set(a for a, _ in swept), set(),
+            "`ds_operands` and `ds_pointer_pushes` overlap; they are "
+            "different instructions and conflating them is the defect this "
+            "split exists to prevent")
+        for a, text in operands:
+            self.assertTrue(text.startswith("mov di,"),
+                            "%s is in `ds_operands` but is %r" % (a, text))
+
     def test_the_spans_tile_the_range(self):
         spans = sorted((off_of(s["start"]), off_of(s["end"]), s["name"])
                        for s in self.art["spans"])
@@ -510,7 +599,7 @@ class CombatOpenerTest(unittest.TestCase):
 
     # ------------------------------------------------- the classification set
     def test_combat_uncited_covers_exactly_the_derived_uncited_set(self):
-        derived = uncited_branches(self.branches, REPO)
+        derived, _ = uncited_branches(self.branches, REPO)
         self.assertEqual(
             [b["addr"] for b in self.uncited["branches"]],
             [b["addr"] for b in derived],
@@ -541,7 +630,8 @@ class CombatOpenerTest(unittest.TestCase):
                          "a row carries a class this schema does not define")
 
     def test_every_uncited_row_decodes_to_what_it_says(self):
-        derived = {b["addr"]: b for b in uncited_branches(self.branches, REPO)}
+        rows, _ = uncited_branches(self.branches, REPO)
+        derived = {b["addr"]: b for b in rows}
         for r in self.uncited["branches"]:
             self.assertEqual(self.at(r["addr"]).text, r["text"],
                              "%s does not decode to %r"
@@ -564,7 +654,44 @@ class CombatOpenerTest(unittest.TestCase):
             else:
                 self.assertIsNone(r["guard_text"])
 
-    def test_every_implemented_row_names_a_module_and_function_that_exist(self):
+    def test_every_implemented_row_names_the_function_that_evaluates_it(self):
+        """The `implemented` pairing, checked at FUNCTION scope.
+
+        What this establishes: the named module exists, it defines the named
+        function exactly once, and every name the row's `src.expr` mentions
+        occurs INSIDE THAT FUNCTION'S BODY.
+
+        What that is worth, measured rather than asserted: of the 101
+        `implemented` rows, **55 are pinned to exactly one of the functions
+        their module names** -- moving them to any other would go red -- and
+        46 would still pass under at least one sibling (`Game::spoil_charm`
+        and `Game::spoil_glasses` share `below_at` and `has_mobile`, so an
+        expression naming only those cannot tell them apart).  Zero rows have
+        nothing checkable.  So this is a real filter, not a proof, and
+        `src_pairing_check` in the artifact carries the floor that
+        `test_the_function_scope_discriminates_as_well_as_recorded` ratchets:
+        the number can be raised by writing more distinctive expressions, and
+        cannot silently fall.
+
+        The scope is the whole point, and an earlier revision of this test got
+        it wrong.  It searched the whole module, which for 81 of the 101 rows
+        is `src/game.rs` -- 10971 lines and eleven different functions named
+        across those rows.  Under that check **all 101 rows passed no matter
+        which of the eleven they named**, so the realistic defect (a row filed
+        against `Game::claim_spoils` when the condition lives in
+        `Game::spoil_club`, both in `src/game.rs`) was invisible, and the
+        mutation case defending it only ever swapped MODULES -- the one case
+        the module-wide search could catch.  A guard written against one
+        symptom rather than the class, presented as the falsifier for the
+        class: the defect `docs/re/METHODOLOGY.md` names, in the test whose
+        job was to prevent it.  `combat-uncited-src-function` is the case that
+        now exercises the in-module swap.
+
+        What it still does NOT establish: that the Rust expression computes
+        the same ANSWER as the original's compare.  That rests on the decode
+        recorded in each row's `what`, and on a reviewer reading the pair.
+        """
+        bodies = {}
         seen = 0
         for r in self.uncited["branches"]:
             if r["class"] != "implemented":
@@ -577,32 +704,136 @@ class CombatOpenerTest(unittest.TestCase):
             self.assertTrue(path.is_file(),
                             "%s names a module that does not exist: %s"
                             % (r["addr"], src["module"]))
-            text = path.read_text(encoding="utf-8")
+            if src["module"] not in bodies:
+                whole = path.read_text(encoding="utf-8")
+                bodies[src["module"]] = (fn_bodies(whole), whole)
             name = src["function"].split("::")[-1]
-            # assertTrue, not assertRegex: a failing assertRegex prints the
-            # whole 10k-line module into the report.
-            self.assertTrue(
-                re.search(r"\bfn %s\b" % re.escape(name), text),
-                "%s names %s, and %s defines no `fn %s`"
-                % (r["addr"], src["function"], src["module"], name))
+            found_fns, whole = bodies[src["module"]]
+            span = found_fns.get(name, False)
+            self.assertIsNot(span, False,
+                             "%s names %s, and %s defines no `fn %s`"
+                             % (r["addr"], src["function"], src["module"],
+                                name))
+            self.assertIsNotNone(
+                span,
+                "%s names %s, and %s defines `fn %s` more than once or leaves "
+                "it unterminated -- the span is ambiguous, so this check "
+                "cannot be scoped and the row must name the function "
+                "unambiguously" % (r["addr"], src["function"], src["module"],
+                                   name))
+            body = span[1]
             self.assertTrue(src["expr"].strip(),
                             "%s names no expression" % r["addr"])
-            # Every field, method and enum name the expression mentions must
-            # exist in the module it names.  This is what makes a WRONG
-            # pairing fail mechanically instead of only under a reviewer's
-            # eye: `self.weapon_kastet_38ba` filed against `src/progress.rs`,
-            # or a field renamed out from under the row, both go red here.
-            for ident in set(re.findall(r"[a-z][a-z0-9_]{4,}",
-                                        src["expr"])) - RUST_NOISE:
+            found = set(EXPR_IDENT.findall(src["expr"])) - RUST_NOISE
+            self.assertTrue(
+                found,
+                "%s pairs %s with an expression naming nothing checkable, so "
+                "the pairing is asserted by nothing" % (r["addr"],
+                                                        src["function"]))
+            for ident in sorted(found):
+                # The two causes are separated because they call for
+                # different repairs -- and because a single message would make
+                # the wrong-function case and the wrong-name case
+                # indistinguishable, which `tools/test_mutate.py`'s
+                # `test_no_two_cases_defend_the_same_assertion` correctly
+                # refuses to accept as two channels.
                 self.assertTrue(
-                    ident in text,
-                    "%s pairs %s with an expression naming `%s`, which does "
-                    "not occur in %s at all"
-                    % (r["addr"], src["function"], ident, src["module"]))
+                    ident in body,
+                    "%s pairs %s with an expression naming `%s`, which occurs "
+                    "%s (%s:%d..)"
+                    % (r["addr"], src["function"], ident,
+                       "ELSEWHERE IN THE MODULE but not in this function's "
+                       "body -- the row names the wrong construct"
+                       if ident in whole else
+                       "NOWHERE IN THE MODULE at all -- the name is wrong, or "
+                       "was renamed out from under the row",
+                       src["module"], span[0]))
             seen += 1
         self.assertEqual(seen, self.uncited["counts"]["implemented"],
                          "the rows carrying a `src` construct and "
                          "counts.implemented disagree")
+
+    def test_the_function_scope_discriminates_as_well_as_recorded(self):
+        """The ratchet behind the docstring above.
+
+        A scoped check that happens to accept every function anyway is the
+        module-wide check with extra steps.  This measures how many rows the
+        scope actually PINS -- i.e. would go red if the row named any other
+        function its module names -- and holds it at or above the floor the
+        artifact records.  `>=`, never `==`: a more distinctive expression can
+        only raise it, and a weakened extractor or a widened noise list reds.
+        """
+        rec = self.uncited["src_pairing_check"]
+        bodies, named = {}, collections.defaultdict(set)
+        rows = [r for r in self.uncited["branches"]
+                if r["class"] == "implemented"]
+        for r in rows:
+            mod = r["src"]["module"]
+            if mod not in bodies:
+                bodies[mod] = fn_bodies(
+                    (REPO / mod).read_text(encoding="utf-8"))
+            named[mod].add(r["src"]["function"].split("::")[-1])
+        pinned = vacuous = 0
+        for r in rows:
+            mod = r["src"]["module"]
+            name = r["src"]["function"].split("::")[-1]
+            idents = set(EXPR_IDENT.findall(r["src"]["expr"])) - RUST_NOISE
+            if not idents:
+                vacuous += 1
+            others = [n for n in named[mod] if n != name]
+            if not any(all(i in bodies[mod][n][1] for i in idents)
+                       for n in others):
+                pinned += 1
+        self.assertEqual(
+            vacuous, rec["rows_with_no_checkable_identifier"],
+            "%d row(s) name nothing checkable; the artifact records %d"
+            % (vacuous, rec["rows_with_no_checkable_identifier"]))
+        self.assertGreaterEqual(
+            pinned, rec["rows_uniquely_pinned_floor"],
+            "the function scope now pins only %d of the %d implemented rows, "
+            "below the recorded floor of %d -- the check got weaker"
+            % (pinned, len(rows), rec["rows_uniquely_pinned_floor"]))
+        self.assertLess(
+            pinned, len(rows),
+            "every row is pinned, so the artifact's floor and its caveat are "
+            "stale: raise the floor and drop the caveat rather than leaving a "
+            "claim weaker than the check")
+
+    def test_the_function_span_finder_is_scoped_and_disjoint(self):
+        """`fn_bodies` must really narrow the search, not just look like it.
+
+        Without this, a bug that returned the whole module for every function
+        would leave the check above green and useless -- which is precisely
+        the state the previous revision was in.  So: every span the rows name
+        is a strict subset of its module, the spans of two different functions
+        in one module never overlap, and each starts on its own `fn` line.
+        """
+        by_module = collections.defaultdict(set)
+        for r in self.uncited["branches"]:
+            if r["class"] == "implemented":
+                by_module[r["src"]["module"]].add(
+                    r["src"]["function"].split("::")[-1])
+        self.assertGreater(len(by_module), 1)
+        for module, names in sorted(by_module.items()):
+            text = (REPO / module).read_text(encoding="utf-8")
+            found = fn_bodies(text)
+            spans = []
+            for name in sorted(names):
+                span = found.get(name)
+                self.assertIsNotNone(span, "%s: no unique `fn %s`"
+                                     % (module, name))
+                start, body = span
+                self.assertLess(len(body), len(text),
+                                "%s: the span for `fn %s` is the whole module"
+                                % (module, name))
+                self.assertRegex(body.splitlines()[0], r"\bfn %s\b"
+                                 % re.escape(name))
+                spans.append((start, start + len(body.splitlines()) - 1, name))
+            spans.sort()
+            for (a0, a1, an), (b0, b1, bn) in zip(spans, spans[1:]):
+                self.assertLess(a1, b0,
+                                "%s: the spans for `fn %s` and `fn %s` overlap"
+                                % (module, an, bn))
 
     def test_every_port_equivalence_names_implemented_rows(self):
         """The equivalences describe rows, so they must describe real ones.
@@ -638,14 +869,33 @@ class CombatOpenerTest(unittest.TestCase):
 
         A row that has since acquired a citation is not a failure of the port
         -- it is this artifact going stale, and it must be noticed rather than
-        quietly kept.
+        quietly kept.  Task 40 lands citations on these very addresses, so
+        this is the check that will fire first when it does.
+
+        `test_combat_uncited_covers_exactly_the_derived_uncited_set` would
+        also go red on such a row, by ordered list inequality.  What it cannot
+        do is say WHERE: this reports the `src/**.rs` file and line that now
+        cites the branch, which is the one fact needed to decide whether the
+        row should be dropped or the citation moved.  A message the other
+        test cannot produce is why this one is kept rather than folded in.
         """
-        derived = {b["addr"] for b in uncited_branches(self.branches, REPO)}
-        stale = [r["addr"] for r in self.uncited["branches"]
-                 if r["addr"] not in derived]
+        rows, cite = uncited_branches(self.branches, REPO)
+        derived = {b["addr"] for b in rows}
+        by_addr = {b["addr"]: b for b in self.branches["branches"]}
+        stale = []
+        for r in self.uncited["branches"]:
+            if r["addr"] in derived:
+                continue
+            b = by_addr.get(r["addr"])
+            where = sorted(cite.get(flat(r["addr"]), []))
+            if b and b["guard"]:
+                where += sorted(cite.get(flat(b["guard"]["addr"]), []))
+            stale.append("%s now cited at %s"
+                         % (r["addr"], ", ".join(where) or "(not a game "
+                            "branch of %s at all)" % FUNC_ENTRY))
         self.assertEqual(stale, [],
-                         "these rows are now cited in src/ and must be "
-                         "removed from data/combat_uncited.json")
+                         "these rows are no longer uncited and must come out "
+                         "of data/combat_uncited.json")
 
     # --------------------------------------------------------------- the doc
     def test_every_prose_address_is_an_instruction_boundary(self):

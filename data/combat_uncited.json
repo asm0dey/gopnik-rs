@@ -947,11 +947,11 @@
    "taken": "1000:4ca0",
    "fallthrough": "1000:4c7c",
    "class": "implemented",
-   "what": "the SECOND `k` compare, which ticks the backup countdown",
+   "what": "the SECOND `k` compare, which ticks the backup countdown -- this branch is the `cmd == Command::Fight` conjunct of that condition; the first conjunct is 1000:4c64's guard and the third is 1000:4c80",
    "src": {
     "module": "src/game.rs",
     "function": "Game::run_combat",
-    "expr": "cmd == Command::Fight, the middle conjunct of `if backup.count() >= 1 && cmd == Command::Fight && backup.tick_on_attack()` -- the first conjunct is 1000:4c64's guard and the third is 1000:4c80"
+    "expr": "backup.count() >= 1 && cmd == Command::Fight && backup.tick_on_attack()"
    }
   },
   {
@@ -1727,5 +1727,12 @@
    "why_it_is_the_same_decision": "`parse` folds `w` with `run` and `exit` with `e` because `entry` dispatches both spellings; the fight prompt compares only the short one, so matching the literal is what reproduces the original and using `parse` would not. `Game::run_combat`'s doc comment argues this at both sites."
   }
  ],
- "port_equivalences_note": "Where an `implemented` row's `src.expr` decides the same thing as the original by a DIFFERENT predicate. Each entry says why the two agree, and on what assumption -- an equivalence with no stated assumption is the kind of pairing a reviewer cannot falsify. `data/gym_arms.json`'s `joint.port_equivalences` is the shape this follows."
+ "port_equivalences_note": "Where an `implemented` row's `src.expr` decides the same thing as the original by a DIFFERENT predicate. Each entry says why the two agree, and on what assumption -- an equivalence with no stated assumption is the kind of pairing a reviewer cannot falsify. `data/gym_arms.json`'s `joint.port_equivalences` is the shape this follows.",
+ "src_pairing_check": {
+  "what": "How strongly `tools/test_combat_opener.py` pins an `implemented` row's `src` block. The check requires every name in `src.expr` to occur inside the NAMED FUNCTION'S BODY, not merely somewhere in the module -- the module-wide version passed all 101 rows whatever function they named, which made it a guard against one symptom (a wrong MODULE) presented as the falsifier for the class (a wrong CONSTRUCT).",
+  "rows_uniquely_pinned_floor": 55,
+  "rows_with_no_checkable_identifier": 0,
+  "note": "`rows_uniquely_pinned_floor` is a RATCHET, not an equality: the test asserts >=, so writing a more distinctive expression can only raise it and a weakened check reds. The 46 rows not pinned share their identifiers with a sibling function (e.g. Game::spoil_charm and Game::spoil_glasses both call below_at and both set has_mobile), so the check narrows them without isolating them. This is a filter, not a proof: whether the Rust expression computes the same ANSWER as the original's compare rests on each row's `what` and on a reviewer reading the pair.",
+  "command": "python3 tools/test_combat_opener.py CombatOpenerTest.test_the_function_scope_discriminates_as_well_as_recorded"
+ }
 }

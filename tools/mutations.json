@@ -3295,7 +3295,7 @@
     "test": [
       "python3",
       "tools/test_combat_opener.py",
-      "CombatOpenerTest.test_every_implemented_row_names_a_module_and_function_that_exist"
+      "CombatOpenerTest.test_every_implemented_row_names_the_function_that_evaluates_it"
     ],
     "expect": "defines no `fn spoil_club`"
   },
@@ -3317,13 +3317,13 @@
     "test": [
       "python3",
       "tools/test_combat_opener.py",
-      "CombatOpenerTest.test_every_implemented_row_names_a_module_and_function_that_exist"
+      "CombatOpenerTest.test_every_implemented_row_names_the_function_that_evaluates_it"
     ],
-    "expect": "does not occur in src/game.rs at all"
+    "expect": "NOWHERE IN THE MODULE at all"
   },
   {
     "label": "combat-uncited-still-uncited",
-    "defends": "Every row must still be UNCITED in the port.  When Task 40 lands a citation the row belongs in the port, not in this file, and this is what forces the artifact to be updated rather than kept as a stale inventory.",
+    "defends": "Every row must still be UNCITED in the port.  When Task 40 lands a citation the row belongs in the port, not in this file, and this is what forces the artifact to be updated rather than kept as a stale inventory.  The perturbation is 1000:44d6, which IS a `class == \"game\"` branch of FUN_1000_3d11 and IS cited (src/combat.rs:334) -- so the row is rejected for the reason the case claims.  An earlier revision appended 1000:4135, a `call` that is not a branch at all: it reddened the test, but for being absent from the branch census rather than for being cited, which is a case that passes without demonstrating its own claim.",
     "artifact": "data/combat_uncited.json",
     "mutate": {
       "op": "json-append",
@@ -3331,14 +3331,14 @@
         "branches"
       ],
       "value": {
-        "addr": "1000:4135",
-        "text": "call 0xf78:0x114b",
-        "guard": null,
-        "guard_text": null,
-        "taken": "1000:413a",
-        "fallthrough": "1000:413a",
+        "addr": "1000:44d6",
+        "text": "jbe 0x4546",
+        "guard": "1000:44d4",
+        "guard_text": "cmp ax,cx",
+        "taken": "1000:4546",
+        "fallthrough": "1000:44d8",
         "class": "unimplemented",
-        "what": "a row for an address the port already cites"
+        "what": "a real game branch of FUN_1000_3d11 that src/combat.rs already cites"
       }
     },
     "test": [
@@ -3346,7 +3346,7 @@
       "tools/test_combat_opener.py",
       "CombatOpenerTest.test_no_row_is_cited_in_the_port_yet"
     ],
-    "expect": "now cited in src/"
+    "expect": "no longer uncited"
   },
   {
     "label": "combat-uncited-port-equivalence",
@@ -3369,6 +3369,71 @@
       "CombatOpenerTest.test_every_port_equivalence_names_implemented_rows"
     ],
     "expect": "there is no port predicate for it to be equivalent to"
+  },
+  {
+    "label": "combat-uncited-src-function",
+    "defends": "The IN-MODULE mis-pairing, which is the realistic one: 81 of the 101 implemented rows name src/game.rs and eleven different functions in it.  tools/test_combat_opener.py scopes each row's identifier check to the NAMED FUNCTION'S BODY, so filing 1000:553f's `self.weapon_kastet_38ba` against Game::crowd -- same module, wrong construct -- goes red.  The module-wide search this replaced passed all 101 rows whatever function they named, and combat-uncited-src-pairing only ever swapped modules, so this class was defended by nothing.",
+    "artifact": "data/combat_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "branches",
+        95,
+        "src",
+        "function"
+      ],
+      "from": "Game::spoil_club",
+      "to": "Game::crowd"
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_every_implemented_row_names_the_function_that_evaluates_it"
+    ],
+    "expect": "ELSEWHERE IN THE MODULE but not in this function"
+  },
+  {
+    "label": "combat-uncited-pairing-ratchet",
+    "defends": "src_pairing_check.rows_uniquely_pinned_floor is a RATCHET on how much the function scope actually discriminates -- 55 of 101 rows today.  Without it a later change that widened the noise list or loosened the identifier regex would leave every assertion green while the check quietly reverted to the module-wide one it replaced.  Raising the floor above what the measurement supports reds.",
+    "artifact": "data/combat_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "src_pairing_check",
+        "rows_uniquely_pinned_floor"
+      ],
+      "from": 55,
+      "to": 90
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_the_function_scope_discriminates_as_well_as_recorded"
+    ],
+    "expect": "below the recorded floor"
+  },
+  {
+    "label": "combat-opener-ds-pointer-pushes",
+    "defends": "arms[].ds_pointer_pushes must be EXACTLY the `push ds` instructions the range holds, checked by set equality against a fresh decode.  One revision put two `mov di` operands and one `push ds` in that array -- three entries, matching sweeps.ds_pointer_pushes: 3 by coincidence while sharing one address with it -- so a matching cardinality read as a cross-check that did not exist.  ds_operands now holds the `mov di` half and this is the measurement tying the other half to the sweep.",
+    "artifact": "data/combat_opener.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        3,
+        "ds_pointer_pushes",
+        0,
+        "addr"
+      ],
+      "from": "1000:3dfb",
+      "to": "1000:3df8"
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_the_arms_ds_pointer_pushes_are_every_push_ds_in_range"
+    ],
+    "expect": "`ds_pointer_pushes` disagree"
   }
  ]
 }

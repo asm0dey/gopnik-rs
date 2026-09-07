@@ -1776,6 +1776,10 @@ points at this entry.
   and the only memory the two shortstring helpers touch is a stack local at
   `ss:[bp-0x218]`. Still **not ported**; the ten branches are
   `data/combat_uncited.json`'s ten `unimplemented` opener rows.
+  **The bound in the struck text above is inclusive and is left as it
+  stood**: the map's range is the half-open `1000:3d32`..`1000:3e8d`,
+  where `1000:3e8a` is the exit `jmp 0x3fa7` and `1000:3e8d` is the
+  first instruction outside it.
 * ~~**The rector death branch** (`1000:4f8c`) — nothing in this port sets
   `[0x3c83]` ... Still not modelled here.~~ **CLOSED by Task 18 — modelled.**
   `[0x3c83]` is the rector-showdown flag, armed at `1000:7364` and
@@ -2400,6 +2404,8 @@ None of these moves a draw; all three are output or state the replay caught.
   extracted. Task 13 established only that it spends no draw.~~ **CLOSED by
   Task 39 — `docs/re/combat-opener.md`.** Nine strings, five printing arms and
   a silent default; it spends no draw *and* writes no state. Not ported yet.
+  Same inclusive-vs-half-open note as the entry above: the map's range is
+  `1000:3d32`..`1000:3e8d`.
 * **The port advances the district inside `run_combat`**, at the end; the
   original does it at the top of the next turn (`1000:ab75`..`1000:ab92`,
   which also clears `[0x3698]`/`[0x3694]` and conditionally `[0x3699]`). The

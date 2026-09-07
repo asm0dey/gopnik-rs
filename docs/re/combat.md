@@ -411,7 +411,15 @@ heckling (`Зрители:^6Мочи его, мочи!` and so on, files `0x4762
 `r = 4` splices the **player's rank name** (`[0x389c] * 0x100 + 0x2e`, the
 `DS:002e` table) and `r = 17` the player's own name (`DS:379c`, `.SAV 0x100`).
 
-### The class-keyed opener — `1000:3d32`..`1000:3e8a` — costs no draw
+### The class-keyed opener — `1000:3d32`..`1000:3e8d` — costs no draw
+
+**The bound is half-open**, as every range in `docs/re/gym.md` and
+`docs/re/den.md` is: `1000:3e8a` is the exit `jmp 0x3fa7` and
+`1000:3e8d` is the `param_1 == 1` compare, the first instruction NOT in
+the block. An earlier revision of this heading closed on `1000:3e8a`
+while the paragraphs below it measured `1000:3d32`..`1000:3e8d` — the
+same range under two conventions, three bytes apart, which is exactly
+the size of miss `docs/re/METHODOLOGY.md` warns reads as authoritative.
 
 **Established from flow.** It is a `cmp [0x3952],N` chain over the enemy class
 that writes one or two intro lines per arm and nothing else. Scanning

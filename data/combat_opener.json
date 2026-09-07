@@ -438,7 +438,12 @@
      "what": "rtl_str_append: += ranks[[0x389c]] -- 1000:3e0c loads the PLAYER's class, 1000:3e10/1000:3e12 shift it by 8 and 1000:3e14 adds 0x2e, which is the DS:002e 256-byte-stride table data/string_tables.json carries"
     }
    ],
-   "ds_pointer_pushes": [
+   "exit": {
+    "addr": "1000:3e33",
+    "text": "jmp short 0x3e8a"
+   },
+   "note": "The enemy recognises the player by name and rank. The `call 0eed:01c2` at 1000:3e2e has no visible string push because rtl_str_assign / rtl_str_append return with `retf 0x4`: each pops only its SOURCE and leaves the destination far pointer on the stack for WriteLn's `retf 0xe` (docs/re/den.md).",
+   "ds_operands": [
     {
      "addr": "1000:3df8",
      "text": "mov di,0x379c"
@@ -448,11 +453,16 @@
      "text": "mov di,[0x389c]"
     }
    ],
-   "exit": {
-    "addr": "1000:3e33",
-    "text": "jmp short 0x3e8a"
-   },
-   "note": "The enemy recognises the player by name and rank. The `call 0eed:01c2` at 1000:3e2e has no visible string push because rtl_str_assign / rtl_str_append return with `retf 0x4`: each pops only its SOURCE and leaves the destination far pointer on the stack for WriteLn's `retf 0xe` (docs/re/den.md)."
+   "ds_pointer_pushes": [
+    {
+     "addr": "1000:3dfb",
+     "text": "push ds"
+    },
+    {
+     "addr": "1000:3e18",
+     "text": "push ds"
+    }
+   ]
   },
   {
    "name": "arm_9",
@@ -537,18 +547,24 @@
      "what": "rtl_str_append: += ranks[[0x389c]] -- 1000:3e63 loads the PLAYER's class, 1000:3e67/1000:3e69 shift and 1000:3e6b adds 0x2e"
     }
    ],
-   "ds_pointer_pushes": [
-    {
-     "addr": "1000:3e6f",
-     "text": "push ds"
-    }
-   ],
    "exit": {
     "addr": "1000:3e8a",
     "text": "jmp 0x3fa7",
     "kind": "fall-through into the shared exit"
    },
-   "note": "Two lines: a plain WriteLn first, then the composed one. This arm does NOT jump to the exit -- it falls into it."
+   "note": "Two lines: a plain WriteLn first, then the composed one. This arm does NOT jump to the exit -- it falls into it.",
+   "ds_operands": [
+    {
+     "addr": "1000:3e63",
+     "text": "mov di,[0x389c]"
+    }
+   ],
+   "ds_pointer_pushes": [
+    {
+     "addr": "1000:3e6f",
+     "text": "push ds"
+    }
+   ]
   },
   {
    "name": "arm_default_silent",
@@ -719,5 +735,6 @@
   ],
   "branches": 10,
   "port_touched_false_at_task_39": 10
- }
+ },
+ "ds_field_note": "`arms[].ds_operands` and `arms[].ds_pointer_pushes` are DIFFERENT SETS and are kept apart because one revision of this file conflated them: a single `ds_pointer_pushes` array held two `mov di,...` operands and one `push ds`, three entries in all, which matched `sweeps.ds_pointer_pushes` by coincidence and so read as cross-checked by it while sharing exactly one address with it. `ds_operands` is the `mov di` that ADDRESSES DGROUP (an immediate offset at 1000:3df8, an absolute read at 1000:3e0c and 1000:3e63); `ds_pointer_pushes` is the `push ds` that supplies the segment half of the far pointer (1000:3dfb, 1000:3e18, 1000:3e6f). `tools/test_combat_opener.py` now requires the union of the arms' `ds_pointer_pushes` to EQUAL the swept `push ds` set, so the two are related by a measurement instead of by a matching cardinality."
 }
