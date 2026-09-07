@@ -173,6 +173,18 @@ class TestSrcCitations(unittest.TestCase):
 
         All six are recorded rather than special-cased: an exemption rule
         wide enough to hide them would hide the next real one too.
+
+        **The rule this keeps re-teaching: a document that quotes a `src/`
+        line number must add its golden row in the SAME commit.** The plan
+        commit `c8ab775` quoted `src/game.rs:6425` and added no row, which
+        left `main` red -- `python3 -m unittest discover -s tools -p
+        'test_decomp*.py'` gives 2 failures there -- until `7e86c2e` repaired
+        it. Then Task 40 moved `Game::crowd` down the file and the same
+        citation became the sixth mismatch above. Both rounds were avoidable
+        by the same one-line habit, and `docs/re/METHODOLOGY.md`'s "a port
+        citation cites the command, not the line it printed" is the better
+        habit still: prefer a `grep -n` a reader can re-run to a number that
+        is stale by construction.
         """
         self.assertEqual(self.report["mismatch"], self.golden["mismatch"])
 

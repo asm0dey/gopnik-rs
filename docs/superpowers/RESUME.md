@@ -539,11 +539,15 @@ for the right, `data/branches.json`'s `port_touched` over `src/**/*.rs` and
 | `36137a0` | Task 31 (RE, the gym and the joint) | *not recomputed* | 449/838 |
 | `fbae9c5` | Task 32 (port, the gym's five arms) | *not recomputed* | **476/838** |
 | `858f5fb` | Task 33 (RE, the club and the `i` list) | *not recomputed* | 476/838 |
-| — | Task 34 (port, the club, the `i` list and the vet) | *not recomputed* | **519/838** |
+| `d3c9f28` | Task 34 (port, the club, the `i` list and the vet) | *not recomputed* | **519/838** |
+| — | Tasks 35-36 — **do not exist**: the same commit that ends Task 33 collapsed them into Task 34 (`git log --format=%s -1 858f5fb`) | — | — |
+| `689e0d7` | Task 37 (RE/tooling, the annotated decompilation) | *not recomputed* | 519/838 |
+| `d20340e` | Task 38 (whole-branch fix wave: six stale documents, one comment, one floor) | *not recomputed* | 519/838 |
 | `aef46ba` | Task 39 (RE, the combat opener + all 117 uncited classified) | *not recomputed* | 519/838 |
 | — | Task 40 (port, the combat opener and the agility lines; + 101 citations) | *not recomputed* | **634/838** |
 
-**The four `not recomputed` cells are an honest gap, not a measurement.**
+**The `not recomputed` cells in the left column are an honest gap, not a
+measurement** -- eight of them now, Tasks 31-34 and 37-40.
 Task 32 recomputed only the right column — `838 game branches | touched 476
 (56.8%)`, from the *Recomputation → Coverage* block against its own tree, and
 `449` re-derived the same way at `36137a0` before it started. The left column
@@ -571,6 +575,31 @@ two sets, so `port_touched` could not have moved. Task 34's `519` IS a
 measurement, recomputed
 with the *Recomputation → Coverage* block against its own tree; its left
 column is not, for the same reason Task 32's is not.
+
+**The four rows between Task 34 and Task 40 are measurements, and the gap
+between them was real.** Until Task 40 the table jumped `Task 34 -> Task 39`
+and a reader would take the two adjacent rows as consecutive. Tasks 35 and 36
+do not exist -- `858f5fb`'s own subject line is "collapse Tasks 34-36 into one
+(R13)" -- and Tasks 37 and 38 were left out. Every `519` above is the
+*Recomputation -> Coverage* rule run over `git show <rev>:<file>` for each
+commit named, not an inference from the neighbours:
+
+```
+Task 33 end              858f5fb   476/838
+Task 34 end (fix wave)   d3c9f28   519/838
+Task 37 feat             b766ccf   519/838
+Task 37 end              689e0d7   519/838
+Task 38 end              d20340e   519/838
+pre-plan tip             b139158   519/838
+plan commit              c8ab775   519/838
+Task 39 end              aef46ba   519/838
+Task 40 HEAD             HEAD      634/838
+```
+
+Six consecutive commits at 519 is the shape this file keeps recording: Task 37
+built an instrument, Task 38 fixed documents, Task 39 wrote a map, and none of
+the three moved the port metric by one branch. `CLAUDE.md`'s *Priority*
+section is about exactly that run.
 
 **Task 39's `519` and Task 40's `634` are both measurements**, each from the
 same block run against its own tree; Task 39 changed no line of `src/` (an RE

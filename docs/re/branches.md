@@ -975,7 +975,7 @@ totals this block used to print are in the history sentence above, and in
 ```
 game branches 838 | touched 634 (75.7%) | uncited 204
 1000:ab59    bytes 17143 branches 406 touched 308 citations 2143
-1000:3d11    bytes  6971 branches 224 touched 222 citations 890
+1000:3d11    bytes  6971 branches 224 touched 222 citations 903
 1000:1a03    bytes  2700 branches  83 touched  54 citations 176
 1000:6a0d    bytes  2527 branches  33 touched  15 citations 164
 1000:29c4    bytes   666 branches  19 touched   2 citations  26
@@ -1008,7 +1008,17 @@ game branches 838 | touched 634 (75.7%) | uncited 204
 Task 34's own output, the one this block printed for six revisions, is the
 `519 (61.9%) | uncited 319` / `409 spans hold 568` figure quoted in the totals
 section above; the two lines that moved most are `1000:3d11`'s, from
-`touched 107 citations 665` to `touched 222 citations 890`.
+`touched 107 citations 665` to `touched 222 citations 903`.
+
+**`citations` is the most revision-bound cell on this page, and this task
+proved it three times.** It counts distinct `src/` file:line sites naming an
+address inside the function, so every comment added or moved changes it: the
+block above was written reading `890`, printed `895` at the commit that
+shipped it, `897` after the first fix round, and `903` here -- three stale
+values inside one task, each looking authoritative. The final review caught
+the second. Treat the number as the command's output at a named commit, never
+as a fact about the function: **re-run the block, paste it, and do it last**,
+after every other edit in the change has landed.
 
 Task 32's own output, quoted so the difference above can be read against it
 rather than remembered -- the same block at **`74d9b63`**, Task 32's last

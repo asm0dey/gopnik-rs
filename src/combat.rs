@@ -875,20 +875,60 @@ mod tests {
         );
     }
 
-    /// Both gates are load-bearing, and each is shown REFUSING as well as
-    /// passing -- a report that always printed would satisfy the pair test
-    /// above just as well.
+    /// Gate 1 alone -- `1000:3ff2` `cmp ax,0x12` / `1000:3ff5` `jle 0x4042` --
+    /// against the ONE input where nothing else can refuse for it.
+    ///
+    /// **This test exists because the one it was split out of could not
+    /// fail.** That test claimed "both gates are load-bearing" and checked
+    /// gate 1 with `budget_report(&f(14), &f(0))` and `budget_report(&f(6),
+    /// &f(200))`. Neither discriminates: an agility-0 defender never enters
+    /// the collapse loop, so `reduced == unreduced` and gate 2 returns `None`
+    /// on its own; and at `mine == 10` the `if mine > 10` guard skips the
+    /// loop, same result. Deleting `if unreduced <= PER_BLOW { return None }`
+    /// left `cargo test` fully green -- 394 passed, 0 failed, every
+    /// integration target included.
+    ///
+    /// **Exactly one attacker agility discriminates, and the arithmetic says
+    /// why.** Gate 1 refuses when `unreduced <= 18`; gate 2 passes only when
+    /// `reduced div 18 < unreduced div 18`, which needs `unreduced >= 18`
+    /// because `reduced` bottoms out at the flat 10 of `1000:3fe2`. Both hold
+    /// only at `unreduced == 18`, i.e. **attacker agility 14** against a
+    /// defender fast enough to force the collapse (agility >= 15, so
+    /// `theirs > 18` at `1000:3fc2`). Without gate 1 the port prints
+    /// `раз 1 вместо 1` there -- a visible wrong line in a reachable fight.
+    ///
+    /// The sweep is over the whole attacker range rather than that one value,
+    /// so the boundary is asserted rather than the single point that happens
+    /// to move.
     #[test]
-    fn the_agility_report_is_silent_unless_both_gates_pass() {
+    fn gate_1_is_the_only_thing_refusing_the_report_at_agility_14() {
+        // A defender fast enough that the collapse always runs, so gate 2
+        // would PASS for every attacker whose unreduced budget reaches 18.
+        let fast = f(200);
+        for agility in 0..=255u16 {
+            let got = budget_report(&f(agility), &fast);
+            assert_eq!(
+                got.is_none(),
+                agility <= 14,
+                "agility {agility} against a fast defender: 1000:3ff5 refuses \
+                 at or below an unreduced budget of 18 and nowhere else, got {got:?}"
+            );
+        }
+        // The boundary, spelled out: 14 is silent only because of gate 1 --
+        // delete it and this becomes `Some((1, 1))`, `раз 1 вместо 1`.
+        assert_eq!(budget_report(&f(14), &f(15)), None, "budget 18, not above");
+        assert_eq!(budget_report(&f(15), &f(15)), Some((1, 2)), "budget 19");
+    }
+
+    /// Gate 2 alone -- `1000:400f` `cmp ax,bx` / `1000:4011` `jnl 0x4042`.
+    ///
+    /// A defender too slow to eat into the budget leaves the two divisions
+    /// equal, so nothing prints however fast the attacker is. This sweep
+    /// cannot see gate 1 at all (it never reaches it for an attacker above
+    /// agility 14), which is why the two gates now have a test each.
+    #[test]
+    fn gate_2_is_silent_when_the_reduction_costs_no_blow() {
         let weak = f(0);
-        // 1000:3ff2 `cmp ax,0x12` / 1000:3ff5 `jle 0x4042`: the attacker's own
-        // unreduced budget must be strictly above 18, i.e. agility >= 15.
-        assert_eq!(budget_report(&f(14), &weak), None, "budget 18, not above");
-        assert_eq!(budget_report(&f(15), &f(200)), Some((1, 2)), "budget 19");
-        // 1000:400f `cmp ax,bx` / 1000:4011 `jnl 0x4042`: and the reduction must
-        // actually cost a blow. A defender too slow to eat into the budget
-        // leaves the two divisions equal, so nothing prints -- for EVERY
-        // attacker agility, not just the one that happened to be tried.
         for agility in 0..=255u16 {
             assert_eq!(
                 budget_report(&f(agility), &weak),
@@ -902,10 +942,13 @@ mod tests {
         // (26 -> 10, 1 -> 0) is the same shape. The pair that must NOT print
         // is one whose collapse leaves both divisions equal.
         assert_eq!(budget_report(&f(24), &f(15)), Some((1, 2)));
+        // `mine == 10` never enters the loop (1000:3fbb `cmp ...,0xa`), so
+        // there is no reduction to report -- and this one is gate 2's, not
+        // gate 1's, whatever its unreduced budget.
         assert_eq!(
             budget_report(&f(6), &f(200)),
             None,
-            "budget 10, at the gate"
+            "budget 10: 1000:3fc0 skips the collapse"
         );
     }
 

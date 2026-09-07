@@ -47,7 +47,13 @@
 //! instructions of the range (measured against 86 image-wide, so the zero is a
 //! measurement and not a scan looking wrongly), and zero absolute-memory
 //! writes: the only memory the two shortstring helpers touch is the stack
-//! local at `ss:[bp-0x218]` (`1000:3de8` / `1000:3e53` push `ss`, not `ds`).
+//! local `1000:3de8` / `1000:3e53` `lea di,[bp-0x218]` address, and the far
+//! pointer to it is pushed with `1000:3dec` / `1000:3e57` `push ss`, not
+//! `push ds`. (An earlier revision of this line paired the two `lea`
+//! addresses with the `push ss` mnemonic -- four bytes out, and contradicting
+//! `docs/re/combat.md` and `docs/re/combat-opener.md`, which both have it
+//! right. The `src/` addr/text guard missed it because the mnemonic was prose
+//! rather than a backticked instruction beside the address.)
 //! So this module takes no [`crate::rng::Rng`] and returns nothing -- adding
 //! it cannot move a draw or a byte of state, which is why
 //! `tests/combat_sequence.rs` and the five frozen oracles under `data/` are

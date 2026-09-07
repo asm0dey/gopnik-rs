@@ -3910,8 +3910,13 @@ impl Game {
         // The fight copy is 1000:4b6c `cmp ax,0xa` / 1000:4b6f `jnl 0x4bb3`,
         // on the same SIGNED `hpmax - hp`: `saturating_sub` gives 0 where
         // the original gives a negative, and both are below 10, so the two
-        // take the same arm (`data/combat_uncited.json`'s
-        // `port_equivalences` states that assumption).
+        // take the same ARM and store the same hp.
+        //
+        // The printed `#` is NOT the same on that input: the original pushes
+        // the signed difference and would print a negative, where the port
+        // prints 0. Whether hp > hpmax is reachable is not established --
+        // `data/combat_uncited.json`'s `port_equivalences[1]` carries the
+        // divergence and what would settle it.
         let shortfall = self.player.hpmax.saturating_sub(self.player.hp);
         if shortfall < 10 {
             term::print(&text::fill("^2Колёса прибавляют #з. ", &[shortfall as i64]));

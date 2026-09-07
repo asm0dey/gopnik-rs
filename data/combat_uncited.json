@@ -1930,7 +1930,8 @@
    ],
    "original": "`1000:4b6c cmp ax,0xa` / `1000:4b6f jnl 0x4bb3` on a SIGNED `hpmax - hp`",
    "here": "`self.player.hpmax.saturating_sub(self.player.hp) < 10`",
-   "why_it_is_the_same_decision": "when hp > hpmax the original's `ax` is negative, `jnl` fails and it takes the branch that LOWERS hp to hpmax; `saturating_sub` gives 0, also < 10, so the port takes the same branch and makes the same assignment. `Game::smoke`'s doc comment carries the same table for the street copy of this handler."
+   "why_it_is_the_same_decision": "For the BRANCH and the ASSIGNMENT it is the same decision: when hp > hpmax the original's `ax` is negative, `jnl` fails and it takes the arm that LOWERS hp to hpmax; `saturating_sub` gives 0, also < 10, so the port takes the same arm and makes the same assignment. `Game::smoke`'s doc comment carries the same table for the street copy of this handler.",
+   "where_it_does_not_hold": "**The PRINTED value diverges on that same input, and an earlier revision of this entry claimed the equivalence without qualifying it.** The arm prints the shortfall as the `#` of `^2Колёса прибавляют #з. `: the original pushes the signed `hpmax - hp`, so at hp > hpmax it prints a NEGATIVE number, where `saturating_sub` makes the port print 0. The branch taken and the hp stored are identical; only the number on screen differs. **Whether hp > hpmax is reachable is NOT established here** -- the two writers that could produce it are guarded (`1000:5274` clamps the victory +5, and the de-level penalty's own `1000:49d1` / `1000:4a38` clamp hp to hpmax after each hpmax drop), and the +10 arm cannot overshoot because it needs a shortfall of at least 10 -- but a sweep of every writer of `20ae:38ac` and `20ae:38ae` was not done, so this is recorded as an unquantified output divergence rather than argued away. What would settle it: that sweep, or a capture in which the original prints a negative `#` on this line."
   },
   {
    "rows": [

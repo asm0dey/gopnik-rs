@@ -1017,6 +1017,23 @@ class CombatOpenerTest(unittest.TestCase):
 
     def test_every_prose_span_pairing_an_address_with_an_instruction_decodes(
             self):
+        """Every `` `1000:xxxx text` `` span must decode to that instruction.
+
+        **The shape this does NOT see, and it has already shipped a miss.**
+        Only a span holding the address AND the mnemonic INSIDE ONE pair of
+        backticks is checked. Prose of the form
+
+            `1000:3de8` / `1000:3e53` push `ss`, not `ds`
+
+        pairs two addresses with an instruction they do not hold -- both are
+        `lea di,[bp-0x218]`, and the `push ss` is four bytes later at
+        `1000:3dec` / `1000:3e57` -- and every span in it is well-formed, so
+        this test and its `src/` counterpart both pass it. Task 40 shipped
+        exactly that line in `src/combat_opener.rs` and the final review
+        caught it by decoding, not by any guard here. A pairing written as
+        prose is unchecked: write `` `1000:3dec` `push ss` `` instead, or
+        expect it to be believed rather than verified.
+        """
         checked = 0
         for span in self.spans:
             m = re.fullmatch(r"(1000:[0-9a-f]{4})\s+(.+)", span)
