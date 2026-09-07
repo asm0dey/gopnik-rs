@@ -171,7 +171,7 @@ class TestSrcCitations(unittest.TestCase):
         line numbers corrected by this task anyway, by hand, from `:438`/`:387`
         to the actual `38c2` declaration and load site.
 
-        All five are recorded rather than special-cased: an exemption rule
+        All six are recorded rather than special-cased: an exemption rule
         wide enough to hide them would hide the next real one too.
         """
         self.assertEqual(self.report["mismatch"], self.golden["mismatch"])

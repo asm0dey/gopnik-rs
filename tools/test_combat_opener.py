@@ -690,20 +690,30 @@ class CombatOpenerTest(unittest.TestCase):
         function exactly once, and every name the row's `src.expr` mentions
         occurs INSIDE THAT FUNCTION'S BODY.
 
-        What that is worth, measured rather than asserted: of the 101
-        `implemented` rows, **55 are pinned to exactly one of the functions
-        their module names** -- moving them to any other would go red -- and
-        46 would still pass under at least one sibling (`Game::spoil_charm`
-        and `Game::spoil_glasses` share `below_at` and `has_mobile`, so an
+        What that is worth, measured rather than asserted: of the 115
+        `implemented` rows (101 until Task 40 moved its own fourteen into the
+        class), **69 are pinned to exactly one of the functions their module
+        names** -- moving them to any other would go red -- and 46 would still
+        pass under at least one sibling (`Game::spoil_charm` and
+        `Game::spoil_glasses` share `below_at` and `has_mobile`, so an
         expression naming only those cannot tell them apart).  Zero rows have
-        nothing checkable.  So this is a real filter, not a proof, and
-        `src_pairing_check` in the artifact carries the floor that
+        nothing checkable.
+
+        **Ten of the 69 pin for want of a sibling, not by discrimination**:
+        `src/combat_opener.rs` defines exactly one function these rows name,
+        so `others` is empty and the "no other function accepts this
+        expression" test is vacuously true for all ten.  That is recorded
+        rather than left to inflate the figure -- the discriminating
+        population is 59 of 115, and `src_pairing_check` says so.
+
+        So this is a real filter, not a proof, and `src_pairing_check` in the
+        artifact carries the floor that
         `test_the_function_scope_discriminates_as_well_as_recorded` ratchets:
         the number can be raised by writing more distinctive expressions, and
         cannot silently fall.
 
         The scope is the whole point, and an earlier revision of this test got
-        it wrong.  It searched the whole module, which for 81 of the 101 rows
+        it wrong.  It searched the whole module, which for 81 of the rows
         is `src/game.rs` -- 10971 lines and eleven different functions named
         across those rows.  Under that check **all 101 rows passed no matter
         which of the eleven they named**, so the realistic defect (a row filed

@@ -57,12 +57,21 @@ use crate::term;
 
 /// Write the greeting for a rolled enemy of `enemy_class`.
 ///
-/// `player_name` is `20ae:379c` and `player_rank` is
+/// `player_name` is `20ae:379c` and `player_rank` yields
 /// `ranks[[0x389c]]` -- `crate::game::Game::rank_name(self.player.class)`,
 /// the same `[0x389c] shl 8 + 0x2e` table `1000:3e14` and `1000:3e6b` index.
 /// Both are the **player's**, not the enemy's: `1000:3e0c` and `1000:3e63`
 /// read `20ae:389c`, the player's record.
-pub fn greet(enemy_class: u16, player_name: &str, player_rank: &str) {
+///
+/// **`player_rank` is a thunk because the original is lazy too.** Only arms 8
+/// and 9 load `20ae:389c`; the other four never touch the rank table. The
+/// port's `Game::rank_name` panics on a class `data/enemies.json` has no row
+/// for, so evaluating it eagerly at the call site would make a save carrying
+/// an out-of-table player class panic at the start of *every* fight, where
+/// the original -- and `Game::crowd`'s taunt 4, the port's other reader of
+/// that table -- only reaches it on the one path that needs it. Passing the
+/// thunk keeps the port's panic surface exactly the original's read set.
+pub fn greet(enemy_class: u16, player_name: &str, player_rank: impl FnOnce() -> String) {
     match enemy_class {
         // 1000:3d35 `cmp ax,0x0` / 1000:3d38 `jz 0x3d44`
         // 1000:3d3a `cmp ax,0x1` / 1000:3d3d `jz 0x3d44`
@@ -105,7 +114,7 @@ pub fn greet(enemy_class: u16, player_name: &str, player_rank: &str) {
             term::print(player_name);
             // CS 0x2cc7 / file 0x4597 `^4 - известный `
             term::print("^4 - известный ");
-            term::println(player_rank);
+            term::println(&player_rank());
         }
         // 1000:3e35 `cmp ax,0x9` / 1000:3e38 `jnz 0x3e8a`
         9 => {
@@ -117,7 +126,7 @@ pub fn greet(enemy_class: u16, player_name: &str, player_rank: &str) {
             // ranks[[0x389c]] (1000:3e71), one WriteLn at 1000:3e85.
             // CS 0x2ce5 / file 0x45B5 `Рад познакомиться - `
             term::print("Рад познакомиться - ");
-            term::println(player_rank);
+            term::println(&player_rank());
         }
         // 1000:3e38's own miss. Not a Rust catch-all standing in for a value
         // the key cannot take: `[0x3952]` really can hold 10 (1000:11d0), and
@@ -176,7 +185,7 @@ mod tests {
     }
 
     fn at(class: u16) -> Vec<String> {
-        capture::lines(|| greet(class, "Вася", "Гопник"))
+        capture::lines(|| greet(class, "Вася", || "Гопник".to_string()))
     }
 
     /// The whole chain, arm by arm, against the image's own bytes.
@@ -225,13 +234,45 @@ mod tests {
         assert_eq!(seen.len(), 6, "six arms, six outputs");
     }
 
+    /// The rank thunk is evaluated by arms 8 and 9 and by NOTHING else.
+    ///
+    /// The original reads `20ae:389c` at exactly two addresses, `1000:3e0c`
+    /// and `1000:3e63`, both inside those two arms. `Game::rank_name` panics
+    /// on a class `data/enemies.json` has no row for, so an eager argument
+    /// would make every fight against a class-0..7 enemy panic for a player
+    /// whose own class is out of that table -- a panic surface the original
+    /// does not have. The thunk below panics if it is called, so this test
+    /// fails if the laziness is ever lost.
+    #[test]
+    fn the_rank_is_read_only_by_the_two_arms_that_read_20ae_389c() {
+        for class in [0u16, 1, 2, 3, 4, 5, 6, 7, 10, 400] {
+            let out = capture::lines(|| {
+                greet(class, "Вася", || {
+                    panic!("class {class} must not read the rank table")
+                })
+            });
+            assert!(
+                !out.iter().any(|l| l.contains("Гопник")),
+                "class {class}: {out:?}"
+            );
+        }
+        // And the two that DO read it still do.
+        for class in [8u16, 9] {
+            let out = capture::lines(|| greet(class, "Вася", || "Гопник".to_string()));
+            assert!(
+                out.iter().any(|l| l.ends_with("Гопник")),
+                "class {class}: {out:?}"
+            );
+        }
+    }
+
     /// The class-8 and class-9 arms splice the PLAYER's name and rank, not
     /// the enemy's -- `1000:3e0c` and `1000:3e63` read `20ae:389c`, and
     /// `1000:3df8` reads `20ae:379c`. A port that spliced the enemy's would
     /// pass the arm test above with a fixture that happened to agree.
     #[test]
     fn the_spliced_name_and_rank_are_the_arguments_not_a_constant() {
-        let out = capture::lines(|| greet(8, "Петя", "Ректор НГУ"));
+        let out = capture::lines(|| greet(8, "Петя", || "Ректор НГУ".to_string()));
         assert_eq!(out.len(), 1);
         assert!(
             out[0].contains("Петя") && out[0].contains("Ректор НГУ"),
@@ -242,7 +283,7 @@ mod tests {
             out[0].find("Петя").unwrap() < out[0].find("Ректор НГУ").unwrap(),
             "{out:?}"
         );
-        let nine = capture::lines(|| greet(9, "Петя", "Ректор НГУ"));
+        let nine = capture::lines(|| greet(9, "Петя", || "Ректор НГУ".to_string()));
         assert_eq!(nine.len(), 2);
         assert!(!nine[0].contains("Ректор НГУ"), "the first line is plain");
         assert!(nine[1].ends_with("Ректор НГУ"), "{nine:?}");

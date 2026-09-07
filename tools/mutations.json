@@ -3259,7 +3259,7 @@
   },
   {
     "label": "combat-uncited-class-tally",
-    "defends": "The three class counts must be the tally of the rows and must sum to the total, so a verdict changed without its count -- or a count changed without its verdict -- cannot pass as a consistent classification.",
+    "defends": "The three class counts must be the tally of the rows and must sum to the total, so a verdict changed without its count -- or a count changed without its verdict -- cannot pass as a consistent classification. Task 40 moved fourteen rows from `unimplemented` to `implemented` by porting them, which is exactly the edit this case models.",
     "artifact": "data/combat_uncited.json",
     "mutate": {
       "op": "json-set",
@@ -3267,8 +3267,8 @@
         "counts",
         "implemented"
       ],
-      "from": 101,
-      "to": 100
+      "from": 115,
+      "to": 114
     },
     "test": [
       "python3",
@@ -3276,6 +3276,26 @@
       "CombatOpenerTest.test_the_recorded_counts_are_the_tally_of_the_rows"
     ],
     "expect": "the rows tally"
+  },
+  {
+    "label": "combat-uncited-total-tally",
+    "defends": "`counts.total` is the one count in this file that no recomputation over the shipped tree can reproduce: since Task 40 cited 115 of the 117, the Task-39 population is a TALLY of the rows, not a derivation, and `counts_note` says so rather than letting 'every count here is derived' stand. What still holds it is the sum: the three class counts must add up to it. Without this case `total` was checked by nothing that had been seen failing.",
+    "artifact": "data/combat_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "counts",
+        "total"
+      ],
+      "from": 117,
+      "to": 116
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_the_recorded_counts_are_the_tally_of_the_rows"
+    ],
+    "expect": "do not sum to the total"
   },
   {
     "label": "combat-uncited-src-pairing",
@@ -3388,7 +3408,7 @@
   },
   {
     "label": "combat-uncited-port-equivalence",
-    "defends": "An entry of `port_equivalences` must name rows this file actually carries, and only `implemented` ones -- an equivalence filed against an `unimplemented` row is a note about a port predicate that does not exist.",
+    "defends": "An entry of `port_equivalences` must name rows this file actually carries, and only `implemented` ones -- an equivalence filed against an `unimplemented` row is a note about a port predicate that does not exist. The perturbation was `1000:3d38` until Task 40 PORTED that branch and reclassified it, at which point the case stopped demonstrating its own claim and the gate said so by name. It is now `1000:56ba`, one of the two rows that stay `unimplemented` permanently (`excluded_from_citation`), so the case cannot go stale the same way again.",
     "artifact": "data/combat_uncited.json",
     "mutate": {
       "op": "json-set",
@@ -3399,7 +3419,7 @@
         0
       ],
       "from": "1000:452b",
-      "to": "1000:3d38"
+      "to": "1000:56ba"
     },
     "test": [
       "python3",
@@ -3432,7 +3452,7 @@
   },
   {
     "label": "combat-uncited-pairing-ratchet",
-    "defends": "src_pairing_check.rows_uniquely_pinned_floor is a RATCHET on how much the function scope actually discriminates -- 55 of 101 rows today.  Without it a later change that widened the noise list or loosened the identifier regex would leave every assertion green while the check quietly reverted to the module-wide one it replaced.  Raising the floor above what the measurement supports reds.",
+    "defends": "src_pairing_check.rows_uniquely_pinned_floor is a RATCHET on how much the function scope actually discriminates -- 69 of 115 rows measured today, held at the 55 Task 39 recorded because ten of the 69 pin for want of a sibling rather than by discrimination (src/combat_opener.rs defines one named function), which `vacuous_pins` records. Without the ratchet a later change that widened the noise list or loosened the identifier regex would leave every assertion green while the check quietly reverted to the module-wide one it replaced. Raising the floor above what the measurement supports reds.",
     "artifact": "data/combat_uncited.json",
     "mutate": {
       "op": "json-set",

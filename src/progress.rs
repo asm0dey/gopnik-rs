@@ -125,7 +125,13 @@ impl Stat {
             b'3' => Some(Stat::Vitality),
             // 1000:4a49 `cmp byte [bp+di-0x10a],0x34` / 1000:4a4e `jnz 0x4a6f`
             b'4' => Some(Stat::Luck),
-            // 1000:4a6f, the chain's own miss -- a cleared slot holds 0.
+            // The chain's own miss, and it carries NO address of its own: a
+            // byte none of the four compares names -- including the 0 a
+            // cleared slot holds -- takes all four `jnz`s above and the loop
+            // body does nothing for it. The address the four `jnz`s share as
+            // their target belongs to the growth-log loop's index test, not
+            // to this arm, and citing it here would name a condition this
+            // construct does not evaluate.
             _ => None,
         }
     }

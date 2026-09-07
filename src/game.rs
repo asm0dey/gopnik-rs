@@ -5472,11 +5472,15 @@ impl Game {
         // (`param_1 = 2`) are silent here. `crate::combat_opener` is the arm
         // and `docs/re/combat-opener.md` the map.
         if matches!(opponent_kind, 0 | 6) {
-            combat_opener::greet(
-                enemy.class,
-                &self.player.name,
-                &Self::rank_name(self.player.class),
-            );
+            // The rank is passed as a THUNK, not a String: only arms 8 and 9
+            // read `20ae:389c` (1000:3e0c, 1000:3e63), and `rank_name` panics
+            // on a class `data/enemies.json` has no row for, so evaluating it
+            // here would widen the port's panic surface past the original's
+            // read set. See `combat_opener::greet`.
+            let player_class = self.player.class;
+            combat_opener::greet(enemy.class, &self.player.name, || {
+                Self::rank_name(player_class)
+            });
         }
         // 1000:3fa7..1000:40e5 -- the two blow budgets and the two lines that
         // report the reduction. Both run whatever `param_1` was: the opener's
