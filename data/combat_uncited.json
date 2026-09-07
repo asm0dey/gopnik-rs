@@ -1,0 +1,1731 @@
+{
+ "note": "Every game branch of `FUN_1000_3d11` that carried no `SEG:OFF` citation in `src/**/*.rs` or `data/command_dispatch.json` when Task 39 ran, classified against the port. The ROW SET is derived, not typed: it is exactly what the block under 'Recomputation, from the shipped artifacts -> Coverage' in `docs/re/branches.md` reports for `func_entry == \"1000:3d11\"`, and `tools/test_combat_opener.py` recomputes it and requires SET EQUALITY -- so a branch that becomes cited, or a new uncited one, reds the test instead of silently rotting the file. The count is derived from the artifact and is never hard-coded.",
+ "classes": {
+  "implemented": "`src/` already evaluates this condition; `src.module`, `src.function` and `src.expr` name the construct that does, so the pairing is falsifiable by reading it. `src.expr` is a PARAPHRASE of the shipped expression, close enough to find it and never a substitute for opening the file -- `docs/re/METHODOLOGY.md` forbids citing a `src/` line number.",
+  "unimplemented": "`src/` does not evaluate it. `what` says what it does, from flow.",
+  "unreachable-in-port": "the port deliberately diverges and `docs/re/gaps.md` records the divergence. NO ROW USES THIS CLASS -- see `unreachable_in_port_is_empty` below."
+ },
+ "unreachable_in_port_is_empty": "Not one of these branches is unreachable in the port. The nearest candidates were checked and rejected: `1000:56ba` and `1000:5760` are branches that can never be TAKEN in the ORIGINAL (`mov al,1` / `or al,al` / `jz`), which is a compiler artefact and not a port divergence, so they are `unimplemented`; and the four blow-budget report gates (`1000:3ff5`, `1000:4011`, `1000:4098`, `1000:40b4`) guard two lines the port simply does not print, which is a missing feature and not a recorded divergence either. An empty class is reported rather than filled, because using it as an escape hatch is how an inventory stops being falsifiable.",
+ "derivation": {
+  "source": "data/branches.json",
+  "rule": "`class == \"game\"` and `func_entry == \"1000:3d11\"` and NOT (the branch's own address or its guard's appears as a `SEG:OFF` citation in one of the artifact's own `port_citation_sources` globs, with a runtime segment normalised as `seg + 0x1000`).",
+  "recomputed_by": "tools/test_combat_opener.py",
+  "block": "docs/re/branches.md, 'Recomputation, from the shipped artifacts -> Coverage'"
+ },
+ "counts": {
+  "total": 117,
+  "implemented": 101,
+  "unimplemented": 16,
+  "unreachable-in-port": 0
+ },
+ "branches": [
+  {
+   "addr": "1000:3d38",
+   "text": "jz 0x3d44",
+   "guard": "1000:3d35",
+   "guard_text": "cmp ax,0x0",
+   "taken": "1000:3d44",
+   "fallthrough": "1000:3d3a",
+   "class": "unimplemented",
+   "what": "enemy class 0 -> the arm at 1000:3d44 -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
+  },
+  {
+   "addr": "1000:3d3d",
+   "text": "jz 0x3d44",
+   "guard": "1000:3d3a",
+   "guard_text": "cmp ax,0x1",
+   "taken": "1000:3d44",
+   "fallthrough": "1000:3d3f",
+   "class": "unimplemented",
+   "what": "enemy class 1 -> the arm at 1000:3d44 -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
+  },
+  {
+   "addr": "1000:3d42",
+   "text": "jnz 0x3d79",
+   "guard": "1000:3d3f",
+   "guard_text": "cmp ax,0x2",
+   "taken": "1000:3d79",
+   "fallthrough": "1000:3d44",
+   "class": "unimplemented",
+   "what": "enemy class 2 -> the arm at 1000:3d44, else on to 1000:3d79 -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
+  },
+  {
+   "addr": "1000:3d7c",
+   "text": "jz 0x3d8d",
+   "guard": "1000:3d79",
+   "guard_text": "cmp ax,0x3",
+   "taken": "1000:3d8d",
+   "fallthrough": "1000:3d7e",
+   "class": "unimplemented",
+   "what": "enemy class 3 -> the arm at 1000:3d8d -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
+  },
+  {
+   "addr": "1000:3d81",
+   "text": "jz 0x3d8d",
+   "guard": "1000:3d7e",
+   "guard_text": "cmp ax,0x4",
+   "taken": "1000:3d8d",
+   "fallthrough": "1000:3d83",
+   "class": "unimplemented",
+   "what": "enemy class 4 -> the arm at 1000:3d8d -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
+  },
+  {
+   "addr": "1000:3d86",
+   "text": "jz 0x3d8d",
+   "guard": "1000:3d83",
+   "guard_text": "cmp ax,0x5",
+   "taken": "1000:3d8d",
+   "fallthrough": "1000:3d88",
+   "class": "unimplemented",
+   "what": "enemy class 5 -> the arm at 1000:3d8d -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
+  },
+  {
+   "addr": "1000:3d8b",
+   "text": "jnz 0x3dc2",
+   "guard": "1000:3d88",
+   "guard_text": "cmp ax,0x6",
+   "taken": "1000:3dc2",
+   "fallthrough": "1000:3d8d",
+   "class": "unimplemented",
+   "what": "enemy class 6 -> the arm at 1000:3d8d, else on to 1000:3dc2 -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
+  },
+  {
+   "addr": "1000:3dc5",
+   "text": "jnz 0x3de3",
+   "guard": "1000:3dc2",
+   "guard_text": "cmp ax,0x7",
+   "taken": "1000:3de3",
+   "fallthrough": "1000:3dc7",
+   "class": "unimplemented",
+   "what": "enemy class 7 -> the arm at 1000:3dc7, else on to 1000:3de3 -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
+  },
+  {
+   "addr": "1000:3de6",
+   "text": "jnz 0x3e35",
+   "guard": "1000:3de3",
+   "guard_text": "cmp ax,0x8",
+   "taken": "1000:3e35",
+   "fallthrough": "1000:3de8",
+   "class": "unimplemented",
+   "what": "enemy class 8 -> the arm at 1000:3de8, else on to 1000:3e35 -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
+  },
+  {
+   "addr": "1000:3e38",
+   "text": "jnz 0x3e8a",
+   "guard": "1000:3e35",
+   "guard_text": "cmp ax,0x9",
+   "taken": "1000:3e8a",
+   "fallthrough": "1000:3e3a",
+   "class": "unimplemented",
+   "what": "enemy class 9 -> the arm at 1000:3e3a; anything else reaches the exit having printed nothing -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
+  },
+  {
+   "addr": "1000:3ff5",
+   "text": "jle 0x4042",
+   "guard": "1000:3ff2",
+   "guard_text": "cmp ax,0x12",
+   "taken": "1000:4042",
+   "fallthrough": "1000:3ff7",
+   "class": "unimplemented",
+   "what": "gate on `enemy.agility + 4 > 18` for the line at 1000:4013, `^2Из-за твоей хорошей ловкости враг сможет пнуть тебя раз # вместо #` -- src/combat.rs computes the budget but never prints either report line"
+  },
+  {
+   "addr": "1000:4011",
+   "text": "jnl 0x4042",
+   "guard": "1000:400f",
+   "guard_text": "cmp ax,bx",
+   "taken": "1000:4042",
+   "fallthrough": "1000:4013",
+   "class": "unimplemented",
+   "what": "second gate on the same line: print only when the reduced budget yields FEWER blows than the unreduced one -- src/combat.rs computes the budget but never prints either report line"
+  },
+  {
+   "addr": "1000:4063",
+   "text": "jle 0x408f",
+   "guard": "1000:405e",
+   "guard_text": "cmp word [bp-0x10e],0xa",
+   "taken": "1000:408f",
+   "fallthrough": "1000:4065",
+   "class": "implemented",
+   "what": "player copy of 1000:3fbb -- nothing happens at a budget of 10 or below",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::blow_budget",
+    "expr": "if mine > 10"
+   }
+  },
+  {
+   "addr": "1000:406a",
+   "text": "jle 0x408f",
+   "guard": "1000:4065",
+   "guard_text": "cmp word [bp-0x110],0x12",
+   "taken": "1000:408f",
+   "fallthrough": "1000:406c",
+   "class": "implemented",
+   "what": "player copy of 1000:3fc2 -- the loop runs while the defender's budget is above 18",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::blow_budget",
+    "expr": "while theirs > PER_BLOW"
+   }
+  },
+  {
+   "addr": "1000:4071",
+   "text": "jl 0x4085",
+   "guard": "1000:406c",
+   "guard_text": "cmp word [bp-0x10e],0x1c",
+   "taken": "1000:4085",
+   "fallthrough": "1000:4073",
+   "class": "implemented",
+   "what": "player copy of 1000:3fc9 -- below 28 the budget collapses to a flat 10",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::blow_budget",
+    "expr": "if mine < 28 { mine = 10; break }"
+   }
+  },
+  {
+   "addr": "1000:4098",
+   "text": "jle 0x40e5",
+   "guard": "1000:4095",
+   "guard_text": "cmp ax,0x12",
+   "taken": "1000:40e5",
+   "fallthrough": "1000:409a",
+   "class": "unimplemented",
+   "what": "the mirror gate for the line at 1000:40b6, `^4Из-за хорошей ловкости врага ты сможешь пнуть его раз # вместо #` -- src/combat.rs computes the budget but never prints either report line"
+  },
+  {
+   "addr": "1000:40b4",
+   "text": "jnl 0x40e5",
+   "guard": "1000:40b2",
+   "guard_text": "cmp ax,bx",
+   "taken": "1000:40e5",
+   "fallthrough": "1000:40b6",
+   "class": "unimplemented",
+   "what": "the mirror's second gate, same shape as 1000:4011 -- src/combat.rs computes the budget but never prints either report line"
+  },
+  {
+   "addr": "1000:4102",
+   "text": "jnz 0x411d",
+   "guard": "1000:40fd",
+   "guard_text": "cmp byte [bp-0x113],0x5",
+   "taken": "1000:411d",
+   "fallthrough": "1000:4104",
+   "class": "implemented",
+   "what": "the counter has just reached 5 -- print the gathering line once",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "if *prompts_seen == 5 { term::println(\"^7Начинают собираться зрители\") }"
+   }
+  },
+  {
+   "addr": "1000:412c",
+   "text": "jz 0x4131",
+   "guard": "1000:4127",
+   "guard_text": "cmp byte [bp-0x113],0x5",
+   "taken": "1000:4131",
+   "fallthrough": "1000:412e",
+   "class": "implemented",
+   "what": "no taunts before the fifth prompt of the fight",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "if *prompts_seen != 5 { return }"
+   }
+  },
+  {
+   "addr": "1000:413c",
+   "text": "jz 0x4141",
+   "guard": "1000:413a",
+   "guard_text": "or ax,ax",
+   "taken": "1000:4141",
+   "fallthrough": "1000:413e",
+   "class": "implemented",
+   "what": "Random(10) must return 0 for a taunt to be printed",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "if self.rng.below_at(\"1000:4135\", 10) != 0 { return }"
+   }
+  },
+  {
+   "addr": "1000:416e",
+   "text": "jnz 0x418c",
+   "guard": "1000:416b",
+   "guard_text": "cmp ax,0x1",
+   "taken": "1000:418c",
+   "fallthrough": "1000:4170",
+   "class": "implemented",
+   "what": "crowd taunt 1 of 18 (`cmp ax,0x1`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 1 => term::println('Зрители:^6Врежь ему!') }"
+   }
+  },
+  {
+   "addr": "1000:418f",
+   "text": "jnz 0x41ad",
+   "guard": "1000:418c",
+   "guard_text": "cmp ax,0x2",
+   "taken": "1000:41ad",
+   "fallthrough": "1000:4191",
+   "class": "implemented",
+   "what": "crowd taunt 2 of 18 (`cmp ax,0x2`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 2 => term::println('Зрители:^6Блин долго ты ещё будешь мудиться?') }"
+   }
+  },
+  {
+   "addr": "1000:41b0",
+   "text": "jnz 0x41ce",
+   "guard": "1000:41ad",
+   "guard_text": "cmp ax,0x3",
+   "taken": "1000:41ce",
+   "fallthrough": "1000:41b2",
+   "class": "implemented",
+   "what": "crowd taunt 3 of 18 (`cmp ax,0x3`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 3 => term::println('Зрители:^6Да вы только посмотрите на эти пинки!') }"
+   }
+  },
+  {
+   "addr": "1000:41d1",
+   "text": "jnz 0x4217",
+   "guard": "1000:41ce",
+   "guard_text": "cmp ax,0x4",
+   "taken": "1000:4217",
+   "fallthrough": "1000:41d3",
+   "class": "implemented",
+   "what": "crowd taunt 4 of 18 (`cmp ax,0x4`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 4 => term::println('Зрители:^6Не подкачай <rank>, я на тебя трёшку поставил!') }"
+   }
+  },
+  {
+   "addr": "1000:421a",
+   "text": "jnz 0x4238",
+   "guard": "1000:4217",
+   "guard_text": "cmp ax,0x5",
+   "taken": "1000:4238",
+   "fallthrough": "1000:421c",
+   "class": "implemented",
+   "what": "crowd taunt 5 of 18 (`cmp ax,0x5`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 5 => term::println('Зрители:^6Чё-тут за батва?') }"
+   }
+  },
+  {
+   "addr": "1000:423b",
+   "text": "jnz 0x4259",
+   "guard": "1000:4238",
+   "guard_text": "cmp ax,0x6",
+   "taken": "1000:4259",
+   "fallthrough": "1000:423d",
+   "class": "implemented",
+   "what": "crowd taunt 6 of 18 (`cmp ax,0x6`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 6 => term::println('Зрители:^6Я знаю вон того мудака, он уже нескольких запинал!') }"
+   }
+  },
+  {
+   "addr": "1000:425c",
+   "text": "jnz 0x427a",
+   "guard": "1000:4259",
+   "guard_text": "cmp ax,0x7",
+   "taken": "1000:427a",
+   "fallthrough": "1000:425e",
+   "class": "implemented",
+   "what": "crowd taunt 7 of 18 (`cmp ax,0x7`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 7 => term::println('Зрители:^6Чё так слабо бьёшь?! Пинай сильнее!') }"
+   }
+  },
+  {
+   "addr": "1000:427d",
+   "text": "jnz 0x42b4",
+   "guard": "1000:427a",
+   "guard_text": "cmp ax,0x8",
+   "taken": "1000:42b4",
+   "fallthrough": "1000:427f",
+   "class": "implemented",
+   "what": "crowd taunt 8 of 18 (`cmp ax,0x8`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 8 => term::println('Зрители:^6Дерьмово дерётесь придурки') }"
+   }
+  },
+  {
+   "addr": "1000:42b7",
+   "text": "jnz 0x42d5",
+   "guard": "1000:42b4",
+   "guard_text": "cmp ax,0x9",
+   "taken": "1000:42d5",
+   "fallthrough": "1000:42b9",
+   "class": "implemented",
+   "what": "crowd taunt 9 of 18 (`cmp ax,0x9`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 9 => term::println('Зрители:^6Да, а помнишь мы вчера также одного пинали, пинали..') }"
+   }
+  },
+  {
+   "addr": "1000:42d8",
+   "text": "jnz 0x42f6",
+   "guard": "1000:42d5",
+   "guard_text": "cmp ax,0xa",
+   "taken": "1000:42f6",
+   "fallthrough": "1000:42da",
+   "class": "implemented",
+   "what": "crowd taunt 10 of 18 (`cmp ax,0xa`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 10 => term::println('Зрители:^6Это чё реслинг?') }"
+   }
+  },
+  {
+   "addr": "1000:42f9",
+   "text": "jnz 0x4317",
+   "guard": "1000:42f6",
+   "guard_text": "cmp ax,0xb",
+   "taken": "1000:4317",
+   "fallthrough": "1000:42fb",
+   "class": "implemented",
+   "what": "crowd taunt 11 of 18 (`cmp ax,0xb`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 11 => term::println('Зрители:^6Двинь ему в рыло!') }"
+   }
+  },
+  {
+   "addr": "1000:431a",
+   "text": "jnz 0x4338",
+   "guard": "1000:4317",
+   "guard_text": "cmp ax,0xc",
+   "taken": "1000:4338",
+   "fallthrough": "1000:431c",
+   "class": "implemented",
+   "what": "crowd taunt 12 of 18 (`cmp ax,0xc`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 12 => term::println('Зрители:^6И куда менты смотрят?') }"
+   }
+  },
+  {
+   "addr": "1000:433b",
+   "text": "jnz 0x4359",
+   "guard": "1000:4338",
+   "guard_text": "cmp ax,0xd",
+   "taken": "1000:4359",
+   "fallthrough": "1000:433d",
+   "class": "implemented",
+   "what": "crowd taunt 13 of 18 (`cmp ax,0xd`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 13 => term::println('Зрители:^6Пинай!') }"
+   }
+  },
+  {
+   "addr": "1000:435c",
+   "text": "jnz 0x4379",
+   "guard": "1000:4359",
+   "guard_text": "cmp ax,0xe",
+   "taken": "1000:4379",
+   "fallthrough": "1000:435e",
+   "class": "implemented",
+   "what": "crowd taunt 14 of 18 (`cmp ax,0xe`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 14 => term::println('Зрители:^6Врежь гаду!') }"
+   }
+  },
+  {
+   "addr": "1000:437c",
+   "text": "jnz 0x4399",
+   "guard": "1000:4379",
+   "guard_text": "cmp ax,0xf",
+   "taken": "1000:4399",
+   "fallthrough": "1000:437e",
+   "class": "implemented",
+   "what": "crowd taunt 15 of 18 (`cmp ax,0xf`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 15 => term::println('Зрители:^6Господа делайте ваши ставки!') }"
+   }
+  },
+  {
+   "addr": "1000:439c",
+   "text": "jnz 0x43b9",
+   "guard": "1000:4399",
+   "guard_text": "cmp ax,0x10",
+   "taken": "1000:43b9",
+   "fallthrough": "1000:439e",
+   "class": "implemented",
+   "what": "crowd taunt 16 of 18 (`cmp ax,0x10`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 16 => term::println('Зрители:^6Ну чё там? Какой счет?') }"
+   }
+  },
+  {
+   "addr": "1000:43bc",
+   "text": "jnz 0x43f6",
+   "guard": "1000:43b9",
+   "guard_text": "cmp ax,0x11",
+   "taken": "1000:43f6",
+   "fallthrough": "1000:43be",
+   "class": "implemented",
+   "what": "crowd taunt 17 of 18 (`cmp ax,0x11`)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::crowd",
+    "expr": "match which { 17 => term::println('Зрители:^6Ну и кого там <name> ^6сегодня пинает?') }"
+   }
+  },
+  {
+   "addr": "1000:44d0",
+   "text": "jnle 0x44d8",
+   "guard": "1000:44ce",
+   "guard_text": "cmp dx,bx",
+   "taken": "1000:44d8",
+   "fallthrough": "1000:44d2",
+   "class": "implemented",
+   "what": "high word of Borland's signed 32-bit crit compare, player swinging",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::resolve_blow_nth",
+    "expr": "attacker_luck3 > crit_roll"
+   }
+  },
+  {
+   "addr": "1000:44d2",
+   "text": "jl 0x4546",
+   "guard": "1000:44ce",
+   "guard_text": "cmp dx,bx",
+   "taken": "1000:4546",
+   "fallthrough": "1000:44d4",
+   "class": "implemented",
+   "what": "the second half of the same high-word test: strictly below is no crit",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::resolve_blow_nth",
+    "expr": "attacker_luck3 > crit_roll"
+   }
+  },
+  {
+   "addr": "1000:44eb",
+   "text": "jnz 0x4508",
+   "guard": "1000:44e8",
+   "guard_text": "cmp ax,0x0",
+   "taken": "1000:4508",
+   "fallthrough": "1000:44ed",
+   "class": "implemented",
+   "what": "the player's crit's Random(3) picks one of three taunt lines",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::combat_round",
+    "expr": "match blow.taunt { Some(0) => term::println('^2Точный удар!!!') }"
+   }
+  },
+  {
+   "addr": "1000:450b",
+   "text": "jnz 0x4528",
+   "guard": "1000:4508",
+   "guard_text": "cmp ax,0x1",
+   "taken": "1000:4528",
+   "fallthrough": "1000:450d",
+   "class": "implemented",
+   "what": "the player's crit's Random(3) picks one of three taunt lines",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::combat_round",
+    "expr": "match blow.taunt { Some(1) => term::println('^2Не хило приложил!!!') }"
+   }
+  },
+  {
+   "addr": "1000:452b",
+   "text": "jnz 0x4546",
+   "guard": "1000:4528",
+   "guard_text": "cmp ax,0x2",
+   "taken": "1000:4546",
+   "fallthrough": "1000:452d",
+   "class": "implemented",
+   "what": "the player's crit's Random(3) picks one of three taunt lines",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::combat_round",
+    "expr": "match blow.taunt { Some(_) => term::println('^2Двойной урон!!!') }"
+   }
+  },
+  {
+   "addr": "1000:4589",
+   "text": "jnle 0x4591",
+   "guard": "1000:4587",
+   "guard_text": "cmp dx,bx",
+   "taken": "1000:4591",
+   "fallthrough": "1000:458b",
+   "class": "implemented",
+   "what": "high word of the signed 32-bit limb-break compare, player swinging",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::resolve_blow_nth",
+    "expr": "attacker_luck3 > break_roll"
+   }
+  },
+  {
+   "addr": "1000:458b",
+   "text": "jl 0x45ea",
+   "guard": "1000:4587",
+   "guard_text": "cmp dx,bx",
+   "taken": "1000:45ea",
+   "fallthrough": "1000:458d",
+   "class": "implemented",
+   "what": "the second half of that high-word test",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::resolve_blow_nth",
+    "expr": "attacker_luck3 > break_roll"
+   }
+  },
+  {
+   "addr": "1000:459c",
+   "text": "jnz 0x45c5",
+   "guard": "1000:459a",
+   "guard_text": "or ax,ax",
+   "taken": "1000:45c5",
+   "fallthrough": "1000:459e",
+   "class": "implemented",
+   "what": "Random(2) picks jaw (0) or leg, player swinging",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::resolve_blow_nth",
+    "expr": "if rng.below_at(swing.site(\"1000:4595\", \"1000:47be\"), 2) == 0 { Break::Jaw } else { Break::Leg }"
+   }
+  },
+  {
+   "addr": "1000:469d",
+   "text": "jnl 0x46a2",
+   "guard": "1000:4699",
+   "guard_text": "cmp ax,[bp-0x112]",
+   "taken": "1000:46a2",
+   "fallthrough": "1000:469f",
+   "class": "implemented",
+   "what": "enemy copy of the accuracy test at 1000:447a -- budget*5 must reach the roll",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::resolve_blow_nth",
+    "expr": "budget.wrapping_mul(5) < roll"
+   }
+  },
+  {
+   "addr": "1000:46f3",
+   "text": "jnle 0x46fb",
+   "guard": "1000:46f1",
+   "guard_text": "cmp dx,bx",
+   "taken": "1000:46fb",
+   "fallthrough": "1000:46f5",
+   "class": "implemented",
+   "what": "high word of the crit compare, enemy swinging",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::resolve_blow_nth",
+    "expr": "attacker_luck3 > crit_roll"
+   }
+  },
+  {
+   "addr": "1000:46f5",
+   "text": "jl 0x4769",
+   "guard": "1000:46f1",
+   "guard_text": "cmp dx,bx",
+   "taken": "1000:4769",
+   "fallthrough": "1000:46f7",
+   "class": "implemented",
+   "what": "the second half of that high-word test",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::resolve_blow_nth",
+    "expr": "attacker_luck3 > crit_roll"
+   }
+  },
+  {
+   "addr": "1000:470e",
+   "text": "jnz 0x472b",
+   "guard": "1000:470b",
+   "guard_text": "cmp ax,0x0",
+   "taken": "1000:472b",
+   "fallthrough": "1000:4710",
+   "class": "implemented",
+   "what": "the enemy's crit's Random(3) picks one of three taunt lines",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::combat_round",
+    "expr": "match blow.taunt { Some(0) => term::println('^4Враг:Сдохни урод!!') }"
+   }
+  },
+  {
+   "addr": "1000:472e",
+   "text": "jnz 0x474b",
+   "guard": "1000:472b",
+   "guard_text": "cmp ax,0x1",
+   "taken": "1000:474b",
+   "fallthrough": "1000:4730",
+   "class": "implemented",
+   "what": "the enemy's crit's Random(3) picks one of three taunt lines",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::combat_round",
+    "expr": "match blow.taunt { Some(1) => term::println('^4Тебе не хило врезали!') }"
+   }
+  },
+  {
+   "addr": "1000:474e",
+   "text": "jnz 0x4769",
+   "guard": "1000:474b",
+   "guard_text": "cmp ax,0x2",
+   "taken": "1000:4769",
+   "fallthrough": "1000:4750",
+   "class": "implemented",
+   "what": "the enemy's crit's Random(3) picks one of three taunt lines",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::combat_round",
+    "expr": "match blow.taunt { Some(_) => term::println('^4Враг:Получи гнида!!') }"
+   }
+  },
+  {
+   "addr": "1000:4777",
+   "text": "jnl 0x477f",
+   "guard": "1000:4772",
+   "guard_text": "cmp word [bp-0x10c],0x0",
+   "taken": "1000:477f",
+   "fallthrough": "1000:4779",
+   "class": "implemented",
+   "what": "enemy copy of the post-armour damage floor at 1000:4552",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::resolve_blow_nth",
+    "expr": "if damage < 0 { damage = 0 }"
+   }
+  },
+  {
+   "addr": "1000:47ac",
+   "text": "jnle 0x47ba",
+   "guard": "1000:47aa",
+   "guard_text": "cmp dx,bx",
+   "taken": "1000:47ba",
+   "fallthrough": "1000:47ae",
+   "class": "implemented",
+   "what": "high word of the limb-break compare, enemy swinging",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::resolve_blow_nth",
+    "expr": "attacker_luck3 > break_roll"
+   }
+  },
+  {
+   "addr": "1000:47ae",
+   "text": "jnl 0x47b3",
+   "guard": "1000:47aa",
+   "guard_text": "cmp dx,bx",
+   "taken": "1000:47b3",
+   "fallthrough": "1000:47b0",
+   "class": "implemented",
+   "what": "the second half of that high-word test",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::resolve_blow_nth",
+    "expr": "attacker_luck3 > break_roll"
+   }
+  },
+  {
+   "addr": "1000:47c5",
+   "text": "jnz 0x4842",
+   "guard": "1000:47c3",
+   "guard_text": "or ax,ax",
+   "taken": "1000:4842",
+   "fallthrough": "1000:47c7",
+   "class": "implemented",
+   "what": "Random(2) picks jaw (0) or leg, enemy swinging",
+   "src": {
+    "module": "src/combat.rs",
+    "function": "combat::resolve_blow_nth",
+    "expr": "if rng.below_at(swing.site(\"1000:4595\", \"1000:47be\"), 2) == 0 { Break::Jaw } else { Break::Leg }"
+   }
+  },
+  {
+   "addr": "1000:48e6",
+   "text": "jz 0x48eb",
+   "guard": null,
+   "guard_text": null,
+   "taken": "1000:48eb",
+   "fallthrough": "1000:48e8",
+   "class": "implemented",
+   "what": "the `run` token compare's hit branch",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::run_combat",
+    "expr": "if line.trim().eq_ignore_ascii_case(\"run\") { fled = self.flee() }"
+   }
+  },
+  {
+   "addr": "1000:49d5",
+   "text": "jle 0x49dd",
+   "guard": "1000:49d1",
+   "guard_text": "cmp ax,[0x38ae]",
+   "taken": "1000:49dd",
+   "fallthrough": "1000:49d7",
+   "class": "implemented",
+   "what": "hp clamp after code '1' lowers hpmax",
+   "src": {
+    "module": "src/progress.rs",
+    "function": "progress::undo_growth",
+    "expr": "if matches!(stat, Stat::Strength | Stat::Vitality) && f.hp > f.hpmax { f.hp = f.hpmax }"
+   }
+  },
+  {
+   "addr": "1000:49e8",
+   "text": "jnz 0x4a09",
+   "guard": "1000:49e3",
+   "guard_text": "cmp byte [bp+di-0x10a],0x32",
+   "taken": "1000:4a09",
+   "fallthrough": "1000:49ea",
+   "class": "implemented",
+   "what": "growth-log code '2' (0x32) undoes one point of Ловкость",
+   "src": {
+    "module": "src/progress.rs",
+    "function": "progress::Stat::from_code",
+    "expr": "b'2' => Some(Stat::Agility)"
+   }
+  },
+  {
+   "addr": "1000:4a11",
+   "text": "jnz 0x4a46",
+   "guard": "1000:4a0c",
+   "guard_text": "cmp byte [bp+di-0x10a],0x33",
+   "taken": "1000:4a46",
+   "fallthrough": "1000:4a13",
+   "class": "implemented",
+   "what": "growth-log code '3' (0x33) undoes one point of Живучесть",
+   "src": {
+    "module": "src/progress.rs",
+    "function": "progress::Stat::from_code",
+    "expr": "b'3' => Some(Stat::Vitality)"
+   }
+  },
+  {
+   "addr": "1000:4a3c",
+   "text": "jle 0x4a44",
+   "guard": "1000:4a38",
+   "guard_text": "cmp ax,[0x38ae]",
+   "taken": "1000:4a44",
+   "fallthrough": "1000:4a3e",
+   "class": "implemented",
+   "what": "the same hp clamp after code '3' lowers hpmax by 5",
+   "src": {
+    "module": "src/progress.rs",
+    "function": "progress::undo_growth",
+    "expr": "if matches!(stat, Stat::Strength | Stat::Vitality) && f.hp > f.hpmax { f.hp = f.hpmax }"
+   }
+  },
+  {
+   "addr": "1000:4b12",
+   "text": "jz 0x4b17",
+   "guard": null,
+   "guard_text": null,
+   "taken": "1000:4b17",
+   "fallthrough": "1000:4b14",
+   "class": "implemented",
+   "what": "the `kos` token compare's hit branch",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::run_combat",
+    "expr": "Command::Joint => self.smoke(Joint::Fight)"
+   }
+  },
+  {
+   "addr": "1000:4b3f",
+   "text": "jz 0x4b44",
+   "guard": "1000:4b3a",
+   "guard_text": "cmp byte [0x38cd],0x0",
+   "taken": "1000:4b44",
+   "fallthrough": "1000:4b41",
+   "class": "implemented",
+   "what": "the buff countdown at 20ae:38cd must be zero to smoke again",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::smoke",
+    "expr": "if self.player.stoned { term::println(\"^6Ты неможешь схавать ещё один косяк.\"); return }"
+   }
+  },
+  {
+   "addr": "1000:4b6f",
+   "text": "jnl 0x4bb3",
+   "guard": "1000:4b6c",
+   "guard_text": "cmp ax,0xa",
+   "taken": "1000:4bb3",
+   "fallthrough": "1000:4b71",
+   "class": "implemented",
+   "what": "which of the two heal lines prints, on hpmax - hp against 10",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::smoke",
+    "expr": "let shortfall = self.player.hpmax.saturating_sub(self.player.hp); if shortfall < 10 { .. } else { self.player.hp += 10 }"
+   }
+  },
+  {
+   "addr": "1000:4c33",
+   "text": "jnz 0x4c38",
+   "guard": null,
+   "guard_text": null,
+   "taken": "1000:4c38",
+   "fallthrough": "1000:4c35",
+   "class": "implemented",
+   "what": "the `s` token compare's miss branch -- a hit calls 1000:1a03",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::run_combat",
+    "expr": "Command::Stats => self.show_stats()"
+   }
+  },
+  {
+   "addr": "1000:4c47",
+   "text": "jnz 0x4c4c",
+   "guard": null,
+   "guard_text": null,
+   "taken": "1000:4c4c",
+   "fallthrough": "1000:4c49",
+   "class": "implemented",
+   "what": "the `sv` token compare's miss branch -- a hit calls 1000:1348",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::run_combat",
+    "expr": "Command::Inspect => self.print_enemy_block(&enemy)"
+   }
+  },
+  {
+   "addr": "1000:4c5b",
+   "text": "jnz 0x4c64",
+   "guard": null,
+   "guard_text": null,
+   "taken": "1000:4c64",
+   "fallthrough": "1000:4c5d",
+   "class": "implemented",
+   "what": "the `e` token compare's miss branch -- a hit is Halt(0)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::run_combat",
+    "expr": "if line.trim().eq_ignore_ascii_case(\"e\") { self.running = false; return Ok(()) }"
+   }
+  },
+  {
+   "addr": "1000:4c7a",
+   "text": "jnz 0x4ca0",
+   "guard": null,
+   "guard_text": null,
+   "taken": "1000:4ca0",
+   "fallthrough": "1000:4c7c",
+   "class": "implemented",
+   "what": "the SECOND `k` compare, which ticks the backup countdown",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::run_combat",
+    "expr": "cmd == Command::Fight, the middle conjunct of `if backup.count() >= 1 && cmd == Command::Fight && backup.tick_on_attack()` -- the first conjunct is 1000:4c64's guard and the third is 1000:4c80"
+   }
+  },
+  {
+   "addr": "1000:4caf",
+   "text": "jz 0x4cb4",
+   "guard": null,
+   "guard_text": null,
+   "taken": "1000:4cb4",
+   "fallthrough": "1000:4cb1",
+   "class": "implemented",
+   "what": "the `v` token compare's hit branch",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::run_combat",
+    "expr": "if cmd == Command::Backup { self.backup_in_fight(&mut backup) }"
+   }
+  },
+  {
+   "addr": "1000:4e1d",
+   "text": "jnz 0x4e43",
+   "guard": "1000:4e1b",
+   "guard_text": "or ax,ax",
+   "taken": "1000:4e43",
+   "fallthrough": "1000:4e1f",
+   "class": "implemented",
+   "what": "the attrition coin -- a 0 advances the backup counter at 20ae:3c80",
+   "src": {
+    "module": "src/combat_dispatch.rs",
+    "function": "combat_dispatch::backup_round",
+    "expr": "if rng.below_at(\"1000:4e16\", 2) == 0 { backup.0 += 1 }"
+   }
+  },
+  {
+   "addr": "1000:4ead",
+   "text": "jz 0x4eb2",
+   "guard": null,
+   "guard_text": null,
+   "taken": "1000:4eb2",
+   "fallthrough": "1000:4eaf",
+   "class": "implemented",
+   "what": "the `f` token compare's hit branch",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::run_combat",
+    "expr": "if cmd == Command::Shoot { self.shoot_in_fight(&mut ehp) }"
+   }
+  },
+  {
+   "addr": "1000:5023",
+   "text": "jz 0x502c",
+   "guard": "1000:501e",
+   "guard_text": "cmp byte [0x38b0],0x1",
+   "taken": "1000:502c",
+   "fallthrough": "1000:5025",
+   "class": "implemented",
+   "what": "broken jaw -> 7 more roubles and both limb flags cleared",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::hospital_rescue",
+    "expr": "if self.player.broken_jaw || self.player.broken_leg { .. }"
+   }
+  },
+  {
+   "addr": "1000:502a",
+   "text": "jnz 0x503b",
+   "guard": "1000:5025",
+   "guard_text": "cmp byte [0x38b1],0x1",
+   "taken": "1000:503b",
+   "fallthrough": "1000:502c",
+   "class": "implemented",
+   "what": "broken leg -> the same block; the two tests are one disjunction",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::hospital_rescue",
+    "expr": "if self.player.broken_jaw || self.player.broken_leg { .. }"
+   }
+  },
+  {
+   "addr": "1000:5040",
+   "text": "jnl 0x5051",
+   "guard": "1000:503b",
+   "guard_text": "cmp word [0x38c7],0x0",
+   "taken": "1000:5051",
+   "fallthrough": "1000:5042",
+   "class": "implemented",
+   "what": "a negative purse after the bill is settled out of street cred",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::hospital_rescue",
+    "expr": "if self.player.money < 0 { self.pontovost_street += self.player.money; self.player.money = 0 }"
+   }
+  },
+  {
+   "addr": "1000:5278",
+   "text": "jle 0x5280",
+   "guard": "1000:5274",
+   "guard_text": "cmp ax,[0x38ae]",
+   "taken": "1000:5280",
+   "fallthrough": "1000:527a",
+   "class": "implemented",
+   "what": "the +5 heal is clamped to hpmax",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "self.player.hp = (self.player.hp + 5).min(self.player.hpmax)"
+   }
+  },
+  {
+   "addr": "1000:52dc",
+   "text": "jbe 0x52e1",
+   "guard": "1000:52da",
+   "guard_text": "or ax,ax",
+   "taken": "1000:52e1",
+   "fallthrough": "1000:52de",
+   "class": "implemented",
+   "what": "only a 0 out of Random(30) reaches the one-shot gift chain",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "if self.rng.below_at(\"1000:52d5\", 30) == 0 { self.grant_oneshot_gift() }"
+   }
+  },
+  {
+   "addr": "1000:52f4",
+   "text": "jnz 0x530f",
+   "guard": "1000:52ef",
+   "guard_text": "cmp byte [0x38c1],0x0",
+   "taken": "1000:530f",
+   "fallthrough": "1000:52f6",
+   "class": "implemented",
+   "what": "third disjunct (20ae:38c1) of the preamble line's gate",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::grant_oneshot_gift",
+    "expr": "if !self.oneshot_gift_1 || !self.oneshot_gift_2 || !self.ring_gospodi_pomilui { term::println(..) }"
+   }
+  },
+  {
+   "addr": "1000:5314",
+   "text": "jnz 0x536a",
+   "guard": "1000:530f",
+   "guard_text": "cmp byte [0x38bf],0x0",
+   "taken": "1000:536a",
+   "fallthrough": "1000:5316",
+   "class": "implemented",
+   "what": "20ae:38bf clear -> the first ring",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::grant_oneshot_gift",
+    "expr": "if !self.oneshot_gift_1 { .. }"
+   }
+  },
+  {
+   "addr": "1000:536f",
+   "text": "jnz 0x53b9",
+   "guard": "1000:536a",
+   "guard_text": "cmp byte [0x38c0],0x0",
+   "taken": "1000:53b9",
+   "fallthrough": "1000:5371",
+   "class": "implemented",
+   "what": "20ae:38c0 clear -> the Мега Кольцо",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::grant_oneshot_gift",
+    "expr": "else if !self.oneshot_gift_2 { .. }"
+   }
+  },
+  {
+   "addr": "1000:53be",
+   "text": "jnz 0x53f7",
+   "guard": "1000:53b9",
+   "guard_text": "cmp byte [0x38c1],0x0",
+   "taken": "1000:53f7",
+   "fallthrough": "1000:53c0",
+   "class": "implemented",
+   "what": "20ae:38c1 clear -> the Господи помилуй ring",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::grant_oneshot_gift",
+    "expr": "else if !self.ring_gospodi_pomilui { .. }"
+   }
+  },
+  {
+   "addr": "1000:5413",
+   "text": "jnle 0x541b",
+   "guard": "1000:5411",
+   "guard_text": "cmp dx,bx",
+   "taken": "1000:541b",
+   "fallthrough": "1000:5415",
+   "class": "implemented",
+   "what": "high word of the joint gate's 32-bit compare against Random(district*25)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "i32::from(self.player.luck) >= i32::from(roll)"
+   }
+  },
+  {
+   "addr": "1000:5415",
+   "text": "jl 0x5449",
+   "guard": "1000:5411",
+   "guard_text": "cmp dx,bx",
+   "taken": "1000:5449",
+   "fallthrough": "1000:5417",
+   "class": "implemented",
+   "what": "the second half of that high-word test",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "i32::from(self.player.luck) >= i32::from(roll)"
+   }
+  },
+  {
+   "addr": "1000:5419",
+   "text": "jb 0x5449",
+   "guard": "1000:5417",
+   "guard_text": "cmp ax,cx",
+   "taken": "1000:5449",
+   "fallthrough": "1000:541b",
+   "class": "implemented",
+   "what": "low word of the same compare, unsigned",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "i32::from(self.player.luck) >= i32::from(roll)"
+   }
+  },
+  {
+   "addr": "1000:5421",
+   "text": "jnz 0x5449",
+   "guard": "1000:541e",
+   "guard_text": "cmp ax,0x2",
+   "taken": "1000:5449",
+   "fallthrough": "1000:5423",
+   "class": "implemented",
+   "what": "only a Нарк carries a косячок",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "&& enemy.class == 2"
+   }
+  },
+  {
+   "addr": "1000:5465",
+   "text": "jnle 0x5473",
+   "guard": "1000:5463",
+   "guard_text": "cmp dx,bx",
+   "taken": "1000:5473",
+   "fallthrough": "1000:5467",
+   "class": "implemented",
+   "what": "high word of the item gate's compare against Random(district*40)",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "if i32::from(self.player.luck) < i32::from(roll) { return }"
+   }
+  },
+  {
+   "addr": "1000:5467",
+   "text": "jnl 0x546c",
+   "guard": "1000:5463",
+   "guard_text": "cmp dx,bx",
+   "taken": "1000:546c",
+   "fallthrough": "1000:5469",
+   "class": "implemented",
+   "what": "the second half of that high-word test",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "if i32::from(self.player.luck) < i32::from(roll) { return }"
+   }
+  },
+  {
+   "addr": "1000:546e",
+   "text": "jnb 0x5473",
+   "guard": "1000:546c",
+   "guard_text": "cmp ax,cx",
+   "taken": "1000:5473",
+   "fallthrough": "1000:5470",
+   "class": "implemented",
+   "what": "low word of the same compare, unsigned",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "if i32::from(self.player.luck) < i32::from(roll) { return }"
+   }
+  },
+  {
+   "addr": "1000:5479",
+   "text": "jz 0x547e",
+   "guard": "1000:5476",
+   "guard_text": "cmp ax,0x1",
+   "taken": "1000:547e",
+   "fallthrough": "1000:547b",
+   "class": "implemented",
+   "what": "enemy class 1 (Нефор) -> the charm table",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "match enemy.class { 1 => self.spoil_charm(), .. }"
+   }
+  },
+  {
+   "addr": "1000:548a",
+   "text": "jnz 0x54b8",
+   "guard": "1000:5487",
+   "guard_text": "cmp ax,0x0",
+   "taken": "1000:54b8",
+   "fallthrough": "1000:548c",
+   "class": "implemented",
+   "what": "Random(3) == 0 -> the крестик",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_charm",
+    "expr": "match self.rng.below_at(\"1000:5482\", 3) { 0 => .. }"
+   }
+  },
+  {
+   "addr": "1000:54bb",
+   "text": "jnz 0x54e8",
+   "guard": "1000:54b8",
+   "guard_text": "cmp ax,0x1",
+   "taken": "1000:54e8",
+   "fallthrough": "1000:54bd",
+   "class": "implemented",
+   "what": "Random(3) == 1 -> the кольцо",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_charm",
+    "expr": "match self.rng.below_at(\"1000:5482\", 3) { 1 => .. }"
+   }
+  },
+  {
+   "addr": "1000:54eb",
+   "text": "jnz 0x5512",
+   "guard": "1000:54e8",
+   "guard_text": "cmp ax,0x2",
+   "taken": "1000:5512",
+   "fallthrough": "1000:54ed",
+   "class": "implemented",
+   "what": "Random(3) == 2 -> the mobile",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_charm",
+    "expr": "match self.rng.below_at(\"1000:5482\", 3) { _ => .. }"
+   }
+  },
+  {
+   "addr": "1000:5518",
+   "text": "jz 0x552c",
+   "guard": "1000:5515",
+   "guard_text": "cmp ax,0x3",
+   "taken": "1000:552c",
+   "fallthrough": "1000:551a",
+   "class": "implemented",
+   "what": "enemy class 3 -> the club table",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "match enemy.class { 3..=6 => self.spoil_club(), .. }"
+   }
+  },
+  {
+   "addr": "1000:551d",
+   "text": "jz 0x552c",
+   "guard": "1000:551a",
+   "guard_text": "cmp ax,0x4",
+   "taken": "1000:552c",
+   "fallthrough": "1000:551f",
+   "class": "implemented",
+   "what": "enemy class 4 -> the club table",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "match enemy.class { 3..=6 => self.spoil_club(), .. }"
+   }
+  },
+  {
+   "addr": "1000:5522",
+   "text": "jz 0x552c",
+   "guard": "1000:551f",
+   "guard_text": "cmp ax,0x5",
+   "taken": "1000:552c",
+   "fallthrough": "1000:5524",
+   "class": "implemented",
+   "what": "enemy class 5 -> the club table",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "match enemy.class { 3..=6 => self.spoil_club(), .. }"
+   }
+  },
+  {
+   "addr": "1000:5527",
+   "text": "jz 0x552c",
+   "guard": "1000:5524",
+   "guard_text": "cmp ax,0x6",
+   "taken": "1000:552c",
+   "fallthrough": "1000:5529",
+   "class": "implemented",
+   "what": "enemy class 6 -> the club table",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "match enemy.class { 3..=6 => self.spoil_club(), .. }"
+   }
+  },
+  {
+   "addr": "1000:5538",
+   "text": "jnz 0x559b",
+   "guard": "1000:5535",
+   "guard_text": "cmp ax,0x0",
+   "taken": "1000:559b",
+   "fallthrough": "1000:553a",
+   "class": "implemented",
+   "what": "Random(2) == 0 -> the кастет",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_club",
+    "expr": "match self.rng.below_at(\"1000:5530\", 2) { 0 => .. }"
+   }
+  },
+  {
+   "addr": "1000:553f",
+   "text": "jnz 0x5599",
+   "guard": "1000:553a",
+   "guard_text": "cmp byte [0x38ba],0x0",
+   "taken": "1000:5599",
+   "fallthrough": "1000:5541",
+   "class": "implemented",
+   "what": "the кастет is granted only once",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_club",
+    "expr": "if self.weapon_kastet_38ba { return }"
+   }
+  },
+  {
+   "addr": "1000:559e",
+   "text": "jnz 0x560b",
+   "guard": "1000:559b",
+   "guard_text": "cmp ax,0x1",
+   "taken": "1000:560b",
+   "fallthrough": "1000:55a0",
+   "class": "implemented",
+   "what": "Random(2) == 1 -> the дубинка",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_club",
+    "expr": "match self.rng.below_at(\"1000:5530\", 2) { _ => .. }"
+   }
+  },
+  {
+   "addr": "1000:5611",
+   "text": "jnz 0x5675",
+   "guard": "1000:560e",
+   "guard_text": "cmp ax,0x7",
+   "taken": "1000:5675",
+   "fallthrough": "1000:5613",
+   "class": "implemented",
+   "what": "enemy class 7 (Беспредельщик) -> the glasses table",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "match enemy.class { 7 => self.spoil_glasses(), .. }"
+   }
+  },
+  {
+   "addr": "1000:561f",
+   "text": "jnz 0x5648",
+   "guard": "1000:561c",
+   "guard_text": "cmp ax,0x0",
+   "taken": "1000:5648",
+   "fallthrough": "1000:5621",
+   "class": "implemented",
+   "what": "Random(2) == 0 -> the тёмные очки",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_glasses",
+    "expr": "match self.rng.below_at(\"1000:5617\", 2) { 0 => .. }"
+   }
+  },
+  {
+   "addr": "1000:564b",
+   "text": "jnz 0x5672",
+   "guard": "1000:5648",
+   "guard_text": "cmp ax,0x1",
+   "taken": "1000:5672",
+   "fallthrough": "1000:564d",
+   "class": "implemented",
+   "what": "Random(2) == 1 -> the mobile",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_glasses",
+    "expr": "match self.rng.below_at(\"1000:5617\", 2) { _ => .. }"
+   }
+  },
+  {
+   "addr": "1000:5678",
+   "text": "jz 0x567d",
+   "guard": "1000:5675",
+   "guard_text": "cmp ax,0x9",
+   "taken": "1000:567d",
+   "fallthrough": "1000:567a",
+   "class": "implemented",
+   "what": "enemy class 9 (Маньячок) -> the blade table",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::claim_spoils",
+    "expr": "match enemy.class { 9 => self.spoil_blade(), .. }"
+   }
+  },
+  {
+   "addr": "1000:5689",
+   "text": "jz 0x568e",
+   "guard": "1000:5686",
+   "guard_text": "cmp ax,0x0",
+   "taken": "1000:568e",
+   "fallthrough": "1000:568b",
+   "class": "implemented",
+   "what": "Random(2) == 0 -> the ножик",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "match self.rng.below_at(\"1000:5681\", 2) { 0 => .. }"
+   }
+  },
+  {
+   "addr": "1000:56ba",
+   "text": "jz 0x56c3",
+   "guard": "1000:56b8",
+   "guard_text": "or al,al",
+   "taken": "1000:56c3",
+   "fallthrough": "1000:56bc",
+   "class": "unimplemented",
+   "what": "`mov al,0x1` / `or al,al` / `jz` ahead of the ножик's +4 term: `al` is the immediate 1 stored two instructions earlier, so ZF is never set and the jump is never taken. A compiler artefact -- src/ omits it, and omitting a branch that cannot be taken changes no behaviour."
+  },
+  {
+   "addr": "1000:56de",
+   "text": "jz 0x56ea",
+   "guard": "1000:56d9",
+   "guard_text": "cmp byte [0x394b],0x0",
+   "taken": "1000:56ea",
+   "fallthrough": "1000:56e0",
+   "class": "implemented",
+   "what": "the ножик's +2 term, owed only when the дубинка is already owned",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "if self.weapon_dubinka_394b { self.player.dmg_min += 2; self.player.dmg_max += 2 }"
+   }
+  },
+  {
+   "addr": "1000:56ef",
+   "text": "jnz 0x5709",
+   "guard": "1000:56ea",
+   "guard_text": "cmp byte [0x38ba],0x0",
+   "taken": "1000:5709",
+   "fallthrough": "1000:56f1",
+   "class": "implemented",
+   "what": "first conjunct (20ae:38ba) of the ножик's +6 term",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "if !self.weapon_kastet_38ba && !self.weapon_dubinka_394b && !self.weapon_tesak_394c { .. += 6 }"
+   }
+  },
+  {
+   "addr": "1000:56f6",
+   "text": "jnz 0x5709",
+   "guard": "1000:56f1",
+   "guard_text": "cmp byte [0x394b],0x0",
+   "taken": "1000:5709",
+   "fallthrough": "1000:56f8",
+   "class": "implemented",
+   "what": "second conjunct (20ae:394b) of the ножик's +6 term",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "if !self.weapon_kastet_38ba && !self.weapon_dubinka_394b && !self.weapon_tesak_394c { .. += 6 }"
+   }
+  },
+  {
+   "addr": "1000:56fd",
+   "text": "jnz 0x5709",
+   "guard": "1000:56f8",
+   "guard_text": "cmp byte [0x394c],0x0",
+   "taken": "1000:5709",
+   "fallthrough": "1000:56ff",
+   "class": "implemented",
+   "what": "third conjunct (20ae:394c) of the ножик's +6 term",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "if !self.weapon_kastet_38ba && !self.weapon_dubinka_394b && !self.weapon_tesak_394c { .. += 6 }"
+   }
+  },
+  {
+   "addr": "1000:570e",
+   "text": "jz 0x5729",
+   "guard": "1000:5709",
+   "guard_text": "cmp byte [0x394c],0x0",
+   "taken": "1000:5729",
+   "fallthrough": "1000:5710",
+   "class": "implemented",
+   "what": "the тесак already owned -> the consolation line",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "if self.weapon_tesak_394c { term::println(\"^6Но утебя есть тесак который круче.\") }"
+   }
+  },
+  {
+   "addr": "1000:572f",
+   "text": "jz 0x5734",
+   "guard": "1000:572c",
+   "guard_text": "cmp ax,0x1",
+   "taken": "1000:5734",
+   "fallthrough": "1000:5731",
+   "class": "implemented",
+   "what": "Random(2) == 1 -> the тесак",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "match self.rng.below_at(\"1000:5681\", 2) { _ => .. }"
+   }
+  },
+  {
+   "addr": "1000:5760",
+   "text": "jz 0x5770",
+   "guard": "1000:575e",
+   "guard_text": "or al,al",
+   "taken": "1000:5770",
+   "fallthrough": "1000:5762",
+   "class": "unimplemented",
+   "what": "`mov al,0x1` / `or al,al` / `jz` ahead of the тесак's +7 term: `al` is the immediate 1 stored two instructions earlier, so ZF is never set and the jump is never taken. A compiler artefact -- src/ omits it, and omitting a branch that cannot be taken changes no behaviour."
+  },
+  {
+   "addr": "1000:576e",
+   "text": "jz 0x5774",
+   "guard": "1000:5769",
+   "guard_text": "cmp byte [0x38c2],0x0",
+   "taken": "1000:5774",
+   "fallthrough": "1000:5770",
+   "class": "implemented",
+   "what": "second conjunct (20ae:38c2) of the flag the тесак's +7 term compares against the кастет",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "(!self.weapon_dubinka_394b && !self.weapon_nozhik_38c2) == self.weapon_kastet_38ba"
+   }
+  },
+  {
+   "addr": "1000:578b",
+   "text": "jz 0x579e",
+   "guard": "1000:5786",
+   "guard_text": "cmp byte [0x394b],0x0",
+   "taken": "1000:579e",
+   "fallthrough": "1000:578d",
+   "class": "implemented",
+   "what": "first conjunct (20ae:394b) of the тесак's +5 term",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "if self.weapon_dubinka_394b && !self.weapon_nozhik_38c2 { .. += 5 }"
+   }
+  },
+  {
+   "addr": "1000:5792",
+   "text": "jnz 0x579e",
+   "guard": "1000:578d",
+   "guard_text": "cmp byte [0x38c2],0x0",
+   "taken": "1000:579e",
+   "fallthrough": "1000:5794",
+   "class": "implemented",
+   "what": "second conjunct (20ae:38c2) of the тесак's +5 term",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "if self.weapon_dubinka_394b && !self.weapon_nozhik_38c2 { .. += 5 }"
+   }
+  },
+  {
+   "addr": "1000:57a3",
+   "text": "jz 0x57af",
+   "guard": "1000:579e",
+   "guard_text": "cmp byte [0x38c2],0x0",
+   "taken": "1000:57af",
+   "fallthrough": "1000:57a5",
+   "class": "implemented",
+   "what": "the тесак's +3 term, owed only when the ножик is already owned",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "if self.weapon_nozhik_38c2 { .. += 3 }"
+   }
+  },
+  {
+   "addr": "1000:57b4",
+   "text": "jnz 0x57ce",
+   "guard": "1000:57af",
+   "guard_text": "cmp byte [0x38ba],0x0",
+   "taken": "1000:57ce",
+   "fallthrough": "1000:57b6",
+   "class": "implemented",
+   "what": "first conjunct (20ae:38ba) of the тесак's +9 term",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "if !self.weapon_kastet_38ba && !self.weapon_dubinka_394b && !self.weapon_nozhik_38c2 { .. += 9 }"
+   }
+  },
+  {
+   "addr": "1000:57bb",
+   "text": "jnz 0x57ce",
+   "guard": "1000:57b6",
+   "guard_text": "cmp byte [0x394b],0x0",
+   "taken": "1000:57ce",
+   "fallthrough": "1000:57bd",
+   "class": "implemented",
+   "what": "second conjunct (20ae:394b) of the тесак's +9 term",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "if !self.weapon_kastet_38ba && !self.weapon_dubinka_394b && !self.weapon_nozhik_38c2 { .. += 9 }"
+   }
+  },
+  {
+   "addr": "1000:57c2",
+   "text": "jnz 0x57ce",
+   "guard": "1000:57bd",
+   "guard_text": "cmp byte [0x38c2],0x0",
+   "taken": "1000:57ce",
+   "fallthrough": "1000:57c4",
+   "class": "implemented",
+   "what": "third conjunct (20ae:38c2) of the тесак's +9 term",
+   "src": {
+    "module": "src/game.rs",
+    "function": "Game::spoil_blade",
+    "expr": "if !self.weapon_kastet_38ba && !self.weapon_dubinka_394b && !self.weapon_nozhik_38c2 { .. += 9 }"
+   }
+  }
+ ],
+ "port_equivalences": [
+  {
+   "rows": [
+    "1000:452b",
+    "1000:474e",
+    "1000:54eb",
+    "1000:559e",
+    "1000:564b",
+    "1000:572f"
+   ],
+   "original": "the LAST link of a `cmp ax,N` chain over a `Random(n)` result -- `cmp ax,0x2` / `jnz` for the crit taunts and the charm table, `cmp ax,0x1` / `jnz` for the two-way ones",
+   "here": "the `_` arm of a Rust `match` on the same draw",
+   "why_it_is_the_same_decision": "the original DROPS a value the chain does not name and the `_` arm does not, so the two differ only on a result the draw cannot produce: `Random(3)` returns 0..2 and `Random(2)` returns 0..1, and `src/rng.rs` reproduces the same bound. A change to that bound, or a draw whose `n` grew, would break this equivalence -- which is why it is written down rather than assumed."
+  },
+  {
+   "rows": [
+    "1000:4b6f"
+   ],
+   "original": "`1000:4b6c cmp ax,0xa` / `1000:4b6f jnl 0x4bb3` on a SIGNED `hpmax - hp`",
+   "here": "`self.player.hpmax.saturating_sub(self.player.hp) < 10`",
+   "why_it_is_the_same_decision": "when hp > hpmax the original's `ax` is negative, `jnl` fails and it takes the branch that LOWERS hp to hpmax; `saturating_sub` gives 0, also < 10, so the port takes the same branch and makes the same assignment. `Game::smoke`'s doc comment carries the same table for the street copy of this handler."
+  },
+  {
+   "rows": [
+    "1000:48e6",
+    "1000:4c5b"
+   ],
+   "original": "`rtl_str_compare` against the CS tokens `run` and `e`, after the case fold at `1000:4431`",
+   "here": "`line.trim().eq_ignore_ascii_case(..)` on the raw line, not `crate::commands::parse`",
+   "why_it_is_the_same_decision": "`parse` folds `w` with `run` and `exit` with `e` because `entry` dispatches both spellings; the fight prompt compares only the short one, so matching the literal is what reproduces the original and using `parse` would not. `Game::run_combat`'s doc comment argues this at both sites."
+  }
+ ],
+ "port_equivalences_note": "Where an `implemented` row's `src.expr` decides the same thing as the original by a DIFFERENT predicate. Each entry says why the two agree, and on what assumption -- an equivalence with no stated assumption is the kind of pairing a reviewer cannot falsify. `data/gym_arms.json`'s `joint.port_equivalences` is the shape this follows."
+}

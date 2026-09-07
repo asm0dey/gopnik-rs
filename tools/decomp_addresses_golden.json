@@ -350,7 +350,8 @@
       "docs/re/gaps.md `src/persist.rs:358` -> src/persist.rs:358 `joints: it.joints.max(0) as u16`",
       "docs/re/gaps.md `src/save.rs:255` -> src/save.rs:255 `beer_half_litres`",
       "docs/re/gaps.md `src/save.rs:262` -> src/save.rs:262 `junk`",
-      "docs/re/gaps.md `src/save.rs:318` -> src/save.rs:318 `[u16; 8]`"
+      "docs/re/gaps.md `src/save.rs:318` -> src/save.rs:318 `[u16; 8]`",
+      "docs/superpowers/plans/2026-09-07-combat-opener-and-citations.md `src/game.rs:6425` -> src/game.rs:6425 `Game::crowd`"
     ]
   }
 }

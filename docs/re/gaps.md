@@ -1763,11 +1763,19 @@ points at this entry.
   command, not the line (`docs/re/METHODOLOGY.md`). The port's setter is
   `mark_found(Location::Gym)` and `369a` appears near it only in a comment,
   which is how a grep for the address literal produced the wrong answer.
-* **The class-keyed combat-opener table** (`1000:3d32`..`1000:3e8a`, files
+* ~~**The class-keyed combat-opener table** (`1000:3d32`..`1000:3e8a`, files
   `0x452E`, `0x453B`, `0x4548`, `0x4565`, `0x457A`, …). Its **text** is still
-  not extracted; what Task 13 settled is that it cannot matter to the
-  generator: scanning `[0x3d11, 0x3f00)` for `9a 4b 11 78 0f` returns **zero**
-  hits, so the whole `cmp [0x3952],N` chain is print-only.
+  not extracted~~ **CLOSED by Task 39 — extracted, in
+  `docs/re/combat-opener.md` and `data/combat_opener.json`.** The trailing "…"
+  was doing real work: the five files above are five of **nine**, the others
+  being `0x4587`, `0x4597`, `0x45A7` and `0x45B5`. What Task 13 settled is that
+  it cannot matter to the generator: scanning `[0x3d11, 0x3f00)` for
+  `9a 4b 11 78 0f` returns **zero** hits, so the whole `cmp [0x3952],N` chain
+  is print-only. Task 39 adds the half that claim never covered — it writes
+  nothing either: **zero** absolute-memory writes across all 168 instructions,
+  and the only memory the two shortstring helpers touch is a stack local at
+  `ss:[bp-0x218]`. Still **not ported**; the ten branches are
+  `data/combat_uncited.json`'s ten `unimplemented` opener rows.
 * ~~**The rector death branch** (`1000:4f8c`) — nothing in this port sets
   `[0x3c83]` ... Still not modelled here.~~ **CLOSED by Task 18 — modelled.**
   `[0x3c83]` is the rector-showdown flag, armed at `1000:7364` and
@@ -2388,8 +2396,10 @@ None of these moves a draw; all three are output or state the replay caught.
   damage-gating arithmetic rests on the disassembly alone.
 * **A leg break has never been observed.** All five limb picks captured
   returned 0 (the jaw).
-* **The class-keyed opener's text** (`1000:3d32`..`1000:3e8a`) is still not
-  extracted. Task 13 established only that it spends no draw.
+* ~~**The class-keyed opener's text** (`1000:3d32`..`1000:3e8a`) is still not
+  extracted. Task 13 established only that it spends no draw.~~ **CLOSED by
+  Task 39 — `docs/re/combat-opener.md`.** Nine strings, five printing arms and
+  a silent default; it spends no draw *and* writes no state. Not ported yet.
 * **The port advances the district inside `run_combat`**, at the end; the
   original does it at the top of the next turn (`1000:ab75`..`1000:ab92`,
   which also clears `[0x3698]`/`[0x3694]` and conditionally `[0x3699]`). The
@@ -2759,11 +2769,20 @@ exactly one branch image-wide, `1000:3d2f jmp 0x3e8d` — the chain's own miss
 instructions. So unlike the `param_1 = 6` residue, `param_1 = 5` skipping this
 prologue cannot desynchronise the draw stream inside `FUN_1000_3d11`.
 
-**Where this stopped.** What those 168 instructions *do* was not decoded, so
+~~**Where this stopped.** What those 168 instructions *do* was not decoded, so
 this entry cannot say what the cop fight gains or loses by skipping them, and
-cannot say whether `Game::run_combat` reproduces any of it. It says only that
-the prologue exists, that it is 168 instructions bounded as above, and that it
-costs no draw.
+cannot say whether `Game::run_combat` reproduces any of it.~~ **Decoded by
+Task 39 — `docs/re/combat-opener.md`.** They are a `cmp [0x3952],N` chain over
+the enemy's class that writes at most two greeting lines and does nothing else:
+zero draws (as this entry already had) and now measurably **zero** stores. So
+`param_1 = 5` skipping the prologue costs the cop fight two printed lines and
+no state at all, and `Game::run_combat` reproduces none of it because nothing
+in `src/` prints it yet. The three claims this entry made about the extent —
+168 instructions, the sole exit `1000:3e8a jmp 0x3fa7`, and the two entries
+`1000:3d29`/`1000:3d2d` — were re-derived there rather than inherited, and all
+three hold. The one wording corrected is "classes 0 and 6": 0 and 6 are
+`param_1` values (`1000:3d24 mov al,[bp+0x4]`), while the *classes* are the ten
+`[0x3952]` values the inner chain tests.
 
 Both join the population of "`FUN_1000_11c2` -- traced (Task 20), not ported"
 above, whose `1000:ae2d` (`param_1 = 3`) and `1000:ae39` (`param_1 = 4`) have
@@ -2902,3 +2921,43 @@ club card game's stake; the census (`python3 tools/re_query.py xrefs-to
 `data/other_price_sites.json` still carries `what: null` for file `0xf978`
 because Task 33 did not regenerate it; `docs/re/club.md` is the authority until
 it is.
+
+## Opened by Task 39 (mapping the opener, classifying the 117)
+
+### The two agility-reduction report lines are not printed
+
+**Established from flow.** `1000:4013` pushes CS `0x2dec`
+(`^2Из-за твоей хорошей ловкости враг сможет пнуть тебя раз # вместо #`, file
+`0x46BC`) and `1000:40b6` pushes CS `0x2e31` (its mirror,
+`^4Из-за хорошей ловкости врага ты сможешь пнуть его раз # вместо #`, file
+`0x4701`). Each is behind two gates: `1000:3ff2`/`1000:3ff5` and
+`1000:400f`/`1000:4011` for the first, `1000:4095`/`1000:4098` and
+`1000:40b2`/`1000:40b4` for the second — the defender's budget must exceed 18
+**and** the reduced budget must yield strictly fewer blows than the unreduced
+one, both printed as `(budget - 1) div 18 + 1` either side of the reduction
+(`1000:4018`).
+
+`src/combat.rs` computes the reduction — `blow_budget` is exactly
+`1000:3fa7`..`1000:3fec` — and prints **neither line**. `grep -rn "вместо" src/`
+finds only doc comments and one test comment; there is no `term::println` for
+either string anywhere in the port.
+
+It costs no draw and no state: both sites are inside the budget block, which
+`docs/re/combat.md` already establishes spends nothing. So this is missing
+OUTPUT, not a desynchronisation — but it is four branches of it, and it was
+uncatalogued until Task 39's sweep. `data/combat_uncited.json` carries
+`1000:3ff5`, `1000:4011`, `1000:4098` and `1000:40b4` as `unimplemented` with
+the strings named.
+
+### Six port constructs decide a branch by a wider predicate than the original
+
+**Established from flow, and unobservable — recorded because "unobservable" is
+an argument, not a fact.** The last link of each `cmp ax,N` chain over a
+`Random(n)` result — `1000:452b`, `1000:474e` (the crit taunt trios),
+`1000:54eb` (the charm table), `1000:559e`, `1000:564b`, `1000:572f` (the two-way
+item arms) — DROPS a value the chain does not name, while the port's `_` arm of
+a Rust `match` accepts it. The two differ only on a result the draw cannot
+produce, because `Random(3)` returns 0..2 and `Random(2)` returns 0..1 and
+`src/rng.rs` reproduces the same bound. A change to that bound, or a draw whose
+`n` grew, would break the equivalence. `data/combat_uncited.json`'s
+`port_equivalences` carries this with the assumption stated.

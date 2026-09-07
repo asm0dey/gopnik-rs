@@ -416,8 +416,26 @@ heckling (`Зрители:^6Мочи его, мочи!` and so on, files `0x4762
 **Established from flow.** It is a `cmp [0x3952],N` chain over the enemy class
 that writes one or two intro lines per arm and nothing else. Scanning
 `[0x3d11, 0x3f00)` for `9a 4b 11 78 0f` returns **zero** hits, so this block
-cannot move the generator whatever it prints. Its text is still not extracted
-— registered in `docs/re/gaps.md`.
+cannot move the generator whatever it prints.
+
+**Mapped in full by Task 39 — `docs/re/combat-opener.md`, with
+`data/combat_opener.json` and `tools/test_combat_opener.py` beside it.** The
+text is extracted: nine CS literals at files `0x452E`, `0x453B`, `0x4548`,
+`0x4565`, `0x457A`, `0x4587`, `0x4597`, `0x45A7` and `0x45B5`, ten class values
+across five printing arms and one silent default. Two things this section did
+not say:
+
+* **it also writes nothing.** The zero-draw claim never covered stores, and a
+  block that spends no draw can still move the save file. Exactly five
+  instructions in `1000:3d32`..`1000:3e8d` name memory: three absolute reads
+  (`1000:3d32` the enemy class, `1000:3e0c` and `1000:3e63` the player's) and
+  two `lea`s of a **stack** local. Zero absolute writes, and the only memory
+  the shortstring helpers touch is that local — `1000:3dec` and `1000:3e57`
+  push `ss`, not `ds`.
+* **arms 8 and 9 splice the player's own record**, not the enemy's:
+  `[0x389c] shl 8 + 0x2e` is the `DS:002e` rank table this file's fighter-record
+  section describes, and `1000:3df8` pushes `DS:379c`, the player's name — the
+  same two sources the crowd's `r = 4` and `r = 17` lines use.
 
 ### The victory block — `1000:5189`..`1000:57cc`
 

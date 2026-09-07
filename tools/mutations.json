@@ -3059,6 +3059,316 @@
       "ArmsArtifactTest.test_the_recorded_effects_are_every_absolute_write_in_range"
     ],
     "expect": "the absolute-READ sweep finds"
+  },
+  {
+    "label": "combat-opener-instruction-identity",
+    "defends": "tools/test_combat_opener.py walks every {addr,text} record in data/combat_opener.json and requires orig/g.exe to decode that instruction at that address -- the identity half of the two signals docs/re/METHODOLOGY.md keeps apart.",
+    "artifact": "data/combat_opener.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        0,
+        "prints",
+        0,
+        "text"
+      ],
+      "from": "call 0xeed:0x1c2",
+      "to": "call 0xeed:0x1c3"
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_every_recorded_instruction_decodes_to_what_the_artifact_says"
+    ],
+    "expect": "data/combat_opener.json"
+  },
+  {
+    "label": "combat-opener-string-text",
+    "defends": "Every arm's text is re-decoded from orig/g.exe as a length-prefixed CP866 shortstring at cs_offset + 0x18d0, so the nine lines this map extracted cannot drift from the bytes that hold them.  The whole point of Task 39 was that this text had never been read out.",
+    "artifact": "data/combat_opener.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        0,
+        "strings",
+        0,
+        "text"
+      ],
+      "from": "Слышь Вась..",
+      "to": "Слышь Вась."
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_every_recorded_string_re_decodes_from_the_binary"
+    ],
+    "expect": "orig/g.exe holds"
+  },
+  {
+    "label": "combat-opener-strings-completeness",
+    "defends": "strings[] is the WHOLE set of CS literals the opener pushes, measured by decoding 1000:3d32..1000:3e8d and collecting every `mov di,imm` followed by `push cs`/`push di`.  So \"these nine lines and nothing else\" is a measurement, not a list that stopped being written -- which is exactly how docs/re/gaps.md's five-file lead came to be five of nine.",
+    "artifact": "data/combat_opener.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        0,
+        "strings",
+        1,
+        "push",
+        "addr"
+      ],
+      "from": "1000:3d5d",
+      "to": "1000:3d44"
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_the_recorded_strings_are_every_cs_literal_pushed"
+    ],
+    "expect": "the CS-literal push sweep and data/combat_opener.json disagree"
+  },
+  {
+    "label": "combat-opener-sole-exit",
+    "defends": "docs/re/gaps.md asserted `whose only exit is 1000:3e8a jmp 0x3fa7` with no sweep behind it.  tools/test_combat_opener.py decodes every transfer of control in the range and requires the set leaving it to equal exactly the recorded exit, so a second exit -- or the wrong one -- goes red.",
+    "artifact": "data/combat_opener.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "exit",
+        "site",
+        "addr"
+      ],
+      "from": "1000:3e8a",
+      "to": "1000:3d76"
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_the_only_exit_is_the_one_the_artifact_records"
+    ],
+    "expect": "the artifact's `exit` disagree"
+  },
+  {
+    "label": "combat-opener-sole-entries",
+    "defends": "The companion claim, `entered only by 1000:3d29 and 1000:3d2d`, swept over EVERY aligned branch in segment 1000 rather than over the arm's neighbourhood.  An entry from anywhere else in the image would make the 168-instruction extent wrong.",
+    "artifact": "data/combat_opener.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "entered_by",
+        "sites",
+        1,
+        "addr"
+      ],
+      "from": "1000:3d2d",
+      "to": "1000:3d29"
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_the_only_entries_are_the_two_the_artifact_records"
+    ],
+    "expect": "the artifact's `entered_by` disagree"
+  },
+  {
+    "label": "combat-opener-no-store",
+    "defends": "The zero-STORE finding, which the pre-existing zero-DRAW claim never covered: a block that spends no draw can still move the save file.  tools/test_combat_opener.py buckets every instruction naming memory into WRITE / READ / lea, fails loudly on an unclassified one, and requires the WRITE bucket to be empty.",
+    "artifact": "data/combat_opener.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "sweeps",
+        "absolute_memory_writes"
+      ],
+      "from": 0,
+      "to": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_the_range_writes_no_memory_and_every_operand_is_classified"
+    ],
+    "expect": "the opener is print-only"
+  },
+  {
+    "label": "combat-opener-gate-class-order",
+    "defends": "The ten gates test [0x3952] against 0..9 in ascending address order, and each arm's `classes` must agree with the class_map.  Getting a class value wrong sends a whole arm's text to the wrong enemy, which no screen this project can capture would show.",
+    "artifact": "data/combat_opener.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "arms",
+        1,
+        "gates",
+        0,
+        "class_value"
+      ],
+      "from": 3,
+      "to": 2
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_the_gates_test_the_class_values_the_arms_claim_in_order"
+    ],
+    "expect": "does not compare against"
+  },
+  {
+    "label": "combat-uncited-row-set",
+    "defends": "data/combat_uncited.json's ROW SET is derived, never typed: tools/test_combat_opener.py reimplements docs/re/branches.md's Coverage rule and requires set equality with the file.  A row invented, dropped or misaddressed reds the test -- which is what stops the classification Task 40 is scored against from silently rotting.",
+    "artifact": "data/combat_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "branches",
+        0,
+        "addr"
+      ],
+      "from": "1000:3d38",
+      "to": "1000:3d3a"
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_combat_uncited_covers_exactly_the_derived_uncited_set"
+    ],
+    "expect": "a fresh recomputation"
+  },
+  {
+    "label": "combat-uncited-derived-total",
+    "defends": "counts.total is the DERIVED total, checked against a fresh recomputation rather than against the file's own row count.  A hard-coded 117 anywhere in this lane would be the check that cannot fail docs/re/METHODOLOGY.md names.",
+    "artifact": "data/combat_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "counts",
+        "total"
+      ],
+      "from": 117,
+      "to": 116
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_combat_uncited_covers_exactly_the_derived_uncited_set"
+    ],
+    "expect": "the recorded total is not the derived one"
+  },
+  {
+    "label": "combat-uncited-class-tally",
+    "defends": "The three class counts must be the tally of the rows and must sum to the total, so a verdict changed without its count -- or a count changed without its verdict -- cannot pass as a consistent classification.",
+    "artifact": "data/combat_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "counts",
+        "implemented"
+      ],
+      "from": 101,
+      "to": 100
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_the_recorded_counts_are_the_tally_of_the_rows"
+    ],
+    "expect": "the rows tally"
+  },
+  {
+    "label": "combat-uncited-src-pairing",
+    "defends": "An `implemented` row must name a module that exists, a function that module defines, and an expression whose every field/method name occurs in that module.  A row filed against the wrong module -- the exact defect the brief calls falsifiable by sampling -- goes red mechanically instead of only under a reviewer's eye.",
+    "artifact": "data/combat_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "branches",
+        95,
+        "src",
+        "module"
+      ],
+      "from": "src/game.rs",
+      "to": "src/progress.rs"
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_every_implemented_row_names_a_module_and_function_that_exist"
+    ],
+    "expect": "defines no `fn spoil_club`"
+  },
+  {
+    "label": "combat-uncited-src-expression",
+    "defends": "The same check's second half: every identifier in `src.expr` must occur in the named module, so a field renamed out from under a row, or an expression invented for it, is caught rather than read as plausible.",
+    "artifact": "data/combat_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "branches",
+        17,
+        "src",
+        "expr"
+      ],
+      "from": "if *prompts_seen == 5 { term::println(\"^7Начинают собираться зрители\") }",
+      "to": "if *prompts_unseen == 5 { term::println(\"^7Начинают собираться зрители\") }"
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_every_implemented_row_names_a_module_and_function_that_exist"
+    ],
+    "expect": "does not occur in src/game.rs at all"
+  },
+  {
+    "label": "combat-uncited-still-uncited",
+    "defends": "Every row must still be UNCITED in the port.  When Task 40 lands a citation the row belongs in the port, not in this file, and this is what forces the artifact to be updated rather than kept as a stale inventory.",
+    "artifact": "data/combat_uncited.json",
+    "mutate": {
+      "op": "json-append",
+      "path": [
+        "branches"
+      ],
+      "value": {
+        "addr": "1000:4135",
+        "text": "call 0xf78:0x114b",
+        "guard": null,
+        "guard_text": null,
+        "taken": "1000:413a",
+        "fallthrough": "1000:413a",
+        "class": "unimplemented",
+        "what": "a row for an address the port already cites"
+      }
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_no_row_is_cited_in_the_port_yet"
+    ],
+    "expect": "now cited in src/"
+  },
+  {
+    "label": "combat-uncited-port-equivalence",
+    "defends": "An entry of `port_equivalences` must name rows this file actually carries, and only `implemented` ones -- an equivalence filed against an `unimplemented` row is a note about a port predicate that does not exist.",
+    "artifact": "data/combat_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "port_equivalences",
+        0,
+        "rows",
+        0
+      ],
+      "from": "1000:452b",
+      "to": "1000:3d38"
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_every_port_equivalence_names_implemented_rows"
+    ],
+    "expect": "there is no port predicate for it to be equivalent to"
   }
  ]
 }

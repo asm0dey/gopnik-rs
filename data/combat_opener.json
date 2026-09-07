@@ -1,0 +1,723 @@
+{
+ "note": "The class-keyed combat opener of `orig/g.exe`: the half-open image range `1000:3d32`..`1000:3e8d`, entered only from `FUN_1000_3d11`'s `param_1` gate and mapped by Task 39 from an aligned decode, never from a screen. Prose twin: `docs/re/combat-opener.md`; re-derived from `orig/g.exe` by `tools/test_combat_opener.py`. `data/gym_arms.json` is the shape this follows. COVERAGE BOUNDARY: this artifact covers exactly that range and nothing else -- not the `param_1` 1/3/4 arms that follow it at `1000:3e8d`, `1000:3ead` and `1000:3f2b`, and not `1000:3fa7`, the blow-budget block the exit jumps to. The sweeps in `tools/test_combat_opener.py` (literals, branches, draws, absolute reads and writes, span tiling, entries, exits) are SET EQUALITIES over the range, so an omitted entry reds the test.",
+ "address_forms": "`1000:xxxx` is a Ghidra label (Form A of `docs/re/METHODOLOGY.md`) and, because the game's code segment is the load base, its OFF is also the image offset. `20ae:xxxx` is DGROUP. `0eed:` and `0f78:` are Form B runtime segments. `cs_offset` is the image offset of a Pascal shortstring's LENGTH byte -- the exact immediate of the `mov di,imm16` that pushes it -- and `file_offset` is that plus the 0x18d0-byte MZ header, which is what `data/strings.json` keys on.",
+ "range": {
+  "start": "1000:3d32",
+  "end": "1000:3e8d",
+  "instruction_count": 168,
+  "note": "Half-open. `1000:3d32` IS the `mov ax,[0x3952]` that loads the key; `1000:3e8d` is the `param_1 == 1` compare and is NOT part of this map. The 168-instruction count is `docs/re/gaps.md`'s, re-measured here from an aligned walk that tiles the range with no gap and no overlap."
+ },
+ "entered_by": {
+  "sites": [
+   {
+    "addr": "1000:3d29",
+    "text": "jz 0x3d32"
+   },
+   {
+    "addr": "1000:3d2d",
+    "text": "jz 0x3d32"
+   }
+  ],
+  "setup": {
+   "addr": "1000:3d24",
+   "text": "mov al,[bp+0x4]"
+  },
+  "gates": [
+   {
+    "addr": "1000:3d27",
+    "text": "cmp al,0x0"
+   },
+   {
+    "addr": "1000:3d2b",
+    "text": "cmp al,0x6"
+   }
+  ],
+  "miss": {
+   "addr": "1000:3d2f",
+   "text": "jmp 0x3e8d"
+  },
+  "claim": "Exactly two branches image-wide target any address in `[1000:3d32, 1000:3e8d)` from outside it, and both target the range's first instruction. `1000:3d24 mov al,[bp+0x4]` is the FUNCTION PARAMETER, not the enemy class: `param_1` 0 and 6 reach the opener and everything else takes `1000:3d2f jmp 0x3e8d`.",
+  "tier": "established from flow",
+  "inherited_from": "docs/re/gaps.md, 'the arm 0 and 6 actually take is 1000:3d32..1000:3e8d'. VERIFIED here, not inherited: the entry-site sweep and the 168-instruction walk both reproduce it. The one wording this map corrects is 'classes 0 and 6' -- 0 and 6 are `param_1` values; the CLASSES this chain keys on are the ten `[0x3952]` values below."
+ },
+ "exit": {
+  "site": {
+   "addr": "1000:3e8a",
+   "text": "jmp 0x3fa7"
+  },
+  "target": "1000:3fa7",
+  "claim": "`1000:3e8a jmp 0x3fa7` is the ONLY control transfer out of the range: every other branch and jump inside it targets an address inside it. Five arms jump to it (`1000:3d76`, `1000:3dbf`, `1000:3de0`, `1000:3e33`) or fall into it (arm 9, and the silent default via `1000:3e38 jnz 0x3e8a`).",
+  "tier": "established from flow",
+  "inherited_from": "docs/re/gaps.md, 'whose only exit is 1000:3e8a jmp 0x3fa7'. VERIFIED here by decoding every transfer in the range."
+ },
+ "key": {
+  "ds": "20ae:3952",
+  "what": "the ROLLED ENEMY's class -- record offset +0x00, `.SAV` 0x200, the rank/class name index (docs/re/combat.md's fighter-record table)",
+  "load": {
+   "addr": "1000:3d32",
+   "text": "mov ax,[0x3952]"
+  },
+  "xrefs": {
+   "command": "python3 tools/re_query.py xrefs-to 20ae:3952",
+   "raw_hits": 45,
+   "accepted": 45,
+   "discarded": 0,
+   "by_function": {
+    "FUN_1000_0d14": 30,
+    "entry": 8,
+    "FUN_1000_3d11": 4,
+    "FUN_1000_1348": 2,
+    "FUN_1000_11c2": 1
+   },
+   "in_fun_1000_3d11": [
+    {
+     "at": "1000:3d32",
+     "text": "mov ax,[0x3952]",
+     "what": "this map's key load"
+    },
+    {
+     "at": "1000:528b",
+     "text": "mov ax,[0x3952]",
+     "what": "the victory block's понтовость award"
+    },
+    {
+     "at": "1000:541b",
+     "text": "mov ax,[0x3952]",
+     "what": "the joint arm's `class == 2` test"
+    },
+    {
+     "at": "1000:5473",
+     "text": "mov ax,[0x3952]",
+     "what": "the item table's class key"
+    }
+   ],
+   "note": "All four references inside `FUN_1000_3d11` are LOADS; not one of the function's 45 accepted references writes it. The writers are `FUN_1000_0d14` (the wander's enemy generator, clamped to 9 at 1000:0da1) and `FUN_1000_11c2` (1000:11d0 `mov word [0x3952],0xa`, the rector)."
+  }
+ },
+ "arms": [
+  {
+   "name": "arm_0_1_2",
+   "classes": [
+    0,
+    1,
+    2
+   ],
+   "target": "1000:3d44",
+   "span": {
+    "start": "1000:3d44",
+    "end": "1000:3d79"
+   },
+   "gates": [
+    {
+     "class_value": 0,
+     "compare": {
+      "addr": "1000:3d35",
+      "text": "cmp ax,0x0"
+     },
+     "branch": {
+      "addr": "1000:3d38",
+      "text": "jz 0x3d44"
+     },
+     "taken": "1000:3d44",
+     "fallthrough": "1000:3d3a"
+    },
+    {
+     "class_value": 1,
+     "compare": {
+      "addr": "1000:3d3a",
+      "text": "cmp ax,0x1"
+     },
+     "branch": {
+      "addr": "1000:3d3d",
+      "text": "jz 0x3d44"
+     },
+     "taken": "1000:3d44",
+     "fallthrough": "1000:3d3f"
+    },
+    {
+     "class_value": 2,
+     "compare": {
+      "addr": "1000:3d3f",
+      "text": "cmp ax,0x2"
+     },
+     "branch": {
+      "addr": "1000:3d42",
+      "text": "jnz 0x3d79"
+     },
+     "taken": "1000:3d79",
+     "fallthrough": "1000:3d44"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x2c5e",
+     "file_offset": "0x0452e",
+     "length": 12,
+     "text": "Слышь Вась..",
+     "push": {
+      "addr": "1000:3d44",
+      "text": "mov di,0x2c5e"
+     }
+    },
+    {
+     "cs_offset": "0x2c6b",
+     "file_offset": "0x0453b",
+     "length": 12,
+     "text": "^4А чё ваще?",
+     "push": {
+      "addr": "1000:3d5d",
+      "text": "mov di,0x2c6b"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:3d58",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:3d71",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "fills": [],
+   "exit": {
+    "addr": "1000:3d76",
+    "text": "jmp 0x3e8a"
+   },
+   "note": "Two plain WriteLn lines. `1000:3d42 jnz 0x3d79` is the only one of the three gates that leaves the arm; 0 and 1 fall in through their own `jz`."
+  },
+  {
+   "name": "arm_3_4_5_6",
+   "classes": [
+    3,
+    4,
+    5,
+    6
+   ],
+   "target": "1000:3d8d",
+   "span": {
+    "start": "1000:3d8d",
+    "end": "1000:3dc2"
+   },
+   "gates": [
+    {
+     "class_value": 3,
+     "compare": {
+      "addr": "1000:3d79",
+      "text": "cmp ax,0x3"
+     },
+     "branch": {
+      "addr": "1000:3d7c",
+      "text": "jz 0x3d8d"
+     },
+     "taken": "1000:3d8d",
+     "fallthrough": "1000:3d7e"
+    },
+    {
+     "class_value": 4,
+     "compare": {
+      "addr": "1000:3d7e",
+      "text": "cmp ax,0x4"
+     },
+     "branch": {
+      "addr": "1000:3d81",
+      "text": "jz 0x3d8d"
+     },
+     "taken": "1000:3d8d",
+     "fallthrough": "1000:3d83"
+    },
+    {
+     "class_value": 5,
+     "compare": {
+      "addr": "1000:3d83",
+      "text": "cmp ax,0x5"
+     },
+     "branch": {
+      "addr": "1000:3d86",
+      "text": "jz 0x3d8d"
+     },
+     "taken": "1000:3d8d",
+     "fallthrough": "1000:3d88"
+    },
+    {
+     "class_value": 6,
+     "compare": {
+      "addr": "1000:3d88",
+      "text": "cmp ax,0x6"
+     },
+     "branch": {
+      "addr": "1000:3d8b",
+      "text": "jnz 0x3dc2"
+     },
+     "taken": "1000:3dc2",
+     "fallthrough": "1000:3d8d"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x2c78",
+     "file_offset": "0x04548",
+     "length": 28,
+     "text": "^4Пацан ты из какого района?",
+     "push": {
+      "addr": "1000:3d8d",
+      "text": "mov di,0x2c78"
+     }
+    },
+    {
+     "cs_offset": "0x2c95",
+     "file_offset": "0x04565",
+     "length": 20,
+     "text": "А ты по пинкам суди!",
+     "push": {
+      "addr": "1000:3da6",
+      "text": "mov di,0x2c95"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:3da1",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:3dba",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "fills": [],
+   "exit": {
+    "addr": "1000:3dbf",
+    "text": "jmp 0x3e8a"
+   },
+   "note": "The widest arm: four class values, two plain lines. Class 6 is the LAST link, `1000:3d8b jnz 0x3dc2`."
+  },
+  {
+   "name": "arm_7",
+   "classes": [
+    7
+   ],
+   "target": "1000:3dc7",
+   "span": {
+    "start": "1000:3dc7",
+    "end": "1000:3de3"
+   },
+   "gates": [
+    {
+     "class_value": 7,
+     "compare": {
+      "addr": "1000:3dc2",
+      "text": "cmp ax,0x7"
+     },
+     "branch": {
+      "addr": "1000:3dc5",
+      "text": "jnz 0x3de3"
+     },
+     "taken": "1000:3de3",
+     "fallthrough": "1000:3dc7"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x2caa",
+     "file_offset": "0x0457a",
+     "length": 12,
+     "text": "^4Эй мудак?!",
+     "push": {
+      "addr": "1000:3dc7",
+      "text": "mov di,0x2caa"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:3ddb",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "fills": [],
+   "exit": {
+    "addr": "1000:3de0",
+    "text": "jmp 0x3e8a"
+   },
+   "note": "One line, the shortest arm."
+  },
+  {
+   "name": "arm_8",
+   "classes": [
+    8
+   ],
+   "target": "1000:3de8",
+   "span": {
+    "start": "1000:3de8",
+    "end": "1000:3e35"
+   },
+   "gates": [
+    {
+     "class_value": 8,
+     "compare": {
+      "addr": "1000:3de3",
+      "text": "cmp ax,0x8"
+     },
+     "branch": {
+      "addr": "1000:3de6",
+      "text": "jnz 0x3e35"
+     },
+     "taken": "1000:3e35",
+     "fallthrough": "1000:3de8"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x2cb7",
+     "file_offset": "0x04587",
+     "length": 15,
+     "text": "^4Блин! это же ",
+     "push": {
+      "addr": "1000:3dee",
+      "text": "mov di,0x2cb7"
+     }
+    },
+    {
+     "cs_offset": "0x2cc7",
+     "file_offset": "0x04597",
+     "length": 15,
+     "text": "^4 - известный ",
+     "push": {
+      "addr": "1000:3e02",
+      "text": "mov di,0x2cc7"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:3e2e",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "fills": [
+    {
+     "role": "buffer",
+     "at": {
+      "addr": "1000:3de8",
+      "text": "lea di,[bp-0x218]"
+     },
+     "what": "`lea di,[bp-0x218]`, the STACK local the line is built in -- pushed with `push ss`, not `push ds`"
+    },
+    {
+     "role": "assign",
+     "at": {
+      "addr": "1000:3df3",
+      "text": "call 0xf78:0xae7"
+     },
+     "what": "rtl_str_assign: local := CS 0x2cb7"
+    },
+    {
+     "role": "append",
+     "at": {
+      "addr": "1000:3dfd",
+      "text": "call 0xf78:0xb66"
+     },
+     "what": "rtl_str_append: += the player's name at 20ae:379c (pushed at 1000:3df8)"
+    },
+    {
+     "role": "append",
+     "at": {
+      "addr": "1000:3e07",
+      "text": "call 0xf78:0xb66"
+     },
+     "what": "rtl_str_append: += CS 0x2cc7"
+    },
+    {
+     "role": "append",
+     "at": {
+      "addr": "1000:3e1a",
+      "text": "call 0xf78:0xb66"
+     },
+     "what": "rtl_str_append: += ranks[[0x389c]] -- 1000:3e0c loads the PLAYER's class, 1000:3e10/1000:3e12 shift it by 8 and 1000:3e14 adds 0x2e, which is the DS:002e 256-byte-stride table data/string_tables.json carries"
+    }
+   ],
+   "ds_pointer_pushes": [
+    {
+     "addr": "1000:3df8",
+     "text": "mov di,0x379c"
+    },
+    {
+     "addr": "1000:3e0c",
+     "text": "mov di,[0x389c]"
+    }
+   ],
+   "exit": {
+    "addr": "1000:3e33",
+    "text": "jmp short 0x3e8a"
+   },
+   "note": "The enemy recognises the player by name and rank. The `call 0eed:01c2` at 1000:3e2e has no visible string push because rtl_str_assign / rtl_str_append return with `retf 0x4`: each pops only its SOURCE and leaves the destination far pointer on the stack for WriteLn's `retf 0xe` (docs/re/den.md)."
+  },
+  {
+   "name": "arm_9",
+   "classes": [
+    9
+   ],
+   "target": "1000:3e3a",
+   "span": {
+    "start": "1000:3e3a",
+    "end": "1000:3e8a"
+   },
+   "gates": [
+    {
+     "class_value": 9,
+     "compare": {
+      "addr": "1000:3e35",
+      "text": "cmp ax,0x9"
+     },
+     "branch": {
+      "addr": "1000:3e38",
+      "text": "jnz 0x3e8a"
+     },
+     "taken": "1000:3e8a",
+     "fallthrough": "1000:3e3a"
+    }
+   ],
+   "strings": [
+    {
+     "cs_offset": "0x2cd7",
+     "file_offset": "0x045a7",
+     "length": 13,
+     "text": "^4Я МАНЬЯК!!!",
+     "push": {
+      "addr": "1000:3e3a",
+      "text": "mov di,0x2cd7"
+     }
+    },
+    {
+     "cs_offset": "0x2ce5",
+     "file_offset": "0x045b5",
+     "length": 20,
+     "text": "Рад познакомиться - ",
+     "push": {
+      "addr": "1000:3e59",
+      "text": "mov di,0x2ce5"
+     }
+    }
+   ],
+   "prints": [
+    {
+     "addr": "1000:3e4e",
+     "text": "call 0xeed:0x1c2"
+    },
+    {
+     "addr": "1000:3e85",
+     "text": "call 0xeed:0x1c2"
+    }
+   ],
+   "fills": [
+    {
+     "role": "buffer",
+     "at": {
+      "addr": "1000:3e53",
+      "text": "lea di,[bp-0x218]"
+     },
+     "what": "`lea di,[bp-0x218]`, the same stack local arm 8 uses"
+    },
+    {
+     "role": "assign",
+     "at": {
+      "addr": "1000:3e5e",
+      "text": "call 0xf78:0xae7"
+     },
+     "what": "rtl_str_assign: local := CS 0x2ce5"
+    },
+    {
+     "role": "append",
+     "at": {
+      "addr": "1000:3e71",
+      "text": "call 0xf78:0xb66"
+     },
+     "what": "rtl_str_append: += ranks[[0x389c]] -- 1000:3e63 loads the PLAYER's class, 1000:3e67/1000:3e69 shift and 1000:3e6b adds 0x2e"
+    }
+   ],
+   "ds_pointer_pushes": [
+    {
+     "addr": "1000:3e6f",
+     "text": "push ds"
+    }
+   ],
+   "exit": {
+    "addr": "1000:3e8a",
+    "text": "jmp 0x3fa7",
+    "kind": "fall-through into the shared exit"
+   },
+   "note": "Two lines: a plain WriteLn first, then the composed one. This arm does NOT jump to the exit -- it falls into it."
+  },
+  {
+   "name": "arm_default_silent",
+   "classes": ">= 10",
+   "target": "1000:3e8a",
+   "span": {
+    "start": "1000:3e8a",
+    "end": "1000:3e8d"
+   },
+   "gates": [],
+   "strings": [],
+   "prints": [],
+   "fills": [],
+   "exit": {
+    "addr": "1000:3e8a",
+    "text": "jmp 0x3fa7"
+   },
+   "note": "`1000:3e38 jnz 0x3e8a` is the chain's last miss, so any value of [0x3952] the ten compares do not name reaches the exit having printed NOTHING. Such a value is written: 1000:11d0 `mov word [0x3952],0xa` in FUN_1000_11c2 stores 10, the Ректор НГУ row of data/string_tables.json's `ranks`, while the wander's own generator FUN_1000_0d14 clamps its roll at 9 (1000:0d9a `cmp word [0x3952],0x9` / 1000:0d9f `jle` / 1000:0da1 `mov word [0x3952],0x9`). WHETHER THIS ARM EVER RUNS IS NOT ESTABLISHED: it also needs a call whose param_1 is 0 or 6 while the word still holds that value, and the two rector fights docs/re/combat-dispatch.md names pass kinds 3 and 4 (1000:ae2d, 1000:ae39), which take 1000:3d2f jmp 0x3e8d and never enter this range. Recorded as open, not resolved by symmetry."
+  }
+ ],
+ "class_map": {
+  "0": "arm_0_1_2",
+  "1": "arm_0_1_2",
+  "2": "arm_0_1_2",
+  "3": "arm_3_4_5_6",
+  "4": "arm_3_4_5_6",
+  "5": "arm_3_4_5_6",
+  "6": "arm_3_4_5_6",
+  "7": "arm_7",
+  "8": "arm_8",
+  "9": "arm_9",
+  "default": "arm_default_silent"
+ },
+ "class_map_note": "TEN class values, SIX arms. The brief's phrase 'ten class arms' counts the ten `cmp ax,N` links; five of them print, and the eleventh case -- everything the chain does not name -- prints nothing at all.",
+ "globals": [
+  {
+   "ds": "20ae:3952",
+   "name": "enemy class",
+   "role": "key",
+   "kind": "absolute_read",
+   "sites": [
+    {
+     "addr": "1000:3d32",
+     "text": "mov ax,[0x3952]"
+    }
+   ],
+   "written_in_range": []
+  },
+  {
+   "ds": "20ae:389c",
+   "name": "player class",
+   "role": "ranks index",
+   "kind": "absolute_read",
+   "sites": [
+    {
+     "addr": "1000:3e0c",
+     "text": "mov di,[0x389c]"
+    },
+    {
+     "addr": "1000:3e63",
+     "text": "mov di,[0x389c]"
+    }
+   ],
+   "written_in_range": []
+  },
+  {
+   "ds": "20ae:379c",
+   "name": "player name",
+   "role": "spliced text",
+   "kind": "immediate_ds_pointer",
+   "sites": [
+    {
+     "addr": "1000:3df8",
+     "text": "mov di,0x379c"
+    }
+   ],
+   "written_in_range": [],
+   "note": "`1000:3df8 mov di,0x379c` loads an IMMEDIATE DGROUP offset, pushed with `push ds` at 1000:3dfb so rtl_str_append can read the string. It is not an absolute-memory operand and so is not in the absolute-read sweep; conflating the two kinds is how a read census over-counts."
+  }
+ ],
+ "spans": [
+  {
+   "name": "dispatch_chain_head",
+   "start": "1000:3d32",
+   "end": "1000:3d44"
+  },
+  {
+   "name": "arm_0_1_2",
+   "start": "1000:3d44",
+   "end": "1000:3d79"
+  },
+  {
+   "name": "arm_3_4_5_6_gates",
+   "start": "1000:3d79",
+   "end": "1000:3d8d"
+  },
+  {
+   "name": "arm_3_4_5_6",
+   "start": "1000:3d8d",
+   "end": "1000:3dc2"
+  },
+  {
+   "name": "arm_7_gate",
+   "start": "1000:3dc2",
+   "end": "1000:3dc7"
+  },
+  {
+   "name": "arm_7",
+   "start": "1000:3dc7",
+   "end": "1000:3de3"
+  },
+  {
+   "name": "arm_8_gate",
+   "start": "1000:3de3",
+   "end": "1000:3de8"
+  },
+  {
+   "name": "arm_8",
+   "start": "1000:3de8",
+   "end": "1000:3e35"
+  },
+  {
+   "name": "arm_9_gate",
+   "start": "1000:3e35",
+   "end": "1000:3e3a"
+  },
+  {
+   "name": "arm_9",
+   "start": "1000:3e3a",
+   "end": "1000:3e8a"
+  },
+  {
+   "name": "exit",
+   "start": "1000:3e8a",
+   "end": "1000:3e8d"
+  }
+ ],
+ "spans_note": "The eleven spans tile `1000:3d32`..`1000:3e8d` end to end with no gap and no overlap, so a block cannot be dropped from the map by being left out of every span. Each arm's own gates are a separate span from its body because the gates for classes 0..2 sit BEFORE the first body while every later arm's gates sit after the previous body -- the chain is not laid out symmetrically.",
+ "sweeps": {
+  "note": "Measured over the half-open range `1000:3d32`..`1000:3e8d` by an aligned walk from `FUN_1000_3d11`'s own entry. `tools/test_combat_opener.py` recomputes every one of these and asserts SET EQUALITY against the records above, so a number here that stopped being true reds the test.",
+  "instructions": 168,
+  "conditional_branches": 10,
+  "unconditional_jumps": 5,
+  "cs_literal_pushes": 9,
+  "random_call_sites": 0,
+  "random_call_sites_note": "A zero proves nothing on its own, so the same `9a 4b 11 78 0f` signature is swept over the WHOLE image in the test and required to find 86 -- the population docs/re/METHODOLOGY.md records. Without that second half this would be the check that cannot fail.",
+  "absolute_memory_writes": 0,
+  "absolute_memory_reads": 3,
+  "memory_operand_instructions": 5,
+  "memory_operand_note": "Only five instructions in the range name memory at all: 1000:3d32, 1000:3e0c and 1000:3e63 READ an absolute DGROUP word, and 1000:3de8 / 1000:3e53 are `lea` -- address arithmetic, not an access. There is no `stos`, no `movs`, no `rep` and no write through a register operand.",
+  "writeln_calls": 8,
+  "str_assign_calls": 2,
+  "str_append_calls": 4,
+  "ds_pointer_pushes": 3,
+  "ss_pointer_pushes": 2
+ },
+ "no_store_finding": {
+  "claim": "The opener writes NO game state. Not one instruction in `1000:3d32`..`1000:3e8d` writes an absolute DGROUP address, and the only memory the two shortstring helpers write is the STACK local at `ss:[bp-0x218]` (`1000:3de8` / `1000:3e53` push `ss`, not `ds`).",
+  "tier": "established from flow",
+  "why_it_needed_saying": "docs/re/gaps.md and docs/re/combat.md had established the zero-DRAW claim (no `9a 4b 11 78 0f` in the range) and said nothing about stores. A block that spends no draw can still move the save file; this sweep is what rules that out.",
+  "consequence": "Porting the opener cannot change a single byte of state or a single RNG draw: it is print-only, so `tests/combat_sequence.rs` and the five frozen oracles are unaffected by it."
+ },
+ "branch_census": {
+  "note": "`data/branches.json` records ten `class == \"game\"` branches in the range and all ten were `port_touched: false` when Task 39 mapped it. Recompute with the block under 'Recomputation, from the shipped artifacts -> Coverage' in docs/re/branches.md, filtered to `func_entry == \"1000:3d11\"`.",
+  "range": [
+   "1000:3d32",
+   "1000:3e8d"
+  ],
+  "branches": 10,
+  "port_touched_false_at_task_39": 10
+ }
+}
