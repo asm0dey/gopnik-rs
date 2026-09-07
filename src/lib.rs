@@ -2,6 +2,7 @@ pub mod character_sheet;
 pub mod club;
 pub mod combat;
 pub mod combat_dispatch;
+pub mod combat_opener;
 pub mod commands;
 pub mod data;
 pub mod game;

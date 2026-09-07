@@ -63,8 +63,9 @@
 
 use crate::character_sheet;
 use crate::club;
-use crate::combat::{blows_per_round, resolve_blow_nth, Break, Swing};
+use crate::combat::{self, blows_per_round, resolve_blow_nth, Break, Swing};
 use crate::combat_dispatch::{self, Backup, Called, Shot, Status};
+use crate::combat_opener;
 use crate::commands::{parse, Command};
 use crate::data;
 use crate::gym;
@@ -2258,7 +2259,7 @@ impl Game {
         term::print(&Self::rank_name(enemy.class));
         term::println(&text::fill(" # уровня.", &[enemy.level as i64]));
         // 1000:dc58/1000:dc5b -- FUN_1000_3d11(6). See the doc above.
-        self.run_combat(enemy, lines)?;
+        self.run_combat(6, enemy, lines)?;
         // 1000:dc5e, AFTER the fight returns.
         self.den_errand_1_pending = false;
         Ok(())
@@ -2465,7 +2466,7 @@ impl Game {
                 // `Мент` of data/string_tables.json's `ranks`.
                 let cop = self.roll_enemy(2);
                 // 1000:ddf9/1000:ddfc -- param_1 = 5, see the doc above.
-                self.run_combat(cop, lines)?;
+                self.run_combat(5, cop, lines)?;
                 term::println("^6Пора валить!"); // 1000:ddff, CS 0xa075
             } else {
                 term::println("^2Ты смылся от ментов."); // 1000:de1a, CS 0xa084
@@ -2943,13 +2944,13 @@ impl Game {
         };
         let answer = line?;
         if answer.trim().eq_ignore_ascii_case("y") {
-            self.run_combat(enemy, lines)?;
+            self.run_combat(0, enemy, lines)?;
         } else if !aggressive {
             // 1000:b696 -- the quiet arm has no decline roll at all: a
             // non-`y` answer simply ends the turn.
         } else if self.rng.below_at("1000:b725", 2) == 0 {
             term::println("^4Он тебя заметил.");
-            self.run_combat(enemy, lines)?;
+            self.run_combat(0, enemy, lines)?;
         } else {
             term::println("^2Ты смылся.");
         }
@@ -3004,7 +3005,7 @@ impl Game {
             return Ok(());
         }
         term::println("^4Запалил!");
-        self.run_combat(enemy, lines)
+        self.run_combat(0, enemy, lines)
     }
 
     /// `1000:aea1`..`1000:b3b9`: everything a walk does before the bucket
@@ -3881,7 +3882,10 @@ impl Game {
             term::println("^4Ты не схавать колёса из-за сломаной челюсти.");
             return;
         }
-        // 1000:e9a0 / 1000:e9a5 -- 1000:e9a7 jumps to 1000:ea71.
+        // 1000:e9a0 / 1000:e9a5 -- 1000:e9a7 jumps to 1000:ea71. The fight
+        // copy is 1000:4b3a `cmp byte [0x38cd],0x0` / 1000:4b3f `jz 0x4b44`,
+        // with the sense inverted: there a ZERO countdown falls INTO the
+        // smoke and a non-zero takes 1000:4b41 `jmp 0x4c0b` to the refusal.
         if self.player.stoned {
             term::println("^6Ты неможешь схавать ещё один косяк.");
             return;
@@ -3903,6 +3907,11 @@ impl Game {
         self.player.dmg_max += 2;
         // 1000:e9cb..1000:e9ce build the shortfall; 1000:e9d2 / 1000:e9d5
         // pick the branch, and a NEGATIVE shortfall lands on this one too.
+        // The fight copy is 1000:4b6c `cmp ax,0xa` / 1000:4b6f `jnl 0x4bb3`,
+        // on the same SIGNED `hpmax - hp`: `saturating_sub` gives 0 where
+        // the original gives a negative, and both are below 10, so the two
+        // take the same arm (`data/combat_uncited.json`'s
+        // `port_equivalences` states that assumption).
         let shortfall = self.player.hpmax.saturating_sub(self.player.hp);
         if shortfall < 10 {
             term::print(&text::fill("^2Колёса прибавляют #з. ", &[shortfall as i64]));
@@ -5418,8 +5427,34 @@ impl Game {
     /// in `1000:48eb`..`1000:4afb`. That is what makes run A turn 7 of
     /// `data/rng_trace.json` -- a cop fight entered and fled -- show zero
     /// draws between `1000:b792` and the next turn's `1000:af68`.
+    ///
+    /// ## `opponent_kind` IS `param_1`, and only one of its five effects is
+    /// modelled
+    ///
+    /// The argument is `FUN_1000_3d11`'s own `bp+4`, and every caller passes
+    /// the literal its original call site pushes: 0 at the wander's
+    /// `1000:b826`/`1000:b829`, 6 at the den's `1000:dc5b`, 5 at the den
+    /// job's `1000:ddfc`, 2 at the club's `1000:e222`. Task 40 widened the
+    /// signature for exactly ONE of the five things the original does with
+    /// it -- the opener gate below (`1000:3d27`..`1000:3d2f`). **The other
+    /// four are still unported and `docs/re/gaps.md` is the authority**, not
+    /// this argument's presence:
+    ///
+    /// * `1000:51b9`..`1000:51e9`, the XP award, is skipped for `param_1` in
+    ///   `{3, 4}`; this method still awards unconditionally.
+    /// * `1000:5085 cmp byte [bp+0x4],0x4` selects a separate victory ending
+    ///   for 4 -- `FUN_1000_074b(1)` -- never traced by this project.
+    /// * `1000:57ce cmp byte [bp+0x4],0x6` gates `1000:57d4`..`1000:5838`,
+    ///   47 instructions holding a понтовость award, an xp award, two lines
+    ///   and `FUN_1000_2526(0)`, **which spends draws**.
+    /// * the `param_1` 1 / 3 / 4 arms at `1000:3e8d`, `1000:3ead` and
+    ///   `1000:3f2b` print their own text and are not ported.
+    ///
+    /// So a non-`{0, 6}` value reaching here still runs the ordinary fight;
+    /// what it now also does, correctly, is skip the greeting.
     pub(crate) fn run_combat(
         &mut self,
+        opponent_kind: u8,
         mut enemy: Fighter,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
     ) -> io::Result<()> {
@@ -5428,6 +5463,41 @@ impl Game {
             if let Some(log) = self.fight_log.as_mut() {
                 log.fights.push((at, enemy.clone()));
             }
+        }
+        // 1000:3d24 `mov al,[bp+0x4]` / 1000:3d27 `cmp al,0x0` /
+        // 1000:3d29 `jz 0x3d32` / 1000:3d2b `cmp al,0x6` /
+        // 1000:3d2d `jz 0x3d32` -- the OUTER chain, on `param_1`. Everything
+        // else takes 1000:3d2f `jmp 0x3e8d` and skips the opener entirely,
+        // which is why the den's cop fight (`param_1 = 5`) and the club's
+        // (`param_1 = 2`) are silent here. `crate::combat_opener` is the arm
+        // and `docs/re/combat-opener.md` the map.
+        if matches!(opponent_kind, 0 | 6) {
+            combat_opener::greet(
+                enemy.class,
+                &self.player.name,
+                &Self::rank_name(self.player.class),
+            );
+        }
+        // 1000:3fa7..1000:40e5 -- the two blow budgets and the two lines that
+        // report the reduction. Both run whatever `param_1` was: the opener's
+        // exit 1000:3e8a `jmp 0x3fa7` and the chain's own misses all land
+        // here. `crate::combat::budget_report` carries the gates.
+        //
+        // The enemy's budget first (1000:3fa7, `[0x3956] + 4` cut down by the
+        // player's `[0x38a0] + 4`), then the player's (1000:404a, the mirror).
+        if let Some((reduced, unreduced)) = combat::budget_report(&enemy, &self.player) {
+            // 1000:4013, CS 0x2dec / file 0x46BC, printed at 1000:403d.
+            term::println(&text::fill(
+                "^2Из-за твоей хорошей ловкости враг сможет пнуть тебя раз # вместо #",
+                &[i64::from(reduced), i64::from(unreduced)],
+            ));
+        }
+        if let Some((reduced, unreduced)) = combat::budget_report(&self.player, &enemy) {
+            // 1000:40b6, CS 0x2e31 / file 0x4701, printed at 1000:40e0.
+            term::println(&text::fill(
+                "^4Из-за хорошей ловкости врага ты сможешь пнуть его раз # вместо #",
+                &[i64::from(reduced), i64::from(unreduced)],
+            ));
         }
         // 1000:40ed `c6 86 ed fe 00` -- `mov byte [bp-0x113],0`, OUTSIDE the
         // prompt loop whose top is 1000:40f2 (its back edge is 1000:583e
@@ -5484,7 +5554,9 @@ impl Game {
 
             // 1000:48dc -- combat's own `run` compare, ahead of everything
             // `parse` knows about (`parse` folds `w` and `run` into
-            // `Command::Walk`).
+            // `Command::Walk`). 1000:48e1 is the `call 0f78:0bd8` and
+            // 1000:48e6 `jz 0x48eb` the branch it sets ZF for; the miss is
+            // 1000:48e8 `jmp 0x4afb`.
             if line.trim().eq_ignore_ascii_case("run") {
                 fled = self.flee();
             }
@@ -5494,16 +5566,19 @@ impl Game {
             match cmd {
                 Command::Drink => self.beer(Beer::One),
                 Command::BingeDrink => self.beer(Beer::Binge),
-                // 1000:4b0d, token file 0x4D81 -> the arm at 1000:4b17.
+                // 1000:4b0d, token file 0x4D81 -> the arm at 1000:4b17,
+                // reached by 1000:4b12 `jz 0x4b17`.
                 Command::Joint => self.smoke(Joint::Fight),
                 // 1000:4c2e, token CS 0x359f -> 1000:4c35 `call 0x1a03`, the
                 // PLAYER's sheet (Task 16, `docs/re/character-sheet.md`).
+                // 1000:4c33 `jnz 0x4c38` is the miss that skips the call.
                 Command::Stats => self.show_stats(),
                 // 1000:4c42, token CS 0x35a1 -> 1000:4c49 `call 0x1348`, the
                 // ENEMY's sheet -- a different function, settled in Task 17.
                 // `FUN_1000_1348` references no address in the player's
                 // record at all, so `print_enemy_block` is the right callee
                 // here and `show_stats` would be the wrong one.
+                // 1000:4c47 `jnz 0x4c4c` is this compare's own miss.
                 Command::Inspect => self.print_enemy_block(&enemy),
                 _ => {}
             }
@@ -5524,6 +5599,8 @@ impl Game {
             // never materialised inside `FUN_1000_3d11`, so `exit` typed
             // here falls through the whole chain and prints nothing, like
             // any other unmatched line.
+            // 1000:4c5b `jnz 0x4c64` is the miss; the hit falls through to
+            // 1000:4c5d.
             if line.trim().eq_ignore_ascii_case("e") {
                 self.last_enemy = Some(enemy);
                 self.running = false;
@@ -5532,13 +5609,18 @@ impl Game {
 
             // 1000:4c64 `cmp word [0x3c80],1` / `jl 0x4ca0` guards the SECOND
             // `k` compare at 1000:4c75, so the countdown only ticks once the
-            // backup has been called.
+            // backup has been called. The three conjuncts below are the
+            // original's three branches, in its order: 1000:4c64's guard,
+            // then 1000:4c7a `jnz 0x4ca0` (the `k` compare missed), then
+            // 1000:4c80 `cmp word [0x3c80],0x3` / 1000:4c85 -- which is what
+            // `tick_on_attack` returns.
             if backup.count() >= 1 && cmd == Command::Fight && backup.tick_on_attack() {
                 // 1000:4c87, CS 0x35a6 -- the copy WITHOUT the trailing dot.
                 term::println("^2Подошли пацаны - Ща начнется!");
             }
 
-            // 1000:4caa, token CS 0x35c6 -> the arm at 1000:4cb4.
+            // 1000:4caa, token CS 0x35c6 -> the arm at 1000:4cb4, entered
+            // by 1000:4caf `jz 0x4cb4`.
             if cmd == Command::Backup {
                 self.backup_in_fight(&mut backup);
             }
@@ -5552,7 +5634,8 @@ impl Game {
             let mut ehp = i32::from(enemy.hp);
             self.backup_attacks(&mut backup, &mut ehp, &enemy);
 
-            // 1000:4ea8, token CS 0x3714 -> the arm at 1000:4eb2. There is no
+            // 1000:4ea8, token CS 0x3714 -> the arm at 1000:4eb2, entered
+            // by 1000:4ead `jz 0x4eb2`. There is no
             // enemy-alive gate on it, unlike the backup block's 1000:4d93 --
             // so a shot fired in the same prompt the backup landed a killing
             // blow still lands, and its `У него осталось #` is negative.
@@ -5900,11 +5983,20 @@ impl Game {
         let bill = Self::round_half(6 * i32::from(self.player.hpmax) / 5);
         self.player.money -= bill;
         self.player.hp = self.player.hpmax;
+        // The two limb tests are one DISJUNCTION, and the original writes it
+        // as two branches into the same block at 1000:502c: 1000:501e
+        // `cmp byte [0x38b0],0x1` / 1000:5023 `jz 0x502c` enters on a broken
+        // jaw, and 1000:5025 `cmp byte [0x38b1],0x1` / 1000:502a
+        // `jnz 0x503b` leaves only when the leg is unbroken too.
         if self.player.broken_jaw || self.player.broken_leg {
             self.player.money -= 7;
             self.player.broken_jaw = false;
             self.player.broken_leg = false;
         }
+        // 1000:503b `cmp word [0x38c7],0x0` / 1000:5040 `jnl 0x5051` -- a
+        // purse driven NEGATIVE by the bill is settled out of street cred
+        // (1000:5042..1000:504e), and the test is signed and strict, so an
+        // exact zero skips the block.
         if self.player.money < 0 {
             self.pontovost_street += self.player.money;
             self.player.money = 0;
@@ -6141,7 +6233,11 @@ impl Game {
         self.player.beer_dl += enemy.beer_dl;
         self.player.money += enemy.money;
         self.player.junk += enemy.junk;
-        term::println("^1Пиво победителю!"); // file 0x52FE
+        // file 0x52FE
+        term::println("^1Пиво победителю!");
+        // 1000:5274 `cmp ax,[0x38ae]` / 1000:5278 `jle 0x5280` -- the +5 is
+        // stored only while it stays at or below hpmax; above it, 1000:527a
+        // stores hpmax instead.
         self.player.hp = (self.player.hp + 5).min(self.player.hpmax);
         self.pontovost_street += i32::from(enemy.class) + 1 + i32::from(enemy.level) / 3;
         // 1000:5295..1000:52cc. `[0x3692]` is the district; the level is
@@ -6154,6 +6250,9 @@ impl Game {
                 "^1Поновость улутшилась на столько, что тебе можно заходить в местный притон!",
             );
         }
+        // 1000:52da `or ax,ax` / 1000:52dc `jbe 0x52e1` -- only a 0 out of
+        // Random(30) reaches the gift chain; anything else takes 1000:52de
+        // `jmp 0x53f7`.
         if self.rng.below_at("1000:52d5", 30) == 0 {
             self.grant_oneshot_gift();
         }
@@ -6161,6 +6260,12 @@ impl Game {
         let roll = self
             .rng
             .below_at("1000:5402", u16::from(self.district) * 25);
+        // Borland's 32-bit compare again, three branches for one predicate:
+        // 1000:5411 `cmp dx,bx` / 1000:5413 `jnle 0x541b` (luck's high half
+        // above the roll's -> pass) / 1000:5415 `jl 0x5449` (below -> fail),
+        // then 1000:5417 `cmp ax,cx` / 1000:5419 `jb 0x5449` on the low
+        // halves, UNSIGNED. Then 1000:541e `cmp ax,0x2` / 1000:5421
+        // `jnz 0x5449` -- only a Нарк carries one.
         if i32::from(self.player.luck) >= i32::from(roll) && enemy.class == 2 {
             self.player.joints += self.rng.below_at("1000:5427", 3);
             term::println("^1А у нарка был косячок"); // file 0x540B
@@ -6169,14 +6274,29 @@ impl Game {
         let roll = self
             .rng
             .below_at("1000:5454", u16::from(self.district) * 40);
+        // The same 32-bit shape with the senses swapped: 1000:5463
+        // `cmp dx,bx` / 1000:5465 `jnle 0x5473` (high half above -> on to
+        // the table) / 1000:5467 `jnl 0x546c`, then 1000:546c `cmp ax,cx` /
+        // 1000:546e `jnb 0x5473`. Every failing path is 1000:5469 /
+        // 1000:5470 `jmp 0x57ce`, the function's tail.
         if i32::from(self.player.luck) < i32::from(roll) {
             return;
         }
+        // The class-keyed item table, in the original's own chain order.
         match enemy.class {
+            // 1000:5476 `cmp ax,0x1` / 1000:5479 `jz 0x547e`
             1 => self.spoil_charm(),
+            // 1000:5515 `cmp ax,0x3` / 1000:5518 `jz 0x552c`
+            // 1000:551a `cmp ax,0x4` / 1000:551d `jz 0x552c`
+            // 1000:551f `cmp ax,0x5` / 1000:5522 `jz 0x552c`
+            // 1000:5524 `cmp ax,0x6` / 1000:5527 `jz 0x552c`
             3..=6 => self.spoil_club(),
+            // 1000:560e `cmp ax,0x7` / 1000:5611 `jnz 0x5675`
             7 => self.spoil_glasses(),
+            // 1000:5675 `cmp ax,0x9` / 1000:5678 `jz 0x567d`
             9 => self.spoil_blade(),
+            // Class 0, 2 and 8 (and anything above 9) reach 1000:57ce with
+            // no table at all -- the chain names no arm for them.
             _ => {}
         }
     }
@@ -6191,12 +6311,22 @@ impl Game {
     /// deltas are `data/xp.json`'s `post_kill_stat_events`.
     ///
     /// The preamble line (file `0x535E`) is printed when ANY of the three is
-    /// still unfired -- `1000:52e1`/`1000:52e8`/`1000:52ed` are three `je`s
-    /// onto one common target.
+    /// still unfired. The original writes that disjunction as three tests
+    /// with the first two jumping onto one common target and the third
+    /// leaving: `1000:52e1` `cmp byte [0x38bf],0x0` / `1000:52e6`
+    /// `jz 0x52f6`, `1000:52e8` `cmp byte [0x38c0],0x0` / `1000:52ed`
+    /// `jz 0x52f6`, and `1000:52ef` `cmp byte [0x38c1],0x0` / `1000:52f4`
+    /// `jnz 0x530f`. (An earlier revision of this sentence called
+    /// `1000:52ed` one of three compares; it is the second `je`.)
     fn grant_oneshot_gift(&mut self) {
         if !self.oneshot_gift_1 || !self.oneshot_gift_2 || !self.ring_gospodi_pomilui {
             term::println("^1Оба на! Колечко! Вот свезло, так свезло!");
         }
+        // The three-way chain below is a separate set of tests on the same
+        // three flags, and it is an if/else: 1000:530f `cmp byte [0x38bf],0x0`
+        // / 1000:5314 `jnz 0x536a`, 1000:536a `cmp byte [0x38c0],0x0` /
+        // 1000:536f `jnz 0x53b9`, 1000:53b9 `cmp byte [0x38c1],0x0` /
+        // 1000:53be `jnz 0x53f7`.
         if !self.oneshot_gift_1 {
             term::println("^1Кольцо \"Помоги Господи\"");
             self.player.strength += 1;
@@ -6231,6 +6361,7 @@ impl Game {
     /// Enemy class 1 (Нефор): `1000:547e`..`1000:5512`, `Random(3)`.
     fn spoil_charm(&mut self) {
         match self.rng.below_at("1000:5482", 3) {
+            // 1000:5487 `cmp ax,0x0` / 1000:548a `jnz 0x54b8`
             0 => {
                 // 1000:548c gate, 1000:5493 `add [0x38a4],2`, 1000:54b1 flag.
                 if !self.charm_krestik_38bd {
@@ -6239,6 +6370,7 @@ impl Game {
                     self.charm_krestik_38bd = true;
                 }
             }
+            // 1000:54b8 `cmp ax,0x1` / 1000:54bb `jnz 0x54e8`
             1 => {
                 // 1000:54bd gate, 1000:54c4 `inc [0x38a4]`, 1000:54e1 flag.
                 if !self.charm_ring_38be {
@@ -6247,6 +6379,9 @@ impl Game {
                     self.charm_ring_38be = true;
                 }
             }
+            // 1000:54e8 `cmp ax,0x2` / 1000:54eb `jnz 0x5512` -- the chain's
+            // last link drops anything else and this `_` arm does not, but
+            // `Random(3)` at 1000:5482 returns 0..2 (`port_equivalences`).
             _ => {
                 // 1000:54ed gate, 1000:550d flag. No stat change.
                 if !self.has_mobile {
@@ -6264,7 +6399,10 @@ impl Game {
     /// them, which is why the two are written out rather than folded.
     fn spoil_club(&mut self) {
         match self.rng.below_at("1000:5530", 2) {
+            // 1000:5535 `cmp ax,0x0` / 1000:5538 `jnz 0x559b`
             0 => {
+                // 1000:553a `cmp byte [0x38ba],0x0` / 1000:553f `jnz 0x5599`
+                // -- the кастет is granted only once.
                 if self.weapon_kastet_38ba {
                     return;
                 }
@@ -6279,6 +6417,9 @@ impl Game {
                     term::println("^6Но у тебя есть более мощное оружие");
                 }
             }
+            // 1000:559b `cmp ax,0x1` / 1000:559e `jnz 0x560b` -- the last
+            // link drops anything else where this `_` does not; `Random(2)`
+            // at 1000:5530 returns 0..1 (`port_equivalences`).
             _ => {
                 if self.weapon_dubinka_394b {
                     return;
@@ -6302,6 +6443,7 @@ impl Game {
     /// Enemy class 7 (Беспредельщик): `1000:5613`..`1000:5672`, `Random(2)`.
     fn spoil_glasses(&mut self) {
         match self.rng.below_at("1000:5617", 2) {
+            // 1000:561c `cmp ax,0x0` / 1000:561f `jnz 0x5648`
             0 => {
                 // 1000:5621 gate, 1000:5628 flag. No stat change.
                 if !self.dark_glasses {
@@ -6309,6 +6451,8 @@ impl Game {
                     term::println("^1Ты нашёл тёмные очки.");
                 }
             }
+            // 1000:5648 `cmp ax,0x1` / 1000:564b `jnz 0x5672` -- the same
+            // last-link widening as the other draw-keyed tables above.
             _ => {
                 // 1000:564d gate, 1000:566d flag.
                 if !self.has_mobile {
@@ -6327,6 +6471,7 @@ impl Game {
     /// the first term's condition is only what follows it.
     fn spoil_blade(&mut self) {
         match self.rng.below_at("1000:5681", 2) {
+            // 1000:5686 `cmp ax,0x0` / 1000:5689 `jz 0x568e`
             0 => {
                 if self.weapon_nozhik_38c2 {
                     return;
@@ -6338,40 +6483,67 @@ impl Game {
                     self.player.dmg_min += 4; // 1000:56cf
                     self.player.dmg_max += 4;
                 }
+                // 1000:56d9 `cmp byte [0x394b],0x0` / 1000:56de `jz 0x56ea`
                 if self.weapon_dubinka_394b {
                     self.player.dmg_min += 2; // 1000:56e0
                     self.player.dmg_max += 2;
                 }
+                // Three conjuncts, three branches onto one target 0x5709:
+                // 1000:56ea / 1000:56ef `jnz 0x5709`, 1000:56f1 / 1000:56f6
+                // `jnz 0x5709`, 1000:56f8 / 1000:56fd `jnz 0x5709`.
                 if !self.weapon_kastet_38ba && !self.weapon_dubinka_394b && !self.weapon_tesak_394c
                 {
                     self.player.dmg_min += 6; // 1000:56ff
                     self.player.dmg_max += 6;
                 }
+                // 1000:5709 `cmp byte [0x394c],0x0` / 1000:570e `jz 0x5729`
                 if self.weapon_tesak_394c {
                     term::println("^6Но утебя есть тесак который круче."); // file 0x5516
                 }
             }
+            // 1000:572c `cmp ax,0x1` / 1000:572f `jz 0x5734`. The `_` arm is
+            // wider than that last link -- the original drops anything else;
+            // `Random(2)` at 1000:5681 returns 0..1.
             _ => {
                 if self.weapon_tesak_394c {
                     return;
                 }
                 self.weapon_tesak_394c = true; // 1000:573e
                 term::println("^1Ты нашел тесак(урон+9)!!! - ужасное оружие.");
-                // 1000:5762..1000:577a: al := (394b == 0 && 38c2 == 0).
+                // 1000:5762..1000:577a: al := (394b == 0 && 38c2 == 0). Its
+                // two halves are 1000:5762 `cmp byte [0x394b],0x0` /
+                // 1000:5767 `jnz 0x5770` and 1000:5769
+                // `cmp byte [0x38c2],0x0` / 1000:576e `jz 0x5774`;
+                // 1000:5776 `cmp al,[0x38ba]` / 1000:577a `jnz 0x5786` is
+                // the comparison itself. The `mov al,1` / `or al,al` / `jz`
+                // at `1000:575c` is the тесак's copy of the never-taken
+                // artefact the doc above names, and is deliberately NOT
+                // cited: a port cannot evaluate a condition that is
+                // constant-true, and writing its address beside code that
+                // does something else would be a false citation.
+                // `docs/re/gaps.md`, "Two never-taken branches ... are
+                // permanently excluded from citation".
                 if (!self.weapon_dubinka_394b && !self.weapon_nozhik_38c2)
                     == self.weapon_kastet_38ba
                 {
                     self.player.dmg_min += 7; // 1000:577c
                     self.player.dmg_max += 7;
                 }
+                // 1000:5786 `cmp byte [0x394b],0x0` / 1000:578b `jz 0x579e`
+                // and 1000:578d `cmp byte [0x38c2],0x0` / 1000:5792
+                // `jnz 0x579e` -- one conjunction, two branches.
                 if self.weapon_dubinka_394b && !self.weapon_nozhik_38c2 {
                     self.player.dmg_min += 5; // 1000:5794
                     self.player.dmg_max += 5;
                 }
+                // 1000:579e `cmp byte [0x38c2],0x0` / 1000:57a3 `jz 0x57af`
                 if self.weapon_nozhik_38c2 {
                     self.player.dmg_min += 3; // 1000:57a5
                     self.player.dmg_max += 3;
                 }
+                // Three conjuncts onto 0x57ce: 1000:57af / 1000:57b4
+                // `jnz 0x57ce`, 1000:57b6 / 1000:57bb `jnz 0x57ce`,
+                // 1000:57bd / 1000:57c2 `jnz 0x57ce`.
                 if !self.weapon_kastet_38ba && !self.weapon_dubinka_394b && !self.weapon_nozhik_38c2
                 {
                     self.player.dmg_min += 9; // 1000:57c4
@@ -6425,6 +6597,8 @@ impl Game {
     fn crowd(&mut self, prompts_seen: &mut u8) {
         if *prompts_seen < 5 {
             *prompts_seen += 1;
+            // 1000:40fd `cmp byte [bp-0x113],0x5` / 1000:4102 `jnz 0x411d`
+            // -- the line prints on the turn the counter REACHES 5, once.
             if *prompts_seen == 5 {
                 // file 0x4744
                 term::println("^7Начинают собираться зрители");
@@ -6439,9 +6613,14 @@ impl Game {
         if self.rector_showdown {
             return;
         }
+        // 1000:4127 `cmp byte [bp-0x113],0x5` / 1000:412c `jz 0x4131` --
+        // the same counter tested a SECOND time, after the rector gate, and
+        // this one leaves for the prompt at 1000:43f6 on any other value.
         if *prompts_seen != 5 {
             return;
         }
+        // 1000:413a `or ax,ax` / 1000:413c `jz 0x4141` -- only a 0 out of
+        // Random(10) reaches the taunt draw.
         if self.rng.below_at("1000:4135", 10) != 0 {
             return;
         }
@@ -6452,34 +6631,57 @@ impl Game {
         // PLAYER'S RANK name (`[0x389c] * 0x100 + 0x2e`, the DS:002e table
         // `data/enemies.json` carries) and 17 the player's own name
         // (`DS:379c`).
+        // The eighteen links of the `cmp ax,N` chain, in the original's own
+        // order: each arm below carries the compare that selects it and the
+        // `jnz` that moves on to the next.
         match which {
+            // 1000:414a `cmp ax,0x0` / 1000:414d `jnz 0x416b`
             0 => term::println("Зрители:^6Мочи его, мочи!"),
+            // 1000:416b `cmp ax,0x1` / 1000:416e `jnz 0x418c`
             1 => term::println("Зрители:^6Врежь ему!"),
+            // 1000:418c `cmp ax,0x2` / 1000:418f `jnz 0x41ad`
             2 => term::println("Зрители:^6Блин долго ты ещё будешь мудиться?"),
+            // 1000:41ad `cmp ax,0x3` / 1000:41b0 `jnz 0x41ce`
             3 => term::println("Зрители:^6Да вы только посмотрите на эти пинки!"),
+            // 1000:41ce `cmp ax,0x4` / 1000:41d1 `jnz 0x4217`
             4 => {
                 term::print("Зрители:^6Не подкачай ");
                 term::print(&Self::rank_name(self.player.class));
                 term::println(", я на тебя трёшку поставил!");
             }
+            // 1000:4217 `cmp ax,0x5` / 1000:421a `jnz 0x4238`
             5 => term::println("Зрители:^6Чё-тут за батва?"),
+            // 1000:4238 `cmp ax,0x6` / 1000:423b `jnz 0x4259`
             6 => term::println("Зрители:^6Я знаю вон того мудака, он уже нескольких запинал!"),
+            // 1000:4259 `cmp ax,0x7` / 1000:425c `jnz 0x427a`
             7 => term::println("Зрители:^6Чё так слабо бьёшь?! Пинай сильнее!"),
+            // 1000:427a `cmp ax,0x8` / 1000:427d `jnz 0x42b4`
             8 => {
                 term::println("Зрители:^6Дерьмово дерётесь придурки");
                 term::println("^2А ты: Заткнись мудак, а то щас тебя запинаю!");
             }
+            // 1000:42b4 `cmp ax,0x9` / 1000:42b7 `jnz 0x42d5`
             9 => term::println(
                 "Зрители:^6Да, а помнишь мы вчера также одного пинали, пинали.. \
                  А потом подошла его братва..",
             ),
+            // 1000:42d5 `cmp ax,0xa` / 1000:42d8 `jnz 0x42f6`
             10 => term::println("Зрители:^6Это чё реслинг?"),
+            // 1000:42f6 `cmp ax,0xb` / 1000:42f9 `jnz 0x4317`
             11 => term::println("Зрители:^6Двинь ему в рыло!"),
+            // 1000:4317 `cmp ax,0xc` / 1000:431a `jnz 0x4338`
             12 => term::println("Зрители:^6И куда менты смотрят?"),
+            // 1000:4338 `cmp ax,0xd` / 1000:433b `jnz 0x4359`
             13 => term::println("Зрители:^6Пинай!"),
+            // 1000:4359 `cmp ax,0xe` / 1000:435c `jnz 0x4379`
             14 => term::println("Зрители:^6Врежь гаду!"),
+            // 1000:4379 `cmp ax,0xf` / 1000:437c `jnz 0x4399`
             15 => term::println("Зрители:^6Господа делайте ваши ставки!"),
+            // 1000:4399 `cmp ax,0x10` / 1000:439c `jnz 0x43b9`
             16 => term::println("Зрители:^6Ну чё там? Какой счет?"),
+            // 1000:43b9 `cmp ax,0x11` / 1000:43bc `jnz 0x43f6`. The `_` arm
+            // is wider than the original's last link, which drops anything
+            // above 17; `Random(18)` at 1000:4145 cannot produce one.
             _ => {
                 term::print("Зрители:^6Ну и кого там ");
                 term::print(&self.player.name);
@@ -6566,8 +6768,15 @@ impl Game {
             // ONE of three lines (files 0x4A54, 0x4A65, 0x4A7B). This port
             // used to draw it and print the first line whatever it returned.
             match blow.taunt {
+                // 1000:44e8 `cmp ax,0x0` / 1000:44eb `jnz 0x4508`
                 Some(0) => term::println("^2Точный удар!!!"),
+                // 1000:4508 `cmp ax,0x1` / 1000:450b `jnz 0x4528`
                 Some(1) => term::println("^2Не хило приложил!!!"),
+                // 1000:4528 `cmp ax,0x2` / 1000:452b `jnz 0x4546` -- the
+                // chain's last link DROPS anything else, where this arm
+                // accepts it. `Random(3)` at 1000:44e3 cannot return one;
+                // `data/combat_uncited.json`'s `port_equivalences` states
+                // the assumption.
                 Some(_) => term::println("^2Двойной урон!!!"),
                 None => {}
             }
@@ -6630,8 +6839,12 @@ impl Game {
             // lines (files 0x4B52, 0x4B67, 0x4B7F). This port printed nothing
             // at all for an enemy crit.
             match blow.taunt {
+                // 1000:470b `cmp ax,0x0` / 1000:470e `jnz 0x472b`
                 Some(0) => term::println("^4Враг:Сдохни урод!!"),
+                // 1000:472b `cmp ax,0x1` / 1000:472e `jnz 0x474b`
                 Some(1) => term::println("^4Тебе не хило врезали!"),
+                // 1000:474b `cmp ax,0x2` / 1000:474e `jnz 0x4769` -- the
+                // same last-link widening as the player's copy above.
                 Some(_) => term::println("^4Враг:Получи гнида!!"),
                 None => {}
             }
@@ -6961,7 +7174,7 @@ mod tests {
         g.player.level = 0;
         g.rng.start_log();
         let mut lines = input(&["run", "run", "run"]);
-        g.run_combat(enemy(), &mut lines).unwrap();
+        g.run_combat(0, enemy(), &mut lines).unwrap();
         assert_eq!(lines.count(), 2, "one line consumed, then the fight ended");
         assert!(
             g.rng.take_log().is_empty(),
@@ -6973,11 +7186,96 @@ mod tests {
         let mut g = game();
         g.player.broken_leg = true;
         let mut lines = input(&["run", "run", "run"]);
-        g.run_combat(enemy(), &mut lines).unwrap();
+        g.run_combat(0, enemy(), &mut lines).unwrap();
         assert_eq!(
             lines.count(),
             0,
             "1000:4915 re-prompts rather than leaving the fight"
+        );
+    }
+
+    /// The opener runs on `param_1` 0 and 6 and on nothing else --
+    /// `1000:3d27`/`1000:3d29` and `1000:3d2b`/`1000:3d2d` against
+    /// `1000:3d2f jmp 0x3e8d`. The arm's own contents are
+    /// `crate::combat_opener`'s tests; what this one pins is the GATE, and
+    /// the position of the greeting in the fight's output.
+    #[test]
+    fn the_class_keyed_opener_runs_only_for_param_1_zero_and_six() {
+        let greeted = |kind: u8| {
+            let mut g = game();
+            g.player.level = 0; // 1000:4ade: `run` leaves with no penalty.
+            term::capture::lines(|| {
+                g.run_combat(kind, punchbag(), &mut input(&["run"]))
+                    .unwrap();
+            })
+        };
+        // punchbag() is class 0, so the arm at 1000:3d44 is the one that runs.
+        for kind in [0u8, 6] {
+            assert_eq!(
+                &greeted(kind)[..2],
+                ["Слышь Вась..", "^4А чё ваще?"],
+                "param_1 {kind} takes 1000:3d32 and greets first"
+            );
+        }
+        // The five values the outer chain sends to 1000:3e8d and beyond.
+        // 2 is the club's (`1000:e222`) and 5 the den job's (`1000:ddfc`).
+        for kind in [1u8, 2, 3, 4, 5] {
+            let out = greeted(kind);
+            assert!(
+                !out.iter().any(|l| l.contains("Слышь Вась")),
+                "param_1 {kind} takes 1000:3d2f and must not greet: {out:?}"
+            );
+        }
+    }
+
+    /// The two agility-reduction lines, at the position `1000:3ff5` and
+    /// `1000:4098` put them: after the opener and before the first
+    /// `^0Битва\` prompt.
+    ///
+    /// The pair of numbers is `crate::combat::budget_report`'s test; what
+    /// this one pins is that `run_combat` prints them at all, with the
+    /// records the right way round -- the ENEMY's line is the one that reads
+    /// `[0x3956] + 4` (`1000:3fec`), so a swap would put the player's
+    /// numbers on the enemy's string.
+    #[test]
+    fn the_agility_reduction_lines_print_before_the_first_prompt() {
+        let mut g = game();
+        g.player.level = 0;
+        g.player.agility = 120;
+        let enemy = Fighter {
+            agility: 50,
+            ..punchbag()
+        };
+        let out = term::capture::lines(|| {
+            g.run_combat(0, enemy, &mut input(&["run"])).unwrap();
+        });
+        // Class 0, so the opener's two lines come first (1000:3d44).
+        assert_eq!(&out[..2], ["Слышь Вась..", "^4А чё ваще?"]);
+        // 1000:4013, CS 0x2dec -- the enemy's budget, cut by the player's
+        // agility: 50 -> 1 blow instead of 3.
+        assert_eq!(
+            out[2],
+            "^2Из-за твоей хорошей ловкости враг сможет пнуть тебя раз 1 вместо 3"
+        );
+        // 1000:40b6, CS 0x2e31 -- the mirror: 120 -> 5 instead of 7.
+        assert_eq!(
+            out[3],
+            "^4Из-за хорошей ловкости врага ты сможешь пнуть его раз 5 вместо 7"
+        );
+        // ... and the prompt is next, so nothing was printed between.
+        assert!(out[4].starts_with("^0Битва\\"), "{:?}", out[4]);
+
+        // Neither line prints when the reduction costs no blow -- the same
+        // fight with an agility-0 enemy leaves the prompt directly after the
+        // opener.
+        let mut g = game();
+        g.player.level = 0;
+        let out = term::capture::lines(|| {
+            g.run_combat(0, punchbag(), &mut input(&["run"])).unwrap();
+        });
+        assert!(
+            !out.iter().any(|l| l.contains("вместо")),
+            "1000:4011 / 1000:40b4 refuse both lines: {out:?}"
         );
     }
 
@@ -7023,7 +7321,7 @@ mod tests {
 
         let mut g = game_with_gopota();
         g.rng.start_log();
-        g.run_combat(punchbag(), &mut input(&script)).unwrap();
+        g.run_combat(0, punchbag(), &mut input(&script)).unwrap();
         let log = g.rng.take_log();
         let n = |site: &str| log.iter().filter(|d| d.site == site).count();
         assert_eq!(n("1000:4db7"), 2, "the last two prompts have the gopota");
@@ -7040,7 +7338,7 @@ mod tests {
         let mut g = game_with_gopota();
         g.places = Places::from_bytes(&[0u8; 7]);
         g.rng.start_log();
-        g.run_combat(punchbag(), &mut input(&script)).unwrap();
+        g.run_combat(0, punchbag(), &mut input(&script)).unwrap();
         assert_eq!(draws_at(&mut g, "1000:4db7"), 0, "no den, no gopota");
     }
 
@@ -7058,7 +7356,7 @@ mod tests {
                 g.rng.start_log();
                 // `v` then three `k`s: if the call went through, the gopota
                 // arrive and their damage roll fires.
-                g.run_combat(punchbag(), &mut input(&["v", "k", "k", "k"]))
+                g.run_combat(0, punchbag(), &mut input(&["v", "k", "k", "k"]))
                     .unwrap();
                 let fired = draws_at(&mut g, "1000:4db7") > 0;
                 assert_eq!(
@@ -7082,7 +7380,8 @@ mod tests {
             g.rng.start_log();
             // `v`, then one line no compare matches -- so the only thing that
             // can draw at 1000:4db7 is the backup block itself.
-            g.run_combat(punchbag(), &mut input(&["v", "zzz"])).unwrap();
+            g.run_combat(0, punchbag(), &mut input(&["v", "zzz"]))
+                .unwrap();
             assert_eq!(draws_at(&mut g, "1000:4db7"), want, "phone {phone}");
         }
     }
@@ -7099,7 +7398,7 @@ mod tests {
         // `zzz` and `qqq` match no compare at all; `wes` is a DEALERS verb,
         // compared at `1000:ced8` against `entry`'s buffer and never here.
         // The closing `run` ends the fight so `last_enemy` is recorded.
-        g.run_combat(punchbag(), &mut input(&["v", "zzz", "qqq", "run"]))
+        g.run_combat(0, punchbag(), &mut input(&["v", "zzz", "qqq", "run"]))
             .unwrap();
         let log = g.rng.take_log();
         assert_eq!(
@@ -7143,7 +7442,7 @@ mod tests {
                 strength: 4,
                 ..punchbag()
             };
-            g.run_combat(enemy, &mut input(&["v", "run"])).unwrap();
+            g.run_combat(0, enemy, &mut input(&["v", "run"])).unwrap();
             let log = g.rng.take_log();
             let swings = log.iter().filter(|d| d.site == "1000:4db7").count();
             let victory = log.iter().any(|d| d.site == "1000:52d5");
@@ -7182,8 +7481,12 @@ mod tests {
         // 5 apiece take it to exactly 0.
         g.pontovost_street = 20;
         g.rng.start_log();
-        g.run_combat(punchbag(), &mut input(&["v", "z", "z", "z", "z", "z", "z"]))
-            .unwrap();
+        g.run_combat(
+            0,
+            punchbag(),
+            &mut input(&["v", "z", "z", "z", "z", "z", "z"]),
+        )
+        .unwrap();
         assert_eq!(g.pontovost_street, 0);
         assert_eq!(
             draws_at(&mut g, "1000:4db7"),
@@ -7211,7 +7514,7 @@ mod tests {
             };
             g.flag_3693 = flag_3693;
             g.rng.start_log();
-            g.run_combat(punchbag(), &mut input(&["f"])).unwrap();
+            g.run_combat(0, punchbag(), &mut input(&["f"])).unwrap();
             let fired = draws_at(&mut g, "1000:4ef5");
             assert_eq!(
                 fired, want_draws,
@@ -7236,7 +7539,7 @@ mod tests {
             cartridges: 1,
         };
         g.rng.start_log();
-        g.run_combat(punchbag(), &mut input(&["f", "f", "f", "f"]))
+        g.run_combat(0, punchbag(), &mut input(&["f", "f", "f", "f"]))
             .unwrap();
         assert_eq!(g.pistol.cartridges, 0);
         assert_eq!(
@@ -7266,7 +7569,7 @@ mod tests {
             };
             // The closing `run` (level 0, so no penalty) is what makes the
             // fight record `last_enemy`; running out of input does not.
-            g.run_combat(enemy, &mut input(&["f", "run"])).unwrap();
+            g.run_combat(0, enemy, &mut input(&["f", "run"])).unwrap();
             g.last_enemy.as_ref().unwrap().hp
         };
         let bare = hit(0);
@@ -7290,7 +7593,7 @@ mod tests {
     fn e_at_the_fight_prompt_halts_the_game_and_exit_does_not() {
         let mut g = game();
         let mut lines = input(&["e", "k", "k"]);
-        g.run_combat(punchbag(), &mut lines).unwrap();
+        g.run_combat(0, punchbag(), &mut lines).unwrap();
         assert!(!g.running, "1000:4c5f ends the process");
         assert_eq!(lines.count(), 2, "nothing after `e` is read");
         assert!(g.last_enemy.is_some(), "the fight still recorded its enemy");
@@ -7299,7 +7602,7 @@ mod tests {
         // any compare, so `E` is the same verb.
         let mut g = game();
         let mut lines = input(&["E", "k", "k"]);
-        g.run_combat(punchbag(), &mut lines).unwrap();
+        g.run_combat(0, punchbag(), &mut lines).unwrap();
         assert!(!g.running);
         assert_eq!(lines.count(), 2);
 
@@ -7310,7 +7613,7 @@ mod tests {
         let mut g = game();
         let mut lines = input(&["exit", "exit", "run"]);
         g.rng.start_log();
-        g.run_combat(punchbag(), &mut lines).unwrap();
+        g.run_combat(0, punchbag(), &mut lines).unwrap();
         assert!(
             g.running,
             "`exit` is not compared at 1000:4c56 and must not Halt the game"
@@ -7348,7 +7651,7 @@ mod tests {
             g.rng.start_log();
             // Ten `k`s on a player who owns a pistol and could call the
             // gopota, but types neither `f` nor `v`.
-            g.run_combat(punchbag(), &mut input(&["k"; 10])).unwrap();
+            g.run_combat(0, punchbag(), &mut input(&["k"; 10])).unwrap();
             let log = g.rng.take_log();
             blows += log.iter().filter(|d| d.site == "1000:4460").count();
             for site in NEW {
@@ -7387,7 +7690,7 @@ mod tests {
         let grown = g.player.clone();
         let threshold = g.progress.threshold;
 
-        g.run_combat(punchbag(), &mut input(&["run"])).unwrap();
+        g.run_combat(0, punchbag(), &mut input(&["run"])).unwrap();
         assert_eq!(g.player.level, 0, "1000:4ac3 dec [0x38a6]");
         assert_eq!(
             g.progress.threshold,
@@ -7414,7 +7717,7 @@ mod tests {
         let mut g = game();
         let before = g.player.clone();
         let before_p = g.progress.clone();
-        g.run_combat(punchbag(), &mut input(&["run"])).unwrap();
+        g.run_combat(0, punchbag(), &mut input(&["run"])).unwrap();
         assert_eq!(g.player, before);
         assert_eq!(g.progress, before_p);
     }
@@ -7442,7 +7745,7 @@ mod tests {
             let mut g = game();
             g.district = district;
             g.player.level = level;
-            g.run_combat(punchbag(), &mut input(&["run"])).unwrap();
+            g.run_combat(0, punchbag(), &mut input(&["run"])).unwrap();
             assert_eq!(
                 g.places.is_found(Location::Den),
                 want_den,
@@ -7456,7 +7759,7 @@ mod tests {
         g.district = 1;
         g.player.level = 3;
         g.player.class = 5;
-        g.run_combat(punchbag(), &mut input(&["run"])).unwrap();
+        g.run_combat(0, punchbag(), &mut input(&["run"])).unwrap();
         assert!(!g.places.is_found(Location::Den), "class 5 skips 1000:4a8e");
         assert_eq!(g.player.level, 2, "but still pays the level");
     }
@@ -7475,7 +7778,7 @@ mod tests {
             // input end. 1000:4135 fires from the fifth prompt onward, so six.
             let mut script = vec!["zzz"; 9];
             script.push("run");
-            g.run_combat(punchbag(), &mut input(&script)).unwrap();
+            g.run_combat(0, punchbag(), &mut input(&script)).unwrap();
             assert_eq!(
                 draws_at(&mut g, "1000:4135"),
                 want,
@@ -7493,7 +7796,7 @@ mod tests {
         g.rector_showdown = true;
         g.player.level = 5;
         let mut lines = input(&["run", "run", "run"]);
-        g.run_combat(punchbag(), &mut lines).unwrap();
+        g.run_combat(0, punchbag(), &mut lines).unwrap();
         assert_eq!(lines.count(), 0, "1000:490b re-prompts instead of leaving");
         assert_eq!(g.player.level, 5, "and the penalty never runs");
 
@@ -7504,7 +7807,7 @@ mod tests {
         g.player.hp = 0;
         g.player.hpmax = 40;
         g.player.money = 100;
-        g.run_combat(punchbag(), &mut no_input()).unwrap();
+        g.run_combat(0, punchbag(), &mut no_input()).unwrap();
         assert!(!g.running, "1000:4fb4 calls the end screen, which halts");
         assert_eq!(g.player.hp, 0, "1000:5018's `hp := hpmax` is not reached");
         assert_eq!(g.player.money, 100, "and no bill was paid");
@@ -7527,7 +7830,7 @@ mod tests {
         g.player.hp = 1;
         g.player.joints = 2;
         let mut lines = input(&["kos"]);
-        g.run_combat(enemy(), &mut lines).unwrap();
+        g.run_combat(0, enemy(), &mut lines).unwrap();
         assert_eq!(g.player.joints, 1, "1000:4b4e dec [0x38c5]");
         assert_eq!(g.player.hp, 11, "the flat +10 heal");
         assert_eq!(g.buff_countdown, 3, "1000:4b52 stores 3, not 10");
@@ -8773,7 +9076,8 @@ mod tests {
 
         g.mode = Mode::Street;
         g.rng.start_log();
-        g.run_combat(punchbag(), &mut input(&["f", "run"])).unwrap();
+        g.run_combat(0, punchbag(), &mut input(&["f", "run"]))
+            .unwrap();
         assert_eq!(g.pistol.cartridges, 2, "1000:4eed spent one");
         let left = g.last_enemy.as_ref().unwrap().hp;
         assert!(
@@ -9927,7 +10231,7 @@ mod tests {
         let mut g = game();
         g.player.hp = 0;
         let enemy = player();
-        g.run_combat(enemy, &mut no_input()).unwrap();
+        g.run_combat(0, enemy, &mut no_input()).unwrap();
         assert!(!g.running, "death must end the game");
     }
 
@@ -10050,7 +10354,7 @@ mod tests {
         enemy.vitality = 3;
         enemy.luck = 3;
         let before = g.progress.xp;
-        g.run_combat(enemy, &mut no_input()).unwrap();
+        g.run_combat(0, enemy, &mut no_input()).unwrap();
         assert!(g.running);
         assert!(g.last_enemy.is_some());
         assert!(g.progress.xp > before, "an award must be credited");
@@ -10900,7 +11204,7 @@ mod tests {
         g.player.level = 40;
         let mut dead_enemy = punchbag();
         dead_enemy.hp = 0; // already dead: the win branch runs with no draw
-        g.run_combat(dead_enemy, &mut no_input()).unwrap();
+        g.run_combat(0, dead_enemy, &mut no_input()).unwrap();
         assert_eq!(
             g.district, 1,
             "1000:3d11 has no write to [0x3692]; only 1000:ab92 does"

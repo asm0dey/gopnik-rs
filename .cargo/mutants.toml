@@ -23,16 +23,16 @@ exclude_re = [
     # same 10.  At `mine == 10` the guard's two senses agree: skipping the
     # loop returns 10, and entering it either leaves at once or collapses to
     # 10.
-    "^src/combat\\.rs:157:13: replace > with >= in blow_budget$",
+    "^src/combat\\.rs:162:13: replace > with >= in blow_budget$",
 
     # `1000:3fc9` `cmp mine,0x1c` / `1000:3fce` `jl 0x3fe2` collapses below
     # 28, and `1000:3fd4` `sub ax,0x12` is the step: `0x1c - 0x12 == 0x0a`,
     # the collapse value.  At `mine == 28` one more turn round the loop lands
     # exactly ON the collapse, so collapsing early changes nothing.
-    "^src/combat\\.rs:159:21: replace < with <= in blow_budget$",
+    "^src/combat\\.rs:168:21: replace < with <= in blow_budget$",
 
     # `1000:454f` `cmp word [bp-0x10c],0x0` / `1000:4554` `jnl 0x455c` floors
     # the post-armour damage with `1000:4556` `xor ax,ax`.  The value stored
     # IS the bound tested, so extending the test to `<= 0` writes 0 over a 0.
-    "^src/combat\\.rs:353:15: replace < with <= in resolve_blow_nth$",
+    "^src/combat\\.rs:432:15: replace < with <= in resolve_blow_nth$",
 ]

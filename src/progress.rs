@@ -112,12 +112,20 @@ impl Stat {
 
     /// Inverse of [`Stat::code`]. `None` for any other byte, including the
     /// `0` an entry cleared by the de-level penalty holds (`1000:497d`).
+    ///
+    /// The four codes are the four `cmp byte [bp+di-0x10a],N` links of the
+    /// penalty's own chain; each arm below is one of them.
     pub fn from_code(code: u8) -> Option<Stat> {
         match code {
+            // 1000:498f `cmp byte [bp+di-0x10a],0x31` / 1000:4994 `jnz 0x49e0`
             b'1' => Some(Stat::Strength),
+            // 1000:49e3 `cmp byte [bp+di-0x10a],0x32` / 1000:49e8 `jnz 0x4a09`
             b'2' => Some(Stat::Agility),
+            // 1000:4a0c `cmp byte [bp+di-0x10a],0x33` / 1000:4a11 `jnz 0x4a46`
             b'3' => Some(Stat::Vitality),
+            // 1000:4a49 `cmp byte [bp+di-0x10a],0x34` / 1000:4a4e `jnz 0x4a6f`
             b'4' => Some(Stat::Luck),
+            // 1000:4a6f, the chain's own miss -- a cleared slot holds 0.
             _ => None,
         }
     }
@@ -461,7 +469,10 @@ pub fn undo_growth(p: &mut Progress, f: &mut Fighter) -> Vec<Stat> {
             Stat::Luck => f.luck = f.luck.wrapping_sub(1),
         }
         // 1000:49ce and 1000:4a35 -- the same three-instruction clamp, only
-        // after the two codes that move `hpmax`.
+        // after the two codes that move `hpmax`. Its test is
+        // 1000:49d1 `cmp ax,[0x38ae]` / 1000:49d5 `jle 0x49dd` after code
+        // '1', and 1000:4a38 / 1000:4a3c `jle 0x4a44` after code '3'; both
+        // store hpmax into hp only when hp is STRICTLY above it.
         if matches!(stat, Stat::Strength | Stat::Vitality) && f.hp > f.hpmax {
             f.hp = f.hpmax;
         }

@@ -48,8 +48,14 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 #: hard-coded list is the failure mode**, so `test_every_src_file_with_string
 #: _citations_is_in_sources` below now walks `src/*.rs` and fails on any file
 #: this list omits, rather than trusting the next author to remember.
+#:
+#: `src/combat_opener.rs` was added by Task 40 in the same commit that created
+#: it -- nine `CS`/`file` citations, one per string the opener pushes -- rather
+#: than by a later review round, which is what happened to `src/game.rs` and
+#: `src/gym.rs`.
 SOURCES = [
     "src/persist.rs",
+    "src/combat_opener.rs",
     "src/save.rs",
     "src/locations.rs",
     "src/game.rs",

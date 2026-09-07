@@ -339,7 +339,7 @@ fn caught_cheating(
     progress::apply_levels(&mut g.progress, &mut g.player, &mut g.rng, xp, false);
 
     // 1000:e21f / 1000:e222 -- FUN_1000_3d11(2), AFTER the level-up.
-    g.run_combat(enemy, lines)?;
+    g.run_combat(2, enemy, lines)?;
 
     // 1000:e225 pushes file `0xBB6C`
     // `^6Уноси ноги, пока не отобрали деньги другие канадидаты`, printed by

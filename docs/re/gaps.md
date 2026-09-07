@@ -1774,8 +1774,11 @@ points at this entry.
   is print-only. Task 39 adds the half that claim never covered — it writes
   nothing either: **zero** absolute-memory writes across all 168 instructions,
   and the only memory the two shortstring helpers touch is a stack local at
-  `ss:[bp-0x218]`. Still **not ported**; the ten branches are
-  `data/combat_uncited.json`'s ten `unimplemented` opener rows.
+  `ss:[bp-0x218]`. **PORTED by Task 40** — `src/combat_opener.rs`, six arms
+  over ten `cmp ax,N` links, called from `Game::run_combat` behind the
+  `param_1` gate `1000:3d27`..`1000:3d2f`, so the two `param_1` values that
+  reach `1000:3d32` greet and the rest do not. All ten branches are cited;
+  `grep -n 'combat_opener' src/game.rs` finds the call site.
   **The bound in the struck text above is inclusive and is left as it
   stood**: the map's range is the half-open `1000:3d32`..`1000:3e8d`,
   where `1000:3e8a` is the exit `jmp 0x3fa7` and `1000:3e8d` is the
@@ -2403,9 +2406,13 @@ None of these moves a draw; all three are output or state the replay caught.
 * ~~**The class-keyed opener's text** (`1000:3d32`..`1000:3e8a`) is still not
   extracted. Task 13 established only that it spends no draw.~~ **CLOSED by
   Task 39 — `docs/re/combat-opener.md`.** Nine strings, five printing arms and
-  a silent default; it spends no draw *and* writes no state. Not ported yet.
-  Same inclusive-vs-half-open note as the entry above: the map's range is
-  `1000:3d32`..`1000:3e8d`.
+  a silent default; it spends no draw *and* writes no state. **PORTED by Task
+  40 — `src/combat_opener.rs`**, verbatim, including the class-8 and class-9
+  arms that splice the PLAYER's name (`20ae:379c`) and rank
+  (`ranks[[0x389c]]`). `combat_opener::tests` re-decodes all nine strings out
+  of `orig/g.exe` and compares them against what the arms print, so a typo
+  reds rather than agreeing with itself. Same inclusive-vs-half-open note as
+  the entry above: the map's range is `1000:3d32`..`1000:3e8d`.
 * **The port advances the district inside `run_combat`**, at the end; the
   original does it at the top of the next turn (`1000:ab75`..`1000:ab92`,
   which also clears `[0x3698]`/`[0x3694]` and conditionally `[0x3699]`). The
@@ -2782,8 +2789,14 @@ Task 39 — `docs/re/combat-opener.md`.** They are a `cmp [0x3952],N` chain over
 the enemy's class that writes at most two greeting lines and does nothing else:
 zero draws (as this entry already had) and now measurably **zero** stores. So
 `param_1 = 5` skipping the prologue costs the cop fight two printed lines and
-no state at all, and `Game::run_combat` reproduces none of it because nothing
-in `src/` prints it yet. The three claims this entry made about the extent —
+no state at all. **Task 40 ported the prologue and modelled that much of
+`param_1`**: `Game::run_combat` now takes the argument and calls
+`crate::combat_opener` only for 0 and 6, so the den's cop fight is silent here
+exactly as the original is. What `param_1` still does NOT model is the other
+four effects — the XP skip for 3 and 4, the `param_1 == 4` ending at
+`1000:5085`, the `param_1 == 6` residue at `1000:57ce`, and the 1 / 3 / 4 arms'
+own text — which are listed on `Game::run_combat` itself and are unchanged by
+Task 40. The three claims this entry made about the extent —
 168 instructions, the sole exit `1000:3e8a jmp 0x3fa7`, and the two entries
 `1000:3d29`/`1000:3d2d` — were re-derived there rather than inherited, and all
 three hold. The one wording corrected is "classes 0 and 6": 0 and 6 are
@@ -2951,9 +2964,18 @@ either string anywhere in the port.
 It costs no draw and no state: both sites are inside the budget block, which
 `docs/re/combat.md` already establishes spends nothing. So this is missing
 OUTPUT, not a desynchronisation — but it is four branches of it, and it was
-uncatalogued until Task 39's sweep. `data/combat_uncited.json` carries
-`1000:3ff5`, `1000:4011`, `1000:4098` and `1000:40b4` as `unimplemented` with
-the strings named.
+uncatalogued until Task 39's sweep.
+
+**CLOSED by Task 40 — both lines print.** `crate::combat::budget_report`
+carries the two gates and the two numbers, and `Game::run_combat` writes the
+lines at the position `1000:3ff5` and `1000:4098` put them: after the opener
+and before the first `^0Битва\` prompt. Two transcription points the port had
+to keep apart, because reproducing either with the other would be a
+divergence: the gates compare plain `budget div 18` (`1000:400f`,
+`1000:40b2`) while each `#` is `(budget - 1) div 18 + 1` (`1000:4018`,
+`1000:40bb`); and the REDUCED count is pushed first, so it is the first `#` —
+corroborated by the live capture `docs/re/combat.md` records,
+`ты сможешь пнуть его раз 5 вместо 7` for agility 120 against 50.
 
 ### Six port constructs decide a branch by a wider predicate than the original
 
@@ -2967,3 +2989,51 @@ produce, because `Random(3)` returns 0..2 and `Random(2)` returns 0..1 and
 `src/rng.rs` reproduces the same bound. A change to that bound, or a draw whose
 `n` grew, would break the equivalence. `data/combat_uncited.json`'s
 `port_equivalences` carries this with the assumption stated.
+
+## Opened by Task 40 (porting the opener, citing the rest)
+
+### Two never-taken branches are permanently excluded from citation
+
+**Established from flow, and this entry is a RULING as well as a finding.**
+`1000:56ba` and `1000:5760` are each the `jz` of a three-instruction sequence
+the compiler left in:
+
+```text
+56b6  b0 01           mov al,0x1        ; and 575c, the тесак's copy
+56b8  08 c0           or al,al          ; and 575e
+56ba  74 07           jz 0x56c3         ; and 5760, `jz 0x5770`
+```
+
+`al` holds the immediate 1 stored two instructions earlier and `or` clears ZF
+for any non-zero operand, so ZF is never set and neither jump is ever taken.
+Both sit in `Game::spoil_blade`'s territory — `1000:56ba` ahead of the ножик's
+`+4` term, `1000:5760` ahead of the тесак's `+7` — and `src/` omits both,
+which changes no behaviour.
+
+**They are excluded from `port_touched` permanently, by controller ruling.** A
+port cannot honestly evaluate a condition that is constant-true in the
+original; writing either address beside a Rust expression that decides
+something else would move the metric by two while making the map lie, which is
+the exact failure `docs/re/METHODOLOGY.md` names. So `FUN_1000_3d11`'s
+realistic ceiling is **222 of its 224 game branches, not 224**, and the two
+are the whole of the difference.
+
+The ruling is executable rather than remembered:
+`data/combat_uncited.json`'s `excluded_from_citation` names both rows with
+their guard and their `mov al,1`, and
+`tools/test_combat_opener.py`'s
+`test_the_two_never_taken_rows_are_excluded_from_citation` re-decodes the
+three instructions out of `orig/g.exe` (including that they are consecutive),
+then asserts that neither the branch nor its guard appears in the citation
+index the port ships. `tools/mutations.json`'s
+`combat-uncited-never-taken-exclusion` adds `1000:56ba` to one comment in
+`src/game.rs` and requires that test to go red, so the exclusion is a check
+that has been seen failing.
+
+**Naming the `mov al,1` is not citing the branch.** `port_touched` reads the
+branch's own address and its guard's, and nothing else; `1000:56b6` and
+`1000:575c` are named in `src/game.rs` (`grep -n '1000:56b6\|1000:575c'
+src/game.rs` finds both, in `Game::spoil_blade`'s doc and body) while
+describing the artefact, which is correct and must not be confused with citing
+`1000:56ba` or `1000:5760`. The test above scopes its exclusion to the two
+addresses the rule actually reads, for that reason.

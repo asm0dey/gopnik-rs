@@ -540,6 +540,8 @@ for the right, `data/branches.json`'s `port_touched` over `src/**/*.rs` and
 | `fbae9c5` | Task 32 (port, the gym's five arms) | *not recomputed* | **476/838** |
 | `858f5fb` | Task 33 (RE, the club and the `i` list) | *not recomputed* | 476/838 |
 | — | Task 34 (port, the club, the `i` list and the vet) | *not recomputed* | **519/838** |
+| `aef46ba` | Task 39 (RE, the combat opener + all 117 uncited classified) | *not recomputed* | 519/838 |
+| — | Task 40 (port, the combat opener and the agility lines; + 101 citations) | *not recomputed* | **634/838** |
 
 **The four `not recomputed` cells are an honest gap, not a measurement.**
 Task 32 recomputed only the right column — `838 game branches | touched 476
@@ -569,6 +571,19 @@ two sets, so `port_touched` could not have moved. Task 34's `519` IS a
 measurement, recomputed
 with the *Recomputation → Coverage* block against its own tree; its left
 column is not, for the same reason Task 32's is not.
+
+**Task 39's `519` and Task 40's `634` are both measurements**, each from the
+same block run against its own tree; Task 39 changed no line of `src/` (an RE
+task, and the fifth time in this file that shape has moved the port metric by
+exactly 0), and Task 40's +115 is the pair it was dispatched with. Task 40 is
+also the first row in this table whose report states the split the totals
+cannot: **14 branches moved because it implemented them** (the class-keyed
+opener and the two agility-reduction lines) and **101 because it cited code
+that already implemented them**, `14 + 101 = 115`, `lost 0`, computed by the
+*Recomputation → Coverage → The per-task delta* block against a worktree of
+`aef46ba` and quoted verbatim in `docs/re/branches.md`. Compare Task 34's +43,
+whose split was never printed: the caveat there records that eleven of the
+forty-three moved without a line of behaviour changing.
 
 Read the alternating rows together. **Task 25 moved the documents metric by +42
 and the port metric by exactly 0**; **Task 26 moved the port metric by +40 and
@@ -608,7 +623,8 @@ and barely moves when the port advances — Task 22 ported a 2700-byte function
 and moved it by **one**. The metric that tracks the port is
 `data/branches.json`'s `port_touched` over `src/`, which went 280 → 305 across
 the same range, 305 → 388 across Tasks 23-26, 388 → 449 across Tasks 27-30 and
-449 → 476 across Tasks 31-32 and 476 → 519 across Tasks 33-34;
+449 → 476 across Tasks 31-32, 476 → 519 across Tasks 33-34 and
+519 → 634 across Tasks 39-40;
 see `docs/re/branches.md`
 under *Recomputation → Coverage*.
 

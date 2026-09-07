@@ -217,16 +217,21 @@ frozen oracles under `data/` are unaffected by it.
 ## The branch skeleton
 
 `data/branches.json` records ten `class == "game"` branches in the range, and at
-Task 39 all ten were `port_touched: false`. Recompute with the block under
+Task 39 all ten were `port_touched: false`. **Task 40 ported the block and all
+ten are now cited** — `src/combat_opener.rs`. Recompute with the block under
 *Recomputation, from the shipped artifacts → Coverage* in
 `docs/re/branches.md`, filtered to `func_entry == "1000:3d11"`.
 
 `data/combat_uncited.json` is the classification of **all** of that function's
 uncited game branches — the ten here and the rest of the function — against the
 port, one row each, with `implemented` rows naming the `src/` construct that
-already evaluates the condition. Its row set is derived by the same block, not
-typed, and `tools/test_combat_opener.py` requires set equality against a fresh
-recomputation, so no count in that lane is written down by hand.
+already evaluates the condition. Since Task 40 its row set is PARTITIONED by
+`port_status`: 115 `cited` and 2 `never-cited`. Both halves are derived by the
+same block, not typed — `tools/test_combat_opener.py` requires the
+`never-cited` rows to equal a fresh recomputation, requires every `cited` row
+to name a `src/` citation that really exists, and requires every row to be a
+`class == "game"` branch of the function at all — so no count in that lane is
+written down by hand.
 
 Where a row's port construct decides the same thing by a **different**
 predicate, the file's `port_equivalences` says why the two agree and on what
@@ -236,10 +241,29 @@ Three are recorded: the `_` arm of a Rust `match` standing in for the last
 signed shortfall, and a literal token compare standing in for
 `crate::commands::parse` at the two verbs `parse` folds together.
 
+## What Task 40 did with it
+
+`src/combat_opener.rs` is the port: `greet(enemy_class, player_name,
+player_rank)`, six arms, the ten links in the original's order, and the silent
+default. It takes no `Rng` and returns nothing, because the block spends no
+draw and writes no state — the two findings above are what let the module have
+that signature at all.
+
+`crate::game::Game::run_combat` calls it behind the OUTER chain
+(`1000:3d27`..`1000:3d2f`), which is why that method now takes the original's
+`param_1`. Only the opener gate reads it; the other four things the original
+does with `param_1` are still unported and listed on `run_combat` itself.
+
+Not everything in the range became a citation. `1000:3d29` and `1000:3d2d`
+were already cited before Task 40 — they are the outer gate, not this chain —
+and the eleventh case has no branch of its own to cite: `1000:3e38 jnz 0x3e8a`
+IS the ninth link and carries the default with it.
+
 ## What this changes elsewhere
 
 - `docs/re/gaps.md`, "The class-keyed combat-opener table" and "The class-keyed
-  opener's text": both said the text was not extracted. It is, here.
+  opener's text": both said the text was not extracted. It is, here — and Task
+  40 then ported it, which both entries now record.
 - `docs/re/combat.md`, "The class-keyed opener": the same sentence, and the
   zero-store finding is added beside the zero-draw one.
 - `docs/re/gaps.md`, the `param_1 = 5` entry (the den's cop fight, `1000:ddfc`):

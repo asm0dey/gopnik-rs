@@ -1,14 +1,39 @@
 {
- "note": "Every game branch of `FUN_1000_3d11` that carried no `SEG:OFF` citation in `src/**/*.rs` or `data/command_dispatch.json` when Task 39 ran, classified against the port. The ROW SET is derived, not typed: it is exactly what the block under 'Recomputation, from the shipped artifacts -> Coverage' in `docs/re/branches.md` reports for `func_entry == \"1000:3d11\"`, and `tools/test_combat_opener.py` recomputes it and requires SET EQUALITY -- so a branch that becomes cited, or a new uncited one, reds the test instead of silently rotting the file. The count is derived from the artifact and is never hard-coded.",
+ "note": "Every game branch of `FUN_1000_3d11` that carried no `SEG:OFF` citation in `src/**/*.rs` or `data/command_dispatch.json` when Task 39 ran, classified against the port. Task 40 then ported or cited all but two of them, so the row set is now PARTITIONED by `port_status` rather than uniformly uncited, and both halves of the partition are derived: `tools/test_combat_opener.py` recomputes the block under 'Recomputation, from the shipped artifacts -> Coverage' in `docs/re/branches.md` for `func_entry == \"1000:3d11\"` and requires the `never-cited` rows to EQUAL that set, requires every `cited` row to name a `src/` citation that really exists, and requires every row to be a `class == \"game\"` branch of the function at all -- so a branch that loses its citation, a new uncited one, and an invented row each red the test instead of silently rotting the file. No count in this lane is hard-coded.",
  "classes": {
   "implemented": "`src/` already evaluates this condition; `src.module`, `src.function` and `src.expr` name the construct that does, so the pairing is falsifiable by reading it. `src.expr` is a PARAPHRASE of the shipped expression, close enough to find it and never a substitute for opening the file -- `docs/re/METHODOLOGY.md` forbids citing a `src/` line number.",
   "unimplemented": "`src/` does not evaluate it. `what` says what it does, from flow.",
   "unreachable-in-port": "the port deliberately diverges and `docs/re/gaps.md` records the divergence. NO ROW USES THIS CLASS -- see `unreachable_in_port_is_empty` below."
  },
+ "port_status": {
+  "cited": "Task 40 put this branch's address, or its guard's, on the `src/` construct that evaluates it -- either because Task 40 implemented the behaviour (the ten opener gates and the four agility-report gates) or because `src/` already implemented it and only the citation was missing. `tools/test_combat_opener.py` re-derives this from the citation index, so the label cannot be asserted onto a row.",
+  "never-cited": "This branch is NOT cited and is not going to be: see `excluded_from_citation`. It is also exactly what a fresh recomputation still reports as uncited for this function."
+ },
  "unreachable_in_port_is_empty": "Not one of these branches is unreachable in the port. The nearest candidates were checked and rejected: `1000:56ba` and `1000:5760` are branches that can never be TAKEN in the ORIGINAL (`mov al,1` / `or al,al` / `jz`), which is a compiler artefact and not a port divergence, so they are `unimplemented`; and the four blow-budget report gates (`1000:3ff5`, `1000:4011`, `1000:4098`, `1000:40b4`) guard two lines the port simply does not print, which is a missing feature and not a recorded divergence either. An empty class is reported rather than filled, because using it as an escape hatch is how an inventory stops being falsifiable.",
+ "excluded_from_citation": {
+  "ruling": "Permanently excluded from `port_touched` by the Task 40 controller: a port cannot honestly evaluate a condition that is constant-true in the original, and writing the address beside code that decides something else would be a false citation -- worse than leaving the branch uncited, because it makes the map lie while the metric improves. So `FUN_1000_3d11`'s realistic ceiling is 222 of its 224 game branches, not 224.",
+  "why_they_can_never_be_taken": "Each is `mov al,1` / `or al,al` / `jz`: `al` holds the immediate 1 stored two instructions earlier, `or` clears ZF for any non-zero operand, so ZF is never set and the `jz` is never taken. Re-derived from `orig/g.exe` by `test_the_two_never_taken_rows_are_excluded_from_citation`, which decodes the three instructions rather than trusting this sentence.",
+  "rows": [
+   {
+    "addr": "1000:56ba",
+    "guard": "1000:56b8",
+    "load": "1000:56b6",
+    "load_text": "mov al,0x1",
+    "what": "ahead of the ножик's +4 term in `Game::spoil_blade`"
+   },
+   {
+    "addr": "1000:5760",
+    "guard": "1000:575e",
+    "load": "1000:575c",
+    "load_text": "mov al,0x1",
+    "what": "ahead of the тесак's +7 term in `Game::spoil_blade`"
+   }
+  ],
+  "gaps_entry": "docs/re/gaps.md, 'Two never-taken branches are permanently excluded from citation'"
+ },
  "derivation": {
   "source": "data/branches.json",
-  "rule": "`class == \"game\"` and `func_entry == \"1000:3d11\"` and NOT (the branch's own address or its guard's appears as a `SEG:OFF` citation in one of the artifact's own `port_citation_sources` globs, with a runtime segment normalised as `seg + 0x1000`).",
+  "rule": "`class == \"game\"` and `func_entry == \"1000:3d11\"` and NOT (the branch's own address or its guard's appears as a `SEG:OFF` citation in one of the artifact's own `port_citation_sources` globs, with a runtime segment normalised as `seg + 0x1000`). Task 40's partition adds the complementary derivation: a row is `port_status: \"cited\"` exactly when that same rule now finds a citation for it.",
   "recomputed_by": "tools/test_combat_opener.py",
   "block": "docs/re/branches.md, 'Recomputation, from the shipped artifacts -> Coverage'"
  },
@@ -16,7 +41,9 @@
   "total": 117,
   "implemented": 101,
   "unimplemented": 16,
-  "unreachable-in-port": 0
+  "unreachable-in-port": 0,
+  "cited": 115,
+  "still_uncited": 2
  },
  "branches": [
   {
@@ -27,6 +54,7 @@
    "taken": "1000:3d44",
    "fallthrough": "1000:3d3a",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "enemy class 0 -> the arm at 1000:3d44 -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
   },
   {
@@ -37,6 +65,7 @@
    "taken": "1000:3d44",
    "fallthrough": "1000:3d3f",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "enemy class 1 -> the arm at 1000:3d44 -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
   },
   {
@@ -47,6 +76,7 @@
    "taken": "1000:3d79",
    "fallthrough": "1000:3d44",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "enemy class 2 -> the arm at 1000:3d44, else on to 1000:3d79 -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
   },
   {
@@ -57,6 +87,7 @@
    "taken": "1000:3d8d",
    "fallthrough": "1000:3d7e",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "enemy class 3 -> the arm at 1000:3d8d -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
   },
   {
@@ -67,6 +98,7 @@
    "taken": "1000:3d8d",
    "fallthrough": "1000:3d83",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "enemy class 4 -> the arm at 1000:3d8d -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
   },
   {
@@ -77,6 +109,7 @@
    "taken": "1000:3d8d",
    "fallthrough": "1000:3d88",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "enemy class 5 -> the arm at 1000:3d8d -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
   },
   {
@@ -87,6 +120,7 @@
    "taken": "1000:3dc2",
    "fallthrough": "1000:3d8d",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "enemy class 6 -> the arm at 1000:3d8d, else on to 1000:3dc2 -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
   },
   {
@@ -97,6 +131,7 @@
    "taken": "1000:3de3",
    "fallthrough": "1000:3dc7",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "enemy class 7 -> the arm at 1000:3dc7, else on to 1000:3de3 -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
   },
   {
@@ -107,6 +142,7 @@
    "taken": "1000:3e35",
    "fallthrough": "1000:3de8",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "enemy class 8 -> the arm at 1000:3de8, else on to 1000:3e35 -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
   },
   {
@@ -117,6 +153,7 @@
    "taken": "1000:3e8a",
    "fallthrough": "1000:3e3a",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "enemy class 9 -> the arm at 1000:3e3a; anything else reaches the exit having printed nothing -- the class-keyed opener, mapped in docs/re/combat-opener.md and not yet ported"
   },
   {
@@ -127,6 +164,7 @@
    "taken": "1000:4042",
    "fallthrough": "1000:3ff7",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "gate on `enemy.agility + 4 > 18` for the line at 1000:4013, `^2Из-за твоей хорошей ловкости враг сможет пнуть тебя раз # вместо #` -- src/combat.rs computes the budget but never prints either report line"
   },
   {
@@ -137,6 +175,7 @@
    "taken": "1000:4042",
    "fallthrough": "1000:4013",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "second gate on the same line: print only when the reduced budget yields FEWER blows than the unreduced one -- src/combat.rs computes the budget but never prints either report line"
   },
   {
@@ -147,6 +186,7 @@
    "taken": "1000:408f",
    "fallthrough": "1000:4065",
    "class": "implemented",
+   "port_status": "cited",
    "what": "player copy of 1000:3fbb -- nothing happens at a budget of 10 or below",
    "src": {
     "module": "src/combat.rs",
@@ -162,6 +202,7 @@
    "taken": "1000:408f",
    "fallthrough": "1000:406c",
    "class": "implemented",
+   "port_status": "cited",
    "what": "player copy of 1000:3fc2 -- the loop runs while the defender's budget is above 18",
    "src": {
     "module": "src/combat.rs",
@@ -177,6 +218,7 @@
    "taken": "1000:4085",
    "fallthrough": "1000:4073",
    "class": "implemented",
+   "port_status": "cited",
    "what": "player copy of 1000:3fc9 -- below 28 the budget collapses to a flat 10",
    "src": {
     "module": "src/combat.rs",
@@ -192,6 +234,7 @@
    "taken": "1000:40e5",
    "fallthrough": "1000:409a",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "the mirror gate for the line at 1000:40b6, `^4Из-за хорошей ловкости врага ты сможешь пнуть его раз # вместо #` -- src/combat.rs computes the budget but never prints either report line"
   },
   {
@@ -202,6 +245,7 @@
    "taken": "1000:40e5",
    "fallthrough": "1000:40b6",
    "class": "unimplemented",
+   "port_status": "cited",
    "what": "the mirror's second gate, same shape as 1000:4011 -- src/combat.rs computes the budget but never prints either report line"
   },
   {
@@ -212,6 +256,7 @@
    "taken": "1000:411d",
    "fallthrough": "1000:4104",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the counter has just reached 5 -- print the gathering line once",
    "src": {
     "module": "src/game.rs",
@@ -227,6 +272,7 @@
    "taken": "1000:4131",
    "fallthrough": "1000:412e",
    "class": "implemented",
+   "port_status": "cited",
    "what": "no taunts before the fifth prompt of the fight",
    "src": {
     "module": "src/game.rs",
@@ -242,6 +288,7 @@
    "taken": "1000:4141",
    "fallthrough": "1000:413e",
    "class": "implemented",
+   "port_status": "cited",
    "what": "Random(10) must return 0 for a taunt to be printed",
    "src": {
     "module": "src/game.rs",
@@ -257,6 +304,7 @@
    "taken": "1000:418c",
    "fallthrough": "1000:4170",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 1 of 18 (`cmp ax,0x1`)",
    "src": {
     "module": "src/game.rs",
@@ -272,6 +320,7 @@
    "taken": "1000:41ad",
    "fallthrough": "1000:4191",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 2 of 18 (`cmp ax,0x2`)",
    "src": {
     "module": "src/game.rs",
@@ -287,6 +336,7 @@
    "taken": "1000:41ce",
    "fallthrough": "1000:41b2",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 3 of 18 (`cmp ax,0x3`)",
    "src": {
     "module": "src/game.rs",
@@ -302,11 +352,12 @@
    "taken": "1000:4217",
    "fallthrough": "1000:41d3",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 4 of 18 (`cmp ax,0x4`)",
    "src": {
     "module": "src/game.rs",
     "function": "Game::crowd",
-    "expr": "match which { 4 => term::println('Зрители:^6Не подкачай <rank>, я на тебя трёшку поставил!') }"
+    "expr": "let which = self.rng.below_at(\"1000:4145\", 18); match which { 4 => term::print(&Self::rank_name(self.player.class)) }"
    }
   },
   {
@@ -317,6 +368,7 @@
    "taken": "1000:4238",
    "fallthrough": "1000:421c",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 5 of 18 (`cmp ax,0x5`)",
    "src": {
     "module": "src/game.rs",
@@ -332,6 +384,7 @@
    "taken": "1000:4259",
    "fallthrough": "1000:423d",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 6 of 18 (`cmp ax,0x6`)",
    "src": {
     "module": "src/game.rs",
@@ -347,6 +400,7 @@
    "taken": "1000:427a",
    "fallthrough": "1000:425e",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 7 of 18 (`cmp ax,0x7`)",
    "src": {
     "module": "src/game.rs",
@@ -362,6 +416,7 @@
    "taken": "1000:42b4",
    "fallthrough": "1000:427f",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 8 of 18 (`cmp ax,0x8`)",
    "src": {
     "module": "src/game.rs",
@@ -377,6 +432,7 @@
    "taken": "1000:42d5",
    "fallthrough": "1000:42b9",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 9 of 18 (`cmp ax,0x9`)",
    "src": {
     "module": "src/game.rs",
@@ -392,6 +448,7 @@
    "taken": "1000:42f6",
    "fallthrough": "1000:42da",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 10 of 18 (`cmp ax,0xa`)",
    "src": {
     "module": "src/game.rs",
@@ -407,6 +464,7 @@
    "taken": "1000:4317",
    "fallthrough": "1000:42fb",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 11 of 18 (`cmp ax,0xb`)",
    "src": {
     "module": "src/game.rs",
@@ -422,6 +480,7 @@
    "taken": "1000:4338",
    "fallthrough": "1000:431c",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 12 of 18 (`cmp ax,0xc`)",
    "src": {
     "module": "src/game.rs",
@@ -437,6 +496,7 @@
    "taken": "1000:4359",
    "fallthrough": "1000:433d",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 13 of 18 (`cmp ax,0xd`)",
    "src": {
     "module": "src/game.rs",
@@ -452,6 +512,7 @@
    "taken": "1000:4379",
    "fallthrough": "1000:435e",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 14 of 18 (`cmp ax,0xe`)",
    "src": {
     "module": "src/game.rs",
@@ -467,6 +528,7 @@
    "taken": "1000:4399",
    "fallthrough": "1000:437e",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 15 of 18 (`cmp ax,0xf`)",
    "src": {
     "module": "src/game.rs",
@@ -482,6 +544,7 @@
    "taken": "1000:43b9",
    "fallthrough": "1000:439e",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 16 of 18 (`cmp ax,0x10`)",
    "src": {
     "module": "src/game.rs",
@@ -497,11 +560,12 @@
    "taken": "1000:43f6",
    "fallthrough": "1000:43be",
    "class": "implemented",
+   "port_status": "cited",
    "what": "crowd taunt 17 of 18 (`cmp ax,0x11`)",
    "src": {
     "module": "src/game.rs",
     "function": "Game::crowd",
-    "expr": "match which { 17 => term::println('Зрители:^6Ну и кого там <name> ^6сегодня пинает?') }"
+    "expr": "let which = self.rng.below_at(\"1000:4145\", 18); match which { _ => term::print(&self.player.name) }"
    }
   },
   {
@@ -512,6 +576,7 @@
    "taken": "1000:44d8",
    "fallthrough": "1000:44d2",
    "class": "implemented",
+   "port_status": "cited",
    "what": "high word of Borland's signed 32-bit crit compare, player swinging",
    "src": {
     "module": "src/combat.rs",
@@ -527,6 +592,7 @@
    "taken": "1000:4546",
    "fallthrough": "1000:44d4",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the second half of the same high-word test: strictly below is no crit",
    "src": {
     "module": "src/combat.rs",
@@ -542,6 +608,7 @@
    "taken": "1000:4508",
    "fallthrough": "1000:44ed",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the player's crit's Random(3) picks one of three taunt lines",
    "src": {
     "module": "src/game.rs",
@@ -557,6 +624,7 @@
    "taken": "1000:4528",
    "fallthrough": "1000:450d",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the player's crit's Random(3) picks one of three taunt lines",
    "src": {
     "module": "src/game.rs",
@@ -572,6 +640,7 @@
    "taken": "1000:4546",
    "fallthrough": "1000:452d",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the player's crit's Random(3) picks one of three taunt lines",
    "src": {
     "module": "src/game.rs",
@@ -587,6 +656,7 @@
    "taken": "1000:4591",
    "fallthrough": "1000:458b",
    "class": "implemented",
+   "port_status": "cited",
    "what": "high word of the signed 32-bit limb-break compare, player swinging",
    "src": {
     "module": "src/combat.rs",
@@ -602,6 +672,7 @@
    "taken": "1000:45ea",
    "fallthrough": "1000:458d",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the second half of that high-word test",
    "src": {
     "module": "src/combat.rs",
@@ -617,6 +688,7 @@
    "taken": "1000:45c5",
    "fallthrough": "1000:459e",
    "class": "implemented",
+   "port_status": "cited",
    "what": "Random(2) picks jaw (0) or leg, player swinging",
    "src": {
     "module": "src/combat.rs",
@@ -632,6 +704,7 @@
    "taken": "1000:46a2",
    "fallthrough": "1000:469f",
    "class": "implemented",
+   "port_status": "cited",
    "what": "enemy copy of the accuracy test at 1000:447a -- budget*5 must reach the roll",
    "src": {
     "module": "src/combat.rs",
@@ -647,6 +720,7 @@
    "taken": "1000:46fb",
    "fallthrough": "1000:46f5",
    "class": "implemented",
+   "port_status": "cited",
    "what": "high word of the crit compare, enemy swinging",
    "src": {
     "module": "src/combat.rs",
@@ -662,6 +736,7 @@
    "taken": "1000:4769",
    "fallthrough": "1000:46f7",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the second half of that high-word test",
    "src": {
     "module": "src/combat.rs",
@@ -677,6 +752,7 @@
    "taken": "1000:472b",
    "fallthrough": "1000:4710",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the enemy's crit's Random(3) picks one of three taunt lines",
    "src": {
     "module": "src/game.rs",
@@ -692,6 +768,7 @@
    "taken": "1000:474b",
    "fallthrough": "1000:4730",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the enemy's crit's Random(3) picks one of three taunt lines",
    "src": {
     "module": "src/game.rs",
@@ -707,6 +784,7 @@
    "taken": "1000:4769",
    "fallthrough": "1000:4750",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the enemy's crit's Random(3) picks one of three taunt lines",
    "src": {
     "module": "src/game.rs",
@@ -722,6 +800,7 @@
    "taken": "1000:477f",
    "fallthrough": "1000:4779",
    "class": "implemented",
+   "port_status": "cited",
    "what": "enemy copy of the post-armour damage floor at 1000:4552",
    "src": {
     "module": "src/combat.rs",
@@ -737,6 +816,7 @@
    "taken": "1000:47ba",
    "fallthrough": "1000:47ae",
    "class": "implemented",
+   "port_status": "cited",
    "what": "high word of the limb-break compare, enemy swinging",
    "src": {
     "module": "src/combat.rs",
@@ -752,6 +832,7 @@
    "taken": "1000:47b3",
    "fallthrough": "1000:47b0",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the second half of that high-word test",
    "src": {
     "module": "src/combat.rs",
@@ -767,6 +848,7 @@
    "taken": "1000:4842",
    "fallthrough": "1000:47c7",
    "class": "implemented",
+   "port_status": "cited",
    "what": "Random(2) picks jaw (0) or leg, enemy swinging",
    "src": {
     "module": "src/combat.rs",
@@ -782,6 +864,7 @@
    "taken": "1000:48eb",
    "fallthrough": "1000:48e8",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the `run` token compare's hit branch",
    "src": {
     "module": "src/game.rs",
@@ -797,6 +880,7 @@
    "taken": "1000:49dd",
    "fallthrough": "1000:49d7",
    "class": "implemented",
+   "port_status": "cited",
    "what": "hp clamp after code '1' lowers hpmax",
    "src": {
     "module": "src/progress.rs",
@@ -812,6 +896,7 @@
    "taken": "1000:4a09",
    "fallthrough": "1000:49ea",
    "class": "implemented",
+   "port_status": "cited",
    "what": "growth-log code '2' (0x32) undoes one point of Ловкость",
    "src": {
     "module": "src/progress.rs",
@@ -827,6 +912,7 @@
    "taken": "1000:4a46",
    "fallthrough": "1000:4a13",
    "class": "implemented",
+   "port_status": "cited",
    "what": "growth-log code '3' (0x33) undoes one point of Живучесть",
    "src": {
     "module": "src/progress.rs",
@@ -842,6 +928,7 @@
    "taken": "1000:4a44",
    "fallthrough": "1000:4a3e",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the same hp clamp after code '3' lowers hpmax by 5",
    "src": {
     "module": "src/progress.rs",
@@ -857,6 +944,7 @@
    "taken": "1000:4b17",
    "fallthrough": "1000:4b14",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the `kos` token compare's hit branch",
    "src": {
     "module": "src/game.rs",
@@ -872,6 +960,7 @@
    "taken": "1000:4b44",
    "fallthrough": "1000:4b41",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the buff countdown at 20ae:38cd must be zero to smoke again",
    "src": {
     "module": "src/game.rs",
@@ -887,6 +976,7 @@
    "taken": "1000:4bb3",
    "fallthrough": "1000:4b71",
    "class": "implemented",
+   "port_status": "cited",
    "what": "which of the two heal lines prints, on hpmax - hp against 10",
    "src": {
     "module": "src/game.rs",
@@ -902,6 +992,7 @@
    "taken": "1000:4c38",
    "fallthrough": "1000:4c35",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the `s` token compare's miss branch -- a hit calls 1000:1a03",
    "src": {
     "module": "src/game.rs",
@@ -917,6 +1008,7 @@
    "taken": "1000:4c4c",
    "fallthrough": "1000:4c49",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the `sv` token compare's miss branch -- a hit calls 1000:1348",
    "src": {
     "module": "src/game.rs",
@@ -932,6 +1024,7 @@
    "taken": "1000:4c64",
    "fallthrough": "1000:4c5d",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the `e` token compare's miss branch -- a hit is Halt(0)",
    "src": {
     "module": "src/game.rs",
@@ -947,6 +1040,7 @@
    "taken": "1000:4ca0",
    "fallthrough": "1000:4c7c",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the SECOND `k` compare, which ticks the backup countdown -- this branch is the `cmd == Command::Fight` conjunct of that condition; the first conjunct is 1000:4c64's guard and the third is 1000:4c80",
    "src": {
     "module": "src/game.rs",
@@ -962,6 +1056,7 @@
    "taken": "1000:4cb4",
    "fallthrough": "1000:4cb1",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the `v` token compare's hit branch",
    "src": {
     "module": "src/game.rs",
@@ -977,6 +1072,7 @@
    "taken": "1000:4e43",
    "fallthrough": "1000:4e1f",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the attrition coin -- a 0 advances the backup counter at 20ae:3c80",
    "src": {
     "module": "src/combat_dispatch.rs",
@@ -992,6 +1088,7 @@
    "taken": "1000:4eb2",
    "fallthrough": "1000:4eaf",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the `f` token compare's hit branch",
    "src": {
     "module": "src/game.rs",
@@ -1007,6 +1104,7 @@
    "taken": "1000:502c",
    "fallthrough": "1000:5025",
    "class": "implemented",
+   "port_status": "cited",
    "what": "broken jaw -> 7 more roubles and both limb flags cleared",
    "src": {
     "module": "src/game.rs",
@@ -1022,6 +1120,7 @@
    "taken": "1000:503b",
    "fallthrough": "1000:502c",
    "class": "implemented",
+   "port_status": "cited",
    "what": "broken leg -> the same block; the two tests are one disjunction",
    "src": {
     "module": "src/game.rs",
@@ -1037,6 +1136,7 @@
    "taken": "1000:5051",
    "fallthrough": "1000:5042",
    "class": "implemented",
+   "port_status": "cited",
    "what": "a negative purse after the bill is settled out of street cred",
    "src": {
     "module": "src/game.rs",
@@ -1052,6 +1152,7 @@
    "taken": "1000:5280",
    "fallthrough": "1000:527a",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the +5 heal is clamped to hpmax",
    "src": {
     "module": "src/game.rs",
@@ -1067,6 +1168,7 @@
    "taken": "1000:52e1",
    "fallthrough": "1000:52de",
    "class": "implemented",
+   "port_status": "cited",
    "what": "only a 0 out of Random(30) reaches the one-shot gift chain",
    "src": {
     "module": "src/game.rs",
@@ -1082,6 +1184,7 @@
    "taken": "1000:530f",
    "fallthrough": "1000:52f6",
    "class": "implemented",
+   "port_status": "cited",
    "what": "third disjunct (20ae:38c1) of the preamble line's gate",
    "src": {
     "module": "src/game.rs",
@@ -1097,6 +1200,7 @@
    "taken": "1000:536a",
    "fallthrough": "1000:5316",
    "class": "implemented",
+   "port_status": "cited",
    "what": "20ae:38bf clear -> the first ring",
    "src": {
     "module": "src/game.rs",
@@ -1112,6 +1216,7 @@
    "taken": "1000:53b9",
    "fallthrough": "1000:5371",
    "class": "implemented",
+   "port_status": "cited",
    "what": "20ae:38c0 clear -> the Мега Кольцо",
    "src": {
     "module": "src/game.rs",
@@ -1127,6 +1232,7 @@
    "taken": "1000:53f7",
    "fallthrough": "1000:53c0",
    "class": "implemented",
+   "port_status": "cited",
    "what": "20ae:38c1 clear -> the Господи помилуй ring",
    "src": {
     "module": "src/game.rs",
@@ -1142,6 +1248,7 @@
    "taken": "1000:541b",
    "fallthrough": "1000:5415",
    "class": "implemented",
+   "port_status": "cited",
    "what": "high word of the joint gate's 32-bit compare against Random(district*25)",
    "src": {
     "module": "src/game.rs",
@@ -1157,6 +1264,7 @@
    "taken": "1000:5449",
    "fallthrough": "1000:5417",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the second half of that high-word test",
    "src": {
     "module": "src/game.rs",
@@ -1172,6 +1280,7 @@
    "taken": "1000:5449",
    "fallthrough": "1000:541b",
    "class": "implemented",
+   "port_status": "cited",
    "what": "low word of the same compare, unsigned",
    "src": {
     "module": "src/game.rs",
@@ -1187,11 +1296,12 @@
    "taken": "1000:5449",
    "fallthrough": "1000:5423",
    "class": "implemented",
+   "port_status": "cited",
    "what": "only a Нарк carries a косячок",
    "src": {
     "module": "src/game.rs",
     "function": "Game::claim_spoils",
-    "expr": "&& enemy.class == 2"
+    "expr": "i32::from(self.player.luck) >= i32::from(roll) && enemy.class == 2"
    }
   },
   {
@@ -1202,6 +1312,7 @@
    "taken": "1000:5473",
    "fallthrough": "1000:5467",
    "class": "implemented",
+   "port_status": "cited",
    "what": "high word of the item gate's compare against Random(district*40)",
    "src": {
     "module": "src/game.rs",
@@ -1217,6 +1328,7 @@
    "taken": "1000:546c",
    "fallthrough": "1000:5469",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the second half of that high-word test",
    "src": {
     "module": "src/game.rs",
@@ -1232,6 +1344,7 @@
    "taken": "1000:5473",
    "fallthrough": "1000:5470",
    "class": "implemented",
+   "port_status": "cited",
    "what": "low word of the same compare, unsigned",
    "src": {
     "module": "src/game.rs",
@@ -1247,6 +1360,7 @@
    "taken": "1000:547e",
    "fallthrough": "1000:547b",
    "class": "implemented",
+   "port_status": "cited",
    "what": "enemy class 1 (Нефор) -> the charm table",
    "src": {
     "module": "src/game.rs",
@@ -1262,6 +1376,7 @@
    "taken": "1000:54b8",
    "fallthrough": "1000:548c",
    "class": "implemented",
+   "port_status": "cited",
    "what": "Random(3) == 0 -> the крестик",
    "src": {
     "module": "src/game.rs",
@@ -1277,6 +1392,7 @@
    "taken": "1000:54e8",
    "fallthrough": "1000:54bd",
    "class": "implemented",
+   "port_status": "cited",
    "what": "Random(3) == 1 -> the кольцо",
    "src": {
     "module": "src/game.rs",
@@ -1292,6 +1408,7 @@
    "taken": "1000:5512",
    "fallthrough": "1000:54ed",
    "class": "implemented",
+   "port_status": "cited",
    "what": "Random(3) == 2 -> the mobile",
    "src": {
     "module": "src/game.rs",
@@ -1307,6 +1424,7 @@
    "taken": "1000:552c",
    "fallthrough": "1000:551a",
    "class": "implemented",
+   "port_status": "cited",
    "what": "enemy class 3 -> the club table",
    "src": {
     "module": "src/game.rs",
@@ -1322,6 +1440,7 @@
    "taken": "1000:552c",
    "fallthrough": "1000:551f",
    "class": "implemented",
+   "port_status": "cited",
    "what": "enemy class 4 -> the club table",
    "src": {
     "module": "src/game.rs",
@@ -1337,6 +1456,7 @@
    "taken": "1000:552c",
    "fallthrough": "1000:5524",
    "class": "implemented",
+   "port_status": "cited",
    "what": "enemy class 5 -> the club table",
    "src": {
     "module": "src/game.rs",
@@ -1352,6 +1472,7 @@
    "taken": "1000:552c",
    "fallthrough": "1000:5529",
    "class": "implemented",
+   "port_status": "cited",
    "what": "enemy class 6 -> the club table",
    "src": {
     "module": "src/game.rs",
@@ -1367,6 +1488,7 @@
    "taken": "1000:559b",
    "fallthrough": "1000:553a",
    "class": "implemented",
+   "port_status": "cited",
    "what": "Random(2) == 0 -> the кастет",
    "src": {
     "module": "src/game.rs",
@@ -1382,6 +1504,7 @@
    "taken": "1000:5599",
    "fallthrough": "1000:5541",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the кастет is granted only once",
    "src": {
     "module": "src/game.rs",
@@ -1397,6 +1520,7 @@
    "taken": "1000:560b",
    "fallthrough": "1000:55a0",
    "class": "implemented",
+   "port_status": "cited",
    "what": "Random(2) == 1 -> the дубинка",
    "src": {
     "module": "src/game.rs",
@@ -1412,6 +1536,7 @@
    "taken": "1000:5675",
    "fallthrough": "1000:5613",
    "class": "implemented",
+   "port_status": "cited",
    "what": "enemy class 7 (Беспредельщик) -> the glasses table",
    "src": {
     "module": "src/game.rs",
@@ -1427,6 +1552,7 @@
    "taken": "1000:5648",
    "fallthrough": "1000:5621",
    "class": "implemented",
+   "port_status": "cited",
    "what": "Random(2) == 0 -> the тёмные очки",
    "src": {
     "module": "src/game.rs",
@@ -1442,6 +1568,7 @@
    "taken": "1000:5672",
    "fallthrough": "1000:564d",
    "class": "implemented",
+   "port_status": "cited",
    "what": "Random(2) == 1 -> the mobile",
    "src": {
     "module": "src/game.rs",
@@ -1457,6 +1584,7 @@
    "taken": "1000:567d",
    "fallthrough": "1000:567a",
    "class": "implemented",
+   "port_status": "cited",
    "what": "enemy class 9 (Маньячок) -> the blade table",
    "src": {
     "module": "src/game.rs",
@@ -1472,6 +1600,7 @@
    "taken": "1000:568e",
    "fallthrough": "1000:568b",
    "class": "implemented",
+   "port_status": "cited",
    "what": "Random(2) == 0 -> the ножик",
    "src": {
     "module": "src/game.rs",
@@ -1487,6 +1616,7 @@
    "taken": "1000:56c3",
    "fallthrough": "1000:56bc",
    "class": "unimplemented",
+   "port_status": "never-cited",
    "what": "`mov al,0x1` / `or al,al` / `jz` ahead of the ножик's +4 term: `al` is the immediate 1 stored two instructions earlier, so ZF is never set and the jump is never taken. A compiler artefact -- src/ omits it, and omitting a branch that cannot be taken changes no behaviour."
   },
   {
@@ -1497,6 +1627,7 @@
    "taken": "1000:56ea",
    "fallthrough": "1000:56e0",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the ножик's +2 term, owed only when the дубинка is already owned",
    "src": {
     "module": "src/game.rs",
@@ -1512,6 +1643,7 @@
    "taken": "1000:5709",
    "fallthrough": "1000:56f1",
    "class": "implemented",
+   "port_status": "cited",
    "what": "first conjunct (20ae:38ba) of the ножик's +6 term",
    "src": {
     "module": "src/game.rs",
@@ -1527,6 +1659,7 @@
    "taken": "1000:5709",
    "fallthrough": "1000:56f8",
    "class": "implemented",
+   "port_status": "cited",
    "what": "second conjunct (20ae:394b) of the ножик's +6 term",
    "src": {
     "module": "src/game.rs",
@@ -1542,6 +1675,7 @@
    "taken": "1000:5709",
    "fallthrough": "1000:56ff",
    "class": "implemented",
+   "port_status": "cited",
    "what": "third conjunct (20ae:394c) of the ножик's +6 term",
    "src": {
     "module": "src/game.rs",
@@ -1557,6 +1691,7 @@
    "taken": "1000:5729",
    "fallthrough": "1000:5710",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the тесак already owned -> the consolation line",
    "src": {
     "module": "src/game.rs",
@@ -1572,6 +1707,7 @@
    "taken": "1000:5734",
    "fallthrough": "1000:5731",
    "class": "implemented",
+   "port_status": "cited",
    "what": "Random(2) == 1 -> the тесак",
    "src": {
     "module": "src/game.rs",
@@ -1587,6 +1723,7 @@
    "taken": "1000:5770",
    "fallthrough": "1000:5762",
    "class": "unimplemented",
+   "port_status": "never-cited",
    "what": "`mov al,0x1` / `or al,al` / `jz` ahead of the тесак's +7 term: `al` is the immediate 1 stored two instructions earlier, so ZF is never set and the jump is never taken. A compiler artefact -- src/ omits it, and omitting a branch that cannot be taken changes no behaviour."
   },
   {
@@ -1597,6 +1734,7 @@
    "taken": "1000:5774",
    "fallthrough": "1000:5770",
    "class": "implemented",
+   "port_status": "cited",
    "what": "second conjunct (20ae:38c2) of the flag the тесак's +7 term compares against the кастет",
    "src": {
     "module": "src/game.rs",
@@ -1612,6 +1750,7 @@
    "taken": "1000:579e",
    "fallthrough": "1000:578d",
    "class": "implemented",
+   "port_status": "cited",
    "what": "first conjunct (20ae:394b) of the тесак's +5 term",
    "src": {
     "module": "src/game.rs",
@@ -1627,6 +1766,7 @@
    "taken": "1000:579e",
    "fallthrough": "1000:5794",
    "class": "implemented",
+   "port_status": "cited",
    "what": "second conjunct (20ae:38c2) of the тесак's +5 term",
    "src": {
     "module": "src/game.rs",
@@ -1642,6 +1782,7 @@
    "taken": "1000:57af",
    "fallthrough": "1000:57a5",
    "class": "implemented",
+   "port_status": "cited",
    "what": "the тесак's +3 term, owed only when the ножик is already owned",
    "src": {
     "module": "src/game.rs",
@@ -1657,6 +1798,7 @@
    "taken": "1000:57ce",
    "fallthrough": "1000:57b6",
    "class": "implemented",
+   "port_status": "cited",
    "what": "first conjunct (20ae:38ba) of the тесак's +9 term",
    "src": {
     "module": "src/game.rs",
@@ -1672,6 +1814,7 @@
    "taken": "1000:57ce",
    "fallthrough": "1000:57bd",
    "class": "implemented",
+   "port_status": "cited",
    "what": "second conjunct (20ae:394b) of the тесак's +9 term",
    "src": {
     "module": "src/game.rs",
@@ -1687,6 +1830,7 @@
    "taken": "1000:57ce",
    "fallthrough": "1000:57c4",
    "class": "implemented",
+   "port_status": "cited",
    "what": "third conjunct (20ae:38c2) of the тесак's +9 term",
    "src": {
     "module": "src/game.rs",
@@ -1733,6 +1877,7 @@
   "rows_uniquely_pinned_floor": 55,
   "rows_with_no_checkable_identifier": 0,
   "note": "`rows_uniquely_pinned_floor` is a RATCHET, not an equality: the test asserts >=, so writing a more distinctive expression can only raise it and a weakened check reds. The 46 rows not pinned share their identifiers with a sibling function (e.g. Game::spoil_charm and Game::spoil_glasses both call below_at and both set has_mobile), so the check narrows them without isolating them. This is a filter, not a proof: whether the Rust expression computes the same ANSWER as the original's compare rests on each row's `what` and on a reviewer reading the pair.",
-  "command": "python3 tools/test_combat_opener.py CombatOpenerTest.test_the_function_scope_discriminates_as_well_as_recorded"
+  "command": "python3 tools/test_combat_opener.py CombatOpenerTest.test_the_function_scope_discriminates_as_well_as_recorded",
+  "fragility": "The identifier test is a SUBSTRING search over the named function's whole body, comments included, so ordinary English words in a sibling function's prose can un-pin a row: Task 40's own citation comments put `rank`, `name`, `class` and the word `which` into `Game::run_combat` and `Game::spoil_blade` and dropped the count from 55 to 52 without touching a single `src.expr`.  The repair the ratchet's docstring names is the right one -- write a MORE DISTINCTIVE expression -- and it is what three rows got (`1000:41d1`, `1000:43bc`, `1000:5421`); lowering the floor is not.  Recording this because the next task to add prose here will hit it."
  }
 }

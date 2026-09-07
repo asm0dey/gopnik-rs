@@ -445,6 +445,16 @@ not say:
   section describes, and `1000:3df8` pushes `DS:379c`, the player's name — the
   same two sources the crowd's `r = 4` and `r = 17` lines use.
 
+**Ported by Task 40 — `src/combat_opener.rs`.** Six arms, verbatim strings,
+the ten `cmp ax,N` links in the original's order, and the silent default for
+anything the chain does not name. `Game::run_combat` calls it behind the
+`param_1` gate at `1000:3d27`..`1000:3d2f`, so `param_1` 0 and 6 greet and
+2 / 5 do not — which is what the den's cop fight and the club's
+caught-cheating fight get right by being silent. Because the block spends no
+draw and writes no state, adding it moved nothing in
+`tests/combat_sequence.rs` or the five frozen oracles, and that is a
+prediction this section made before the port and the test suite then confirmed.
+
 ### The victory block — `1000:5189`..`1000:57cc`
 
 **Established from flow**, disassembled forward from `1000:5189`.

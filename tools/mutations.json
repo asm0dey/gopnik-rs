@@ -3239,16 +3239,16 @@
   },
   {
     "label": "combat-uncited-derived-total",
-    "defends": "counts.total is the DERIVED total, checked against a fresh recomputation rather than against the file's own row count.  A hard-coded 117 anywhere in this lane would be the check that cannot fail docs/re/METHODOLOGY.md names.",
+    "defends": "counts.still_uncited is the DERIVED remainder, checked against a fresh recomputation rather than against the file's own row count.  Since Task 40 the row set is partitioned by `port_status`, and it is this half -- the branches still uncited -- that a recomputation can confirm.  A hard-coded number anywhere in this lane would be the check that cannot fail docs/re/METHODOLOGY.md names.",
     "artifact": "data/combat_uncited.json",
     "mutate": {
       "op": "json-set",
       "path": [
         "counts",
-        "total"
+        "still_uncited"
       ],
-      "from": 117,
-      "to": 116
+      "from": 2,
+      "to": 1
     },
     "test": [
       "python3",
@@ -3323,7 +3323,7 @@
   },
   {
     "label": "combat-uncited-still-uncited",
-    "defends": "Every row must still be UNCITED in the port.  When Task 40 lands a citation the row belongs in the port, not in this file, and this is what forces the artifact to be updated rather than kept as a stale inventory.  The perturbation is 1000:44d6, which IS a `class == \"game\"` branch of FUN_1000_3d11 and IS cited (src/combat.rs:334) -- so the row is rejected for the reason the case claims.  An earlier revision appended 1000:4135, a `call` that is not a branch at all: it reddened the test, but for being absent from the branch census rather than for being cited, which is a case that passes without demonstrating its own claim.",
+    "defends": "Every row's recorded `port_status` must match the citation index.  A row marked `never-cited` that has acquired a citation is this artifact going stale, and Task 40 -- which cited 115 of the 117 -- is exactly when that happens.  The perturbation is 1000:44d6, which IS a `class == \"game\"` branch of FUN_1000_3d11 and IS cited (src/combat.rs) -- so the row is rejected for the reason the case claims.  An earlier revision appended 1000:4135, a `call` that is not a branch at all: it reddened the test, but for being absent from the branch census rather than for being cited, which is a case that passes without demonstrating its own claim.",
     "artifact": "data/combat_uncited.json",
     "mutate": {
       "op": "json-append",
@@ -3338,15 +3338,53 @@
         "taken": "1000:4546",
         "fallthrough": "1000:44d8",
         "class": "unimplemented",
+        "port_status": "never-cited",
         "what": "a real game branch of FUN_1000_3d11 that src/combat.rs already cites"
       }
     },
     "test": [
       "python3",
       "tools/test_combat_opener.py",
-      "CombatOpenerTest.test_no_row_is_cited_in_the_port_yet"
+      "CombatOpenerTest.test_every_cited_row_really_is_cited_where_it_says"
     ],
-    "expect": "no longer uncited"
+    "expect": "is now cited at"
+  },
+  {
+    "label": "combat-uncited-cited-tally",
+    "defends": "counts.cited is the other half of the derived partition: the number of rows whose own address, or whose guard's, is in the citation index the port ships.  Without it the `cited` mark could sit on the wrong rows and every total would still add up.",
+    "artifact": "data/combat_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "counts",
+        "cited"
+      ],
+      "from": 115,
+      "to": 114
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_every_cited_row_really_is_cited_where_it_says"
+    ],
+    "expect": "counts.cited is"
+  },
+  {
+    "label": "combat-uncited-never-taken-exclusion",
+    "defends": "The Task 40 controller ruling that 1000:56ba and 1000:5760 -- `mov al,1` / `or al,al` / `jz`, whose ZF can never be set -- are permanently excluded from citation.  A ruling that lives only in prose is the kind of guarantee this project has shipped and then broken: writing either address into src/ would move port_touched by two while making the map claim the port evaluates a condition that is constant-true.  The perturbation adds 1000:56ba to a comment in src/game.rs, which is all it would take.",
+    "artifact": "src/game.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "                // 1000:56d9 `cmp byte [0x394b],0x0` / 1000:56de `jz 0x56ea`",
+      "to": "                // 1000:56ba 1000:56d9 `cmp byte [0x394b],0x0` / 1000:56de `jz 0x56ea`",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_combat_opener.py",
+      "CombatOpenerTest.test_the_two_never_taken_rows_are_excluded_from_citation"
+    ],
+    "expect": "is cited in the port"
   },
   {
     "label": "combat-uncited-port-equivalence",

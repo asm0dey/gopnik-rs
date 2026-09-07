@@ -151,12 +151,18 @@ class TestSrcCitations(unittest.TestCase):
         self.assertEqual(self.report["verified"], self.golden["verified"])
 
     def test_the_failing_pairs_are_exactly_the_recorded_ones(self):
-        """Five mismatches stand, each named in the report for this task.
+        """Six mismatches stand, each named in the report for this task.
 
-        Two are in a PLAN document -- `src/game.rs:2380` for
+        Three are in a PLAN document -- `src/game.rs:2380` for
         `Game::show_command_list` (now 2608) and `src/game.rs:3575` for
-        `Game::smoke` (now 3878) -- quoted as they stood when the plan was
-        written, and a plan is not retro-edited.
+        `Game::smoke` (now 3878) in the service-handlers plan, and
+        `src/game.rs:6425` for `Game::crowd` in the combat-opener plan --
+        quoted as they stood when the plan was written, and a plan is not
+        retro-edited. The third VERIFIED at Task 39 and moved here at Task 40,
+        which added twenty citation comments inside `Game::crowd` and shifted
+        it down the file: the drift is the point, and it is why
+        `docs/re/METHODOLOGY.md` forbids a `src/` line number in a claim that
+        has to stay true.
 
         Three are the ENCLOSING-SCOPE form (`` `Game` in `src/game.rs:479` ``),
         where the bound symbol names the struct or function the cited line sits

@@ -599,18 +599,43 @@ class CombatOpenerTest(unittest.TestCase):
 
     # ------------------------------------------------- the classification set
     def test_combat_uncited_covers_exactly_the_derived_uncited_set(self):
+        """The `never-cited` half of the partition, against a fresh derivation.
+
+        Until Task 40 this asserted that EVERY row was still uncited, which
+        that task necessarily broke by doing its job.  The claim that survives
+        is the one worth keeping: whatever a fresh recomputation of
+        `docs/re/branches.md`'s Coverage rule still reports as uncited for
+        this function must be in this file, marked `never-cited`, and nothing
+        else may carry that mark.  So a branch that loses its citation, and a
+        row parked under the wrong status, both go red.
+
+        The second equality is what stops a row being invented under the
+        `cited` mark, where the first cannot see it: every row must be a
+        `class == "game"` branch of `FUN_1000_3d11` in `data/branches.json`.
+        """
         derived, _ = uncited_branches(self.branches, REPO)
         self.assertEqual(
-            [b["addr"] for b in self.uncited["branches"]],
+            [r["addr"] for r in self.uncited["branches"]
+             if r["port_status"] == "never-cited"],
             [b["addr"] for b in derived],
             "data/combat_uncited.json and a fresh recomputation of "
             "docs/re/branches.md's Coverage rule disagree about which "
             "branches of %s are uncited" % FUNC_ENTRY)
-        self.assertEqual(self.uncited["counts"]["total"], len(derived),
+        game = [b["addr"] for b in self.branches["branches"]
+                if b["class"] == "game" and b["func_entry"] == FUNC_ENTRY]
+        self.assertEqual(
+            [r["addr"] for r in self.uncited["branches"]
+             if r["addr"] not in set(game)], [],
+            "a fresh recomputation says this row is not a `class == \"game\"` "
+            "branch of %s at all" % FUNC_ENTRY)
+        self.assertEqual(self.uncited["counts"]["still_uncited"], len(derived),
                          "the recorded total is not the derived one")
         self.assertGreater(len(derived), 0,
                            "the derivation produced nothing, so the equality "
                            "above compares two empty lists")
+        self.assertLess(len(derived), len(self.uncited["branches"]),
+                        "every row is still uncited, so the `cited` half of "
+                        "the partition is asserted by nothing")
 
     def test_the_recorded_counts_are_the_tally_of_the_rows(self):
         counts = collections.Counter(r["class"]
@@ -630,8 +655,12 @@ class CombatOpenerTest(unittest.TestCase):
                          "a row carries a class this schema does not define")
 
     def test_every_uncited_row_decodes_to_what_it_says(self):
-        rows, _ = uncited_branches(self.branches, REPO)
-        derived = {b["addr"]: b for b in rows}
+        # Every GAME BRANCH of the function, not only the ones still uncited:
+        # since Task 40 most rows carry a citation, and their taken /
+        # fallthrough / guard columns must still agree with
+        # `data/branches.json`.
+        derived = {b["addr"]: b for b in self.branches["branches"]
+                   if b["class"] == "game" and b["func_entry"] == FUNC_ENTRY}
         for r in self.uncited["branches"]:
             self.assertEqual(self.at(r["addr"]).text, r["text"],
                              "%s does not decode to %r"
@@ -864,38 +893,107 @@ class CombatOpenerTest(unittest.TestCase):
                            "the equivalence walk found nothing, so the checks "
                            "above ran on no data")
 
-    def test_no_row_is_cited_in_the_port_yet(self):
-        """The file describes branches the port does NOT cite.
+    def test_every_cited_row_really_is_cited_where_it_says(self):
+        """The `cited` half of the partition, and it reports WHERE.
 
-        A row that has since acquired a citation is not a failure of the port
-        -- it is this artifact going stale, and it must be noticed rather than
-        quietly kept.  Task 40 lands citations on these very addresses, so
-        this is the check that will fire first when it does.
+        A row marked `cited` whose address and guard appear in no `src/` file
+        is a claim asserted by nothing; a row marked `never-cited` that has
+        acquired a citation is this artifact going stale.  Both go red here,
+        and this test names the file and line, which
+        `test_combat_uncited_covers_exactly_the_derived_uncited_set` cannot do
+        -- that is why the two are kept apart rather than folded together.
 
-        `test_combat_uncited_covers_exactly_the_derived_uncited_set` would
-        also go red on such a row, by ordered list inequality.  What it cannot
-        do is say WHERE: this reports the `src/**.rs` file and line that now
-        cites the branch, which is the one fact needed to decide whether the
-        row should be dropped or the citation moved.  A message the other
-        test cannot produce is why this one is kept rather than folded in.
+        Before Task 40 this test was `test_no_row_is_cited_in_the_port_yet`
+        and asserted the stronger, temporary claim that no row was cited at
+        all.  Task 40 cited 115 of the 117; what is left is the claim that
+        each row's recorded status matches the citation index.
         """
-        rows, cite = uncited_branches(self.branches, REPO)
-        derived = {b["addr"] for b in rows}
+        _, cite = uncited_branches(self.branches, REPO)
         by_addr = {b["addr"]: b for b in self.branches["branches"]}
-        stale = []
+        wrong, cited = [], 0
         for r in self.uncited["branches"]:
-            if r["addr"] in derived:
-                continue
             b = by_addr.get(r["addr"])
             where = sorted(cite.get(flat(r["addr"]), []))
             if b and b["guard"]:
                 where += sorted(cite.get(flat(b["guard"]["addr"]), []))
-            stale.append("%s now cited at %s"
-                         % (r["addr"], ", ".join(where) or "(not a game "
-                            "branch of %s at all)" % FUNC_ENTRY))
-        self.assertEqual(stale, [],
-                         "these rows are no longer uncited and must come out "
-                         "of data/combat_uncited.json")
+            if r["port_status"] == "cited":
+                cited += 1
+                if not where:
+                    wrong.append("%s is recorded `cited` and NOTHING in "
+                                 "src/**.rs names it or its guard"
+                                 % r["addr"])
+            elif where:
+                wrong.append("%s is recorded `%s` and is now cited at %s"
+                             % (r["addr"], r["port_status"],
+                                ", ".join(where)))
+        self.assertEqual(wrong, [],
+                         "data/combat_uncited.json's `port_status` and the "
+                         "citation index disagree")
+        self.assertEqual(cited, self.uncited["counts"]["cited"],
+                         "counts.cited is %d; the rows tally %d"
+                         % (self.uncited["counts"]["cited"], cited))
+        self.assertGreater(cited, 0,
+                           "no row is marked cited, so the walk above "
+                           "checked nothing")
+
+    def test_the_two_never_taken_rows_are_excluded_from_citation(self):
+        """The controller ruling, made executable rather than remembered.
+
+        `1000:56ba` and `1000:5760` are `mov al,1` / `or al,al` / `jz`: `al`
+        holds an immediate 1, `or` clears ZF for any non-zero operand, so the
+        jump can never be taken.  The port omits them, and they are
+        permanently excluded from citation -- writing either address beside
+        code that decides something else would move `port_touched` by two
+        while making the map lie, which is the failure this whole lane is
+        built around.
+
+        Nothing here is trusted from the artifact: the three-instruction shape
+        is decoded out of `orig/g.exe`, and the exclusion is checked against
+        the citation index the port actually ships.
+        """
+        rec = self.uncited["excluded_from_citation"]
+        _, cite = uncited_branches(self.branches, REPO)
+        self.assertEqual(
+            [e["addr"] for e in rec["rows"]],
+            [r["addr"] for r in self.uncited["branches"]
+             if r["port_status"] == "never-cited"],
+            "the exclusion list and the `never-cited` rows disagree")
+        self.assertGreater(len(rec["rows"]), 0,
+                           "the exclusion list is empty, so the checks below "
+                           "ran on no data")
+        for e in rec["rows"]:
+            load = self.at(e["load"])
+            self.assertEqual(load.text, e["load_text"],
+                             "%s does not decode to %r"
+                             % (e["load"], e["load_text"]))
+            self.assertEqual(load.text, "mov al,0x1",
+                             "%s is not the immediate-1 load the ruling "
+                             "rests on" % e["load"])
+            self.assertEqual(self.at(e["guard"]).text, "or al,al",
+                             "%s is not the `or al,al` that would have to set "
+                             "ZF" % e["guard"])
+            self.assertTrue(self.at(e["addr"]).text.startswith("jz "),
+                            "%s is not a `jz`, so the never-taken argument "
+                            "does not apply to it" % e["addr"])
+            # And the three really are consecutive: a `mov al,1` somewhere
+            # else in the function would prove nothing about this `or`.
+            self.assertEqual(load.end, off_of(e["guard"]),
+                             "%s is not the instruction immediately before "
+                             "%s" % (e["load"], e["guard"]))
+            self.assertEqual(self.at(e["guard"]).end, off_of(e["addr"]),
+                             "%s is not the instruction immediately before "
+                             "%s" % (e["guard"], e["addr"]))
+            # Only the two addresses `port_touched` reads -- the branch's own
+            # and its guard's. The `mov al,1` two instructions earlier is NOT
+            # one of them, and `src/game.rs` names both copies of it while
+            # describing the artefact (`grep -n '1000:56b6\|1000:575c'
+            # src/game.rs`), which is fine and must not be confused with
+            # citing the branch.
+            for a in (e["addr"], e["guard"]):
+                self.assertNotIn(
+                    flat(a), cite,
+                    "%s is cited in the port, and the ruling in "
+                    "data/combat_uncited.json says it never may be" % a)
 
     # --------------------------------------------------------------- the doc
     def test_every_prose_address_is_an_instruction_boundary(self):

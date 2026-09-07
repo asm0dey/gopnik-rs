@@ -336,7 +336,11 @@ pub fn backup_round(
         damage = 0;
     }
     let enemy_hp_after = enemy_hp - damage;
-    // 1000:4e12 `mov ax,0x2`: 0 advances the counter, 1 does not.
+    // 1000:4e12 `mov ax,0x2`: 0 advances the counter, 1 does not. The test
+    // is 1000:4e1b `or ax,ax` / 1000:4e1d `jnz 0x4e43`, and it skips ONLY
+    // the increment at 1000:4e1f (and the dead 1000:4e2a line): its target
+    // 1000:4e43 `cmp word [0x3c80],0x7` is the reset below, which runs
+    // either way -- which is why that `if` sits outside this one.
     let mut beaten = false;
     if rng.below_at("1000:4e16", 2) == 0 {
         backup.0 += 1;

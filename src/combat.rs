@@ -154,8 +154,17 @@ impl Swing {
 pub fn blow_budget(attacker: &Fighter, defender: &Fighter) -> i16 {
     let mut mine = (attacker.agility as i16).wrapping_add(4);
     let mut theirs = (defender.agility as i16).wrapping_add(4);
+    // Each of the three tests below is written TWICE in the original, once
+    // per direction, and this one function is both copies -- so each carries
+    // the enemy-budget address and the player-budget mirror.
+    // 1000:3fbb `cmp word [bp-0x10e],0xa` / 1000:3fc0 `jle 0x3fec`
+    // 1000:405e `cmp word [bp-0x10e],0xa` / 1000:4063 `jle 0x408f`
     if mine > 10 {
+        // 1000:3fc2 `cmp word [bp-0x110],0x12` / 1000:3fc7 `jle 0x3fec`,
+        // and 1000:4065 `cmp word [bp-0x110],0x12` / 1000:406a `jle 0x408f`.
         while theirs > PER_BLOW {
+            // 1000:3fc9 / 1000:3fce `jl 0x3fe2`, and 1000:406c / 1000:4071
+            // `jl 0x4085` -- the collapse.
             if mine < 28 {
                 mine = 10;
                 break;
@@ -165,6 +174,65 @@ pub fn blow_budget(attacker: &Fighter, defender: &Fighter) -> i16 {
         }
     }
     mine
+}
+
+/// The two numbers the agility-reduction report line prints, or `None` when
+/// the original prints nothing.
+///
+/// **Established from flow**, `1000:3fec`..`1000:4042` for the enemy's line
+/// and `1000:408f`..`1000:40e5` for the player's, decoded instruction by
+/// instruction. The two are the same sequence with `20ae:3956` (the enemy's
+/// agility) and `20ae:38a0` (the player's) swapped, which is why one function
+/// covers both directions -- the same split [`resolve_blow_nth`] uses.
+///
+/// ```text
+/// 3fec  mov ax,[0x3956] / add ax,4     ; the UNREDUCED budget
+/// 3ff2  cmp ax,0x12
+/// 3ff5  jle 0x4042                     ; nothing is printed at 18 or below
+/// 3ff7  mov ax,[0x3956] / add ax,4 / cwd / idiv 0x12 -> bx
+/// 4005  mov ax,[bp-0x10e] / cwd / idiv 0x12          ; the REDUCED budget
+/// 400f  cmp ax,bx
+/// 4011  jnl 0x4042                     ; nothing unless the reduction cost a blow
+/// 4013  mov di,0x2dec                  ; the line
+/// 4018  mov ax,[bp-0x10e] / dec / cwd / idiv 0x12 / inc / push   ; the FIRST `#`
+/// 4025  mov ax,[0x3956] / add 4 / dec / cwd / idiv 0x12 / inc / push ; the SECOND
+/// ```
+///
+/// **The two gates do not use the same arithmetic as the two printed
+/// numbers**, and reproducing one with the other would be a divergence: the
+/// gate at `1000:400f` compares plain `budget div 18`, while each `#` is
+/// `(budget - 1) div 18 + 1`. `idiv` truncates toward zero and so does Rust's
+/// `/` on `i16`, so the transcription is literal.
+///
+/// **Which `#` is which** is settled by the push order above -- the reduced
+/// count is pushed first, so it is the first `#` -- and corroborated by the
+/// live capture in `a_fast_defender_cuts_the_budget` below: agility 120
+/// against 50 printed `ты сможешь пнуть его раз 5 вместо 7`, and
+/// `blows_per_round` gives 5 opposed and 7 unopposed.
+///
+/// `(budget - 1) div 18 + 1` is [`blows_per_round`] of the same budget, so the
+/// pair is "blows after the reduction, blows before it".
+///
+/// No draw and no store: both sites are inside the budget block, which
+/// `docs/re/combat.md` establishes spends nothing.
+pub fn budget_report(attacker: &Fighter, defender: &Fighter) -> Option<(u16, u16)> {
+    // 1000:3fec..1000:3ff5 / 1000:408f..1000:4098.
+    let unreduced = (attacker.agility as i16).wrapping_add(4);
+    if unreduced <= PER_BLOW {
+        return None;
+    }
+    // 1000:3ff7..1000:4011 / 1000:409a..1000:40b4 -- plain `div 18` on both
+    // sides, not the `(x - 1) div 18 + 1` the two `#`s use.
+    let reduced = blow_budget(attacker, defender);
+    if reduced / PER_BLOW >= unreduced / PER_BLOW {
+        return None;
+    }
+    Some((
+        // 1000:4018..1000:4024 / 1000:40bb..1000:40c7 -- pushed first.
+        (reduced.wrapping_sub(1) / PER_BLOW + 1) as u16,
+        // 1000:4025..1000:4033 / 1000:40c8..1000:40d6 -- pushed second.
+        (unreduced.wrapping_sub(1) / PER_BLOW + 1) as u16,
+    ))
 }
 
 /// How many blows the attacker gets in one round.
@@ -314,6 +382,9 @@ pub fn resolve_blow_nth(
     };
 
     // 1. Hit roll: Random(100) + 1 must be within budget*5 and at most 90.
+    //    `1000:4476` `cmp ax,[bp-0x112]` / `1000:447a` `jnl 0x447f` is the
+    //    budget half, its enemy-swinging mirror `1000:4699` / `1000:469d`
+    //    `jnl 0x46a2`; the cap is `1000:447f` / `1000:46a2`.
     let roll = (rng.below_at(swing.site("1000:4460", "1000:4683"), 100) as i16).wrapping_add(1);
     let budget = budget_at(blow_budget(attacker, defender), blow_index);
     if budget.wrapping_mul(5) < roll || roll > ACCURACY_CAP {
@@ -334,6 +405,12 @@ pub fn resolve_blow_nth(
     //       (1000:44cd..1000:44d6 / 1000:46f0..1000:46f9).
     let crit_roll = (rng.below_at(swing.site("1000:44b8", "1000:46db"), 100) as i32) + 1;
     let attacker_luck3 = (attacker.luck.wrapping_mul(3)) as i16 as i32;
+    //       The high-word test is TWO branches, not one: `1000:44ce`
+    //       `cmp dx,bx` / `1000:44d0` `jnle 0x44d8` takes the crit outright
+    //       and `1000:44d2` `jl 0x4546` refuses it outright, leaving equality
+    //       to fall into the unsigned low-word compare at `1000:44d4`. The
+    //       enemy-swinging mirror is `1000:46f1` / `1000:46f3` `jnle 0x46fb`
+    //       / `1000:46f5` `jl 0x4769`. All four are this one comparison.
     let critical = attacker_luck3 > crit_roll;
     let mut taunt = None;
     if critical {
@@ -350,6 +427,8 @@ pub fn resolve_blow_nth(
     // `sub [0x3962],ax`, heal the defender. That one is killed by
     // `armour_heavier_than_the_blow_floors_the_damage_at_zero`.
     damage = damage.wrapping_sub((defender.armor & 0x00ff) as i16);
+    // 1000:454f / 1000:4554 `jnl 0x455c`, mirrored at 1000:4772 /
+    // 1000:4777 `jnl 0x477f`.
     if damage < 0 {
         damage = 0;
     }
@@ -360,7 +439,14 @@ pub fn resolve_blow_nth(
     let break_bound = defender.luck.wrapping_mul(3).wrapping_add(200);
     let break_roll = (rng.below_at(swing.site("1000:4571", "1000:4794"), break_bound) as i32) + 1;
     let mut jaw_guard = None;
+    //       The break's high-word test is the same two-branch shape as the
+    //       crit's: `1000:4587` / `1000:4589` `jnle 0x4591` / `1000:458b`
+    //       `jl 0x45ea`, mirrored at `1000:47aa` / `1000:47ac` `jnle 0x47ba`
+    //       / `1000:47ae` `jnl 0x47b3`.
     let broke = if attacker_luck3 > break_roll {
+        // 1000:459a `or ax,ax` / 1000:459c `jnz 0x45c5` is the limb pick --
+        // a non-zero draw is the LEG. Mirrored at 1000:47c3 / 1000:47c5
+        // `jnz 0x4842`.
         if rng.below_at(swing.site("1000:4595", "1000:47be"), 2) == 0 {
             // 7. The зубная защита, enemy-swinging only. `1000:47c7`
             //    `cmp byte [0x38b0],0` / `jnz 0x4840` skips everything when
@@ -762,6 +848,65 @@ mod tests {
         let o = resolve_blow_nth(&mut rng, &above, &d, 0, Swing::player());
         assert!(o.broke.is_some(), "63 > 60 is true");
         assert_eq!(draws(&mut rng), want(&PLAYER_SWING, &st[K..]));
+    }
+
+    /// The report line's two gates and its two numbers.
+    ///
+    /// The numbers come from the live capture quoted in
+    /// `a_fast_defender_cuts_the_budget`, not from `budget_report` itself:
+    /// the game printed `раз 5 вместо 7` for the player's line and
+    /// `раз 1 вместо 3` for the enemy's, in that district-5 fight.
+    #[test]
+    fn the_agility_report_prints_the_captured_pair() {
+        let player = f(120);
+        let enemy = f(50);
+        // 1000:408f..1000:40e5, the player's line: "5 вместо 7".
+        assert_eq!(budget_report(&player, &enemy), Some((5, 7)));
+        // 1000:3fec..1000:4042, the enemy's line: "1 вместо 3".
+        assert_eq!(budget_report(&enemy, &player), Some((1, 3)));
+        // ... and each `#` is `blows_per_round` of the budget either side of
+        // the reduction, which is what makes the pair readable as blows.
+        assert_eq!(
+            budget_report(&player, &enemy),
+            Some((
+                blows_per_round(&player, &enemy),
+                blows_per_round(&player, &f(0))
+            ))
+        );
+    }
+
+    /// Both gates are load-bearing, and each is shown REFUSING as well as
+    /// passing -- a report that always printed would satisfy the pair test
+    /// above just as well.
+    #[test]
+    fn the_agility_report_is_silent_unless_both_gates_pass() {
+        let weak = f(0);
+        // 1000:3ff2 `cmp ax,0x12` / 1000:3ff5 `jle 0x4042`: the attacker's own
+        // unreduced budget must be strictly above 18, i.e. agility >= 15.
+        assert_eq!(budget_report(&f(14), &weak), None, "budget 18, not above");
+        assert_eq!(budget_report(&f(15), &f(200)), Some((1, 2)), "budget 19");
+        // 1000:400f `cmp ax,bx` / 1000:4011 `jnl 0x4042`: and the reduction must
+        // actually cost a blow. A defender too slow to eat into the budget
+        // leaves the two divisions equal, so nothing prints -- for EVERY
+        // attacker agility, not just the one that happened to be tried.
+        for agility in 0..=255u16 {
+            assert_eq!(
+                budget_report(&f(agility), &weak),
+                None,
+                "an unopposed attacker of agility {agility} has nothing to report"
+            );
+        }
+        // The gate is on `div 18`, not on the budget moving at all: agility
+        // 24 against 15 drops the budget from 28 to 10, and 28 div 18 is 1
+        // just as 10 div 18 is 0 -- so this one DOES print, while agility 22
+        // (26 -> 10, 1 -> 0) is the same shape. The pair that must NOT print
+        // is one whose collapse leaves both divisions equal.
+        assert_eq!(budget_report(&f(24), &f(15)), Some((1, 2)));
+        assert_eq!(
+            budget_report(&f(6), &f(200)),
+            None,
+            "budget 10, at the gate"
+        );
     }
 
     #[test]
