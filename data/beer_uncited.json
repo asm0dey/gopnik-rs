@@ -102,8 +102,8 @@
     "module": "src/game.rs",
     "function": "Game::beer",
     "expr": "if self.player.broken_jaw { term::println(\"^4Ты не можешь пить пиво из-за сломаной челюсти.\"); } else { loop { .. } }",
-    "recompute": "grep -nF -B1 'term::println(\"^4Ты не можешь пить пиво из-за сломаной челюсти.\");' src/game.rs",
-    "why": "The condition is evaluated, and first, exactly as at 1000:2a18. Task 42 closed what followed it: the refusal arm no longer `return`s and the drink loop moved into its `else`, so the arm falls through to the 1000:2bba gate exactly as 1000:2a38 `jmp 0x2baa` does. `divergences[0]` carries the closed record. The recompute was `grep -n -A2 'let hp0 = self.player.hp;'` while the `return` was there; that window no longer reaches the `if`, and an -A window widened to chase it would be stale again on the next comment, so the anchor is now the refusal line itself -- one hit in `src/game.rs` with `term::println(`, whose -B1 IS the construct."
+    "recompute": "grep -nF -B1 -A2 'term::println(\"^4Ты не можешь пить пиво из-за сломаной челюсти.\");' src/game.rs",
+    "why": "The condition is evaluated, and first, exactly as at 1000:2a18. Task 42 closed what followed it: the refusal arm no longer `return`s and the drink loop moved into its `else`, so the arm falls through to the 1000:2bba gate exactly as 1000:2a38 `jmp 0x2baa` does. `divergences[0]` carries the closed record. The recompute was `grep -n -A2 'let hp0 = self.player.hp;'` while the `return` was there; that window no longer reaches the `if`, and an -A window widened to chase it would be stale again on the next comment, so the anchor is now the refusal line itself -- one hit in `src/game.rs` with `term::println(`, whose -B1 IS the construct. The window is -B1 -A2 and not -B1 for a reason review round 1 caught: the claim this command is quoted for has two halves, the `if` ABOVE the refusal and the ABSENCE of a `return` below it, and -B1 alone prints nothing below the match -- so it could not fail on the half it was offered as evidence of, which is this project's named recurring defect. -A2 prints `} else {` and `loop {`, where the `return` used to be."
    }
   },
   {

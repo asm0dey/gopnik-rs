@@ -3074,8 +3074,18 @@ end-of-fight state, not a hand-built one.
 **Closed by Task 42.** The refusal arm no longer returns: the drink loop moved
 into its `else`, so both arms reach the `1000:2bba` gate exactly as
 `1000:2a38 jmp 0x2baa` does. Recompute the shape with
-`grep -nF -B1 'term::println("^4Ты не можешь пить пиво из-за сломаной челюсти.");' src/game.rs`
-— one hit, and the line above it is the `if`, with no `return` under it.
+
+```
+grep -nF -B1 -A2 'term::println("^4Ты не можешь пить пиво из-за сломаной челюсти.");' src/game.rs
+```
+
+— one hit, the line above it is the `if`, and the two lines below it are
+`} else {` and `loop {`, which is where the `return` used to be. **The window
+is `-B1 -A2` and not `-B1`** because the claim has two halves and `-B1` prints
+nothing below the match, so it could not fail on the "no `return` under it"
+half it was quoted for — caught in this task's review round 1, and it is the
+same defect `docs/re/METHODOLOGY.md` names: a check that cannot fail,
+presented as verification.
 
 The behaviour is held by `cargo test --lib
 a_broken_jaw_still_runs_the_tail_for_mh_and_returns_for_h`, which asserts all
