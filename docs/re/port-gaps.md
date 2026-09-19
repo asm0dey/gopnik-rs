@@ -34,11 +34,12 @@ fight and the flag it sets), the police ban the bust leaves behind, the gate
 that keeps a wanted player out of the market, and the `girl` clear that lifts
 it. Landing row 9 also gave row 21's opener (`1000:3e8d`) its first caller:
 `1000:c436` is the only `FUN_1000_3d11(1)` site in the image, so that arm had
-been correct and unreachable since `fc0d0c7`.
+been correct and unreachable since `fc0d0c7`. Row 23 (~15 B) is done as
+well — the wandering mage's three `ReadKey`s, spacing the four lines it
+already prints.
 
-**Row 19 stays open even though five batches' `ReadKey`s are now paced.** Its
-~34 sites are spread across rows 23 and 24 as well, and only the sites inside
-the rows already struck have landed. Those are, by batch:
+**Row 19 is done too, now that row 23 has landed.** Its ~34 sites were spread
+across rows 23 and 24 as well. Those are, by batch:
 
 * batch B, eight sites, in `crate::opening`'s gap tables (splash, backstory,
   quit tail);
@@ -48,7 +49,14 @@ the rows already struck have landed. Those are, by batch:
   line), `1000:7f89` (the forced level-up) and `1000:8242` (the convergence,
   which every draw-15 arm reaches);
 * batch C part 2, three sites, `1000:b055`/`b092`/`b0b0` -- the phone gag
-  (row 24), paced directly in `Game::wander_preamble`'s existing draw-3 arm.
+  (row 24), paced directly in `Game::wander_preamble`'s existing draw-3 arm;
+* batch F, three sites, `1000:7560`/`757e`/`75a4` -- the wandering mage (row
+  23), spacing the four lines `Game::mage` already printed. Unlike row 24's
+  phone gag, these three are also a COMPARED fact, not just a ported one:
+  `tools/difftest.py`'s `mage(img)` re-derives the same four-literal, three-
+  `ReadKey` shape out of `orig/g.exe` by a `literal_walk` over
+  `1000:7538`..`75c7`, and the port's own `--trace-deterministic` stream is
+  diffed against it record for record.
 
 Batches D and E add none. Row 5's whole span (`1000:135c`..`165e`), row 9's
 (`1000:c329`..`c46a`) and row 25's refusal arm (`1000:c480`..`c499`) hold
@@ -58,10 +66,11 @@ Batches D and E add none. Row 5's whole span (`1000:135c`..`165e`), row 9's
 one appeared. The image holds 59 such sites and none of them is in the three
 spans.
 
-What is still open is row 23's three sites -- the mage's. (8 + 22 + 3 + 3 = 36
-against the survey's `~34`; the tilde is the survey's own, and the row keeps
-it rather than being quietly re-counted here.) A row is struck when its whole
-span ships, not when part of it does.
+Every one of row 19's sites has now landed: 8 + 22 + 3 + 3 = 36 against the
+survey's `~34`; the tilde is the survey's own, and the row keeps it rather
+than being quietly re-counted here. A row is struck when its whole span
+ships, and both row 19 and row 23 do here -- the last two open rows in this
+file.
 
 Status values: `open` · `done (<commit>)`. Add no other column.
 
@@ -86,11 +95,11 @@ Status values: `open` · `done (<commit>)`. Add no other column.
 | 16 | `1000:ee04` — the quit tail (message + character sheet + `ReadKey`) | `1000:ee04`..`ee8b` | 135 | MISSING | done (61f0f1c) |
 | 17 | `1000:57ce` — `param_1 == 6`, the den fight's reward block | `1000:57ce`..`5838` | 106 | MISSING | done (fc0d0c7) |
 | 18 | `1000:7f8e` — the church's forced-level rank names | `1000:7f8e`..`7fe4` | 86 | PARTIAL | done (ecbeb9b) |
-| 19 | `1000:3eca` … — `ReadKey` pacing across the new text | ~34 sites | ~190 | PARTIAL | open |
+| 19 | `1000:3eca` … — `ReadKey` pacing across the new text | ~34 sites | ~190 | PARTIAL | done (5552482) |
 | 20 | `1000:828c` — the church's parting line | `1000:828c`..`82af` | 35 | MISSING | done (ecbeb9b) |
 | 21 | `1000:3e8d` — `param_1 == 1`'s opener (reachable now that #9 has landed) | `1000:3e8d`..`3ead` | 32 | MISSING | done (fc0d0c7) |
 | 22 | `1000:aee4` — `run`'s own extra line | `1000:aee4`, `aeff` | ~30 | PARTIAL | done (19055ab) |
-| 23 | `1000:7560` … — the mage's three `ReadKey`s | `1000:7560`, `757e`, `75a4` | ~15 | PARTIAL | open |
+| 23 | `1000:7560` … — the mage's three `ReadKey`s | `1000:7560`, `757e`, `75a4` | ~15 | PARTIAL | done (5552482) |
 | 24 | `1000:b055` … — the phone gag's three `ReadKey`s | `1000:b055`, `b092`, `b0b0` | ~15 | PARTIAL | done (19055ab) |
 | 25 | `1000:b95e` / `1000:d793` — the market ban gate and the `girl` clear | 2 sites | ~12 | MISSING | done (1ae22f6) |
 
@@ -176,10 +185,11 @@ its banner — `difftest` 163→255), batch C part 1 the church and the level-up
 wander text (`19055ab`, rows 11, 12, 22, 24 — `difftest` 314→330), batch D the
 enemy sheet (`89fdb72`, row 5 — `difftest` 330→347), batch E the market
 pickpocket (`1ae22f6`, rows 9 and 25 — `difftest` 347→356, and row 21's
-opener finally has a caller).
+opener finally has a caller), batch F the wandering mage (`5552482`, row
+23 and, with it, row 19 — `difftest` 356→363).
 
-**Next:** row 23, the mage's three `ReadKey`s — all that is left of row 19,
-and with it the last two open rows in this file.
+**Next:** nothing — every row in this file is struck. The next Phase 2 work
+is whatever a fresh gap survey finds outside this list, per `docs/re/gaps.md`.
 
 **Do not trust a string-coverage metric built on `data/strings.json`.** That
 file covers one pool of 796 entries and does not contain the opening text — a
