@@ -781,6 +781,195 @@ def endings(img):
 
 
 # ---------------------------------------------------------------------------
+# The opening and the text dumps (`docs/re/port-gaps.md` rows 1, 6, 8, 10,
+# 15, 16)
+# ---------------------------------------------------------------------------
+
+#: The spans each group of opening text lives in, as `(tag, start, stop, n)`.
+#: `n` is how many plain `WriteLn`s the span MUST hold; a span that scans to
+#: a different count raises instead of silently comparing a short list, which
+#: is the whole point of counting here rather than trusting the array length
+#: on the port side.
+#:
+#: `start_arrival` stops at `1000:7347` so the district-5 arm stays out (its
+#: line is `Game::announce_district`'s own `if`, checked by a Rust test, and
+#: its store is `Game::apply_class_bonus`), and `tutorial` starts at
+#: `1000:7369` so it stays out the other way too.  `help` starts at the
+#: function entry: its first two lines are COMPOSED, not plain, so they are
+#: not in this count -- see `help_fragments` below.
+OPENING_SPANS = [
+    ("splash", 0x02C2, 0x04BE, 11),
+    ("backstory", 0x6DE6, 0x6F2B, 11),
+    ("start_arrival", 0x7262, 0x7347, 8),
+    ("tutorial", 0x7369, 0x73BB, 3),
+    ("advance_arrival", 0xAD12, 0xADBF, 6),
+    ("quit", 0xEE04, 0xEE8B, 2),
+    ("help", 0x5F55, 0x633C, 30),
+]
+
+#: `mov di,0x3fcc` / `push ds` / `push di` / `call 0f78:05dd` /
+#: `call 0f78:0291` -- Borland's bare `WriteLn`, which writes nothing and
+#: ends the line.  `DS:3fcc` is the `Output` file record, the same one every
+#: other `Write` in the image passes.
+BARE_WRITELN_RE = re.compile(
+    rb"\xbf\xcc\x3f\x1e\x57\x9a\xdd\x05\x78\x0f\x9a\x91\x02\x78\x0f"
+)
+
+#: `call 0f16:031a` -- `Crt.ReadKey`, the blocking one-keystroke read this
+#: port stands in for with a discarded line.
+READKEY_RE = re.compile(rb"\x9a\x1a\x03\x16\x0f")
+
+#: `1000:61bb cmp byte [0x3692],0x1` / `1000:61c0 jbe 0x61db` -- `help`'s one
+#: and only branch.  Quoted by the compare's opcode+modrm+disp16 so the
+#: immediate it tests is read rather than asserted.
+HELP_GATE_SITE = ("1000:61bb", bytes.fromhex("803e9236"))
+
+#: `mov di,<cs literal>` / `push cs` / `push di` / `mov di,[20ae:389c]` /
+#: `shl di,1` twice / `mov al,[di+<disp8>]` / `xor ah,ah` / `push ax` / four
+#: `xor ax,ax` + `push ax` / `call 0eed:01c2` -- a `WriteLn` whose single `#`
+#: is filled from the class's growth-weight row at `DS:0002`.  The `disp8` is
+#: captured, so which of the four weights is printed is compared and not
+#: assumed.
+WEIGHT_FILL_WRITELN_RE = re.compile(
+    rb"\xbf(..)\x0e\x57\x8b\x3e\x9c\x38\xd1\xe7\xd1\xe7\x8a\x85(.)\x00\x30\xe4\x50"
+    rb"(?:\x31\xc0\x50){4}\x9a\xc2\x01\xed\x0e",
+    re.S,
+)
+
+#: The growth-weight table's DGROUP base.  `1000:6020 mov al,[di+0x2]` with
+#: `di = [20ae:389c] * 4` reads row `class`, byte `disp8 - 2` -- which is what
+#: turns the captured displacement into a weight INDEX rather than leaving a
+#: bare `- 2` in the arithmetic below.  The table runs from here up to
+#: `RANK_TABLE_SITE`'s `0x2e`, eleven four-byte rows.
+WEIGHT_TABLE_BASE = 2
+
+
+def opening_lines(img):
+    """The opening text, as `(tag, index, stripped text)` in address order."""
+    out = []
+    for tag, start, stop, want in OPENING_SPANS:
+        hits = literal_sites(img, PLAIN_WRITELN_RE, start, stop)
+        if len(hits) != want:
+            raise DifftestError(
+                "1000:%04x..%04x (%s) holds %d plain WriteLns, expected %d"
+                % (start, stop, tag, len(hits), want)
+            )
+        for i, (_, cs, _) in enumerate(hits):
+            out.append((tag, i, strip_markup(shortstring(img, cs))))
+    return out
+
+
+def opening_gaps(img):
+    """What each span does BETWEEN its literals, as `(tag, index, events)`.
+
+    `events` is `'B'` for a bare `WriteLn` and `'K'` for a `ReadKey`, in
+    address order, for the region after literal `index - 1` and before
+    literal `index`; `index == n` is the tail, after the last literal and
+    before the span ends.  Gaps with nothing in them are skipped, so the
+    record list is short and an added or dropped gap changes its length.
+
+    This is what pins the splash's thirteen blank lines and the backstory's
+    seven `ReadKey`s -- neither of which is a string, so neither is visible
+    to the literal scan above.
+    """
+    out = []
+    for tag, start, stop, _ in OPENING_SPANS:
+        sites = [s for s, _, _ in literal_sites(img, PLAIN_WRITELN_RE, start, stop)]
+        events = []
+        for rx, code in ((BARE_WRITELN_RE, "B"), (READKEY_RE, "K")):
+            events += [(m.start(), code) for m in rx.finditer(img)
+                       if start <= m.start() < stop]
+        events.sort()
+        # `bisect`-free on purpose: the site list is at most 30 long, and an
+        # explicit scan is what makes the boundary rule readable.
+        for i in range(len(sites) + 1):
+            lo = sites[i - 1] if i else start
+            hi = sites[i] if i < len(sites) else stop
+            seq = "".join(c for off, c in events if lo < off < hi)
+            if seq:
+                out.append((tag, i, seq))
+    return out
+
+
+def help_fragments(img):
+    """`help`'s two composed lines, as their CS literals in address order.
+
+    The rank and the player's name are appended from DGROUP (`push ds` at
+    `1000:5f80`, `5f94` and `5fed`), so they are not literals and do not
+    appear here -- the port interpolates them from the same two sources the
+    character sheet's header does.
+    """
+    sites = [(s, cs) for s, cs, _ in literal_sites(img, STR_ASSIGN_RE, 0x5F55, 0x633C)]
+    sites += [(s, cs) for s, cs, _ in literal_sites(img, STR_APPEND_RE, 0x5F55, 0x633C)]
+    if len(sites) != 5:
+        raise DifftestError(
+            "help composes from %d CS literals, expected 5" % len(sites)
+        )
+    return [strip_markup(shortstring(img, cs)) for _, cs in sorted(sites)]
+
+
+def help_weight_lines(img):
+    """`help`'s two `#`-filled lines, each with the weight index it prints."""
+    out = []
+    for m in WEIGHT_FILL_WRITELN_RE.finditer(img):
+        if not 0x5F55 <= m.start() < 0x633C:
+            continue
+        cs = struct.unpack("<H", m.group(1))[0]
+        disp = m.group(2)[0]
+        if not WEIGHT_TABLE_BASE <= disp <= WEIGHT_TABLE_BASE + 3:
+            raise DifftestError(
+                "1000:%04x reads [di+0x%02x], outside the four-byte weight row"
+                % (m.start(), disp)
+            )
+        out.append((disp - WEIGHT_TABLE_BASE, strip_markup(shortstring(img, cs))))
+    if len(out) != 2:
+        raise DifftestError(
+            "help has %d weight-filled lines, expected 2" % len(out)
+        )
+    return out
+
+
+def help_district_line(img):
+    """Which plain `help` line `1000:61bb`'s branch skips in district 1.
+
+    Derived, not quoted: the gate's `jbe` target is decoded, and the answer
+    is how many plain `WriteLn` sites of the span start before it.  A line
+    added or removed anywhere above the gate moves this number.
+    """
+    gate = site(img, HELP_GATE_SITE, "help's district gate")
+    jump = dis16.decode(img, gate + 5)
+    m = re.match(r"jbe (0x[0-9a-f]+)$", jump.text)
+    if not m:
+        raise DifftestError(
+            "1000:%04x is %r, expected help's `jbe`" % (gate + 5, jump.text)
+        )
+    target = int(m.group(1), 16)
+    hits = literal_sites(img, PLAIN_WRITELN_RE, 0x5F55, 0x633C)
+    before = [s for s, _, _ in hits if s < gate]
+    skipped = [s for s, _, _ in hits if gate < s < target]
+    if len(skipped) != 1:
+        raise DifftestError(
+            "help's gate skips %d lines, expected 1" % len(skipped)
+        )
+    return len(before)
+
+
+def opening(img):
+    """Every opening record, appended to the stream in this order."""
+    lines = []
+    for tag, i, text in opening_lines(img):
+        lines.append("opening_line %s %d %s" % (tag, i, text))
+    for tag, i, events in opening_gaps(img):
+        lines.append("opening_gap %s %d %s" % (tag, i, events))
+    lines.append("help_district_line %d" % help_district_line(img))
+    for i, frag in enumerate(help_fragments(img)):
+        lines.append("help_fragment %d %s" % (i, frag))
+    for i, (index, text) in enumerate(help_weight_lines(img)):
+        lines.append("help_weight_line %d %d %s" % (i, index, text))
+    return lines
+
+
+# ---------------------------------------------------------------------------
 # The reference stream
 # ---------------------------------------------------------------------------
 
@@ -883,6 +1072,13 @@ def reference(img):
     ending_records = endings(img)
     lines += ending_records
     ev["ending_line"] = sum(1 for l in ending_records if l.startswith("ending_line "))
+
+    # The opening and the text dumps.  Appended after the endings for the
+    # same reason those were appended last: every record above keeps its
+    # position.
+    opening_records = opening(img)
+    lines += opening_records
+    ev["opening_line"] = sum(1 for l in opening_records if l.startswith("opening_line "))
     return lines, ev
 
 
@@ -1221,6 +1417,8 @@ def main(argv=None):
     print("  trn row 3's `#` is filled with %d (1000:e505)" % ev["trn3_fill"])
     print("  %d ending lines found by the WriteLn shape scan, not quoted"
           % ev["ending_line"])
+    print("  %d opening lines found the same way, across %d spans"
+          % (ev["opening_line"], len(OPENING_SPANS)))
     print()
     for line in report:
         print(line)

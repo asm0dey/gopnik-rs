@@ -1850,8 +1850,20 @@ function's C as the survey's weakest input.
   are compared at `1000:ce80` (CS `0x96ce`) and `1000:ced8` (CS `0x970a`),
   both in `entry`, and no instruction anywhere in `FUN_1000_3d11`
   materialises either literal. What their arms do is still open.
-* **The quit message** (files `0xC3F3`, `0xC41A`, written at `1000:ee04`) and
-  the university backstory (`0x7D81`..`0x7F1F`) — real strings, not wired up.
+* ~~**The quit message** (files `0xC3F3`, `0xC41A`, written at `1000:ee04`) and
+  the university backstory (`0x7D81`..`0x7F1F`) — real strings, not wired up.~~
+  **Closed by `docs/re/port-gaps.md` rows 16 and 8, and this entry understated
+  the first of them.** The quit tail is not two strings: `1000:ee04`..`ee8b`
+  prints both lines, then calls `FUN_1000_1a03` at `1000:ee36` — the **full
+  character sheet** — and reads one key at `1000:ee39` before the Pascal
+  teardown. All four are ported, in `Game::dispatch`'s `Command::Quit` arm.
+  The backstory is `crate::opening::backstory`, eleven lines with the seven
+  `ReadKey`s and the one bare `WriteLn` its gap table records. The only part
+  of either block with no port counterpart is the DOS teardown at
+  `1000:ee3e`..`ee8b` (a bounded pathname copy into `20ae:3fae`, two
+  `int 21h`s and `Halt`), which this port replaces with
+  `self.running = false` — the convention the plain death and the `e` verb
+  already used.
 * ~~**Shop purchase effects.**~~ **Closed — all eighteen rows are ported.**
   `bmar`'s nine by Task 24 (`Game::buy_dealer_row`), `mar`'s nine by Task 26
   (`Game::buy_market_row`), both built on the same `Game::buy_after_gates`.

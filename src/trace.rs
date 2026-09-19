@@ -38,6 +38,24 @@
 //! imm_row_site  <shop> <key> <address of the cmp carrying the price>
 //! ```
 //!
+//! Two later groups append to the same stream without moving anything above
+//! them -- the endings (`docs/re/port-gaps.md` rows 2, 4, 7, 13, 17, 21) and
+//! the opening (rows 1, 6, 8, 10, 15, 16):
+//!
+//! ```text
+//! ending_line       <tag> <i> <text>
+//! errand_award      <district multiplier> <text>
+//! end_banner        indent|death_colour|victory_colour <value>
+//! banner_row        <i> <row>
+//! marquee           indent|phases|word <value>
+//! boss_stats        <id> <11 fields>
+//! opening_line      <tag> <i> <text>
+//! opening_gap       <tag> <i> <B|K events between line i-1 and line i>
+//! help_district_line <index of the one line `1000:61c0` gates>
+//! help_fragment     <i> <CS literal of a composed `help` line>
+//! help_weight_line  <i> <weight index> <text>
+//! ```
+//!
 //! `levelup_gain` rows are sorted by field name inside each stat rather than
 //! left in the original's instruction order: this side derives them by
 //! applying [`crate::progress::grant`] and diffing the record, which cannot
@@ -50,6 +68,7 @@ use crate::data;
 use crate::ending;
 use crate::game::IMM_ROWS;
 use crate::model::Fighter;
+use crate::opening;
 use crate::progress::{
     self, Stat, CLASS_WEIGHTS, GAINS_PER_LEVEL, MAX_LEVEL, THRESHOLD_BASE, THRESHOLD_STEP,
 };
@@ -222,7 +241,62 @@ pub fn emit(out: &mut impl Write) -> io::Result<()> {
     }
 
     endings(out)?;
+    opening_records(out)?;
 
+    Ok(())
+}
+
+/// The opening's half of the stream -- `docs/re/port-gaps.md` rows 1, 6, 8,
+/// 10, 15 and 16, landed in Phase 2.
+///
+/// Same reasoning as [`endings`]: these are hand-transcribed shortstrings
+/// and `difftest.py` re-decodes each of them out of `orig/g.exe` by
+/// instruction shape. Appended after the ending records so nothing above
+/// moves.
+///
+/// The two district groups are emitted **separately** on purpose: the image
+/// holds two copies of districts 2/3/4's wording (CS `0x6849`.. and CS
+/// `0x8346`..) and one shared record would compare one copy twice.
+fn opening_records(out: &mut impl Write) -> io::Result<()> {
+    let groups: [(&str, &[&str], opening::Gaps); 7] = [
+        ("splash", &opening::SPLASH, opening::SPLASH_GAPS),
+        ("backstory", &opening::BACKSTORY, opening::BACKSTORY_GAPS),
+        ("start_arrival", &opening::START_ARRIVAL, opening::NO_GAPS),
+        ("tutorial", &opening::TUTORIAL, opening::NO_GAPS),
+        (
+            "advance_arrival",
+            &opening::ADVANCE_ARRIVAL,
+            opening::NO_GAPS,
+        ),
+        ("quit", &opening::QUIT_TAIL, opening::QUIT_GAPS),
+        ("help", &opening::HELP_PLAIN, opening::NO_GAPS),
+    ];
+    for (tag, lines, _) in groups {
+        for (i, line) in lines.iter().enumerate() {
+            writeln!(out, "opening_line {tag} {i} {}", text::strip(line))?;
+        }
+    }
+    // The blank lines and `ReadKey`s between those literals. Only non-empty
+    // gaps are emitted; a gap the image has and the port does not (or the
+    // other way round) shows up as a record-count difference, which
+    // `difftest.py` compares like any other.
+    for (tag, _, gaps) in groups {
+        for (at, events) in gaps {
+            writeln!(out, "opening_gap {tag} {at} {events}")?;
+        }
+    }
+    writeln!(out, "help_district_line {}", opening::HELP_DISTRICT_LINE)?;
+    for (i, frag) in opening::HELP_FRAGMENTS.iter().enumerate() {
+        writeln!(out, "help_fragment {i} {}", text::strip(frag))?;
+    }
+    for (i, line) in opening::HELP_WEIGHT_LINES.iter().enumerate() {
+        writeln!(
+            out,
+            "help_weight_line {i} {} {}",
+            opening::HELP_WEIGHT_INDEX,
+            text::strip(line)
+        )?;
+    }
     Ok(())
 }
 

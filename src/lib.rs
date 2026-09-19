@@ -10,6 +10,7 @@ pub mod game;
 pub mod gym;
 pub mod locations;
 pub mod model;
+pub mod opening;
 pub mod persist;
 pub mod progress;
 pub mod rng;

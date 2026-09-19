@@ -75,6 +75,21 @@ fn slot_2_at_level_40(dir: &Path) {
     g.write_save_as(dir, "save_r2.sav").unwrap();
 }
 
+/// The keystrokes the opening consumes before typed input reaches the game.
+///
+/// `gopnik::opening`'s gap tables are the port's own record of where the
+/// original's `ReadKey`s fall, and `tools/difftest.py` re-derives them from
+/// `orig/g.exe`; counting them here rather than writing a literal number of
+/// newlines means this script cannot drift away from the code it drives.
+fn keys(gaps: gopnik::opening::Gaps) -> String {
+    let n = gaps
+        .iter()
+        .flat_map(|(_, events)| events.chars())
+        .filter(|c| *c == 'K')
+        .count();
+    "\n".repeat(n)
+}
+
 /// The whole block, through the real loop: it fires on turn one, before the
 /// street prompt, and `y` writes the slot named for the district it just
 /// reached.
@@ -85,7 +100,10 @@ fn the_advance_runs_at_the_top_of_the_turn_and_y_writes_the_new_slot() {
 
     // `2` picks the slot; `y` answers 1000:ac31's ReadLn; `e` (1000:edfa)
     // quits before the next turn's advance can fire again.
-    let out = run_in(&dir, "2\ny\ne\n");
+    let out = run_in(
+        &dir,
+        &format!("{}2\ny\ne\n", keys(gopnik::opening::SPLASH_GAPS)),
+    );
 
     assert!(
         out.contains(LOADED),
@@ -95,10 +113,11 @@ fn the_advance_runs_at_the_top_of_the_turn_and_y_writes_the_new_slot() {
     assert!(out.contains(SAVE_PROMPT), "1000:ac05 -- stdout: {out:?}");
 
     // **The ordering assertion, and the reason this test is a subprocess.**
-    // `main.rs` prints the load line and then hands straight to `Game::run`.
-    // If the advance were called after `self.prompt()`, the `\` of
-    // 1000:ae3c's street prompt would sit between them. It must not: the
-    // announcement is the very next thing written.
+    // `main.rs` prints the load line, then `1000:7262`'s entry announcement
+    // (`Game::announce_district`, two lines for district 2), then hands to
+    // `Game::run`. If the advance were called after `self.prompt()`, the `\`
+    // of 1000:ae3c's street prompt would sit between the load and the
+    // advance line. It must not -- nothing but the entry announcement may.
     let after_load = &out[out.find(LOADED).unwrap() + LOADED.len()..];
     // `chars().take(80)`, NOT `&s[..80]`. Everything printed here is
     // Cyrillic, so a byte-index slice lands mid-codepoint and panics with
@@ -106,12 +125,25 @@ fn the_advance_runs_at_the_top_of_the_turn_and_y_writes_the_new_slot() {
     // is the one thing `docs/re/METHODOLOGY.md`'s mutate rule requires a
     // failing assertion to print. The first cut of this file did exactly
     // that and the review caught it.
+    let before_advance = &after_load[..after_load.find(ADVANCE_LINE).expect("1000:abec")];
     assert!(
-        after_load
-            .trim_start_matches('\n')
-            .starts_with(ADVANCE_LINE),
+        !before_advance.contains('\\'),
         "1000:ab75 runs BEFORE 1000:ae3c's prompt; got {:?}",
-        after_load.chars().take(80).collect::<String>()
+        after_load.chars().take(120).collect::<String>()
+    );
+    // And what IS allowed between them: exactly `1000:ad12`'s counterpart at
+    // entry, district 2's two lines, in order.
+    let entry_lines: Vec<&str> = before_advance
+        .split('\n')
+        .filter(|l| !l.is_empty())
+        .collect();
+    let want: Vec<String> = gopnik::opening::START_ARRIVAL[2..4]
+        .iter()
+        .map(|l| gopnik::text::strip(l))
+        .collect();
+    assert_eq!(
+        entry_lines, want,
+        "1000:7262's district-2 arm is the only thing between the load and the advance"
     );
 
     // 1000:acb9 Rewrite(f, 694) into the post-increment digit.
@@ -153,7 +185,10 @@ fn declining_still_advances_the_district_but_writes_nothing() {
 
     // Two turns: `n`, then `n` again. The second announcement proves the
     // first turn really did increment even though it wrote no file.
-    let out = run_in(&dir, "2\nn\nn\ne\n");
+    let out = run_in(
+        &dir,
+        &format!("{}2\nn\nn\ne\n", keys(gopnik::opening::SPLASH_GAPS)),
+    );
 
     assert_eq!(
         out.matches(ADVANCE_LINE).count(),

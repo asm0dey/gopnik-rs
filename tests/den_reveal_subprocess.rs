@@ -74,6 +74,21 @@ fn base_game() -> Game {
     g
 }
 
+/// The keystrokes the opening consumes before typed input reaches the game.
+///
+/// `gopnik::opening`'s gap tables are the port's own record of where the
+/// original's `ReadKey`s fall, and `tools/difftest.py` re-derives them from
+/// `orig/g.exe`; counting them here rather than writing a literal number of
+/// newlines means this script cannot drift away from the code it drives.
+fn keys(gaps: gopnik::opening::Gaps) -> String {
+    let n = gaps
+        .iter()
+        .flat_map(|(_, events)| events.chars())
+        .filter(|c| *c == 'K')
+        .count();
+    "\n".repeat(n)
+}
+
 #[test]
 fn the_both_already_set_skip_prints_neither_reveal_line() {
     let mut g = base_game();
@@ -85,8 +100,10 @@ fn the_both_already_set_skip_prints_neither_reveal_line() {
     g.write_save_as(&dir, "save_r0.sav").unwrap();
     g.write_places(&dir).unwrap();
 
-    // "0" loads save_r0.sav, "pr" enters the den, "a" is the reveal token.
-    let stdout = run_in(&dir, "0\npr\na\n");
+    // The splash key, then "0" loads save_r0.sav, "pr" enters the den,
+    // "a" is the reveal token. A loaded save skips the backstory.
+    let script = format!("{}0\npr\na\n", keys(gopnik::opening::SPLASH_GAPS));
+    let stdout = run_in(&dir, &script);
 
     assert!(
         stdout.contains("Загружено из save_r0"),
@@ -115,7 +132,8 @@ fn the_reveal_does_print_when_not_yet_both_found() {
     g.write_save_as(&dir, "save_r0.sav").unwrap();
     g.write_places(&dir).unwrap();
 
-    let stdout = run_in(&dir, "0\npr\na\n");
+    let script = format!("{}0\npr\na\n", keys(gopnik::opening::SPLASH_GAPS));
+    let stdout = run_in(&dir, &script);
 
     assert!(stdout.contains(REVEAL_LINE_1), "stdout: {stdout:?}");
     assert!(stdout.contains(REVEAL_LINE_2), "stdout: {stdout:?}");

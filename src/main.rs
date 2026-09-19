@@ -10,6 +10,7 @@
 
 use gopnik::game::Game;
 use gopnik::model::Fighter;
+use gopnik::opening;
 use gopnik::persist;
 use gopnik::progress::{self, Progress};
 use gopnik::term;
@@ -40,8 +41,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 ///    stored verbatim, exactly as the original stores it.
 ///
 /// **Note the order:** the original asks for the class *first* and the name
-/// *second*. **Not reproduced:** the university backstory the game prints
-/// before this (files `0x7D81`..`0x7F1F`).
+/// *second*. The university backstory that precedes it is
+/// [`gopnik::opening::backstory`] (`1000:6de6`..`6f2b`), called from
+/// [`main`] just above this.
 fn create_character(stdin: &mut impl BufRead) -> (Fighter, Progress) {
     const OPTIONS: [&str; 4] = ["0-Пацан", "1-Отморозок", "2-Гопник", "3-Вор"];
 
@@ -140,6 +142,10 @@ fn main() -> io::Result<()> {
     let loaded = {
         let mut locked = stdin.lock();
         let mut lines = (&mut locked).lines();
+        // 1000:6a5a `call 0x2c2` -- the splash runs between the `GetDir`
+        // that builds the save path and the `Randomize` at 1000:6a5d, so it
+        // is the first thing on screen whether or not a save exists.
+        opening::splash(&mut lines);
         match persist::choose_slot(&here, &mut lines)? {
             persist::SlotMenu::Load(slot) => persist::load_slot(&here, slot, seed)?,
             persist::SlotMenu::NoSaves | persist::SlotMenu::NewCharacter => None,
@@ -151,12 +157,25 @@ fn main() -> io::Result<()> {
         None => {
             let (player, progress) = {
                 let mut locked = stdin.lock();
+                // 1000:6de6..1000:6f2b, the new-character block's cold open.
+                // It reads through the same lock `create_character` then
+                // takes: `Lines` borrows the `StdinLock` rather than owning a
+                // buffer of its own, so nothing is lost between the two.
+                {
+                    let mut lines = (&mut locked).lines();
+                    opening::backstory(&mut lines);
+                }
                 create_character(&mut locked)
             };
             Game::new(player, progress, seed)
         }
     };
     game.save_dir = here;
+    // 1000:7262..1000:73bb, the last thing `FUN_1000_6a0d` does before it
+    // returns into the turn loop. Once per process, on BOTH paths above --
+    // `Game::apply_class_bonus` runs twice on a load, so the text cannot
+    // live there. See its doc.
+    game.announce_district();
     game.run()?;
     io::stdout().flush()
 }

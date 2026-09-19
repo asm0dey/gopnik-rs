@@ -72,6 +72,7 @@ use crate::ending;
 use crate::gym;
 use crate::locations::{Location, Places};
 use crate::model::Fighter;
+use crate::opening;
 use crate::progress::{self, Progress};
 use crate::rng::Rng;
 use crate::term;
@@ -679,7 +680,9 @@ impl Game {
     /// -- which for a **loaded save** can be true on the very first entry,
     /// before a single turn is played -- it arms `rector_showdown` and
     /// prints the line, exactly once (the arm falls straight through to
-    /// `1000:7369`, never looping). This is the "settling address" for the
+    /// `1000:7369`, never looping). The line half now lives in
+    /// [`Game::announce_district`]; see the note at the end of this doc.
+    /// This is the "settling address" for the
     /// loaded-save divergence `docs/re/gaps.md`'s "The district-advance
     /// autosave — wired (Task 21)" records: not a main-loop rewrite,
     /// because `apply_class_bonus` is already the port's home for
@@ -693,7 +696,8 @@ impl Game {
     /// offset, `0x81F5` vs `0x9CF2`, same 35 bytes) -- the original repeats
     /// itself, this port reproduces both sites rather than reusing one
     /// string constant for two different original addresses. The two never
-    /// fire for the same game: this one only at entry when district is
+    /// fire for the same game: `1000:734b`'s (now printed by
+    /// [`Game::announce_district`]) only at entry when district is
     /// ALREADY 5 (so [`Game::district_advance`], gated on `district < 5` at
     /// `1000:ab88`, cannot also have fired for that game),
     /// and [`Game::enter_district_5`] only at the turn district first
@@ -704,9 +708,23 @@ impl Game {
     /// `1000:73d9` jump straight to `1000:73e5`), and `1000:73e5` is
     /// unconditional. Class 4 (Отморозок) gets no flag here -- its bonus is
     /// the +1 HP per walk at `1000:b2d4`.
+    ///
+    /// **The TEXT of `1000:7262`..`1000:73bb` is [`Game::announce_district`],
+    /// not this function, and the reason is that this function runs twice.**
+    /// `Game::new` calls it with the struct literal's `district: 1`, and
+    /// `crate::persist::from_save` calls it again once the loaded district is
+    /// installed -- which is right for idempotent stores (a flag set twice is
+    /// set) and wrong for a `WriteLn`. The original's `FUN_1000_6a0d` walks
+    /// `1000:7262`..`73e5` exactly once, so the announcement is printed once,
+    /// by `main.rs`, after whichever path produced the `Game`.
+    ///
+    /// `1000:734b`'s own line moved out with the rest for the same reason.
+    /// It used to sit here and print exactly once by luck -- district 5
+    /// cannot be true on the `Game::new` pass -- which is not a property to
+    /// keep relying on now that districts 1..4 have lines too.
     pub(crate) fn apply_class_bonus(&mut self) {
+        // 1000:7364 -- the store half of the district-5 arm.
         if self.district == 5 {
-            term::println("^1Пора наконец отомстить ректору...");
             self.rector_showdown = true;
         }
         match self.player.class {
@@ -719,6 +737,45 @@ impl Game {
             _ => {}
         }
         self.den_loan_credit = 5;
+    }
+
+    /// `1000:7262`..`1000:73bb` -- everything the entry pass PRINTS, as
+    /// distinct from what [`Game::apply_class_bonus`] stores
+    /// (`docs/re/port-gaps.md` row 10).
+    ///
+    /// ```text
+    /// 7262  mov al,[0x3692]        ; the DISTRICT
+    /// 7265  cmp al,1 / jnz 0x729e  ; two lines, then 2, 3 and 4 the same
+    /// 7347  cmp al,5 / jnz 0x7369  ; one line (the store is 1000:7364)
+    /// 7369  cmp byte [0x3692],1    ; three more lines, district 1 only
+    /// ```
+    ///
+    /// Called once per process, from `main.rs`, whichever way the `Game` was
+    /// produced -- the original reaches `1000:7262` from both the load tail
+    /// and the new-character tail and from nowhere else.
+    ///
+    /// Districts 2, 3 and 4 print the same wording
+    /// [`Game::district_advance`] prints on promotion, from a different copy
+    /// of each string; see `crate::opening`'s module doc.
+    pub fn announce_district(&self) {
+        if let Some(pair) = opening::START_ARRIVAL
+            .chunks_exact(2)
+            .nth(usize::from(self.district).wrapping_sub(1))
+        {
+            for line in pair {
+                term::println(line);
+            }
+        }
+        // 1000:734b, CS 0x6925 -- a separate copy of the string
+        // `Game::enter_district_5` prints from CS 0x9CF2.
+        if self.district == 5 {
+            term::println("^1Пора наконец отомстить ректору...");
+        }
+        if self.district == 1 {
+            for line in opening::TUTORIAL {
+                term::println(line);
+            }
+        }
     }
 
     /// The banner is printed once by `main.rs` before character creation,
@@ -993,6 +1050,20 @@ impl Game {
                 Err(e) => term::println(&format!("^6{e}")),
             }
         }
+        // 1000:ad12..1000:adbf -- the arrival announcement for the district
+        // just promoted into (`docs/re/port-gaps.md` row 15). Reached from
+        // 1000:ac5b whichever way the `y` compare above went, and the chain
+        // only has arms for 2, 3 and 4 (1000:ad15, ad4e, ad87). A SEPARATE
+        // string copy from `apply_class_bonus`'s districts 2/3/4 -- see
+        // `crate::opening`'s module doc.
+        if let Some(pair) = opening::ADVANCE_ARRIVAL
+            .chunks_exact(2)
+            .nth(usize::from(self.district).wrapping_sub(2))
+        {
+            for line in pair {
+                term::println(line);
+            }
+        }
         // 1000:adbf, reached from 1000:ad12's compare chain via
         // 1000:ad89's `jnz 0xadbf` -- NOT by fall-through, which
         // 1000:adbd `eb 59 jmp short 0xae18` blocks. It is taken whichever
@@ -1052,7 +1123,23 @@ impl Game {
         lines: &mut dyn Iterator<Item = io::Result<String>>,
     ) -> io::Result<()> {
         match cmd {
-            Command::Quit => self.running = false,
+            // 1000:ee04..1000:ee8b, reached from BOTH spellings' compares
+            // (`exit` at 1000:ede9, `e` at 1000:edfa) -- two lines, the full
+            // character sheet (1000:ee36 `call 0x1a03`) and a `ReadKey`
+            // (1000:ee39), then the Pascal teardown and `Halt`.
+            // `docs/re/port-gaps.md` row 16; the teardown gets no port.
+            //
+            // The `e` typed at the FIGHT prompt is a different address
+            // (1000:4c5d, a bare `Halt(0)`) and deliberately prints none of
+            // this -- see `Game::run_combat`.
+            Command::Quit => {
+                for line in opening::QUIT_TAIL {
+                    term::println(line);
+                }
+                self.show_stats();
+                let _ = lines.next();
+                self.running = false;
+            }
             Command::Stats => self.show_stats(),
             // file 0xC343, printed immediately after `k`'s own compare at
             // 1000:ecc7. `^6`, not `^4`.
@@ -2691,11 +2778,52 @@ impl Game {
         }
     }
 
-    /// `help`. Dispatched confirmed at `1000:edd5`; its printed content was
-    /// not traced. Nothing is printed rather than inventing a line: the game
-    /// has no "not implemented" string, so there is nothing verbatim to say.
-    /// Reported as a gap in `docs/re/gaps.md`.
-    fn show_help(&self) {}
+    /// `help` -- `FUN_1000_5f55`, `1000:5f64`..`633c`
+    /// (`docs/re/port-gaps.md` row 1).
+    ///
+    /// `1000:eddc e8 76 71 call 0x15f55` is the function's only near call
+    /// image-wide, and `1000:edd5`'s token compare sits directly above it,
+    /// so this body IS the `help` verb. Thirty-four `Write`/`WriteLn`s, one
+    /// branch, no `Random` and no state write: a personalised tutorial, not
+    /// a static blob.
+    ///
+    /// The four groups interleave in this order:
+    ///
+    /// ```text
+    /// 5f6a..5fb4  composed  HELP_FRAGMENTS[0] + rank + [1] + name + [2]
+    /// 5fb9..5fcd  plain     HELP_PLAIN[0]
+    /// 5fd8..600e  composed  HELP_FRAGMENTS[3] + rank + [4]
+    /// 6013..6033  filled    HELP_WEIGHT_LINES[0], one `#`
+    /// 6038..6058  filled    HELP_WEIGHT_LINES[1], the same value
+    /// 605d..6334  plain     HELP_PLAIN[1..30]
+    /// ```
+    ///
+    /// The single branch is `1000:61bb cmp byte [0x3692],0x1` /
+    /// `1000:61c0 jbe 0x61db`, which skips
+    /// [`crate::opening::HELP_DISTRICT_LINE`] while the district is 1.
+    ///
+    /// There is no `ReadKey` anywhere in the function, so unlike the
+    /// backstory this one needs no line source.
+    fn show_help(&self) {
+        let rank = data::rank_name(self.player.class);
+        let name = &self.player.name;
+        let f = opening::HELP_FRAGMENTS;
+        term::println(&format!("{}{rank}{}{name}{}", f[0], f[1], f[2]));
+        term::println(opening::HELP_PLAIN[0]);
+        term::println(&format!("{}{rank}{}", f[3], f[4]));
+        // 1000:6020 `mov al,[di+0x2]` with `di = [0x389c] * 4`: the class's
+        // strength growth weight, pushed into both lines' one `#`.
+        let weight = progress::class_weights(self.player.class)[opening::HELP_WEIGHT_INDEX];
+        for line in opening::HELP_WEIGHT_LINES {
+            term::println(&text::fill(line, &[i64::from(weight)]));
+        }
+        for (i, line) in opening::HELP_PLAIN.iter().enumerate().skip(1) {
+            if i == opening::HELP_DISTRICT_LINE && self.district <= 1 {
+                continue;
+            }
+            term::println(line);
+        }
+    }
 
     /// `sv`. Shows the last-fought opponent's stat block. The header is the
     /// two real fragments `^2Это ` (file `0x2B59`) and ` # уровня` (file
@@ -11939,6 +12067,183 @@ mod tests {
                 "rector={rector}"
             );
             assert!(!out.iter().any(|l| l.contains("Ты победил")));
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // The opening and the text dumps -- `docs/re/port-gaps.md` rows 1, 10,
+    // 15 and 16. `tools/difftest.py` owns the WORDING of every line here
+    // (71 `opening_line` records read straight out of `orig/g.exe`); these
+    // tests own the BRANCHES and the interpolation, which no record can see.
+    // -----------------------------------------------------------------
+
+    /// `1000:61bb cmp byte [0x3692],0x1` / `1000:61c0 jbe 0x61db` is `help`'s
+    /// only branch: one line appears from district 2 on and from nowhere
+    /// else. Both sides are asserted, so neither can pass by printing
+    /// everything or nothing.
+    #[test]
+    fn help_gates_exactly_one_line_on_the_district() {
+        let gated = crate::text::strip(opening::HELP_PLAIN[opening::HELP_DISTRICT_LINE]);
+        let mut seen = Vec::new();
+        for district in 1..=5u8 {
+            let mut g = game();
+            g.district = district;
+            let out = term::capture::lines(|| {
+                g.dispatch(Command::Help, &mut no_input()).unwrap();
+            });
+            assert!(
+                out.iter().any(|l| l.contains("Броня - насколько")),
+                "district {district}: the ungated body must always print"
+            );
+            seen.push((district, out.iter().any(|l| l.contains(&gated)), out.len()));
+        }
+        assert_eq!(
+            seen.iter()
+                .map(|(d, hit, _)| (*d, *hit))
+                .collect::<Vec<_>>(),
+            vec![(1, false), (2, true), (3, true), (4, true), (5, true)],
+            "1000:61c0 is `jbe`, so district 1 alone skips it"
+        );
+        // And the skip costs exactly one line, not a block.
+        assert_eq!(seen[0].2 + 1, seen[1].2, "one WriteLn, not several");
+    }
+
+    /// The two composed lines and the two `#`-filled ones are the whole
+    /// reason `help` is not a static blob: `1000:5f82`/`5fed` append the
+    /// class's rank name, `1000:5f96` the player's name, and `1000:6020`
+    /// pushes the class's STRENGTH growth weight into both filled lines.
+    #[test]
+    fn help_is_personalised_from_the_class_and_the_name() {
+        // Class 5 (Гопник) weighs 4/3/3/2 and class 6 (Вор) 3/3/2/4, so the
+        // strength weight differs between them and a port reading the wrong
+        // column would still differ here.
+        for class in [5u16, 6] {
+            let mut g = game();
+            g.player.class = class;
+            g.player.name = "Тест".to_string();
+            let out = term::capture::lines(|| {
+                g.dispatch(Command::Help, &mut no_input()).unwrap();
+            });
+            let rank = data::rank_name(class);
+            assert_eq!(
+                out[0],
+                format!("^0Ну слушай, {rank} Тест ^0,в чем тут батва"),
+                "1000:5f6a..5fb4"
+            );
+            assert_eq!(out[2], format!("^0 Например {rank}:"), "1000:5fd8..600e");
+            let weight = progress::class_weights(class)[0];
+            assert!(
+                out[3].contains(&format!("а сила у тебя {weight} -")),
+                "1000:6033 fills the STRENGTH weight: {:?}",
+                out[3]
+            );
+            assert!(
+                out[4].contains(&format!("понтовости {weight} из 12")),
+                "1000:6058 fills the same value: {:?}",
+                out[4]
+            );
+        }
+        // The two classes must actually have produced different numbers,
+        // or the assertions above would hold for a port that printed a
+        // constant.
+        assert_ne!(
+            progress::class_weights(5)[0],
+            progress::class_weights(6)[0],
+            "the two probes must disagree or they prove nothing"
+        );
+    }
+
+    /// `1000:ee04`..`1000:ee8b`: `e` / `exit` at the STREET prompt prints two
+    /// lines, then the FULL character sheet (`1000:ee36 call 0x1a03`), then
+    /// reads one discarded key (`1000:ee39`).
+    #[test]
+    fn quitting_prints_the_tail_the_character_sheet_and_eats_one_key() {
+        let mut g = game();
+        let mut lines = input(&["ignored", "still here"]);
+        let out = term::capture::lines(|| {
+            g.dispatch(Command::Quit, &mut lines).unwrap();
+        });
+        assert!(!g.running, "1000:ee43's Halt");
+        assert_eq!(out[0], opening::QUIT_TAIL[0]);
+        assert_eq!(out[1], opening::QUIT_TAIL[1]);
+        // The sheet, not a summary: its header line is what `s` prints too.
+        let sheet = character_sheet::lines(&g.player, &g.player.name, &g.sheet_kit());
+        assert_eq!(
+            &out[2..],
+            &sheet[..],
+            "1000:ee36 is the whole of FUN_1000_1a03"
+        );
+        assert_eq!(
+            lines.count(),
+            1,
+            "1000:ee39's ReadKey consumes exactly one line"
+        );
+    }
+
+    /// `1000:7262`'s chain keys on the DISTRICT, and `1000:7369`'s gate adds
+    /// the tutorial for district 1 only. Districts 2, 3 and 4 print the same
+    /// wording as `Game::district_advance`, from the OTHER string copy.
+    #[test]
+    fn the_entry_announcement_is_two_lines_per_district_plus_the_tutorial() {
+        let want: Vec<(u8, usize)> = vec![(1, 5), (2, 2), (3, 2), (4, 2), (5, 1)];
+        for (district, n) in want {
+            let mut g = game();
+            g.district = district;
+            let out = term::capture::lines(|| g.announce_district());
+            assert_eq!(out.len(), n, "district {district}: {out:#?}");
+            if district <= 4 {
+                let base = usize::from(district - 1) * 2;
+                assert_eq!(out[0], opening::START_ARRIVAL[base]);
+                assert_eq!(out[1], opening::START_ARRIVAL[base + 1]);
+            }
+            if district == 1 {
+                assert_eq!(&out[2..], &opening::TUTORIAL[..]);
+            }
+        }
+        // District 0 is not a `cmp al,N` arm at all -- nothing is printed,
+        // which is what stops `chunks_exact(2).nth(d - 1)` from wrapping
+        // into the last pair.
+        let mut g = game();
+        g.district = 0;
+        assert!(term::capture::lines(|| g.announce_district()).is_empty());
+    }
+
+    /// `1000:ad12`'s chain has arms for 2, 3 and 4 only, and it reads the
+    /// district AFTER `1000:ab92`'s increment -- so the line the player sees
+    /// names the district they arrived in, not the one they left.
+    #[test]
+    fn the_promotion_announces_the_district_it_arrived_in() {
+        for from in 1..=3u8 {
+            let mut g = game();
+            g.district = from;
+            g.player.level = 40;
+            let out = term::capture::lines(|| {
+                g.district_advance(&mut input(&["n"])).unwrap();
+            });
+            assert_eq!(g.district, from + 1);
+            let base = usize::from(from + 1 - 2) * 2;
+            // `ends_with`, not `==`: the save prompt above is a `print`
+            // with no newline, so `term::capture` glues the bare `\` onto
+            // the front of the next line it sees.
+            assert!(
+                out.iter()
+                    .any(|l| l.ends_with(opening::ADVANCE_ARRIVAL[base]))
+                    && out
+                        .iter()
+                        .any(|l| l.ends_with(opening::ADVANCE_ARRIVAL[base + 1])),
+                "district {} -> {}: {out:#?}",
+                from,
+                from + 1
+            );
+            // The copy it prints is `entry`'s, and for districts 2..4 the
+            // two copies read alike -- which is why both are transcribed and
+            // `difftest.py` compares them separately.
+            assert_eq!(
+                opening::ADVANCE_ARRIVAL[base],
+                opening::START_ARRIVAL[usize::from(from + 1 - 1) * 2],
+                "the two image copies agree today; difftest is what would \
+                 notice if one of them ever did not"
+            );
         }
     }
 }

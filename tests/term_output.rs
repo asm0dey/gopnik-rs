@@ -6,11 +6,14 @@
 //!
 //! Updated by Task 11: `main.rs` now runs character creation and the main
 //! loop, not just the banner. With `stdin` null every `read_line` returns
-//! immediately at EOF, so the full sequence below (banner, class menu, name
-//! prompt, then the loop's own `\` prompt before it too sees EOF and exits)
-//! is exactly what a real "no input available" run produces -- this is not a
-//! relaxation of the test, it is the same exact-bytes assertion against the
-//! new, larger, real output.
+//! immediately at EOF, so the full sequence below is exactly what a real "no
+//! input available" run produces -- this is not a relaxation of the test, it
+//! is the same exact-bytes assertion against the new, larger, real output.
+//!
+//! Updated again by `docs/re/port-gaps.md` rows 6, 8 and 10: that sequence is
+//! now the splash, the backstory, the class menu, the name prompt, the entry
+//! district announcement and the tutorial, then the loop's own `\` prompt
+//! before it too sees EOF and exits.
 //!
 //! The constants below are transcribed from `orig/g.exe` via
 //! `data/strings.json`, at the file offsets named on each line -- **not**
@@ -50,19 +53,57 @@ const COLOR_ENV_VARS: &[&str] = &["NO_COLOR", "CLICOLOR", "CLICOLOR_FORCE"];
 /// Build the expected full-run transcript, applying `f` (either
 /// `gopnik::text::render` or `gopnik::text::strip`) to each piece exactly as
 /// `term::println`/`term::print` would.
+///
+/// **What comes from where, and why the two halves differ.** The constants
+/// above are transcribed from `orig/g.exe` by hand, so `main.rs` drifting
+/// from the original's bytes fails this test. The opening blocks pulled in
+/// from `gopnik::opening` below are NOT re-transcribed here, because
+/// `tools/difftest.py` re-decodes all 71 of those lines and all 13 of their
+/// blank/`ReadKey` gaps straight out of the image and compares them to the
+/// same constants -- a second hand copy in this file would add a second
+/// place to get them wrong and no independent reading. What this test is
+/// for, and what nothing else covers, is the ESCAPE-SEQUENCE POLICY applied
+/// to every one of those lines, plus the order the blocks run in.
 fn expected(f: impl Fn(&str) -> String) -> String {
-    format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}{}",
-        f(BANNER),
-        f(CHOOSE),
-        f(OPT0),
-        f(OPT1),
-        f(OPT2),
-        f(OPT3),
-        f(OPT4),
-        f(NAME_PROMPT),
-        f(GAME_PROMPT),
-    )
+    use gopnik::opening;
+
+    let mut out = String::new();
+    let mut line = |s: &str| {
+        out.push_str(&f(s));
+        out.push('\n');
+    };
+    line(BANNER);
+    // 1000:02c2's splash, then -- with stdin at EOF and no save file --
+    // straight into 1000:6de6's backstory. Both blocks' blank lines and
+    // `ReadKey`s come from their gap tables; a `ReadKey` at EOF writes
+    // nothing, so only the `'B'` events reach the transcript.
+    for (text, gaps) in [
+        (&opening::SPLASH[..], opening::SPLASH_GAPS),
+        (&opening::BACKSTORY[..], opening::BACKSTORY_GAPS),
+    ] {
+        for i in 0..=text.len() {
+            if let Some((_, events)) = gaps.iter().find(|(at, _)| *at == i) {
+                for _ in events.chars().filter(|c| *c == 'B') {
+                    line("");
+                }
+            }
+            if let Some(s) = text.get(i) {
+                line(s);
+            }
+        }
+    }
+    for s in [CHOOSE, OPT0, OPT1, OPT2, OPT3, OPT4] {
+        line(s);
+    }
+    out.push_str(&f(NAME_PROMPT));
+    // `Game::announce_district` at district 1: 1000:7262's two lines and
+    // 1000:7369's three.
+    for s in opening::START_ARRIVAL[..2].iter().chain(&opening::TUTORIAL) {
+        out.push_str(&f(s));
+        out.push('\n');
+    }
+    out.push_str(&f(GAME_PROMPT));
+    out
 }
 
 #[test]
