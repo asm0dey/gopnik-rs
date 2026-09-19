@@ -3820,7 +3820,7 @@
   },
   {
     "label": "beer-uncited-shared-construct-discriminator",
-    "defends": "rows that share one src construct -- the port evaluates a predicate once where the original tests it three times -- must each name the sub-expression they mean, and it must really BE a sub-expression.  1000:2c36 shipped with 1000:2c3d's expr and recompute, byte for byte, while testing a different predicate; the identifier pairing test passes on that because every ident occurs in Game::beer.  A drifted row cannot buy silence by inventing a discriminator either, which is what this case perturbs.",
+    "defends": "rows that resolve to one src construct must each name the sub-expression they mean, and it must really BE a sub-expression OF THE RESOLVED SOURCE LINE -- not of the row's own `expr` paraphrase, which is written by the same hand as the discriminator.  1000:2c36 shipped with 1000:2c3d's expr and recompute, byte for byte, while testing a different predicate; the identifier pairing test passes on that because every ident occurs in Game::beer.  A drifted row cannot buy silence by inventing a discriminator either, which is what this case perturbs.",
     "artifact": "data/beer_uncited.json",
     "mutate": {
       "op": "json-set",
@@ -3838,7 +3838,90 @@
       "tools/test_beer_arms.py",
       "SrcPairingTest.test_no_two_rows_share_a_construct_without_saying_which_half_they_mean"
     ],
-    "expect": "is not a sub-expression of the `expr` it shares"
+    "expect": "is not a sub-expression of the source line it resolves to"
+  },
+  {
+    "label": "beer-uncited-shared-construct-undeclared",
+    "defends": "the ESCAPE the first revision of test_no_two_rows_share_a_construct_without_saying_which_half_they_mean could not see.  1000:2bc6, 1000:2c0d and 1000:2c36 all evaluate at the single `if healed != 0 {` -- the Game::beer doc comment says \"this one test stands for all three\" -- but that revision grouped rows on the TEXT of (module, function, expr, recompute), and because the three worded their expr differently it grouped NONE of them and demanded NO discriminator.  The grouping now runs each row's own citation and keys on the src/ line it resolves to, so dropping one row's discriminator reds.  Before the fix this mutation changed nothing the suite could see.",
+    "artifact": "data/beer_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "branches",
+        14,
+        "src",
+        "discriminator"
+      ],
+      "from": "healed != 0",
+      "to": ""
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "SrcPairingTest.test_no_two_rows_share_a_construct_without_saying_which_half_they_mean"
+    ],
+    "expect": "names no `src.discriminator`"
+  },
+  {
+    "label": "beer-uncited-re-evaluation-group-must-agree",
+    "defends": "the OTHER half of the shared-construct rule.  A `disjunct` group folds several original branches into several sub-expressions of one line and its discriminators must DIFFER; a `re-evaluation` group is one predicate the original tests more than once, so there is no `which half` and its discriminators must AGREE.  1000:2bc6 / 1000:2c0d / 1000:2c36 are the re-evaluation group.  This mutation gives one of them a different-but-still-valid sub-expression of the same line, which the DISTINCT rule of a disjunct group would have accepted.",
+    "artifact": "data/beer_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "branches",
+        17,
+        "src",
+        "discriminator"
+      ],
+      "from": "healed != 0",
+      "to": "healed"
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "SrcPairingTest.test_no_two_rows_share_a_construct_without_saying_which_half_they_mean"
+    ],
+    "expect": "their discriminators must AGREE"
+  },
+  {
+    "label": "beer-uncited-recompute-lands-on-the-wrong-construct",
+    "defends": "a recompute command that RUNS, PRINTS, and lands on the wrong construct.  1000:2c0d's window was `grep -nF -B4` on the `^4Кончилось пиво` literal, four lines BELOW the `if healed != 0` it is filed against; the window does not contain that `if` at all and passed only because the bare token `healed` occurs inside it as a call argument.  This mutation restores that window: the row then resolves to the nested `if self.player.beer_dl == 0 {` -- 1000:2c14's construct -- and the group that forms is caught declaring two different `src.shares`.",
+    "artifact": "data/beer_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "branches",
+        15,
+        "src",
+        "recompute"
+      ],
+      "from": "grep -nF -A8 'if healed != 0 {' src/game.rs",
+      "to": "grep -nF -B4 'term::println(\"^4Кончилось пиво\");' src/game.rs"
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "SrcPairingTest.test_no_two_rows_share_a_construct_without_saying_which_half_they_mean"
+    ],
+    "expect": "declare more than one `src.shares`"
+  },
+  {
+    "label": "beer-arms-port-change-ledger-is-run",
+    "defends": "data/beer_arms.json's what_the_port_must_change block, which NOTHING in the suite read until the whole-branch review of this plan.  All four entries described the port at BASE fe2e8bf, all four were closed inside fe2e8bf..2b3fceb, and entry [1] went on quoting `grep -n 'Six later' src/game.rs` after that grep had stopped matching.  Each entry now carries verify COMMANDS whose result is asserted.  This mutation puts the miscount back into the doc comment, which is the defect the review found, run in reverse.",
+    "artifact": "src/game.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "/// **five** later compares",
+      "to": "/// Six later compares",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "SrcPairingTest.test_every_port_change_record_is_true_of_the_shipped_tree"
+    ],
+    "expect": "prints nothing and it printed"
   },
   {
     "label": "beer-jaw-arm-falls-into-the-tail",

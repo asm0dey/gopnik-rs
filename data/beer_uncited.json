@@ -1,7 +1,7 @@
 {
  "note": "Every game branch of `FUN_1000_29c4` -- the `h` / `mh` beer routine, image `1000:29c4`..`1000:2c5e` -- classified against the port by Task 41. All 19 carried no `SEG:OFF` citation at the branch or its guard when Task 41 ran EXCEPT `1000:2a1d` and `1000:2a4c`, whose guards (`1000:2a18`, `1000:2a47`) the shipped `Game::beer` doc comment already named; those two were the `touched 2` in `docs/re/branches.md`'s per-entry row for this entry AT TASK 41'S TREE. Task 42 cited the other seventeen, so that row now reads `touched 19` -- the figure is the output of `docs/re/branches.md`'s Recomputation block at a named commit, never a fact about this file, and the `2` above is kept only as the base the +17 was measured from. The row set is the whole branch population of the function, not the uncited subset -- `data/combat_uncited.json` is the shape, and the difference is deliberate: Task 42 had to cite 17 and must not re-cite the two, so both halves have to be present and derived. `tools/test_beer_arms.py` re-derives the population from `data/branches.json` and requires this file to cover it EXACTLY; no count here is hard-coded.",
  "classes": {
-  "implemented": "`src/` evaluates this condition NOW. `src.module`, `src.function` and `src.expr` name the construct that does, and `src.recompute` is the command that finds it -- never a `src/` line number, which `docs/re/METHODOLOGY.md` forbids. `src.expr` is a paraphrase close enough to locate the construct and never a substitute for reading it. When two rows name the SAME construct -- the port evaluates one predicate where the original tests it more than once -- each carries a `src.discriminator`: the exact sub-expression of `expr` that row means. `tools/test_beer_arms.py`'s `test_no_two_rows_share_a_construct_without_saying_which_half_they_mean` requires it. What that test enforces is exactly PRESENT, SUBSTRING and DISTINCT -- the discriminator exists, occurs in the shared `expr`, and differs from its siblings'. It does NOT establish that the discriminator is the predicate the branch evaluates: a row drifted onto a sibling's construct still passes if it names any other substring of that expression (`1000:2c36` back on `1000:2c3d`'s `expr` with `discriminator: term::println` goes green). The check narrows that opening; reading each row's `why` against the flow is still what closes it.",
+  "implemented": "`src/` evaluates this condition NOW. `src.module`, `src.function` and `src.expr` name the construct that does, and `src.recompute` is the command that finds it -- never a `src/` line number, which `docs/re/METHODOLOGY.md` forbids. `src.expr` is a paraphrase close enough to locate the construct and never a substitute for reading it. `tools/test_beer_arms.py`'s `test_no_two_rows_share_a_construct_without_saying_which_half_they_mean` RESOLVES each row to one source line -- it runs `src.recompute`, keeps the line numbers the command printed that fall inside `src.function`'s body, and takes the first of those that is a condition head (`if`, `else if`, `match`, or a match arm) -- and groups the rows by that line. Two rows share a construct when they resolve to the SAME line, which is a fact about the shipped tree and not about how the two rows worded their `expr`. A row in such a group declares `src.shares` and `src.discriminator`:\n  * `shares: \"disjunct\"` -- the port folded several of the original's branches into several sub-expressions of one line, and each row's `discriminator` is the one it means. The discriminators must be DISTINCT. 1000:2b93 / 1000:2b9e / 1000:2ba5 are this case.\n  * `shares: \"re-evaluation\"` -- the original tests ONE predicate more than once and the port evaluates it once, so there is no `which half` to name. Every row's `discriminator` is the same sub-expression, and the test requires them to AGREE rather than differ. 1000:2bc6 / 1000:2c0d / 1000:2c36 are this case, all three resolving to `if healed != 0 {`, and the hoist is sound for the reason `data/beer_arms.json`'s `stack_slot_bp_minus_0x102.three_way_versus_the_ports_two_way` gives.\nA row that resolves to a line of its own carries neither field, and the test reds if it carries one anyway. WHAT THIS STILL DOES NOT ESTABLISH: nothing here knows which predicate the BRANCH evaluates. The resolver reads the FIRST condition head in the window the row's own command printed, so a row whose window is widened backwards past another head resolves to that other head instead -- it lands on a different construct, which usually reds because the sibling there has no matching discriminator, but it is the row's `why`, read against the flow, that closes the question.",
   "unimplemented": "`src/` does not evaluate it. NO ROW USES THIS CLASS -- see `empty_classes_are_reported`.",
   "unreachable-in-port": "the port deliberately diverges and `docs/re/gaps.md` records it. NO ROW USES THIS CLASS -- see `empty_classes_are_reported`."
  },
@@ -250,6 +250,7 @@
     "expr": "if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 { break; }",
     "recompute": "grep -n 'if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {' src/game.rs",
     "why": "This row is the `single` disjunct of that condition; 1000:2b9e and 1000:2ba5 are the other two, in the original's own order.",
+    "shares": "disjunct",
     "discriminator": "single"
    }
   },
@@ -269,6 +270,7 @@
     "expr": "if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 { break; }",
     "recompute": "grep -n 'if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {' src/game.rs",
     "why": "This row is the `self.player.hp >= self.player.hpmax` disjunct.",
+    "shares": "disjunct",
     "discriminator": "self.player.hp >= self.player.hpmax"
    }
   },
@@ -288,6 +290,7 @@
     "expr": "if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 { break; }",
     "recompute": "grep -n 'if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {' src/game.rs",
     "why": "This row is the `self.player.beer_dl == 0` disjunct.",
+    "shares": "disjunct",
     "discriminator": "self.player.beer_dl == 0"
    }
   },
@@ -324,8 +327,10 @@
     "module": "src/game.rs",
     "function": "Game::beer",
     "expr": "let healed = i64::from(self.player.hp) - i64::from(hp0); if healed != 0 { .. }",
-    "recompute": "grep -n -A1 'let healed = i64::from(self.player.hp) - i64::from(hp0);' src/game.rs",
-    "why": "`hp0` is the port's [bp-0x102]: bound before the jaw test, as 1000:2a11/1000:2a14 store before 1000:2a18."
+    "recompute": "grep -nF -A6 'let healed = i64::from(self.player.hp) - i64::from(hp0);' src/game.rs",
+    "why": "`hp0` is the port's [bp-0x102]: bound before the jaw test, as 1000:2a11/1000:2a14 store before 1000:2a18. The window runs from the subtraction (1000:2bd0, which is what makes the summary's first field the TOTAL healed) down to the `if healed != 0 {` head that evaluates this branch's predicate -- both halves of the row, and the head is what the construct resolver keys on. An -A window is stale-by-construction if the comment block between the two lines grows, which is exactly why the command is RUN: it reds rather than silently re-pointing at the `let`.",
+    "shares": "re-evaluation",
+    "discriminator": "healed != 0"
    }
   },
   {
@@ -342,8 +347,10 @@
     "module": "src/game.rs",
     "function": "Game::beer",
     "expr": "if healed != 0 { term::println(..); if self.player.beer_dl == 0 { term::println(\"^4Кончилось пиво\"); } }",
-    "recompute": "grep -nF -B4 'term::println(\"^4Кончилось пиво\");' src/game.rs",
-    "why": "This row is the OUTER `healed != 0` test, re-evaluated. The port evaluates the hp-vs-hp0 predicate ONCE and nests; the original re-reads 20ae:38ac at 1000:2bbf, 1000:2c06 and 1000:2c2f. The hoist is sound because nothing between them writes 20ae:38ac -- the store scan finds the routine's only writes at 1000:2a97 and 1000:2ae7, both inside the loop, and the only call in between is `0eed:01c2`."
+    "recompute": "grep -nF -A8 'if healed != 0 {' src/game.rs",
+    "why": "This row is the OUTER `healed != 0` test, re-evaluated. The port evaluates the hp-vs-hp0 predicate ONCE and nests; the original re-reads 20ae:38ac at 1000:2bbf, 1000:2c06 and 1000:2c2f. The hoist is sound because nothing between them writes 20ae:38ac -- the store scan finds the routine's only writes at 1000:2a97 and 1000:2ae7, both inside the loop, and the only call in between is `0eed:01c2`. The recompute is anchored on the `if healed != 0 {` head and not, as it was until the whole-branch review, on the `^4Кончилось пиво` literal four lines below it: that window did not contain the construct this row is filed against at all, and passed only because the bare token `healed` occurs inside it as a call argument -- a command that ran, printed, and landed on the wrong construct. The -A8 reaches the nested `beer_dl == 0` test the `expr` also quotes.",
+    "shares": "re-evaluation",
+    "discriminator": "healed != 0"
    }
   },
   {
@@ -378,7 +385,9 @@
     "function": "Game::beer",
     "expr": "if healed != 0 { .. } else { .. }",
     "recompute": "grep -n 'if healed != 0 {' src/game.rs",
-    "why": "The `else` arm is reached exactly when `healed == 0`, which is 1000:2c36's NOT-taken direction -- so the construct that EVALUATES this branch's predicate is the `if healed != 0` HEAD, not the `} else if self.player.beer_dl == 0 {` line the arm happens to start with. An earlier revision of this row named that line, which made it byte-identical to 1000:2c3d's `expr` and `recompute` while testing a different predicate; Task 42 would have put `1000:2c36` on the `beer_dl` test, which is the near-miss citation `docs/re/METHODOLOGY.md` forbids. `test_no_two_rows_share_a_construct_without_saying_which_half_they_mean` is the check that now catches the shape rather than the instance. This branch is also one of the 192 addresses Ghidra folded out of `build/decomp/FUN_1000_29c4_1000_29c4.c`."
+    "why": "The `else` arm is reached exactly when `healed == 0`, which is 1000:2c36's NOT-taken direction -- so the construct that EVALUATES this branch's predicate is the `if healed != 0` HEAD, not the `} else if self.player.beer_dl == 0 {` line the arm happens to start with. An earlier revision of this row named that line, which made it byte-identical to 1000:2c3d's `expr` and `recompute` while testing a different predicate; Task 42 would have put `1000:2c36` on the `beer_dl` test, which is the near-miss citation `docs/re/METHODOLOGY.md` forbids. `test_no_two_rows_share_a_construct_without_saying_which_half_they_mean` is the check that now catches the shape rather than the instance. This branch is also one of the 192 addresses Ghidra folded out of `build/decomp/FUN_1000_29c4_1000_29c4.c`. All three of 1000:2bc6, 1000:2c0d and 1000:2c36 resolve to the one `if healed != 0 {` head -- which the `Game::beer` doc comment says outright (`this one test stands for all three`) -- so they are a `re-evaluation` group and their discriminators must AGREE. Until the whole-branch review the pairing test grouped on the `expr` TEXT, and because the three rows worded theirs differently it grouped none of them and demanded no discriminator at all.",
+    "shares": "re-evaluation",
+    "discriminator": "healed != 0"
    }
   },
   {

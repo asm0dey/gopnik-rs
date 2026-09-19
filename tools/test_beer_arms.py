@@ -145,6 +145,18 @@ STRING_MOVES = ("stosb", "stosw", "movsb", "movsw", "rep movsb", "rep movsw")
 #: which is itself checked by the set equality against `data/branches.json`.
 JCC = re.compile(r"^j(?!mp\b)\w+\s")
 
+#: A `src/` line that EVALUATES a condition: an `if` head, an `else if` head
+#: (rustfmt writes it as `} else if ..`), a `match` head, or a match arm.
+#: `} else {` is deliberately NOT one -- it carries no predicate -- and
+#: neither is `loop {` or a bare `{`.  This is what a row's `recompute` window
+#: is searched for to find the construct the row is filed against.
+COND_HEAD = re.compile(r"^(\}\s*)?else\s+if\s|^if\s|^match\s|=>")
+
+#: `grep -n` marks a MATCHED line `N:` and a CONTEXT line `N-`, either of them
+#: optionally behind a `path:`.  Both are part of the window the citation
+#: printed, so both count.
+GREP_LINENO = re.compile(r"^(?:[^:\n]*:)?(\d+)[:-]")
+
 #: Addresses the prose names that are deliberately NOT instruction boundaries,
 #: each with the reason.  An exemption without a reason is how a boundary
 #: check stops being one.
@@ -1023,12 +1035,64 @@ class ProseTest(Base):
 class SrcPairingTest(Base):
     """The only class here that reads `src/`.
 
-    Two independent checks per `implemented` row, because they fail
+    Three independent checks per `implemented` row, because they fail
     differently: the identifier check pins the row to the FUNCTION that
-    evaluates the condition, and running the `recompute` command establishes
+    evaluates the condition, the construct resolver pins it to the LINE inside
+    that function, and running the `recompute` command establishes
     that the citation `docs/re/METHODOLOGY.md` requires -- a command, never a
     line number -- still finds it.
     """
+
+    #: `{module: (lines, fn_bodies)}`, so a module is read once per process.
+    _mod_cache = {}
+
+    def _module(self, rel):
+        """`(lines, fn_bodies)` for one `src/` module, read once."""
+        if rel not in self._mod_cache:
+            whole = (REPO / rel).read_text(encoding="utf-8")
+            self._mod_cache[rel] = (whole.splitlines(), fn_bodies(whole))
+        return self._mod_cache[rel]
+
+    def _run(self, cmd):
+        return subprocess.run(cmd, shell=True, cwd=REPO,
+                              capture_output=True, text=True)
+
+    def resolve_construct(self, r):
+        """The ONE `src/` line a row's citation resolves to.
+
+        `docs/re/METHODOLOGY.md` forbids writing a line number into an
+        artifact, so nothing in `data/beer_uncited.json` names one.  This
+        recomputes it, every run, from what the row already carries: run
+        `src.recompute`, keep the line numbers the command PRINTED (matched
+        and context alike) that fall inside `src.function`'s body, and take
+        the first of those that is a condition head.  The return value is
+        `(line number, the line's text)` -- the number is used only to group
+        rows within this process and is never written anywhere.
+        """
+        src = r["src"]
+        lines, fns = self._module(src["module"])
+        name = src["function"].split("::")[-1]
+        span = fns.get(name)
+        self.assertTrue(span, "%s names %s and %s defines no unambiguous "
+                              "`fn %s`" % (r["addr"], src["function"],
+                                           src["module"], name))
+        lo = span[0]
+        hi = lo + span[1].count("\n")
+        out = self._run(src["recompute"]).stdout
+        printed = sorted({int(m.group(1)) for m in
+                          (GREP_LINENO.match(ln) for ln in out.splitlines())
+                          if m})
+        heads = [n for n in printed
+                 if lo <= n <= hi and COND_HEAD.search(lines[n - 1].strip())]
+        self.assertTrue(
+            heads,
+            "%s: `%s` printed %d line(s), none of which is a condition head "
+            "inside `fn %s` -- the command runs but does not reach the "
+            "construct that EVALUATES this branch, which is the shape "
+            "`1000:2c0d` shipped with (a window four lines below its own `if`, "
+            "passing on the bare token `healed` as a call argument)"
+            % (r["addr"], src["recompute"], len(printed), name))
+        return heads[0], lines[heads[0] - 1].strip()
 
     def test_every_implemented_row_names_the_function_that_evaluates_it(self):
         bodies = {}
@@ -1090,60 +1154,124 @@ class SrcPairingTest(Base):
         Sharing a construct is LEGITIMATE here -- the port evaluates one
         predicate where the original tests it more than once -- so the rule is
         not "never share". It is: a shared construct must be declared, and each
-        sharer must name the exact sub-expression it means.
+        sharer must say what it means by it.
 
-        WHAT THIS DOES NOT CATCH, stated because the shape it misses is the
-        one it was written for. The three assertions below are PRESENT,
-        SUBSTRING and DISTINCT: a discriminator must exist, must occur in the
-        shared `expr`, and must differ from its siblings'. Nothing here knows
-        which predicate the BRANCH evaluates, so a row that has drifted onto a
-        sibling's construct still passes if it picks any other substring of
-        that expression -- revert `1000:2c36` onto `1000:2c3d`'s `expr` and
-        give it `discriminator: "term::println"` and all four tests in this
-        class go green. Reading the `why` against the flow remains the only
-        thing that catches that; this test narrows the opening, it does not
-        close it.
+        The first revision of this test grouped on `(module, function, expr,
+        recompute)`, which is TEXT. `1000:2bc6`, `1000:2c0d` and `1000:2c36`
+        all evaluate at the single `if healed != 0 {` -- the `Game::beer` doc
+        comment says "this one test stands for all three" -- and because each
+        row worded its `expr` differently the check grouped NONE of them and
+        demanded NO discriminator. That is the guard-written-against-one-past-
+        symptom defect, inside the test written to prevent it, and the
+        whole-branch review of this plan found it. So the key is no longer the
+        text: `resolve_construct` RUNS each row's own citation and resolves it
+        to one line of the shipped tree, and rows that land on the same line
+        are the group -- a fact about `src/`, not about how a row is worded.
+
+        Two shapes of sharing, declared per row as `src.shares`:
+
+          * `disjunct` -- the port folded several original branches into
+            several sub-expressions of ONE line (`if single || hp >= hpmax ||
+            beer_dl == 0`). Each `discriminator` is the sub-expression that
+            row means, and they must be DISTINCT.
+          * `re-evaluation` -- the original tests one predicate more than once
+            and the port evaluates it once, so there is no "which half". Every
+            `discriminator` is the same sub-expression and they must AGREE;
+            two that differ mean at least one row is misfiled.
+
+        Either way the discriminator must occur in the RESOLVED SOURCE LINE,
+        not merely in the row's `expr` paraphrase -- a paraphrase is written by
+        the same hand as the discriminator, so checking one against the other
+        is close to checking a value against itself.
+
+        WHAT THIS STILL DOES NOT CATCH, stated because the shape it misses is
+        the one it was written for. Nothing here knows which predicate the
+        BRANCH evaluates. The resolver takes the FIRST condition head in the
+        window the row's own command printed, so a row whose window is widened
+        backwards past another head resolves to that other head. That usually
+        reds -- it lands in a group whose members disagree, or alone with a
+        discriminator it must not carry -- but "usually" is not "always", and
+        reading each row's `why` against the flow is still what closes it.
         """
         groups = collections.defaultdict(list)
+        seen = 0
         for r in self.rows:
             if r["class"] != "implemented":
                 continue
-            src = r["src"]
-            groups[(src["module"], src["function"], src["expr"],
-                    src["recompute"])].append(r)
+            line, text = self.resolve_construct(r)
+            groups[(r["src"]["module"], line, text)].append(r)
+            seen += 1
+        self.assertEqual(seen, self.uncited["counts"]["implemented"])
         shared = {k: v for k, v in groups.items() if len(v) > 1}
         for key, rs in sorted(shared.items()):
+            construct = key[2]
             addrs = [r["addr"] for r in rs]
             with self.subTest(rows=addrs):
+                kinds = {r["src"].get("shares") for r in rs}
+                self.assertEqual(
+                    len(kinds), 1,
+                    "%s resolve to the one construct %r and declare more than "
+                    "one `src.shares` (%s) -- a construct is shared one way or "
+                    "the other, so at least one row is misfiled"
+                    % (addrs, construct, sorted(map(repr, kinds))))
+                kind = next(iter(kinds))
+                self.assertIn(
+                    kind, ("disjunct", "re-evaluation"),
+                    "%s resolve to the one construct %r and declare "
+                    "`src.shares` = %r -- it must be `disjunct` (several "
+                    "sub-expressions of one line) or `re-evaluation` (one "
+                    "predicate the original tests more than once)"
+                    % (addrs, construct, kind))
                 discs = []
                 for r in rs:
                     d = r["src"].get("discriminator")
                     self.assertTrue(
                         d,
-                        "%s shares its `expr` and `recompute` with %s and "
-                        "names no `src.discriminator`, so nothing says which "
-                        "half of that construct it means -- and a row that "
-                        "has drifted onto a sibling's construct is "
-                        "indistinguishable from one that legitimately shares "
-                        "it" % (r["addr"],
-                                [a for a in addrs if a != r["addr"]]))
+                        "%s resolves to the same construct as %s (%r) and "
+                        "names no `src.discriminator`, so nothing says what it "
+                        "means by it -- and a row that has drifted onto a "
+                        "sibling's construct is indistinguishable from one "
+                        "that legitimately shares it"
+                        % (r["addr"], [a for a in addrs if a != r["addr"]],
+                           construct))
                     self.assertIn(
-                        d, key[2],
+                        d, construct,
                         "%s's discriminator %r is not a sub-expression of the "
-                        "`expr` it shares (%r) -- either the discriminator is "
-                        "wrong or the row is filed against the wrong construct"
-                        % (r["addr"], d, key[2]))
+                        "source line it resolves to (%r) -- either the "
+                        "discriminator is wrong or the row is filed against "
+                        "the wrong construct" % (r["addr"], d, construct))
                     discs.append(d)
-                self.assertEqual(
-                    len(set(discs)), len(discs),
-                    "%s share a construct and two of them claim the same "
-                    "half (%s), so at least one names a predicate it does not "
-                    "evaluate" % (addrs, discs))
+                if kind == "disjunct":
+                    self.assertEqual(
+                        len(set(discs)), len(discs),
+                        "%s share the `disjunct` construct %r and two of them "
+                        "claim the same half (%s), so at least one names a "
+                        "predicate it does not evaluate"
+                        % (addrs, construct, discs))
+                else:
+                    self.assertEqual(
+                        len(set(discs)), 1,
+                        "%s share the construct %r as a `re-evaluation` of one "
+                        "predicate, so their discriminators must AGREE and "
+                        "these do not (%s) -- either the group is really "
+                        "`disjunct` or a row is filed against the wrong "
+                        "construct" % (addrs, construct, discs))
+        # A row that resolves to a line of its OWN must carry neither field,
+        # or a discriminator left behind by an earlier revision would sit
+        # there unread -- which is how the artifact stops describing itself.
+        alone = [r for k, v in groups.items() if len(v) == 1 for r in v]
+        for r in alone:
+            for field in ("shares", "discriminator"):
+                self.assertNotIn(
+                    field, r["src"],
+                    "%s resolves to a construct no other row resolves to and "
+                    "still names `src.%s` -- either it is stale or the row it "
+                    "used to share with has moved" % (r["addr"], field))
         # And the shape must actually occur, or the check above is vacuous.
         self.assertTrue(
             shared,
-            "no two `implemented` rows share a construct, so this test "
-            "asserted nothing -- if the artifact really has no shared "
+            "no two `implemented` rows resolve to the same construct, so this "
+            "test asserted nothing -- if the artifact really has no shared "
             "constructs, delete it rather than leave it passing vacuously")
 
     def test_every_recompute_command_still_finds_its_construct(self):
@@ -1212,6 +1340,62 @@ class SrcPairingTest(Base):
             self.assertIn('"%s" => Command::%s' % (tok, variant), arms,
                           "commands::parse no longer maps %r to Command::%s"
                           % (tok, variant))
+
+    def test_every_port_change_record_is_true_of_the_shipped_tree(self):
+        """`data/beer_arms.json`'s `what_the_port_must_change`, RUN.
+
+        Until the whole-branch review of this plan, no test in this suite read
+        that block at all.  All four entries described the port at BASE
+        `fe2e8bf`, all four were closed inside `fe2e8bf..2b3fceb`, and the
+        block still asserted them in the present tense with `blocked: false`
+        -- entry [1] quoting a `grep -n 'Six later' src/game.rs` that by then
+        returned NOTHING.  A tracked `data/` file asserting what the tree
+        falsifies is exactly what this project keeps shipping, so each entry
+        now carries a `status`, a `closed_by`, and `verify` COMMANDS whose
+        result is asserted here rather than quoted.
+
+        `expect: null` means the command must print nothing; a string means it
+        must occur in what the command printed.  The return code is NOT
+        asserted -- `grep` exits 1 on no match, which is the expected outcome
+        of every `expect: null` record.
+        """
+        recs = self.arms["what_the_port_must_change"]
+        self.assertTrue(recs, "the ledger is empty, so this test asserts "
+                              "nothing")
+        for i, e in enumerate(recs):
+            with self.subTest(entry=i, what=e["what"][:60]):
+                self.assertIn(
+                    e.get("status"), ("OPEN", "CLOSED"),
+                    "entry [%d] carries no `status` -- which is how all four "
+                    "of them went on describing the tree at BASE after the "
+                    "range had closed them" % i)
+                if e["status"] == "CLOSED":
+                    closed = e.get("closed_by") or {}
+                    for k in ("task", "commit", "what_changed"):
+                        self.assertTrue(
+                            closed.get(k),
+                            "entry [%d] is CLOSED and its `closed_by` names no "
+                            "%r -- a closure with nothing behind it is not a "
+                            "record" % (i, k))
+                checks = e.get("verify")
+                self.assertTrue(
+                    checks,
+                    "entry [%d] carries no `verify` command, so nothing "
+                    "recomputes the claim it makes about `src/`" % i)
+                for c in checks:
+                    cmd = c["command"]
+                    out = self._run(cmd).stdout
+                    if c["expect"] is None:
+                        self.assertEqual(
+                            out.strip(), "",
+                            "entry [%d] records that `%s` prints nothing and "
+                            "it printed:\n%s" % (i, cmd, out))
+                    else:
+                        self.assertIn(
+                            c["expect"], out,
+                            "entry [%d]: `%s` no longer prints %r -- it "
+                            "printed %d line(s)"
+                            % (i, cmd, c["expect"], len(out.splitlines())))
 
 
 if __name__ == "__main__":

@@ -545,38 +545,121 @@
  "what_the_port_must_change": [
   {
    "what": "`mh` with a broken jaw must fall into the tail, not return.",
+   "status": "CLOSED",
    "original": "1000:2a38 `jmp 0x2baa`",
-   "port": "`Game::beer`'s `return` inside `if self.player.broken_jaw`",
-   "consequence": "`mh` + broken jaw + 20ae:38c3 <= 0 writes `^4Пива нету` (CS 0x2970, 1000:2c3f) after the refusal in the original and nothing after it in the port.",
-   "falsifiable_as": "a test that runs `mh` with `broken_jaw` set and `beer_dl == 0` and asserts TWO lines.",
-   "blocked": false,
-   "recorded_in": "docs/re/gaps.md"
+   "port_at_base": "`Game::beer`'s `return` inside `if self.player.broken_jaw`.",
+   "port_as_it_ships": "the refusal arm no longer returns: the drink loop moved into its `else`, so both arms reach the 1000:2bba gate exactly as 1000:2a38 does.",
+   "consequence_while_it_stood": "`mh` + broken jaw + 20ae:38c3 <= 0 wrote `^4Пива нету` (CS 0x2970, 1000:2c3f) after the refusal in the original and nothing after it in the port.",
+   "closed_by": {
+    "task": "Task 42, Half 1",
+    "commit": "db9fd24",
+    "what_changed": "the `return` after the refusal was deleted and the drink loop moved into the refusal's `else`.",
+    "test": "cargo test --lib a_broken_jaw_still_runs_the_tail_for_mh_and_returns_for_h",
+    "mutation_case": "python3 tools/mutate.py --case beer-jaw-arm-falls-into-the-tail"
+   },
+   "verify": [
+    {
+     "command": "grep -nF -A1 'term::println(\"^4Ты не можешь пить пиво из-за сломаной челюсти.\");' src/game.rs | grep -F 'return;'",
+     "expect": null,
+     "observed": "nothing -- there is no `return;` on the line after the refusal. Restoring it (which is what the mutation case does) makes this print."
+    },
+    {
+     "command": "grep -nF -A2 'term::println(\"^4Ты не можешь пить пиво из-за сломаной челюсти.\");' src/game.rs",
+     "expect": "} else {",
+     "observed": "the refusal line, then `} else {` and `loop {` -- the two lines that stand where the `return;` and its closing brace used to."
+    }
+   ],
+   "recorded_in": "docs/re/gaps.md, and `data/beer_uncited.json`'s `divergences[0]`, whose `status` is CLOSED for the same reason."
   },
   {
-   "what": "The `Game::beer` doc comment says `Six later \"h\" compares` and then lists five addresses.",
+   "what": "The `Game::beer` doc comment said `Six later \"h\" compares` and then listed five addresses; `src/commands.rs`'s module doc carried the same miscount as `Six further`.",
+   "status": "CLOSED",
    "original": "the census: `\"h\"` (CS 0x28c7) is pushed at 1000:29f0, 1000:2a6a, 1000:2aa0, 1000:2af2, 1000:2b40 and 1000:2b89 -- six in TOTAL, five AFTER the token compare.",
-   "port": "the same MISCOUNT appears twice, with two different wordings: `src/game.rs` says `Six later \"h\" compares` and `src/commands.rs`'s module doc says `Six further \"h\" compares`. They are not verbatim, so a single grep does not find both -- `grep -n 'Six later' src/game.rs` and `grep -n 'Six further' src/commands.rs` each find one.",
-   "consequence": "an off-by-one that reads as a completed census.",
+   "port_at_base": "the same off-by-one in two different wordings, in two modules, so no single grep found both.",
+   "port_as_it_ships": "`src/game.rs` says `**five** later compares` and `src/commands.rs` says `**Five** further`; each keeps a sentence recording the old miscount, which is why the literal `Six further` still occurs in `src/commands.rs` and `Six later` no longer occurs at all.",
+   "consequence_while_it_stood": "an off-by-one that read as a completed census.",
+   "closed_by": {
+    "task": "Task 42, Half 2",
+    "commit": "db9fd24",
+    "what_changed": "both doc comments were re-counted against `strings[0].pushed_at`, which `tools/test_beer_arms.py` derives from the binary."
+   },
+   "verify": [
+    {
+     "command": "grep -n 'Six later' src/game.rs",
+     "expect": null,
+     "observed": "nothing, and grep exits 1. This is the entry's OWN quoted command, and it is the one the whole-branch review re-ran to show the record had gone stale."
+    },
+    {
+     "command": "grep -nF '**five** later compares' src/game.rs",
+     "expect": "**five** later compares",
+     "observed": "one hit in the `Game::beer` doc comment, the corrected count."
+    },
+    {
+     "command": "grep -nF '**Five** further' src/commands.rs",
+     "expect": "**Five** further",
+     "observed": "one hit in the module doc, the corrected count."
+    },
+    {
+     "command": "grep -n 'Six further' src/commands.rs",
+     "expect": "wrote \"Six further\" over a list of five",
+     "observed": "one hit -- the string survives ONLY inside the sentence recording the old miscount, not as a live count. An entry that claimed `Six further` was gone would be false."
+    }
+   ],
    "falsifiable_as": "`data/beer_arms.json`'s `strings[0].pushed_at` has six entries and `tools/test_beer_arms.py` derives it from the binary.",
-   "blocked": false,
    "recorded_in": "docs/re/beer.md, `The audit of the shipped doc comment`"
   },
   {
-   "what": "Three of the doc comment's block-head addresses are not the guard or the branch they are attached to.",
+   "what": "Three of the doc comment's block-head addresses were not the guard or the branch they were attached to.",
+   "status": "CLOSED",
    "original": "1000:2a3b is the `mov ax,[0x38ac]` and 1000:2a3e the guard; 1000:2a55 is the `mov ax,[0x38ae]` and 1000:2a5c the guard; 1000:2b83 is a `lea` and 1000:2b93 the branch.",
-   "port": "the `Game::beer` doc comment's bullet list.",
-   "consequence": "`docs/re/METHODOLOGY.md`: a near-miss reads as authoritative. None of the three is citable for the coverage metric either -- `port_touched` reads the branch's own address and its guard's and nothing else -- which is why this entry's per-branch replacements are in `data/beer_uncited.json`. A fourth address of the same shape, `1000:2ab9`, is filed under the arithmetic item instead because its main defect is the dropped `mod 10`, not the offset. An earlier revision of this record said `Six` in `what` while `consequence` said `the three` -- the same miscount this entry is about, in the entry about it.",
+   "port_at_base": "the `Game::beer` doc comment's bullet list named the three `mov`/`lea` openings.",
+   "port_as_it_ships": "each bullet names the GUARD and the BRANCH as a pair, and the comment says outright which three addresses the earlier revision named and how far short of the compare they sat.",
+   "consequence_while_it_stood": "`docs/re/METHODOLOGY.md`: a near-miss reads as authoritative. None of the three is citable for the coverage metric either -- `port_touched` reads the branch's own address and its guard's and nothing else -- which is why this entry's per-branch replacements are in `data/beer_uncited.json`. A fourth address of the same shape, `1000:2ab9`, is filed under the arithmetic item instead because its main defect is the dropped `mod 10`, not the offset. An earlier revision of this record said `Six` in `what` while `consequence` said `the three` -- the same miscount entry [1] is about, in the entry about it.",
+   "closed_by": {
+    "task": "Task 42, Half 2",
+    "commit": "db9fd24",
+    "what_changed": "the bullet list was rewritten guard-then-branch and the 17 per-branch citations went in beside the constructs that evaluate them."
+   },
+   "verify": [
+    {
+     "command": "grep -nF 'revision named `1000:2a3b`, `1000:2a55` and `1000:2b83`' src/game.rs",
+     "expect": "which are the",
+     "observed": "one hit -- the doc comment now names the three wrong addresses as an earlier revision's, not as its own block heads."
+    },
+    {
+     "command": "grep -nF '`1000:2a18` / `1000:2a1d` broken jaw' src/game.rs",
+     "expect": "1000:2a1d",
+     "observed": "one hit -- the guard-then-branch pair form the bullets now use."
+    }
+   ],
    "falsifiable_as": "every address in `data/beer_uncited.json` is a `data/branches.json` branch or guard address.",
-   "blocked": false,
    "recorded_in": "docs/re/beer.md, `The audit of the shipped doc comment`"
   },
   {
-   "what": "`Game::beer`'s doc says the `mh` tail writes CS 0x2970 `if nothing was drunk at all`, omitting the second conjunct.",
+   "what": "`Game::beer`'s doc said the `mh` tail writes CS 0x2970 `if nothing was drunk at all`, omitting the second conjunct.",
+   "status": "CLOSED",
    "original": "1000:2c36 AND 1000:2c3d -- nothing drunk AND beer <= 0. With beer left and nothing drunk the tail is silent.",
-   "port": "the shipped CODE is right (`else if self.player.beer_dl == 0`); only the prose drops the conjunct.",
-   "consequence": "prose that a reader would implement wrongly.",
-   "falsifiable_as": "`data/beer_uncited.json`'s rows for 1000:2c36 and 1000:2c3d name two separate constructs.",
-   "blocked": false,
+   "port_at_base": "the shipped CODE was already right (`else if self.player.beer_dl == 0`); only the prose dropped the conjunct.",
+   "port_as_it_ships": "the bullet reads `when nothing was drunk **and** the beer is gone -- `1000:2c36` and `1000:2c3d`, two conjuncts`, and says an earlier revision wrote only the first.",
+   "consequence_while_it_stood": "prose that a reader would implement wrongly.",
+   "closed_by": {
+    "task": "Task 42, Half 2",
+    "commit": "db9fd24",
+    "what_changed": "the tail bullet gained the second conjunct and both branch addresses."
+   },
+   "verify": [
+    {
+     "command": "grep -nF 'if nothing was drunk at all' src/game.rs",
+     "expect": null,
+     "observed": "nothing -- the one-conjunct wording is gone."
+    },
+    {
+     "command": "grep -nF '`1000:2c36` and `1000:2c3d`, two conjuncts' src/game.rs",
+     "expect": "two conjuncts",
+     "observed": "one hit, in the `mh`-tail bullet."
+    }
+   ],
+   "falsifiable_as": "`data/beer_uncited.json`'s rows for 1000:2c36 and 1000:2c3d resolve to two DIFFERENT `src/` constructs -- `if healed != 0 {` and `} else if self.player.beer_dl == 0 {` -- which `test_no_two_rows_share_a_construct_without_saying_which_half_they_mean` recomputes from each row's own `recompute` command.",
    "recorded_in": "docs/re/beer.md, `The audit of the shipped doc comment`"
   }
  ],
@@ -596,5 +679,6 @@
   "note": "Every one of these is the aligned decode's own count, asserted by `tools/test_beer_arms.py` against a fresh walk of `orig/g.exe`.",
   "dgroup_addresses_touched": 4
  },
- "globals_are_a_measurement": "`globals[]` is every DGROUP address the range touches, not a list of the four someone noticed. `tools/test_beer_arms.py`'s `test_the_recorded_globals_are_every_dgroup_address_the_range_touches` sweeps every absolute-memory operand in the aligned decode and asserts SET EQUALITY against the `ds` keys below, so a fifth global -- including one that is only READ, which the effects sweep cannot see because it only buckets writes -- reds the test. The same sweep also requires every instruction carrying an absolute-memory operand to fall in the READ or the WRITE bucket, so an unrecognised shape fails loudly instead of being counted as neither. This artifact is outside `tools/test_arms_artifacts.py`'s corpus, which is where `test_the_dgroup_addresses_touched_are_the_recorded_globals` lives for the three handler maps; that exclusion is why the sweep had to be written here rather than inherited."
+ "globals_are_a_measurement": "`globals[]` is every DGROUP address the range touches, not a list of the four someone noticed. `tools/test_beer_arms.py`'s `test_the_recorded_globals_are_every_dgroup_address_the_range_touches` sweeps every absolute-memory operand in the aligned decode and asserts SET EQUALITY against the `ds` keys below, so a fifth global -- including one that is only READ, which the effects sweep cannot see because it only buckets writes -- reds the test. The same sweep also requires every instruction carrying an absolute-memory operand to fall in the READ or the WRITE bucket, so an unrecognised shape fails loudly instead of being counted as neither. This artifact is outside `tools/test_arms_artifacts.py`'s corpus, which is where `test_the_dgroup_addresses_touched_are_the_recorded_globals` lives for the three handler maps; that exclusion is why the sweep had to be written here rather than inherited.",
+ "what_the_port_must_change_is_a_ledger": "Each entry is a claim about `src/`, and `src/` is not frozen -- so each carries a `status`, a `closed_by` record naming what closed it, and a `verify` list of COMMANDS whose result is asserted by `tools/test_beer_arms.py`'s `test_every_port_change_record_is_true_of_the_shipped_tree`. Before that test existed, nothing in the suite read this block at all: all four entries described the tree at BASE `fe2e8bf`, all four were closed inside `fe2e8bf..2b3fceb`, and the whole-branch review found them still written in the present tense -- entry [1]'s own quoted grep (`grep -n 'Six later' src/game.rs`) by then returned NOTHING. `expect: null` means the command must print nothing; a string means it must appear in what the command printed. The field replaces the `blocked` flag these entries used to carry: `blocked: false` was read as 'still to do' and could not distinguish an open item from a closed one."
 }
