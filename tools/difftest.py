@@ -1417,6 +1417,50 @@ def market(img):
     return lines
 
 
+# ---------------------------------------------------------------------------
+# The wandering mage's four lines (`docs/re/port-gaps.md` row 23)
+# ---------------------------------------------------------------------------
+
+#: `1000:7538`..`75c7` -- the mage's whole four-line body, up to but not
+#: including the `lea di,[bp-0x100]` that opens the `ReadLn` setup.  Both
+#: bounds are aligned instruction starts: `1000:7538` is the function's own
+#: entry (`push bp`) and `1000:75c7` is where the answer buffer is built,
+#: confirmed by `literal_walk`'s own landing assertion rather than assumed.
+MAGE_SPAN = (0x7538, 0x75C7)
+
+#: All four literals the span passes straight to `WriteLn` -- `1000:7583`'s
+#: price line (`За # рублей...`) is a `district * 25` fill (`mov dx,0x19` /
+#: `mul dx` between the `push di` and the four zero-pushes), but it is still
+#: one `mov di,<imm16>` / `push cs` / `push di` triple followed by
+#: `call 0eed:01c2`, the same shape `literal_walk` already reads for the
+#: other three -- no separate regex or call-classification needed.
+MAGE_LITERALS = 4
+
+
+def mage_walk(img):
+    """`literal_walk` over `1000:7538`..`75c7` -- row 23's span."""
+    return literal_walk(img, *MAGE_SPAN, MAGE_LITERALS)
+
+
+def mage(img):
+    """Every mage record (row 23), appended in this order."""
+    emitted, _, _ = mage_walk(img)
+    lines = []
+    for i, (_, closes, cs) in enumerate(emitted):
+        how = "ln" if closes else "w"
+        lines.append("mage_line %d %s %s"
+                     % (i, how, strip_markup(shortstring(img, cs))))
+    # The same bare-`WriteLn`/`ReadKey` sweep every other span's gap table
+    # uses, over `1000:7538`..`75c7`.  This is what turns "the mage's three
+    # `ReadKey`s sit between lines 0/1, 1/2 and 2/3, and nothing sits after
+    # line 3" into a COMPARED claim: a `call 0f16:031a` anywhere else in the
+    # span, or a missing one where expected, would change this table.
+    start, stop = MAGE_SPAN
+    for i, seq in gaps_of(img, [s for s, _, _ in emitted], start, stop):
+        lines.append("mage_gap %d %s" % (i, seq))
+    return lines
+
+
 def opening(img):
     """Every opening record, appended to the stream in this order."""
     lines = []
@@ -1567,6 +1611,12 @@ def reference(img):
     market_records = market(img)
     lines += market_records
     ev["market_line"] = sum(1 for l in market_records if l.startswith("market_line "))
+
+    # The wandering mage -- Phase 2 batch F, row 23 -- appended last for the
+    # same reason as everything else above.
+    mage_records = mage(img)
+    lines += mage_records
+    ev["mage_line"] = sum(1 for l in mage_records if l.startswith("mage_line "))
     return lines, ev
 
 

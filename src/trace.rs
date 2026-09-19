@@ -95,6 +95,15 @@
 //! market_fragment <tag> <i> <CS literal the span hands to the string RTL>
 //! ```
 //!
+//! A seventh group appends after those -- the wandering mage's four lines
+//! and the `ReadKey`s that space the first three (row 23, the last row this
+//! file's oracle did not touch):
+//!
+//! ```text
+//! mage_line <i> <ln|w> <text of a literal the span prints>
+//! mage_gap  <i> <K, between line i-1 and line i>
+//! ```
+//!
 //! `levelup_gain` rows are sorted by field name inside each stat rather than
 //! left in the original's instruction order: this side derives them by
 //! applying [`crate::progress::grant`] and diffing the record, which cannot
@@ -289,6 +298,7 @@ pub fn emit(out: &mut impl Write) -> io::Result<()> {
     wander_records(out)?;
     enemy_records(out)?;
     market_records(out)?;
+    mage_records(out)?;
 
     Ok(())
 }
@@ -463,6 +473,30 @@ fn market_records(out: &mut impl Write) -> io::Result<()> {
         for (i, frag) in frags.iter().enumerate() {
             writeln!(out, "market_fragment {tag} {i} {}", text::strip(frag))?;
         }
+    }
+    Ok(())
+}
+
+/// The wandering mage's four lines -- `docs/re/port-gaps.md` row 23, the
+/// last row this file's oracle did not yet touch. Same reasoning as
+/// [`market_records`], appended after it so no record above moves.
+///
+/// One span, `1000:7538`..`75c7`, all four literals are `WriteLn`s (`closes`
+/// is always `true`) and none is composed, so there is no `mage_fragment`
+/// record -- kept out of the loop below rather than emitted empty, the same
+/// way [`market_records`]' `"banned"` group carries no fragments of its own.
+///
+/// The three `ReadKey`s are fixed at indices 1, 2 and 3 -- between line 0/1,
+/// 1/2 and 2/3 -- and nothing sits after line 3, which
+/// `tools/difftest.py`'s `mage(img)` derives from the image with the same
+/// `gaps_of` sweep every other span's gap table uses, rather than this side
+/// asserting it unchallenged.
+fn mage_records(out: &mut impl Write) -> io::Result<()> {
+    for (i, line) in crate::game::MAGE_LINES.iter().enumerate() {
+        writeln!(out, "mage_line {i} ln {}", text::strip(line))?;
+    }
+    for i in [1, 2, 3] {
+        writeln!(out, "mage_gap {i} K")?;
     }
     Ok(())
 }

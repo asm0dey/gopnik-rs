@@ -252,6 +252,24 @@ pub struct PromptState {
     pub enemy_broken_leg: bool,
 }
 
+/// The wandering mage's four lines, `1000:7538`..`75c7` -- `docs/re/port-
+/// gaps.md` row 23. Index 2 is filled with `district * 25` at print time
+/// (`1000:7583`..`7590`, `mov dx,0x19` / `mul dx`); the other three are
+/// plain `WriteLn`s. `crate::trace`'s `mage_line` records read this table
+/// directly so the two can never drift apart, and `tools/difftest.py`'s
+/// `mage(img)` re-derives all four out of `orig/g.exe` by a `literal_walk`
+/// over the same span.
+pub const MAGE_LINES: [&str; 4] = [
+    // 1000:7547, cs 0x73ee.
+    "Бродя по окрестностям с самыми грязными намериниями...",
+    // 1000:7565, cs 0x7425.
+    "Ты встретил великого мага и экстрасенса - Рушеля Блаво.",
+    // 1000:7583, cs 0x745d.
+    "За # рублей он может сделать сохранение прямо здесь.",
+    // 1000:75a9, cs 0x7492.
+    "Ты хочешь сохраниться?",
+];
+
 pub struct Game {
     pub player: Fighter,
     pub progress: Progress,
@@ -3722,6 +3740,13 @@ impl Game {
     /// to be out of reach because `Save::parse` was the only constructor and
     /// `.SAV` `0x214`/`0x2ae` were unknown; both spans are established now.
     ///
+    /// **`docs/re/port-gaps.md` row 23.** The first three of the four
+    /// `WriteLn`s are spaced with `0f16:031a` `ReadKey`s, the same
+    /// discarded-line-read trick as [`Game::wander_preamble`]'s phone gag
+    /// (row 24): `1000:7560`, `1000:757e`, `1000:75a4`. The fourth line
+    /// (`1000:75bd`) has no `ReadKey` after it -- it falls straight into the
+    /// `ReadLn`.
+    ///
     /// A write that fails is reported and the turn continues. The original
     /// has no failure message on this path at all: `1000:761d` debits before
     /// the file is opened and nothing after it tests `IOResult`, so the
@@ -3733,13 +3758,13 @@ impl Game {
     /// play (`1000:b3b7`), and forcing that bucket needs a seed the binary
     /// does not take.
     pub fn mage(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
-        term::println("Бродя по окрестностям с самыми грязными намериниями...");
-        term::println("Ты встретил великого мага и экстрасенса - Рушеля Блаво.");
-        term::println(&text::fill(
-            "За # рублей он может сделать сохранение прямо здесь.",
-            &[i64::from(self.district) * 25],
-        ));
-        term::println("Ты хочешь сохраниться?");
+        term::println(MAGE_LINES[0]);
+        term::read_key(lines); // 1000:7560
+        term::println(MAGE_LINES[1]);
+        term::read_key(lines); // 1000:757e
+        term::println(&text::fill(MAGE_LINES[2], &[i64::from(self.district) * 25]));
+        term::read_key(lines); // 1000:75a4
+        term::println(MAGE_LINES[3]);
         let Some(line) = term::read_line(lines) else {
             self.running = false;
             return Ok(());

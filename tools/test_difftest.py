@@ -150,6 +150,25 @@ class ReferenceEnumerations(unittest.TestCase):
             with self.assertRaises(difftest.DifftestError):
                 difftest.literal_walk(IMG, lo, hi, want + 1)
 
+    def test_the_mage_walk_asserts_its_own_bounds_and_literal_counts(self):
+        """The mage's span (row 23) is read the same way as the market's.
+
+        `1000:75c7 - 1` and `- 2` still land on an instruction boundary --
+        the `ReadLn` setup right after the span starts with two one-byte
+        instructions (`push ds` / `push di`), so backing up by only one or
+        two bytes does not land mid-instruction the way the market's spans
+        do. Backing up three does: `1000:75c7 - 3` lands inside the `mov
+        di,0x3ecc` that opens that setup.
+        """
+        lines = [l for l in REFERENCE if l.startswith("mage_")]
+        self.assertEqual(len(lines), 7)
+        self.assertEqual(EVIDENCE["mage_line"], 4)
+        lo, hi = difftest.MAGE_SPAN
+        with self.assertRaises(difftest.DifftestError):
+            difftest.literal_walk(IMG, lo, hi - 3, difftest.MAGE_LITERALS)
+        with self.assertRaises(difftest.DifftestError):
+            difftest.literal_walk(IMG, lo, hi, difftest.MAGE_LITERALS + 1)
+
     def test_no_colour_markup_survives_into_the_reference(self):
         """Colour MARKUP is `^` followed by a digit -- that, not every caret.
 

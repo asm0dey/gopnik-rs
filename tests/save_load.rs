@@ -412,7 +412,10 @@ fn the_mage_writes_both_files_when_paid() {
     g.save_dir = dir.clone();
     g.district = 3;
     g.player.money = 500;
-    g.mage(&mut ["y".to_string()].into_iter().map(Ok)).unwrap();
+    // Three leading entries are discarded by the row-23 `ReadKey`s
+    // (1000:7560/757e/75a4) before the real answer is read.
+    g.mage(&mut ["", "", "", "y"].map(str::to_string).into_iter().map(Ok))
+        .unwrap();
     // district * 50, 1000:7605 / 1000:761d.
     assert_eq!(g.player.money, 350);
     assert_eq!(
@@ -532,7 +535,9 @@ fn the_mage_writes_nothing_when_declined_or_broke() {
         g.save_dir = dir.clone();
         g.district = 3;
         g.player.money = money;
-        g.mage(&mut [answer.to_string()].into_iter().map(Ok))
+        // Three leading entries are discarded by the row-23 `ReadKey`s
+        // (1000:7560/757e/75a4) before the real answer is read.
+        g.mage(&mut ["", "", "", answer].map(str::to_string).into_iter().map(Ok))
             .unwrap();
         assert_eq!(g.player.money, money, "{tag}: nothing is charged");
         assert!(!dir.join(persist::MAGE_SAVE).exists(), "{tag}");
