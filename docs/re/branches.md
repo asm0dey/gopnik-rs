@@ -357,11 +357,17 @@ branches)**. Corroboration, not proof: the RTL segments are the ones
 every top-level routine calls into, never the reverse, and the four RTL entry
 points the docs have already identified by hand (`0f78:114b` `Random`,
 `0f78:06c6` `ReadLn`, `0eed:01c2` `WriteLn`, `0f78:0bd8` shortstring compare)
-all land on the RTL side. One `1000:` function is *not* reached from `entry`:
-`FUN_1000_0acc` (15 bytes, 0 branches) is called from `1f78:0000`, the shape of
-a Pascal `ExitProc` the program registers and the RTL calls back — game code by
-segment, invoked by RTL, which is why the rule keys on the segment and not on
-the call graph.
+all land on the RTL side. One `1000:` "function" is *not* reached from `entry`:
+`FUN_1000_0acc` (15 bytes, 0 branches) — **and it is not a function at all.**
+`1000:0acb`..`1000:0aeb` is DATA: eleven Pascal shortstrings (`^`, `Т^`, `Ы ^`,
+`С^`, `У^`, `П^`, `Е^`, `Р ^`, `Г^`, `О^`, `П`) that `FUN_1000_0aec`, the
+victory marquee, interleaves with a rotating colour digit to spell
+`ТЫ СУПЕР ГОП`; it references exactly those eleven offsets and no others
+(`src/ending.rs`, and `difftest.py`'s `marquee_word` re-derives the word from
+the image). The apparent call from `1f78:0000` is Ghidra flattening segment
+`0f78` into the same address space: `0f78:000b`'s near-call target wraps to
+`0x0acc` modulo 64 KiB. An earlier revision of this paragraph called it a
+Pascal `ExitProc`, contradicting `docs/re/gaps.md`, which had it right.
 
 **No branch is deleted by classification** — RTL branches are in the file,
 tagged. Every function record also carries `seg`, `real_seg`, `caller_count` and

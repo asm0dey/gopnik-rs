@@ -68,6 +68,7 @@ use crate::combat_dispatch::{self, Backup, Called, Shot, Status};
 use crate::combat_opener;
 use crate::commands::{parse, Command};
 use crate::data;
+use crate::ending;
 use crate::gym;
 use crate::locations::{Location, Places};
 use crate::model::Fighter;
@@ -787,6 +788,16 @@ impl Game {
         while self.running {
             if matches!(self.mode, Mode::Street) {
                 self.district_advance(&mut lines)?;
+                if !self.running {
+                    break;
+                }
+                // 1000:ae18 -- the endgame arm, on the straight line between
+                // the district block and the street prompt at 1000:ae3f. It
+                // is NOT inside `district_advance`'s `district == 5` arm:
+                // 1000:ab8f jumps straight here once the district is already
+                // 5, so it runs on EVERY turn the flag is set, not only on
+                // the promotion turn.
+                self.rector_endgame(&mut lines)?;
                 if !self.running {
                     break;
                 }
@@ -2203,10 +2214,10 @@ impl Game {
     /// of its clamp sites (`1000:0da7`, `1000:0dba`): 1 clamps the class to
     /// 7, so this errand can never roll the class-8 `Мент`.
     ///
-    /// ## `FUN_1000_3d11`'s `param_1 = 6` is NOT modelled, and it costs draws
+    /// ## `FUN_1000_3d11`'s `param_1 = 6` -- ported, `docs/re/port-gaps.md` row 17
     ///
-    /// [`Game::run_combat`] takes no `param_1` and implements the
-    /// `param_1 = 0` path the wander's `1000:b826` uses. Two sweeps over an
+    /// [`Game::run_combat`] takes `param_1` and, since this batch, runs the
+    /// whole of `1000:57d4`..`1000:5838` for the value 6. Two sweeps over an
     /// aligned decode of the fight function's 6971 bytes (3043
     /// instructions, `data/den_arms.json`'s `fight_param_finding`) find
     /// every `[bp+0x4]` reference (exactly eight -- `1000:3d24`,
@@ -2229,21 +2240,21 @@ impl Game {
     /// * `1000:5832` / `1000:5835` -- `FUN_1000_2526(0)`, the capped
     ///   level-up drain, **which spends `Random` draws** at `1000:25fe`.
     ///
-    /// The missing draws are the serious half: the RNG sequence is
-    /// observable state, so a fight entered here leaves this port's
-    /// generator at a different point from the original's. The extent is
-    /// measured, not assumed -- over the 3043-instruction walk the block
-    /// holds zero conditional branches, zero `jmp`s and zero
-    /// `call 0f78:114b`, and no branch in the function targets any address
-    /// inside it.
+    /// The draws were the serious half: the RNG sequence is observable
+    /// state, so before this landed a fight entered here left the port's
+    /// generator at a different point from the original's. The block spends
+    /// them through [`crate::progress::apply_levels`], which is what
+    /// `FUN_1000_2526` is. The block's own extent is measured, not assumed
+    /// -- over the 3043-instruction walk it holds zero conditional branches,
+    /// zero `jmp`s and zero `call 0f78:114b`, and no branch in the function
+    /// targets any address inside it.
     ///
-    /// **Where this stopped:** *when* the block runs is NOT established.
-    /// `1000:57ce` has thirteen predecessors -- twelve branches plus the
-    /// fall-through from `1000:57c9` -- and which fight outcomes reach them
-    /// was not decoded. `docs/re/gaps.md`, "`FUN_1000_3d11`'s `param_1` --
-    /// the den's two call sites", lists all thirteen and is the authority
-    /// here; this port invents no condition and runs the fight through the
-    /// unparameterised `run_combat`.
+    /// **When it runs** is the fall-through from the item table: the block
+    /// sits between `1000:57c9` and the loop-exit test at `1000:5838`, so
+    /// every path that reaches the post-victory tail reaches it, and
+    /// `1000:57d2 jnz 0x5838` is the only thing keeping the other six
+    /// `param_1` values out. `run_combat` runs it in that position, after
+    /// [`Game::claim_spoils`].
     fn den_beat_up(
         &mut self,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
@@ -5489,30 +5500,35 @@ impl Game {
     /// `data/rng_trace.json` -- a cop fight entered and fled -- show zero
     /// draws between `1000:b792` and the next turn's `1000:af68`.
     ///
-    /// ## `opponent_kind` IS `param_1`, and only one of its five effects is
-    /// modelled
+    /// ## `opponent_kind` IS `param_1`, and all five of its effects are here
     ///
     /// The argument is `FUN_1000_3d11`'s own `bp+4`, and every caller passes
     /// the literal its original call site pushes: 0 at the wander's
     /// `1000:b826`/`1000:b829`, 6 at the den's `1000:dc5b`, 5 at the den
-    /// job's `1000:ddfc`, 2 at the club's `1000:e222`. Task 40 widened the
-    /// signature for exactly ONE of the five things the original does with
-    /// it -- the opener gate below (`1000:3d27`..`1000:3d2f`). **The other
-    /// four are still unported and `docs/re/gaps.md` is the authority**, not
-    /// this argument's presence:
+    /// job's `1000:ddfc`, 2 at the club's `1000:e222`, and 3 and 4 at
+    /// `1000:ae2d`/`1000:ae39` ([`Game::rector_endgame`]). Task 40 widened
+    /// the signature for the opener gate below
+    /// (`1000:3d27`..`1000:3d2f`); the other four landed with
+    /// `docs/re/port-gaps.md` rows 7, 17 and 21:
     ///
-    /// * `1000:51b9`..`1000:51e9`, the XP award, is skipped for `param_1` in
-    ///   `{3, 4}`; this method still awards unconditionally.
-    /// * `1000:5085 cmp byte [bp+0x4],0x4` selects a separate victory ending
-    ///   for 4 -- `FUN_1000_074b(1)` -- never traced by this project.
+    /// * the `param_1` 1 / 3 / 4 openers at `1000:3e8d`, `1000:3ead` and
+    ///   `1000:3f2b` -- [`crate::ending::OPENER_1`] and its two siblings.
+    /// * `1000:5085 cmp byte [bp+0x4],0x4` -- the victory ending, which
+    ///   reaches [`crate::ending::end_screen`] through
+    ///   [`crate::ending::marquee`] and never returns to the tail.
+    ///   `1000:5133` is `call 0xaec`, NOT `FUN_1000_074b(1)`; an earlier
+    ///   revision of this comment said otherwise and the marquee is the
+    ///   difference.
+    /// * `1000:5139` -- the `param_1 == 3` fake-out, which DOES fall through
+    ///   into the ordinary tail.
+    /// * `1000:51a6` / `1000:51f6` -- the XP award and the "too weak an
+    ///   opponent" pair, both skipped for `param_1` in `{3, 4}`.
     /// * `1000:57ce cmp byte [bp+0x4],0x6` gates `1000:57d4`..`1000:5838`,
     ///   47 instructions holding a понтовость award, an xp award, two lines
     ///   and `FUN_1000_2526(0)`, **which spends draws**.
-    /// * the `param_1` 1 / 3 / 4 arms at `1000:3e8d`, `1000:3ead` and
-    ///   `1000:3f2b` print their own text and are not ported.
     ///
-    /// So a non-`{0, 6}` value reaching here still runs the ordinary fight;
-    /// what it now also does, correctly, is skip the greeting.
+    /// So a non-`{0, 6}` value reaching here skips the class-keyed greeting
+    /// and takes whichever of the four arms above names it.
     pub(crate) fn run_combat(
         &mut self,
         opponent_kind: u8,
@@ -5542,6 +5558,34 @@ impl Game {
             combat_opener::greet(enemy.class, &self.player.name, || {
                 Self::rank_name(player_class)
             });
+        }
+        // The three OTHER arms of the same chain. `1000:3d2f jmp 0x3e8d`
+        // enters them, and each falls out to 1000:3fa7 below.
+        match opponent_kind {
+            // 1000:3e8d `cmp al,0x1` / 1000:3e8f `jnz 0x3ead` -- the market
+            // pickpocket's opener (CS 0x2cfa, printed 1000:3ea5). One line
+            // and no ReadKey. Its only caller is 1000:c433/1000:c436, the
+            // verb `t`, which is `docs/re/port-gaps.md` row 9 and not this
+            // batch's -- so the arm is correct and currently unreachable.
+            1 => term::println(ending::OPENER_1[0]),
+            // 1000:3ead `cmp al,0x3` / 1000:3eaf `jnz 0x3f2b` -- the first
+            // rector fight. Four lines, each followed by a ReadKey
+            // (1000:3eca, 3ee8, 3f06, 3f24).
+            3 => {
+                for line in ending::OPENER_3 {
+                    term::println(line);
+                    let _ = lines.next();
+                }
+            }
+            // 1000:3f2b `cmp al,0x4` / 1000:3f2d -- the second. Same shape,
+            // ReadKeys at 1000:3f48, 3f66, 3f84, 3fa2.
+            4 => {
+                for line in ending::OPENER_4 {
+                    term::println(line);
+                    let _ = lines.next();
+                }
+            }
+            _ => {}
         }
         // 1000:3fa7..1000:40e5 -- the two blow budgets and the two lines that
         // report the reduction. Both run whatever `param_1` was: the opener's
@@ -5759,25 +5803,87 @@ impl Game {
             // reaches 5.
             if self.rector_showdown {
                 term::println("^4Ты сдох. Ректор тебя замочил. Ты так и не доказал свою крутизну.");
+                // 1000:4fac ReadKey, then 1000:4fb4 FUN_1000_074b(0).
+                let _ = lines.next();
+                ending::end_screen(false, lines);
                 self.running = false;
                 return Ok(());
             }
             if self.hospital_rescue() {
                 return Ok(());
             }
-            // 1000:5053, file 0x5127, then FUN_1000_074b and the RTL's
-            // `mov ah,0x4c` / `int 0x21`: death ends the process.
+            // 1000:5053, file 0x5127, then 1000:506c ReadKey and 1000:5074
+            // FUN_1000_074b(0), whose own tail is the RTL's `mov ah,0x4c` /
+            // `int 0x21`: death ends the process.
             term::println("^4Ты сдох.");
+            let _ = lines.next();
+            ending::end_screen(false, lines);
             self.running = false;
             return Ok(());
         }
 
-        term::println("^2Враг сдох.");
-        let award = progress::xp_award(self.player.level, &enemy);
-        term::println(&text::fill(
-            "^6За отпин врага ты получаешь # качков опыта",
-            &[award as i64],
-        ));
+        // 1000:5085 `cmp byte [bp+0x4],0x4` -- the victory ENDING, and it
+        // does not rejoin anything: 1000:5133 `call 0xaec` runs the marquee,
+        // which calls `FUN_1000_074b(1)`, which halts. No spoils, no XP, no
+        // item roll. (`1000:5136 jmp 0x5838` is the unreachable tail.)
+        if opponent_kind == 4 {
+            // 1000:508e/5091 `[0x38ce] := [0x38d0]` then 1000:5094
+            // FUN_1000_2526(1) -- a forced level with the cap lifted.
+            self.progress.xp = self.progress.threshold;
+            progress::apply_levels(&mut self.progress, &mut self.player, &mut self.rng, 0, true);
+            // The first four each carry a ReadKey -- 1000:50b3, 50d1, 50ef,
+            // 510d.
+            let (last, first_four) = ending::ENDING_4
+                .split_last()
+                .expect("ENDING_4 is not empty");
+            for line in first_four {
+                term::println(line);
+                let _ = lines.next();
+            }
+            // CS 0x3915, printed 1000:5126 -- no ReadKey behind it.
+            term::println(last);
+            // 1000:512b `call 0x1a03`, the character sheet, then 1000:512e
+            // ReadKey and 1000:5133 the marquee.
+            self.show_stats();
+            let _ = lines.next();
+            ending::marquee(lines);
+            self.running = false;
+            return Ok(());
+        }
+
+        // 1000:5139 `cmp byte [bp+0x4],0x3` -- the fake-out. Same forced
+        // level as the ending above, two lines, and then it FALLS THROUGH
+        // into the ordinary tail (spoils, the item roll, the den discovery),
+        // with only the XP award and the "too weak" pair gated out below.
+        let boss = matches!(opponent_kind, 3 | 4);
+        if opponent_kind == 3 {
+            // 1000:513f/5142 then 1000:5145 FUN_1000_2526(1).
+            self.progress.xp = self.progress.threshold;
+            progress::apply_levels(&mut self.progress, &mut self.player, &mut self.rng, 0, true);
+            // CS 0x3924 / 0x3965, printed 1000:515f and 1000:517d, ReadKeys
+            // at 1000:5164 and 1000:5182.
+            for line in ending::ENDING_3 {
+                term::println(line);
+                let _ = lines.next();
+            }
+        } else {
+            // 1000:519d -- the ordinary `^2Враг сдох.`, in the ELSE of the
+            // `param_1 == 3` test, so neither boss fight prints it.
+            term::println("^2Враг сдох.");
+        }
+        // 1000:51a6 `cmp byte [bp+0x4],0x3` / 1000:51ac `cmp byte [bp+0x4],0x4`
+        // -- both boss values skip the award line AND the 1000:51e9 add.
+        let award = if boss {
+            0
+        } else {
+            progress::xp_award(self.player.level, &enemy)
+        };
+        if !boss {
+            term::println(&text::fill(
+                "^6За отпин врага ты получаешь # качков опыта",
+                &[award as i64],
+            ));
+        }
         // 1000:51ed..1000:5238: the award is added first, and only then is
         // `xp >= threshold` tested -- `progress::apply_levels` does both, so
         // the branch that has to be reproduced here is the OTHER one, the
@@ -5796,7 +5902,9 @@ impl Game {
             award,
             false,
         );
-        if short_of_the_threshold {
+        // 1000:51f6 / 1000:51fc -- the same pair of boss compares guards the
+        // "too weak an opponent" lines as guards the award above.
+        if short_of_the_threshold && !boss {
             term::println("^6Ты запинал слишком слабого мудака для увеличения понтовости");
             term::println(&text::fill(
                 "^6Сейчас у тебя # качков опыта, А для прокачки надо #",
@@ -5804,6 +5912,35 @@ impl Game {
             ));
         }
         self.claim_spoils(&enemy);
+        // 1000:57ce `cmp byte [bp+0x4],0x6` / 1000:57d2 `jnz 0x5838` -- the
+        // den errand's reward, the LAST thing the function does before the
+        // loop-exit test, so it sits after the item table `claim_spoils`
+        // walks. `district * 20` понтовость and `district * 10` xp, and the
+        // xp add is followed by 1000:5835 `FUN_1000_2526(0)` -- the capped
+        // level drain, which SPENDS DRAWS when the award crosses the
+        // threshold. That is why this block is not text-only.
+        if opponent_kind == 6 {
+            let district = i32::from(self.district);
+            // 1000:57d4..1000:57de `add [0x38cb],ax`, `ax = district*20`.
+            self.pontovost_street += district * 20;
+            // CS 0x3c99 (`district * 20`, pushed 1000:57e7, printed
+            // 1000:57fe) and CS 0x3ce9 (`district * 10`, pushed 1000:5808,
+            // printed 1000:581f).
+            for (mult, line) in ending::ERRAND_AWARDS {
+                term::println(&text::fill(line, &[i64::from(district * mult)]));
+            }
+            // 1000:5824..1000:582e `add [0x38ce],ax` then 1000:5832/5835
+            // `FUN_1000_2526(district*10 & 0xff00)` -- the high byte of a
+            // value at most 50, i.e. 0. `apply_levels` adds the award and
+            // then runs the same capped drain, which is the pair.
+            progress::apply_levels(
+                &mut self.progress,
+                &mut self.player,
+                &mut self.rng,
+                (district * 10) as u32,
+                false,
+            );
+        }
 
         // No promotion here. `1000:3d11` ends at its own `ret`; the district
         // gate is `1000:ab75`, at the TOP of the next turn, and Task 21 moved
@@ -5875,9 +6012,9 @@ impl Game {
     /// from `lines` and discards it, matching the original's "one keystroke,
     /// value unused" shape as closely as a line-based port can.
     ///
-    /// **The four calls at `ae27`..`ae39` are deliberately NOT ported --
-    /// the brief's escape hatch.** `FUN_1000_11c2` was traced for this task
-    /// (no `docs/re/` file cited it before): 50 instructions, 178 bytes
+    /// **The four calls at `ae27`..`ae39` are ported, in
+    /// [`Game::rector_endgame`] -- `docs/re/port-gaps.md` rows 7 and 13.**
+    /// `FUN_1000_11c2` was traced by Task 40: 50 instructions, 178 bytes
     /// (`0x11c2`..`0x1273`, prologue through the 3-byte `ret 0x2`), no
     /// branch besides its own two argument arms, no draw, and no call
     /// besides the `0f78:02cd` stack-check prologue every Pascal procedure
@@ -5891,27 +6028,16 @@ impl Game {
     /// `roll_enemy` already computes the same way. So `FUN_1000_11c2` itself
     /// is not the obstacle to porting these two fights.
     ///
-    /// The obstacle is `FUN_1000_3d11`'s own `param_1` (the fight function's
-    /// `bp+4`), which [`Game::run_combat`] does not model at all:
-    /// * `1000:51b9`..`1000:51e9`, the XP award, is skipped when `param_1`
-    ///   is 3 or 4 (`docs/re/combat.md`, "The victory block") --
-    ///   `run_combat` currently awards XP unconditionally.
-    /// * `1000:5085 cmp byte [bp+0x4],0x4` selects an entirely separate
-    ///   victory ending for `param_1 == 4` -- `FUN_1000_074b(1)`, the
-    ///   end-of-game banner (file `0x1DBF`) -- which has never been traced
-    ///   by this project (`docs/re/wander.md`: "Whether `FUN_1000_3d11(4)`
-    ///   returns is not traced here").
+    /// What blocked them until this batch was `FUN_1000_3d11`'s own
+    /// `param_1`, which [`Game::run_combat`] now models in full: the 3 and 4
+    /// openers, the `param_1 == 4` ending (`1000:5085`, which reaches the
+    /// end screen through the marquee at `1000:5133` -- `call 0xaec`, not
+    /// `FUN_1000_074b(1)` as an earlier revision of this comment said), the
+    /// `param_1 == 3` fake-out, and the two XP gates at `1000:51a6` /
+    /// `1000:51f6`.
     ///
-    /// Porting either fight correctly needs both of those traced and
-    /// `run_combat`'s signature widened first; that is a combat-dispatch
-    /// task, not a flag-setter one. `FUN_1000_3d11`'s `param_1` handling
-    /// (not `1000:11c2`, which this task fully settled) is recorded as open
-    /// in `docs/re/gaps.md` rather than guessed at here, per "Do not port a
-    /// call whose callee you have not read" -- `1000:3d11`'s callee IS read
-    /// (it is `run_combat` itself), but not for this argument.
-    ///
-    /// **What genuinely runs every turn is `1000:ae18`'s arm, not this
-    /// one**, and the difference is the whole of the remaining divergence.
+    /// **`1000:ae18`'s arm runs every turn, this one does not**, and that is
+    /// why the two are separate methods.
     /// `ab75` really is the loop top -- `1000:ee01 e9 71 bd jmp 0xab75` is
     /// the only branch INSTRUCTION in the image targeting it, and
     /// `1000:ab72 e8 98 be call 0x6a0d` is a three-byte near call whose next
@@ -5965,6 +6091,68 @@ impl Game {
         term::println("^1А вот и он...");
         self.rector_showdown = true;
         self.places.mark_found(Location::Den);
+    }
+
+    /// `1000:ae18`..`1000:ae3c` -- the two rector fights, the pair of calls
+    /// that makes the game finishable.
+    ///
+    /// ```text
+    /// ae18  cmp byte [0x3c83],1 / jnz 0xae3c   ; rector_showdown
+    /// ae1f  mov byte [0x3696],1                ; the Den, idempotent
+    /// ae27  call 0x11c2                        ; FUN_1000_11c2(0)
+    /// ae2d  call 0x3d11                        ; FUN_1000_3d11(3)
+    /// ae33  call 0x11c2                        ; FUN_1000_11c2(1)
+    /// ae39  call 0x3d11                        ; FUN_1000_3d11(4)
+    /// ```
+    ///
+    /// `FUN_1000_11c2` is the enemy record's constructor and nothing else:
+    /// class 10 for both, then the argument's own block, then the four
+    /// derived fields (`dmg_min = str/2`, `dmg_max = str`,
+    /// `hpmax = 5*vit + str + 10`, `hp = hpmax`) and a clear of the two
+    /// break flags and the three spoils. `data/enemies.json`'s
+    /// `rektor_ngu_v0` / `rektor_ngu_v1` carry every one of those constants
+    /// including the derived ones, so `Enemy::to_fighter` IS the port of the
+    /// function and the gap was only ever the missing caller
+    /// (`docs/re/port-gaps.md` row 13). `Fighter::default()` supplies the
+    /// cleared flags and spoils.
+    ///
+    /// **It repeats.** Nothing clears `[0x3c83]`, so a player who flees both
+    /// fights meets them again on the next turn -- `1000:ae18` is read at
+    /// the top of every street turn. The only exits are death (the end
+    /// screen halts) and beating the second rector (the marquee halts).
+    fn rector_endgame(
+        &mut self,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<()> {
+        if !self.rector_showdown {
+            return Ok(());
+        }
+        // 1000:ae1f.
+        self.places.mark_found(Location::Den);
+        // 1000:ae27 FUN_1000_11c2(0) then 1000:ae2d FUN_1000_3d11(3).
+        self.run_combat(3, Self::boss("rektor_ngu_v0"), lines)?;
+        if !self.running {
+            return Ok(());
+        }
+        // 1000:ae33 FUN_1000_11c2(1) then 1000:ae39 FUN_1000_3d11(4).
+        self.run_combat(4, Self::boss("rektor_ngu_v1"), lines)?;
+        Ok(())
+    }
+
+    /// The scripted stat block `FUN_1000_11c2` writes, by its
+    /// `data/enemies.json` id.
+    ///
+    /// Panics on an id the table has no *scripted* row for. That is not a
+    /// reachable branch: the two ids below are the only callers and
+    /// `tests/data_load.rs` already asserts both rows carry `stats`. A
+    /// silent fallback here would turn a missing table row into a fight
+    /// against a zeroed enemy, which is worse than a loud stop.
+    fn boss(id: &str) -> Fighter {
+        data::enemies()
+            .iter()
+            .find(|e| e.id == id)
+            .and_then(|e| e.to_fighter())
+            .unwrap_or_else(|| panic!("data/enemies.json has no scripted row `{id}`"))
     }
 
     /// Begin recording the fight channels, discarding anything recorded.
@@ -11506,5 +11694,251 @@ mod tests {
         assert_eq!(g.district, 2);
         assert_eq!(g.market_ban_countdown, 0, "1000:abce");
         assert_eq!(g.club_ban_countdown, 0, "1000:abd3");
+    }
+
+    // -----------------------------------------------------------------
+    // The endings -- `docs/re/port-gaps.md` rows 2, 4, 7, 13, 17, 21.
+    // -----------------------------------------------------------------
+
+    /// A player who can actually kill both rectors, so the endgame can be
+    /// driven to its finish in a test rather than argued about.
+    fn champion() -> Game {
+        let mut g = game();
+        g.district = 5;
+        g.rector_showdown = true;
+        g.player.level = 40;
+        g.player.strength = 400;
+        g.player.agility = 400;
+        g.player.vitality = 400;
+        g.player.luck = 400;
+        g.player.dmg_min = 2000;
+        g.player.dmg_max = 4000;
+        g.player.hpmax = 20000;
+        g.player.hp = 20000;
+        g
+    }
+
+    /// **The game can be finished.** Both rector fights run, the victory
+    /// ending fires, the marquee plays and the end screen's `Ты победил.`
+    /// banner follows it -- and the game stops.
+    ///
+    /// This is the point of the batch: before it, `1000:ae18`'s four calls
+    /// had no counterpart at all and `run_combat` had no `param_1 == 4`
+    /// arm, so no sequence of inputs reached an ending.
+    #[test]
+    fn the_endgame_can_be_played_to_the_victory_screen() {
+        let mut g = champion();
+        let script = vec!["k"; 400];
+        let out = term::capture::lines(|| {
+            g.rector_endgame(&mut input(&script)).unwrap();
+        });
+        // 1000:3ec5 and 1000:3f43 -- the two openers, so both fights ran.
+        assert!(out.iter().any(|l| l.contains("Ну вот мы и встретились")));
+        assert!(out
+            .iter()
+            .any(|l| l.contains("Тут заходит настоящий ректор")));
+        // 1000:515f -- the fake-out, which is fight 3's own ending.
+        assert!(out.iter().any(|l| l.contains("да это ж не ректор был")));
+        // 1000:50ae.. -- fight 4's five victory lines.
+        assert!(out.iter().any(|l| l.contains("ТЫ САМЫЙ КРУТОЙ")));
+        assert!(out.iter().any(|l| l == "^1А результат:"));
+        // The marquee, then the end screen, in that order.
+        let marquee = out
+            .iter()
+            .rposition(|l| crate::text::strip(l).ends_with("ТЫ СУПЕР ГОП"))
+            .expect("the marquee plays");
+        let banner = out
+            .iter()
+            .position(|l| l.contains("Ты победил."))
+            .expect("the end screen draws");
+        assert!(marquee < banner, "1000:5133 calls 0xaec, not 0x74b");
+        assert!(!g.running, "the end screen halts");
+    }
+
+    /// The two boss values skip the ordinary victory text: no
+    /// `^2Враг сдох.` (1000:519d is in the ELSE of 1000:5139), no XP award
+    /// line (1000:51a6/51ac) and no "too weak an opponent" pair
+    /// (1000:51f6/51fc).
+    #[test]
+    fn a_boss_kill_prints_none_of_the_ordinary_victory_lines() {
+        let mut g = champion();
+        let before_level = g.player.level;
+        let script = vec!["k"; 400];
+        let out = term::capture::lines(|| {
+            g.run_combat(3, Game::boss("rektor_ngu_v0"), &mut input(&script))
+                .unwrap();
+        });
+        assert!(!out.iter().any(|l| l.contains("Враг сдох")));
+        assert!(!out.iter().any(|l| l.contains("качков опыта")));
+        assert!(!out.iter().any(|l| l.contains("слишком слабого мудака")));
+        // 1000:513f/5142 set xp := threshold and 1000:5145's
+        // FUN_1000_2526(1) spends it with the level cap LIFTED -- the test
+        // player starts at MAX_LEVEL, so a capped call would move nothing.
+        assert_eq!(g.player.level, before_level + 1, "1000:5094 passes 1");
+        assert_eq!(before_level, crate::progress::MAX_LEVEL);
+    }
+
+    /// The two stat blocks `FUN_1000_11c2` writes, as the fights receive
+    /// them -- `1000:11dc`..`1000:1223` for the constants and
+    /// `1000:1228`..`1000:1252` for the four derived fields.
+    #[test]
+    fn the_boss_constructor_matches_both_of_the_original_stat_blocks() {
+        let v0 = Game::boss("rektor_ngu_v0");
+        assert_eq!(
+            (
+                v0.class,
+                v0.level,
+                v0.strength,
+                v0.agility,
+                v0.vitality,
+                v0.luck,
+                v0.armor
+            ),
+            (10, 125, 41, 50, 123, 36, 60)
+        );
+        let v1 = Game::boss("rektor_ngu_v1");
+        assert_eq!(
+            (
+                v1.class,
+                v1.level,
+                v1.strength,
+                v1.agility,
+                v1.vitality,
+                v1.luck,
+                v1.armor
+            ),
+            (10, 160, 50, 60, 188, 32, 80)
+        );
+        for f in [&v0, &v1] {
+            // 1000:1228 / 1000:1234 / 1000:123a / 1000:124f.
+            assert_eq!(f.dmg_min, f.strength / 2);
+            assert_eq!(f.dmg_max, f.strength);
+            assert_eq!(f.hpmax, f.vitality * 5 + f.strength + 10);
+            assert_eq!(f.hp, f.hpmax);
+            // 1000:1255/125a the break flags.
+            assert!(!f.broken_jaw && !f.broken_leg);
+        }
+    }
+
+    /// `1000:57ce` -- the den errand's reward. `district * 20` понтовость
+    /// and `district * 10` xp, the xp going through `FUN_1000_2526(0)`.
+    ///
+    /// The threshold is pushed out of reach first, so the xp arithmetic is
+    /// exact and neither run levels: what is under test is the award, not
+    /// the level drain it feeds. The `param_1 = 0` control is run from the
+    /// same starting state with the same script, so the difference between
+    /// the two is the block and nothing else.
+    #[test]
+    fn the_den_errand_pays_cred_and_experience_and_nothing_else_does() {
+        let run = |kind: u8| {
+            let mut g = game();
+            g.district = 3;
+            g.progress.threshold = 1_000_000;
+            let out = term::capture::lines(|| {
+                g.run_combat(kind, punchbag_that_dies(), &mut input(&["k"; 40]))
+                    .unwrap();
+            });
+            (g, out)
+        };
+        let (errand, out) = run(6);
+        let (control, control_out) = run(0);
+
+        // 1000:57d4 -- `district * 20`.
+        assert_eq!(errand.pontovost_street, control.pontovost_street + 60);
+        // 1000:5824..1000:582e -- `district * 10`, on top of the ordinary
+        // award the control also gets.
+        assert_eq!(errand.progress.xp, control.progress.xp + 30);
+        assert!(out
+            .iter()
+            .any(|l| l.contains("Понтовость улутшилась на 60")));
+        assert!(out
+            .iter()
+            .any(|l| l.contains("Ты получаешь 30 качков опыта за помощь")));
+        // 1000:57d2 `jnz 0x5838` -- every other `param_1` skips it.
+        assert!(!control_out.iter().any(|l| l.contains("за помощь")));
+    }
+
+    /// An enemy soft enough that the default test player kills it in the
+    /// first exchange, so the post-victory tail is reached.
+    fn punchbag_that_dies() -> Fighter {
+        Fighter {
+            name: "Мудак".to_string(),
+            hp: 1,
+            hpmax: 1,
+            ..Fighter::default()
+        }
+    }
+
+    /// `1000:3e8d` / `1000:3ead` / `1000:3f2b` -- the three openers the
+    /// `0 | 6` gate does NOT cover, and the silence of everything else.
+    #[test]
+    fn each_param_value_greets_with_its_own_opener() {
+        for (kind, want) in [
+            (1u8, "^4Отдай кошелёк урод!"),
+            (3, "^2Ну вот мы и встретились мудак!"),
+            (4, "^6Тут заходит настоящий ректор."),
+        ] {
+            let mut g = game();
+            let out = term::capture::lines(|| {
+                g.run_combat(kind, punchbag(), &mut input(&["run"]))
+                    .unwrap();
+            });
+            assert_eq!(
+                out.first().map(String::as_str),
+                Some(want),
+                "param_1 {kind}"
+            );
+        }
+        // 2 and 5 reach no opener at all: 1000:3d2f jumps past the chain and
+        // none of its three compares names them.
+        for kind in [2u8, 5] {
+            let mut g = game();
+            let out = term::capture::lines(|| {
+                g.run_combat(kind, punchbag(), &mut input(&["run"]))
+                    .unwrap();
+            });
+            assert!(
+                !out.iter()
+                    .any(|l| l.contains("кошелёк") || l.contains("встретились")),
+                "param_1 {kind} must be silent"
+            );
+        }
+    }
+
+    /// Both deaths run the end screen -- `1000:4fb4` (the rector's) and
+    /// `1000:5074` (the plain one), each behind its own ReadKey.
+    #[test]
+    fn dying_draws_the_end_screen() {
+        for rector in [false, true] {
+            let mut g = game();
+            g.rector_showdown = rector;
+            g.player.hp = 1;
+            g.player.hpmax = 1;
+            let killer = Fighter {
+                name: "Мудак".to_string(),
+                hp: 5000,
+                hpmax: 5000,
+                level: 40,
+                strength: 400,
+                agility: 400,
+                dmg_min: 500,
+                dmg_max: 900,
+                ..Fighter::default()
+            };
+            let out = term::capture::lines(|| {
+                g.run_combat(0, killer, &mut input(&["k"; 60])).unwrap();
+            });
+            assert!(!g.running, "rector={rector}");
+            assert!(
+                out.iter().any(|l| l.contains("Ты сдох.")),
+                "rector={rector}"
+            );
+            // 1000:0765 -- the death banner's colour digit is '4'.
+            assert!(
+                out.iter().any(|l| l.starts_with("          ^4\u{2502}")),
+                "rector={rector}"
+            );
+            assert!(!out.iter().any(|l| l.contains("Ты победил")));
+        }
     }
 }

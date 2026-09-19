@@ -47,6 +47,7 @@
 use std::io::{self, Write};
 
 use crate::data;
+use crate::ending;
 use crate::game::IMM_ROWS;
 use crate::model::Fighter;
 use crate::progress::{
@@ -220,6 +221,87 @@ pub fn emit(out: &mut impl Write) -> io::Result<()> {
         }
     }
 
+    endings(out)?;
+
+    Ok(())
+}
+
+/// The endings' half of the stream -- `docs/re/port-gaps.md` rows 2, 4, 7,
+/// 13, 17, 21, landed in Phase 2.
+///
+/// These records exist because Phase 2 does not gate a ported line on a
+/// citation: every string below was typed into `src/ending.rs` by hand from
+/// a decoded shortstring, and a transcription slip in one of them is exactly
+/// the error class that gate would otherwise have caught. `difftest.py`
+/// re-decodes each one out of `orig/g.exe` -- finding the sites by the
+/// `WriteLn`/`rtl_str_append` instruction shapes rather than by a quoted
+/// address -- so the comparison has two independent readings of the same
+/// bytes on its two sides.
+///
+/// Appended after every record kind that existed before, so the positions of
+/// those are unchanged (`difftest.py` compares ordered lists).
+fn endings(out: &mut impl Write) -> io::Result<()> {
+    let groups: [(&str, &[&str]); 6] = [
+        ("opener1", &ending::OPENER_1),
+        ("opener3", &ending::OPENER_3),
+        ("opener4", &ending::OPENER_4),
+        ("ending4", &ending::ENDING_4),
+        ("ending3", &ending::ENDING_3),
+        // The end screen's three full-width lines, in the order the image
+        // holds them: 1000:0793, 1000:07ae, 1000:0a4f.
+        (
+            "endscreen",
+            &[ending::DEATH_LINE, ending::VICTORY_LINE, ending::ANY_KEY],
+        ),
+    ];
+    for (tag, lines) in groups {
+        for (i, line) in lines.iter().enumerate() {
+            writeln!(out, "ending_line {tag} {i} {}", text::strip(line))?;
+        }
+    }
+    for (mult, line) in ending::ERRAND_AWARDS {
+        writeln!(out, "errand_award {mult} {}", text::strip(line))?;
+    }
+    // The prefix is spaces then a bare caret; what is compared is the number
+    // of spaces, so the caret does not reach the stream.
+    writeln!(
+        out,
+        "end_banner indent {}",
+        ending::BANNER_INDENT.chars().count() - 1
+    )?;
+    writeln!(out, "end_banner death_colour 4")?;
+    writeln!(out, "end_banner victory_colour 2")?;
+    for (i, row) in ending::BANNER.iter().enumerate() {
+        writeln!(out, "banner_row {i} {row}")?;
+    }
+    writeln!(out, "marquee indent {}", ending::MARQUEE_INDENT)?;
+    writeln!(out, "marquee phases {}", ending::MARQUEE_PHASES)?;
+    writeln!(
+        out,
+        "marquee word {}",
+        text::strip(&ending::marquee_frame(0))
+    )?;
+    // The two scripted stat blocks `FUN_1000_11c2` writes, in `Game::boss`'s
+    // own order -- the ids are what pick the block, so they are compared too.
+    for e in data::enemies().iter().filter(|e| e.stats.is_some()) {
+        let f = e.to_fighter().expect("filtered on stats");
+        writeln!(
+            out,
+            "boss_stats {} {} {} {} {} {} {} {} {} {} {} {}",
+            e.id,
+            f.class,
+            f.level,
+            f.strength,
+            f.agility,
+            f.vitality,
+            f.luck,
+            f.armor,
+            f.dmg_min,
+            f.dmg_max,
+            f.hp,
+            f.hpmax
+        )?;
+    }
     Ok(())
 }
 

@@ -580,6 +580,207 @@ def items(img):
 
 
 # ---------------------------------------------------------------------------
+# The endings (`docs/re/port-gaps.md` rows 2, 4, 7, 13, 17, 21)
+# ---------------------------------------------------------------------------
+
+#: `mov di,<cs literal>` / `push cs` / `push di` / five `xor ax,ax` + `push ax`
+#: / `call 0eed:01c2` -- the game's colour `WriteLn` of a CS literal with no
+#: `#` fill.  Found by scanning, never quoted: 477 sites image-wide, which is
+#: what makes a per-range count meaningful rather than assumed.
+PLAIN_WRITELN_RE = re.compile(
+    rb"\xbf(..)\x0e\x57(?:\x31\xc0\x50){5}\x9a\xc2\x01\xed\x0e", re.S
+)
+
+#: The same, but with `district * <imm16>` pushed into the row's one `#`:
+#: `mov al,[20ae:3692]` / `xor ah,ah` / `mov dx,<imm16>` / `mul dx` / `push ax`.
+#: Only `1000:57ce`'s two reward lines have this shape.
+DISTRICT_FILL_WRITELN_RE = re.compile(
+    rb"\xbf(..)\x0e\x57\xa0\x92\x36\x30\xe4\xba(..)\xf7\xe2\x50"
+    rb"(?:\x31\xc0\x50){4}\x9a\xc2\x01\xed\x0e",
+    re.S,
+)
+
+#: `mov di,<cs literal>` / `push cs` / `push di` / `call 0f78:0b66`
+#: (`rtl_str_append`) -- how the end screen's banner rows and the marquee's
+#: eleven-literal pool are assembled.
+STR_APPEND_RE = re.compile(rb"\xbf(..)\x0e\x57\x9a\x66\x0b\x78\x0f", re.S)
+
+#: The `rtl_str_assign` that opens each of those assemblies.
+STR_ASSIGN_RE = re.compile(rb"\xbf(..)\x0e\x57\x9a\xe7\x0a\x78\x0f", re.S)
+
+#: `cmp byte [bp-0x1],...` is not reachable as a guard, so the two verdict
+#: colour digits are quoted by their `mov byte [bp-0x1],imm8` stores.  The
+#: guard stops at the opcode+modrm, never covering the digit it then reads.
+DEATH_COLOUR_SITE = ("1000:0765", bytes.fromhex("c646ff"))
+VICTORY_COLOUR_SITE = ("1000:076b", bytes.fromhex("c646ff"))
+#: `cmp byte [bp-0xb],0x20` -- the marquee's 32-space indent loop bound.
+MARQUEE_INDENT_SITE = ("1000:0b8f", bytes.fromhex("807ef5"))
+#: `cmp byte [bp-0xc],0x8` / `jnb` -- the phase counter wraps AFTER 8, so the
+#: cycle is nine passes long.
+MARQUEE_PHASE_SITE = ("1000:0ce5", bytes.fromhex("807ef4"))
+#: `mov word [20ae:3952],0xa` -- `FUN_1000_11c2`'s first store, the anchor
+#: that proves the two stat blocks below start where they are read from.
+BOSS_CLASS_SITE = ("1000:11d0", bytes.fromhex("c7065239"))
+
+#: The enemy record's fields, by the `20ae:` address `FUN_1000_11c2` stores to.
+BOSS_FIELDS = {
+    0x3952: "class",
+    0x395C: "level",
+    0x3954: "strength",
+    0x3956: "agility",
+    0x3958: "vitality",
+    0x395A: "luck",
+    0x3968: "armor",
+}
+
+#: The spans each group of ending text lives in, as `(tag, start, stop)`.
+#: `end3` stops at `1000:5186` deliberately: `1000:5189`'s `^2Враг сдох.` is
+#: the ELSE of `1000:5139`, not part of the fake-out arm.
+ENDING_SPANS = [
+    ("opener1", 0x3E8D, 0x3EAD),
+    ("opener3", 0x3EAD, 0x3F2B),
+    ("opener4", 0x3F2B, 0x3FA7),
+    ("ending4", 0x5085, 0x5139),
+    ("ending3", 0x5139, 0x5186),
+    ("endscreen", 0x074B, 0x0ACB),
+]
+
+
+def literal_sites(img, rx, start, stop):
+    """`[(site, cs_offset, extra), ...]` for `rx`'s hits inside a span."""
+    out = []
+    for m in rx.finditer(img):
+        if not start <= m.start() < stop:
+            continue
+        groups = [struct.unpack("<H", g)[0] for g in m.groups()]
+        out.append((m.start(), groups[0], groups[1:]))
+    return out
+
+
+def ending_lines(img):
+    """The new text, as `(tag, index, stripped text)` in address order."""
+    out = []
+    for tag, start, stop in ENDING_SPANS:
+        hits = literal_sites(img, PLAIN_WRITELN_RE, start, stop)
+        for i, (_, cs, _) in enumerate(hits):
+            out.append((tag, i, strip_markup(shortstring(img, cs))))
+    return out
+
+
+def errand_awards(img):
+    """`1000:57ce`'s two lines, each with the district multiplier it fills."""
+    hits = literal_sites(img, DISTRICT_FILL_WRITELN_RE, 0x57CE, 0x5838)
+    if len(hits) != 2:
+        raise DifftestError(
+            "the den errand's reward block has %d filled lines, expected 2" % len(hits)
+        )
+    return [(extra[0], strip_markup(shortstring(img, cs))) for _, cs, extra in hits]
+
+
+def banner(img):
+    """The end screen's indent width and its eight block-drawing rows."""
+    assign = literal_sites(img, STR_ASSIGN_RE, 0x074B, 0x0ACB)
+    if not assign:
+        raise DifftestError("no banner prefix assignment in FUN_1000_074b")
+    prefix = shortstring(img, assign[0][1])
+    if not prefix.endswith("^") or prefix[:-1].strip():
+        raise DifftestError("the banner prefix %r is not spaces then a caret" % prefix)
+    rows = [shortstring(img, cs) for _, cs, _ in
+            literal_sites(img, STR_APPEND_RE, 0x074B, 0x0ACB)]
+    if len(rows) != 8:
+        raise DifftestError("the banner has %d rows, expected 8" % len(rows))
+    return len(prefix) - 1, rows
+
+
+def marquee_word(img):
+    """`ТЫ СУПЕР ГОП` -- the eleven-literal pool with its carets dropped.
+
+    The pool is `1000:0acb`..`1000:0aeb`, and this reaches it the way
+    `FUN_1000_0aec` does: by the offsets the function's own assemble/append
+    sites push, never by a quoted range.  A twelfth literal, or a missing
+    one, changes the word.
+    """
+    parts = [shortstring(img, cs) for _, cs, _ in
+             literal_sites(img, STR_ASSIGN_RE, 0x0AEC, 0x0D14)]
+    parts += [shortstring(img, cs) for _, cs, _ in
+              literal_sites(img, STR_APPEND_RE, 0x0AEC, 0x0D14)]
+    if len(parts) != 11:
+        raise DifftestError("the marquee pool has %d literals, expected 11" % len(parts))
+    return "".join(parts).replace("^", "")
+
+
+def boss_blocks(img):
+    """`FUN_1000_11c2`'s two stat blocks, immediates and derived fields.
+
+    The immediates are decoded from aligned instructions between the anchor
+    and the function's `ret`, not scanned for; the four derived fields are
+    `1000:1228` (`str / 2`), `1000:1234` (`str`), `1000:123a`
+    (`5 * vit + str + 10`) and `1000:124f` (`hp := hpmax`).
+    """
+    start = site(img, BOSS_CLASS_SITE, "FUN_1000_11c2's class store")
+    blocks = [{}, {}]
+    which = None
+    off = start
+    while off < 0x1274:
+        ins = dis16.decode(img, off)
+        text = ins.text
+        m = re.match(r"cmp byte \[bp\+0x4\],(0x[0-9a-f]+)$", text)
+        if m:
+            which = int(m.group(1), 16)
+        m = re.match(r"mov (word|byte) \[(0x[0-9a-f]+)\],(0x[0-9a-f]+)$", text)
+        if m:
+            field = BOSS_FIELDS.get(int(m.group(2), 16))
+            if field:
+                value = int(m.group(3), 16)
+                targets = blocks if which is None else [blocks[which]]
+                for b in targets:
+                    b[field] = value
+        off += ins.length
+    out = []
+    for i, b in enumerate(blocks):
+        missing = sorted(set(BOSS_FIELDS.values()) - set(b))
+        if missing:
+            raise DifftestError("boss block %d is missing %s" % (i, ", ".join(missing)))
+        b["dmg_min"] = b["strength"] // 2
+        b["dmg_max"] = b["strength"]
+        b["hpmax"] = b["vitality"] * 5 + b["strength"] + 10
+        b["hp"] = b["hpmax"]
+        out.append(("rektor_ngu_v%d" % i, b))
+    return out
+
+
+#: The order every `boss_stats` record writes its fields in.
+BOSS_ORDER = ["class", "level", "strength", "agility", "vitality", "luck",
+              "armor", "dmg_min", "dmg_max", "hp", "hpmax"]
+
+
+def endings(img):
+    """Every ending record, appended to the stream in this order."""
+    lines = []
+    for tag, i, text in ending_lines(img):
+        lines.append("ending_line %s %d %s" % (tag, i, text))
+    for mult, text in errand_awards(img):
+        lines.append("errand_award %d %s" % (mult, text))
+    indent, rows = banner(img)
+    lines.append("end_banner indent %d" % indent)
+    lines.append("end_banner death_colour %s"
+                 % chr(img[site(img, DEATH_COLOUR_SITE, "death colour") + 3]))
+    lines.append("end_banner victory_colour %s"
+                 % chr(img[site(img, VICTORY_COLOUR_SITE, "victory colour") + 3]))
+    for i, row in enumerate(rows):
+        lines.append("banner_row %d %s" % (i, row))
+    lines.append("marquee indent %d"
+                 % img[site(img, MARQUEE_INDENT_SITE, "marquee indent") + 3])
+    lines.append("marquee phases %d"
+                 % (img[site(img, MARQUEE_PHASE_SITE, "marquee phases") + 3] + 1))
+    lines.append("marquee word %s" % marquee_word(img))
+    for name, b in boss_blocks(img):
+        lines.append("boss_stats %s %s"
+                     % (name, " ".join(str(b[f]) for f in BOSS_ORDER)))
+    return lines
+
+
+# ---------------------------------------------------------------------------
 # The reference stream
 # ---------------------------------------------------------------------------
 
@@ -677,6 +878,11 @@ def reference(img):
     ev["trn3_fill"] = struct.unpack_from(
         "<H", img, site(img, TRN3_FILL_SITE, "trn row 3 fill") + 6
     )[0]
+
+    # The endings.  Appended last so the records above keep their positions.
+    ending_records = endings(img)
+    lines += ending_records
+    ev["ending_line"] = sum(1 for l in ending_records if l.startswith("ending_line "))
     return lines, ev
 
 
@@ -1013,6 +1219,8 @@ def main(argv=None):
             % (shop, key, displayed, price)
         )
     print("  trn row 3's `#` is filled with %d (1000:e505)" % ev["trn3_fill"])
+    print("  %d ending lines found by the WriteLn shape scan, not quoted"
+          % ev["ending_line"])
     print()
     for line in report:
         print(line)

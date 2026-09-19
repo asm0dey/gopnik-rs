@@ -1307,9 +1307,17 @@ explicitly rather than getting Rust's panic-in-debug/wrap-in-release default,
 and the five den sites above are only part of the population. Recorded so the
 divergence is in one place instead of two doc comments.
 
-## `FUN_1000_11c2` -- traced (Task 20), not ported
+## `FUN_1000_11c2` -- traced (Task 20), PORTED in Phase 2 (`port-gaps.md` row 13)
 
 *Cited from `src/game.rs`'s `Game::enter_district_5`.*
+
+**CLOSED.** The gap was never the data -- `data/enemies.json`'s
+`rektor_ngu_v0` / `rektor_ngu_v1` already carried every constant including the
+four derived fields -- it was the missing caller. `Game::rector_endgame` is
+`1000:ae18`..`1000:ae3c`, `Game::boss` is the constructor, and
+`tools/difftest.py`'s `boss_stats` records now compare both blocks against the
+immediates it decodes out of `FUN_1000_11c2` itself. The trace below stands as
+the record of how the blocks were established.
 
 **Entry point `1000:11c2`.** Never named in `docs/re/` before Task 20, which
 disassembled it in full: `python3 tools/re_query.py resolve 1000:11c2 -n 250
@@ -1735,6 +1743,32 @@ modelled here" without saying that the field it would clear exists; it now
 points at this entry.
 
 ---
+
+## The victory marquee's loop bound -- a port decision, `port-gaps.md` row 4
+
+*Cited from `src/ending.rs`'s `marquee`.*
+
+`FUN_1000_0aec` redraws its `ТЫ СУПЕР ГОП` banner in a
+`repeat ... until KeyPressed` loop: `1000:0b62 call 0xf16:0x2a8` is
+`Delay(5000)`, `1000:0b67 call 0xf16:0x1cc` is `ClrScr`, and
+`1000:0cf4 call 0xf16:0x308` is `KeyPressed`. The phase counter wraps at
+`1000:0ce5 cmp byte [bp-0xc],0x8` / `jnb 0xcf0`, so the animation is nine
+passes long, and the digit that colours each letter is
+`(i + e - 1) mod 8 + 48` (`1000:0b36`..`1000:0b5c`).
+
+**This port draws exactly one full phase cycle and stops.** It reads whole
+lines and has no non-blocking key poll, so `KeyPressed` has no counterpart;
+`Delay` and `ClrScr` are dropped with the rest of the screen control, so the
+nine frames scroll instead of replacing each other. The 32-space indent
+(`1000:0b8f cmp byte [bp-0xb],0x20`) and the frame content are exact --
+`difftest.py`'s `marquee indent` / `marquee phases` / `marquee word` records
+compare all three against the image. What diverges is only how long the
+animation runs and what the screen does between frames.
+
+This is the one part of `FUN_1000_0aec` this project has now disassembled
+rather than read out of Ghidra's C: the phase wrap and the indent bound above
+were decoded with `tools/dis16.py`, because `docs/re/port-gaps.md` flags this
+function's C as the survey's weakest input.
 
 ## Other unreproduced behaviour
 
