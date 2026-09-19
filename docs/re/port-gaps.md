@@ -193,32 +193,126 @@ run outside the list -- `FUN_1000_6a0d`, the save-load / new-game setup path,
 picked as the weakest-verified body left. It found and fixed one divergence:
 the stale start-up banner print recorded below.
 
-**What that survey established, and what it did not.** It read
-`build/decomp/FUN_1000_6a0d_1000_6a0d.c` top to bottom against
-`src/persist.rs`, `src/save.rs`, `src/opening.rs`, `src/main.rs` and
-`Game::apply_class_bonus`/`announce_district`, and named a counterpart for
-each decision point it passed: the `FindNext` loop, the any-saves-found gate,
-the slot-key alphabet, the `IOResult` check on both `Reset` calls, the
-`places.sav` byte order and its three class-keyed clear exceptions, the
-district-from-slot-digit vs. district-from-level split on slot `0`, the
-class-answer reprompt and clamp, the four-way class stat table, and the
-five-way district/class chain at `1000:7262`..`73e5`.
-
-It did **not** produce a per-branch address mapping, so it does not establish
-a count. Its own report said "~32 decision points" against the 33 that
-`docs/re/branches.md:803` prints, and the two are not known to be the same
-set. The machine-derived figure disagrees with both:
+**What that survey established, with a re-derivable per-branch mapping.**
+`0e44787`'s "32 decision points" and "33 branches" were both eyeballed off
+`build/decomp/FUN_1000_6a0d_1000_6a0d.c` and neither was checked against a
+machine list, which is exactly the unbacked-count shape this project keeps
+tripping on. The actual list is `data/branches.json`'s own `branches` array
+(a plain disassembly enumeration of every conditional jump, not a citation
+or coverage metric) filtered to this function:
 
 ```
-python3 -c "import json;print([f for f in json.load(open('data/branches.json'))['functions'] if f['entry']=='1000:6a0d'][0])"
-# branch_count 33, branches_touched_by_port 6, port_citation_count 71
+python3 -c "import json;bs=[b for b in json.load(open('data/branches.json'))['branches'] if b['func']=='FUN_1000_6a0d'];print(len(bs))"
+# 33
 ```
 
-`branches.md:803`'s own "touched" column says 15 for the same function, and
-nothing in this repo reconciles the three numbers. Read the survey as "no
-second divergence was found on the path walked", not as coverage. The next
-Phase 2 work is whatever a fresh gap survey finds outside this list, per
-`docs/re/gaps.md`.
+That gives 33 branch addresses, and every one of them was re-checked here
+against the guard text `data/branches.json` records for it and the `src/`
+construct that runs the same test:
+
+| branch (jcc) | guard | test | `src/` counterpart |
+|---|---|---|---|
+| `6a94` | `6a8f cmp [3eb6],0` | more `FindNext` results | `persist::present_slots`'s `read_dir` iterator (structural replacement; Rust's iterator exhaustion stands in for the loop test, no explicit branch needed) |
+| `6a9e` | `6a99 cmp [3d04],0` | slots-so-far != 0 | `persist::slot_menu_lines`: `if i > 0` |
+| `6ac2` | `6abd cmp [3d2b],'0'` | digit != `'0'` | `slot_menu_lines`: the `else` arm |
+| `6b0b` | `6b06 cmp [3d2b],'0'` | digit == `'0'` | `slot_menu_lines`: `if slot == '0'` |
+| `6b38` | `6b33 cmp [3d04],0` | any slot found | `persist::choose_slot`: `if slots.is_empty()` |
+| `6b63`/`6b6a`/`6b71`/`6b78`/`6b7f` | `6b5e`/`65`/`6c`/`73`/`7a cmp [3d31],'2'/'3'/'4'/'5'/'0'` | key match | `persist::SLOT_KEYS.contains(&k)` (one call for all five compares) |
+| `6bdb` | `6bd9 or ax,ax` | slot file `Reset` `IOResult`==0 | `persist::load_slot`'s `read_slot(..)` `Ok`/`Err` match |
+| `6c55` | `6c50 cmp [3692],0` | district==0 (slot `'0'`) | `load_slot`: `if slot == '0'` (the `places.sav` branch) |
+| `6c93` | `6c91 or ax,ax` | `places.sav` `IOResult`==0 | `load_slot`: `Ok(b) if b.len() >= PLACES_BYTES` vs `_` |
+| `6d4a`/`6d5b`/`6d6c` | `6d45`/`56`/`67 cmp [389c],3/3/5` | class-keyed spare of Club/Girl/Den in the `places.sav` failure arm | **not** three guarded clears in the port -- see note below |
+| `6d91` | `6d8c cmp [3692],0` | district still 0 | `load_slot`: the same `if slot == '0'` covers this and `6c55` in one Rust test |
+| `6ff5` | `6ff0 cmp [389c],4` | class answer == 4 | `main.rs::create_character`: `if answer == 4` |
+| `7132`/`7139` | `712d`/`34 cmp [389c],0/3` | clamp answer to `0..=3` | `create_character`: `(0..=3).contains(&answer)` |
+| `7146`/`7165`/`7184` | `7143`/`62`/`81 cmp ax,1/2/3` | class stat-quad dispatch | `progress::new_character`: `START_STATS[usize::from(answer)]` |
+| `7225` | `7220 cmp [379c],0` | typed name's length byte == 0 | `create_character`: `if name.is_empty()` |
+| `7267`/`72a0`/`72d9`/`7311`/`7349` | `7265`/`9e`/`d7`/`0f`/`47 cmp al,1/2/3/4/5` | district-keyed entry announcement | `Game::announce_district`: `START_ARRIVAL.chunks_exact(2).nth(district-1)` (1..4) + `if self.district == 5` |
+| `736e` | `7369 cmp [3692],1` | district==1 | `announce_district`: `if self.district == 1` (the tutorial) |
+| `73c1`/`73cd`/`73de` | `73be`/`ca`/`db cmp ax,5/3/6` | class-keyed bonus flags | `Game::apply_class_bonus`: `match self.player.class { 5 => .., 3 => .., 6 => .. }` |
+
+33 rows, 33 branches, every one read against `src/` and given a stated
+counterpart -- but "given a counterpart" is not "one Rust `if` per row", and
+saying so without the breakdown would be the same overclaim in a new shape.
+Of the 33:
+
+* **14 have their own literal, one-to-one conditional in `src/`** -- a
+  distinct `if`, `else`, or `match` arm that tests the same fact and nothing
+  else: `6a9e`, `6ac2`, `6b0b`, `6b38`, `6bdb`, `6c55`, `6c93`, `6ff5`,
+  `7225`, `7349`, `736e`, `73c1`, `73cd`, `73de`.
+* **15 dissolve into a non-branching Rust construct** that covers several
+  original branches at once -- a loop, a `.contains()`, a range test, or an
+  array index, verified by reading what it does rather than by finding a
+  matching `if`: the `FindNext` loop `6a94` (a `read_dir` iterator, no branch
+  at all); the five-way key test `6b63`/`6b6a`/`6b71`/`6b78`/`6b7f`
+  (`SLOT_KEYS.contains(&k)`, one call); the two-part clamp `7132`/`7139`
+  (`(0..=3).contains(&answer)`); the three-way class-stat dispatch
+  `7146`/`7165`/`7184` (`START_STATS[usize::from(answer)]`, an array index,
+  not a compare); and four of the five district arms `7267`/`72a0`/`72d9`/
+  `7311` (`chunks_exact(2).nth(district - 1)`; the fifth, `7349`, IS a
+  literal `if self.district == 5` and is counted in the 14 above).
+* **1 is absorbed into a different branch's own test**: `6d91` re-tests
+  "is the district still 0", which `6c55` already tested earlier in the same
+  function; the port reads that fact once, in `load_slot`'s single
+  `if slot == '0'`, and `6d91` has no test of its own.
+* **3 have no branch of their own anywhere** -- `6d4a`/`6d5b`/`6d6c`, the
+  `places.sav` failure arm's three class-keyed spares (Club/Girl/Den). The
+  port does not guard three clears; `load_slot`'s failure arm clears all
+  seven `places.sav` flags unconditionally (`Places::from_bytes(&[0u8; 7])`),
+  and `Game::apply_class_bonus` -- called unconditionally right after, from
+  `persist::from_save`, and already counted above as the counterpart of
+  `73c1`/`73cd`/`73de` -- re-marks exactly the same three locations for the
+  same three classes. Both paths reach the same final state
+  (`src/persist.rs`'s own doc on `load_slot` already says so); the port
+  reuses branches `73c1`/`73cd`/`73de`'s effect instead of adding three more.
+
+14 + 15 + 1 + 3 = 33. Every branch is accounted for by name; none of the 19
+non-literal ones is silently counted as "covered" by the mere existence of
+the table row -- the mechanism each one actually relies on is named above,
+and a reader can re-open `src/persist.rs`, `src/main.rs` or `src/progress.rs`
+at the cited construct and check it directly.
+
+**Reconciling `branches.md:803`'s `touched: 15`, `data/branches.json`'s
+`branches_touched_by_port: 6`, and this table's 33 -- three different
+questions, not a disagreement.** `data/branches.json`'s per-function field
+and `docs/re/branches.md`'s per-function column use the **identical**
+metric (`docs/re/branches.md`, "Coverage against the port": a branch counts
+as touched when its own address or its guard's address appears as a literal
+`1000:XXXX` citation in `src/**/*.rs`); they differ only in **when** that
+scan ran. `data/branches.json` froze its columns at `82a08d8`
+(`docs/re/branches.md`'s own "Totals" paragraph says so); `branches.md`'s
+`15` is a later recomputation against a tree with more citations accumulated
+since. Recomputing the identical scan against the CURRENT tree reproduces
+`branches.md`'s figure exactly, unmoved by this survey's own new citations
+(neither `1000:6dcd` nor `1000:edb2`, the two addresses `0e44787`/this commit
+added, is one of the 33 branch-or-guard addresses):
+
+```
+python3 -c "
+import json, re, glob
+B = [b for b in json.load(open('data/branches.json'))['branches'] if b['func'] == 'FUN_1000_6a0d']
+blob = ''.join(open(p, encoding='utf-8').read() for p in glob.glob('src/*.rs'))
+cited = {int(m, 16) for m in re.findall(r'1000:([0-9a-fA-F]{4})', blob)}
+off = lambda a: int(a.split(':')[1], 16)
+print(sum(1 for b in B if off(b['addr']) in cited or (b['guard'] and off(b['guard']['addr']) in cited)))"
+# 15
+```
+
+Neither `6` nor `15` is "33" for the reason the 14/15/1/3 breakdown above
+gives directly: **19 of the 33 branches were verified without ever writing
+their own address next to a matching `src/` line**, because their
+counterpart is a loop, a `.contains()`, an array index, or another branch's
+effect -- none of which a literal-citation grep can find, by construction.
+`docs/re/branches.md`'s own "Coverage against the port" section already
+names this failure mode ("under-reports coverage... shop menu bodies show as
+untouched even though part of their behaviour is modelled") for exactly this
+reason; this function's 19 uncited-but-verified branches are the same
+pattern, just larger. The 33-row table above was built by reading `src/`
+directly, not by grepping for address strings, so `6` and `15` measuring
+something else is expected, not a contradiction to resolve.
+
+The next Phase 2 work is whatever a fresh gap survey finds outside this
+list, per `docs/re/gaps.md`.
 
 **Do not trust a string-coverage metric built on `data/strings.json`.** That
 file covers one pool of 796 entries and does not contain the opening text — a
