@@ -193,10 +193,33 @@ pickpocket (`1ae22f6`, rows 9 and 25 — `difftest` 347→356, and row 21's
 opener finally has a caller), batch F the wandering mage (`5552482`, row
 23 and, with it, row 19 — `difftest` 356→363).
 
-**Next:** every row in this file is struck, and one follow-up flow survey has
-run outside the list -- `FUN_1000_6a0d`, the save-load / new-game setup path,
-picked as the weakest-verified body left. It found and fixed one divergence:
-the stale start-up banner print recorded below.
+**Next:** every row in this file is struck, and follow-up flow surveys now run
+outside the list, picked by weakest verification rather than by byte count.
+Three have run:
+
+1. `FUN_1000_6a0d`, the save-load / new-game setup path. One divergence found
+   and fixed: the stale start-up banner print recorded below. Per-branch
+   mapping in the next section.
+2. `FUN_1000_074b`, the end screen -- the last function `## Method and
+   confidence` still flagged as never block-surveyed. Clean; no `src/`
+   change. Write-up in `## FUN_1000_074b, flow-diffed` below (`8cff3a0`).
+3. `entry` slice 1, `1000:ab59`..`1000:b3b7` (2,142 B, 72 branches) -- the
+   main-loop head and the district-promotion block. **One real gap found and
+   ported** (`27def70`): the discovery-flag reset at `1000:ab96`..`1000:abc9`
+   is not unconditional, and `Places::reset_for_new_district` was clearing
+   all seven. `1000:aba5`, `1000:abb6` and `1000:abc7` were the only three
+   branches in the slice with no Rust test of any kind; the other 69 have a
+   counterpart (28 literal, 39 dissolved into a combined `&&` or an index, 2
+   absorbed into a sibling's test). The same survey caught two stale
+   "not reproduced" claims in `docs/re/command-dispatch.md` and
+   `docs/re/gaps.md`, both fixed in `a124bc0` -- one of which also had a
+   colour code wrong (`^4` for `^6`), which no oracle could have caught
+   because `difftest.py` strips markup before comparing.
+
+`entry` is 17,143 B and slice 1 is 12% of it. The remaining slices are not
+being taken in address order: the next target is whichever body the surveys
+themselves rate weakest, which is the shop / den / club / gym handlers per
+`## Method and confidence`.
 
 **What that survey established, with a re-derivable per-branch mapping.**
 `0e44787`'s "32 decision points" and "33 branches" were both eyeballed off
