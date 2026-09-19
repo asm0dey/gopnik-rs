@@ -120,9 +120,13 @@ ported and audited before Phase 1. Every game function is accounted for.
   (`fc0d0c7`) is a call-site-for-call-site match; the survey found nothing to
   change.
 - The three dispatches used three different PARTIAL-counting conventions.
-- "PORTED" for the large shop/~~den~~/~~club~~/~~gym~~ bodies rests on string
-  presence and citation density, not a line-by-line flow diff. **Only `shop`
-  is left standing.** **The den is struck: the
+- ~~"PORTED" for the large shop/den/club/gym bodies rests on string presence
+  and citation density, not a line-by-line flow diff.~~ **All four are now
+  flow-diffed, and the bullet was right to doubt them: two of the four held
+  an unported block.** Den 44/44 branches counterparted; club 20/20; gym
+  38/38 only after porting the trained-armour recompute (`1000:e3a4`..`e3e2`,
+  6 branches); shop 80/82, the missing 2 being row 9's extra menu gates
+  (`1000:c824`, `1000:c82b`), ported with it. **The den is struck: the
   claim was already false when this file was written.** `docs/re/den.md`
   (`8b46249`) is a line-for-line flow map of `1000:d802`..`1000:df06` and
   `c352f3f` is its port, both landed 2026-08-30 -- three weeks before this

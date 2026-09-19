@@ -139,6 +139,54 @@ and the two this section is really about:
 All five gate the *listing*, nothing else. The three `district>3` entries are
 the ones `docs/re/tables.md` §2 already records for rows 7-9.
 
+### Row 9's two extra gates — and how this section's own warning caught it
+
+The parenthetical above, "`1000:c824` is its two extra menu gates", is the
+only place the repo recorded them, and it recorded them without ever asking
+whether `src/` had them. It did not:
+
+```
+python3 tools/re_query.py resolve 1000:c81d -n 30 -i 12
+# 1000:c81d  cmp byte [0x3692],0x3
+# 1000:c822  jbe 0xc88e                 district > 3
+# 1000:c824  cmp byte [0x394d],0x0
+# 1000:c829  jz 0xc88e                  owns a pistol
+# 1000:c82b  cmp byte [0x3e32],0x19
+# 1000:c830  jnz 0xc88e                 delivery counter == 25
+```
+
+All three jump to the SAME target, `0xc88e`, past the row's whole print
+block — a miss prints nothing, rather than printing the row in a refusing
+colour. `Game::listed_rows` filtered on the district gate alone, so the port
+listed the silencer at any `district > 3` whether or not the player had a
+pistol or had ever made a delivery.
+
+`data/shops.json` had carried both predicates the whole time —
+`"extra_gates": ["byte[20ae:394d]!=0", "byte[20ae:3e32]==25"]`, the only
+non-empty `extra_gates` in the table — and `build.rs` generated them into
+`ShopEntry`. Nothing read the field:
+
+```
+grep -rn extra_gates src/
+# src/data.rs:70:    pub extra_gates: &'static [&'static str],   (before the fix)
+```
+
+`Game::extra_gates_open` now evaluates it, and
+`every_extra_gate_in_the_table_is_modelled` fails if the extractor ever emits
+a predicate nothing models, so the field cannot go dead again quietly.
+
+**Not exploitable, and that is why it survived.** `Game::buy_dealer_row`'s
+`"9"` arm re-tests both facts itself at `1000:cdfe` and `1000:ce05`, so no
+one could buy the silencer early; only the menu was wrong. A test asserted
+the wrong behaviour as correct — `a_gated_dealers_row_is_bought_below_its_district`
+expected `listed(4)` to include `"9"` on a fresh game with no pistol and a
+zero counter — which is why nothing caught it.
+
+This is the same defect shape the preamble at the top of this section already
+names ("an inventory whose completeness claim stopped the next search"),
+one level down: the address was written, the list was right, and naming the
+gates read as having checked them.
+
 So at district 1 the menu shows neither row 5 nor row 6, and typing `5` or `6`
 buys them anyway; below district 4 the same holds for rows 7, 8 and 9. This
 closes the open question `docs/re/gaps.md` recorded against
