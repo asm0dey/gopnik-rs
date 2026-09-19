@@ -20,24 +20,30 @@ batch that gave it an opening: before it the port printed nothing at all of the
 splash, the backstory, the district announcements, `help`, or the quit tail.
 Rows 3, 18, 20 and 14 (~916 B) are done as well -- the church's three sermons,
 its composed `Был ты X а стал Y` line, its parting line, and the level-up
-announcements, which were completely silent before.
+announcements, which were completely silent before. Rows 11, 12 and 22
+(~592 B) are done too -- wander bucket 4's flavour turn (and bucket 0's
+line, which `Game::walk`'s own doc had wrongly called silent), bucket 1's
+eight district-keyed lines, and `run`'s own extra line, none of which
+printed anything before.
 
-**Row 19 stays open even though four batches' `ReadKey`s are now paced.** Its
+**Row 19 stays open even though five batches' `ReadKey`s are now paced.** Its
 ~34 sites are spread across rows 23 and 24 as well, and only the sites inside
 the rows already struck have landed. Those are, by batch:
 
 * batch B, eight sites, in `crate::opening`'s gap tables (splash, backstory,
   quit tail);
-* batch C, twenty-two sites, in `crate::church`'s: `1000:7caf`/`7ce6` (the
-  third-visit arm), `1000:7d0e`..`7dc2` (seven, the second), `1000:7dee`..
-  `7f56` (eleven, the first, one of them after the composed line),
-  `1000:7f89` (the forced level-up) and `1000:8242` (the convergence, which
-  every draw-15 arm reaches).
+* batch C part 1, twenty-two sites, in `crate::church`'s: `1000:7caf`/`7ce6`
+  (the third-visit arm), `1000:7d0e`..`7dc2` (seven, the second),
+  `1000:7dee`..`7f56` (eleven, the first, one of them after the composed
+  line), `1000:7f89` (the forced level-up) and `1000:8242` (the convergence,
+  which every draw-15 arm reaches);
+* batch C part 2, three sites, `1000:b055`/`b092`/`b0b0` -- the phone gag
+  (row 24), paced directly in `Game::wander_preamble`'s existing draw-3 arm.
 
-What is still open is rows 23 and 24's six sites -- the mage's three and the
-phone gag's three. (8 + 22 + 6 = 36 against the survey's `~34`; the tilde is
-the survey's own, and the row keeps it rather than being quietly re-counted
-here.) A row is struck when its whole span ships, not when part of it does.
+What is still open is row 23's three sites -- the mage's. (8 + 22 + 3 + 3 = 36
+against the survey's `~34`; the tilde is the survey's own, and the row keeps
+it rather than being quietly re-counted here.) A row is struck when its whole
+span ships, not when part of it does.
 
 Status values: `open` · `done (<commit>)`. Add no other column.
 
@@ -54,8 +60,8 @@ Status values: `open` · `done (<commit>)`. Add no other column.
 | 8 | `1000:6de6` — the university backstory | `1000:6de6`..`6f2b` | 325 | MISSING | done (61f0f1c) |
 | 9 | `1000:c329` — the market pickpocket, verb `t` | `1000:c329`..`c46a` | 321 | MISSING | open |
 | 10 | `1000:7262` — the start-up district announcements + the district-1 tutorial | `1000:7262`..`7347`, `7369`..`73bb` | 311 | MISSING | done (61f0f1c) |
-| 11 | `1000:b82f` — wander bucket 4 (and bucket 0's line) | `1000:b82f`..`b94a` | 283 | MISSING | open |
-| 12 | `1000:b3c4` — bucket 1's eight flavour lines | `1000:b3db`..`b4ca` | ~279 | PARTIAL | open |
+| 11 | `1000:b82f` — wander bucket 4 (and bucket 0's line) | `1000:b82f`..`b94a` | 283 | MISSING | done (19055ab) |
+| 12 | `1000:b3c4` — bucket 1's eight flavour lines | `1000:b3db`..`b4ca` | ~279 | PARTIAL | done (19055ab) |
 | 13 | `1000:11c2` — the two boss stat blocks have no caller | `1000:11c2`..`1274` | 178 | MISSING | done (fc0d0c7) |
 | 14 | `1000:2526` — the level-up announcements | `1000:2591`..`28c0` | ~173 | PARTIAL | done (ecbeb9b) |
 | 15 | `1000:ad12` — the district 2/3/4 arrival announcements | `1000:ad12`..`adbf` | 173 | MISSING | done (61f0f1c) |
@@ -65,9 +71,9 @@ Status values: `open` · `done (<commit>)`. Add no other column.
 | 19 | `1000:3eca` … — `ReadKey` pacing across the new text | ~34 sites | ~190 | PARTIAL | open |
 | 20 | `1000:828c` — the church's parting line | `1000:828c`..`82af` | 35 | MISSING | done (ecbeb9b) |
 | 21 | `1000:3e8d` — `param_1 == 1`'s opener (reachable only once #9 lands) | `1000:3e8d`..`3ead` | 32 | MISSING | done (fc0d0c7) |
-| 22 | `1000:aee4` — `run`'s own extra line | `1000:aee4`, `aeff` | ~30 | PARTIAL | open |
+| 22 | `1000:aee4` — `run`'s own extra line | `1000:aee4`, `aeff` | ~30 | PARTIAL | done (19055ab) |
 | 23 | `1000:7560` … — the mage's three `ReadKey`s | `1000:7560`, `757e`, `75a4` | ~15 | PARTIAL | open |
-| 24 | `1000:b055` … — the phone gag's three `ReadKey`s | `1000:b055`, `b092`, `b0b0` | ~15 | PARTIAL | open |
+| 24 | `1000:b055` … — the phone gag's three `ReadKey`s | `1000:b055`, `b092`, `b0b0` | ~15 | PARTIAL | done (19055ab) |
 | 25 | `1000:b95e` / `1000:d793` — the market ban gate and the `girl` clear | 2 sites | ~12 | MISSING | open |
 
 ## Method and confidence
@@ -120,6 +126,22 @@ wrong in both directions on adjacent functions.
   on the `Game::new` pass -- an accident, not a property. Caught by
   `tests/district_advance_subprocess.rs`, which saw the district-1 announcement
   and then the district-2 one in a single load.
+- **`Game::walk`'s doc said wander bucket 0 "ends the turn with nothing"**,
+  found by landing row 11. False: `1000:b92a`, the outer verb-dispatch
+  chain's own mismatch arm, sits inside the SAME `1000:b82f`..`b94a` address
+  range as bucket 4 and prints `Ничё не происходит.` unconditionally,
+  through a CS reference separate from the one bucket 4 itself uses at
+  `1000:b90f`. `wander::BUCKET4` now carries the string twice for that
+  reason, and `Game::walk_verb`'s `_` (bucket 0) arm prints it.
+- **This batch's own brief asserted bucket 4's four `Random` draws
+  (`1000:b841`, `b871`, `b891`, `b8bd`) were "already ported"**; they were
+  not -- `Game::walk` fell straight to its wildcard arm for bucket 4 and
+  spent nothing. Caught only because the instruction said to verify against
+  `src/game.rs` before writing anything, not because any test failed: none
+  of the five `tests/wander_sequence.rs` captures stones the player on a
+  bucket-4 turn, so the missing draws never desynchronised the RNG oracle --
+  only the missing TEXT on the (overwhelmingly common) not-stoned path was
+  visible before this batch.
 
 
 ## Resuming
@@ -132,13 +154,13 @@ dispatch. Batch reports are in `.superpowers/sdd/phase2/` and the surveys in
 **Landed so far:** batch A the endings (`fc0d0c7`, the game can be finished —
 `difftest` 126→163), batch B the opening (`61f0f1c..ab98fea`, the game prints
 its banner — `difftest` 163→255), batch C part 1 the church and the level-up
-(`ecbeb9b`, rows 3, 18, 20, 14 — `difftest` 255→314).
+(`ecbeb9b`, rows 3, 18, 20, 14 — `difftest` 255→314), batch C part 2 the
+wander text (`19055ab`, rows 11, 12, 22, 24 — `difftest` 314→330).
 
-**Next:** batch C part 2 — the wander text (rows 11, 12, 22, 24). Then batch D
-the enemy sheet (row 5), batch E the market pickpocket verb `t` (rows 9, 25,
-which also make row 21's opener reachable). Row 19's `ReadKey` pacing spans
-several rows; land each row's share with that row — rows 23 and 24 are all
-that is left of it.
+**Next:** batch D the enemy sheet (row 5). Then batch E the market pickpocket
+verb `t` (rows 9, 25, which also make row 21's opener reachable). Row 19's
+`ReadKey` pacing spans several rows; land each row's share with that row —
+row 23 is all that is left of it.
 
 **Do not trust a string-coverage metric built on `data/strings.json`.** That
 file covers one pool of 796 entries and does not contain the opening text — a
