@@ -68,6 +68,16 @@
 //! levelup_tail    <first fill global> <second> <text>
 //! ```
 //!
+//! A fourth group appends after those -- `run`'s own extra line, bucket 1's
+//! district lines and bucket 4's flavour turn (rows 22, 12 and 11, plus row
+//! 19's remaining share):
+//!
+//! ```text
+//! wander_line     <tag> <i> <text>
+//! wander_gap      <tag> <i> <B|K|C events between line i-1 and line i>
+//! wander_fragment <tag> <i> <CS literal of a composed wander line>
+//! ```
+//!
 //! `levelup_gain` rows are sorted by field name inside each stat rather than
 //! left in the original's instruction order: this side derives them by
 //! applying [`crate::progress::grant`] and diffing the record, which cannot
@@ -86,6 +96,7 @@ use crate::progress::{
     self, Stat, CLASS_WEIGHTS, GAINS_PER_LEVEL, MAX_LEVEL, THRESHOLD_BASE, THRESHOLD_STEP,
 };
 use crate::text;
+use crate::wander;
 
 /// Reads one field of a fighter record as a signed number, so a grant's
 /// effect on it is a subtraction rather than eight hand-written cases.
@@ -256,6 +267,7 @@ pub fn emit(out: &mut impl Write) -> io::Result<()> {
     endings(out)?;
     opening_records(out)?;
     church_records(out)?;
+    wander_records(out)?;
 
     Ok(())
 }
@@ -336,6 +348,33 @@ fn church_records(out: &mut impl Write) -> io::Result<()> {
         progress::LEVELUP_TAIL_FILLS[1],
         text::strip(progress::LEVELUP_TAIL)
     )?;
+    Ok(())
+}
+
+/// `run`'s own extra line, bucket 1's district lines and bucket 4's flavour
+/// turn -- `docs/re/port-gaps.md` rows 22, 12 and 11, landed in Phase 2
+/// batch C part 2. Same reasoning as [`church_records`], appended after it
+/// so no record above moves.
+///
+/// `bucket4 1 C`'s `wander_gap` is written directly, the same way
+/// `levelup_gap 5 B` is above: [`wander::BUCKET4`] is kept in the image's
+/// ADDRESS order rather than run through [`opening::play`] (see that
+/// module's doc for why), so there is no `Gaps` table to read the gap from
+/// -- the composed line falls strictly between its index 0 and index 1.
+fn wander_records(out: &mut impl Write) -> io::Result<()> {
+    writeln!(out, "wander_line ran 0 {}", text::strip(wander::RAN))?;
+
+    for (i, line) in wander::BUCKET1.iter().enumerate() {
+        writeln!(out, "wander_line bucket1 {i} {}", text::strip(line))?;
+    }
+
+    for (i, line) in wander::BUCKET4.iter().enumerate() {
+        writeln!(out, "wander_line bucket4 {i} {}", text::strip(line))?;
+    }
+    writeln!(out, "wander_gap bucket4 1 C")?;
+    for (i, frag) in wander::BUCKET4_FRAGMENTS.iter().enumerate() {
+        writeln!(out, "wander_fragment bucket4 {i} {}", text::strip(frag))?;
+    }
     Ok(())
 }
 

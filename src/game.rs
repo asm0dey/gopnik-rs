@@ -79,6 +79,7 @@ use crate::rng::Rng;
 use crate::term;
 use crate::text;
 use crate::vet;
+use crate::wander;
 use std::io::{self, BufRead};
 
 /// What the main loop is currently doing. Only [`Mode::Street`] dispatches
@@ -866,7 +867,21 @@ impl Game {
             match self.mode.clone() {
                 Mode::Street => {
                     let cmd = parse(&line);
-                    self.dispatch(cmd, &mut lines)?;
+                    if cmd == Command::Walk {
+                        // 1000:aee4 -- the shared wander preamble re-reads
+                        // the just-typed line and compares it against `run`
+                        // a SECOND time, regardless of which of the two
+                        // dispatch compares (`1000:ae86`'s `w`,
+                        // `1000:ae97`'s `run`) reached it. `dispatch`'s own
+                        // `Command::Walk` arm cannot see this -- `parse`
+                        // already folded both spellings into one variant --
+                        // so the raw line is matched here instead, the same
+                        // way `Game::run_combat`'s own `run` compare is.
+                        // See `crate::wander`'s module doc.
+                        self.walk_verb(line.trim().eq_ignore_ascii_case("run"), &mut lines)?;
+                    } else {
+                        self.dispatch(cmd, &mut lines)?;
+                    }
                 }
                 Mode::Shop(loc) => self.shop_turn(loc, &line, &mut lines)?,
             }
@@ -2947,20 +2962,27 @@ impl Game {
     /// 1 (`1000:b3bd`), 2 (`1000:b4e8`) and 3 (`1000:b5ae`), falling through
     /// to bucket 4 at `1000:b836`:
     ///
-    /// * **0** -- no arm matches, so the turn ends with nothing. The only
-    ///   way to reach it is the church, which zeroes the already-rolled
-    ///   bucket at `1000:8282`.
+    /// * **0** -- no arm matches: the outer dispatch's own mismatch arm
+    ///   (`1000:b92a`) prints [`wander::BUCKET4`]`[3]` ("Ничё не
+    ///   происходит.") and spends no draw. The only way to reach it is the
+    ///   church, which zeroes the already-rolled bucket at `1000:8282`. An
+    ///   earlier revision of this line said the turn "ends with nothing" --
+    ///   false: `1000:b92a` is inside the SAME `1000:b82f`..`b94a` span as
+    ///   bucket 4 below, and prints unconditionally.
     /// * **1** (`1000:b3c4`) -- toggles `20ae:3693` and writes one
-    ///   district-keyed line from either of two sets (`1000:b3db..`,
-    ///   `1000:b465..`). The **toggle is modelled** (see
-    ///   [`Game::flag_3693`] -- `FUN_1000_0d14` branches on it twice, so it
-    ///   changes both the draw count and the draw values of every later
-    ///   encounter); the lines are not, neither set having been extracted.
-    ///   The bucket spends no draw either way. See `docs/re/gaps.md`.
+    ///   district-keyed line from [`wander::BUCKET1`] (four "entered" lines,
+    ///   then four "left" lines; districts 1..4 only -- district 5 prints
+    ///   nothing in either half). Both the **toggle and the lines are
+    ///   modelled** (see [`Game::flag_3693`] -- `FUN_1000_0d14` branches on
+    ///   the toggle twice, so it changes both the draw count and the draw
+    ///   values of every later encounter). The bucket spends no draw either
+    ///   way. `docs/re/port-gaps.md` row 12.
     /// * **2** (`1000:b4ef`) -- the girl encounter, [`Game::wander_girl`].
     /// * **3** (`1000:b5b5`) -- the fight encounter, below.
     /// * **4** (`1000:b836`) -- flavour only, branching on the joint buff's
-    ///   countdown `20ae:38cd`. **Not modelled**, same reason as bucket 1.
+    ///   countdown `20ae:38cd` (`self.player.stoned`). [`Game::wander_flavor`]
+    ///   has the text and the two `Random(7)` draws it spends while stoned;
+    ///   `docs/re/port-gaps.md` row 11.
     ///
     /// The fight encounter, `1000:b5b5` onward:
     ///
@@ -3015,22 +3037,47 @@ impl Game {
     /// is the common one.
     ///
     /// `pub` so `tests/wander_sequence.rs` can drive one turn at a time;
-    /// `run()` is still the only path a player takes.
+    /// `run()` is still the only path a player takes. Always the `w`
+    /// spelling -- see [`Game::walk_verb`] for `run`'s own extra line.
     pub fn walk(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
-        let bucket = self.wander_preamble(lines)?;
+        self.walk_verb(false, lines)
+    }
+
+    /// [`Game::walk`]'s body, plus `ran`: whether the just-read line was
+    /// literally `run` rather than `w`. `crate::commands::parse` folds both
+    /// into one `Command::Walk`, so only `Game::run`'s Street-mode dispatch
+    /// -- the one place the raw line is still in scope -- can tell them
+    /// apart; see `crate::wander`'s module doc for why that check has to
+    /// live inside the shared preamble rather than in `parse` or
+    /// `dispatch`.
+    fn walk_verb(
+        &mut self,
+        ran: bool,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<()> {
+        let bucket = self.wander_preamble(ran, lines)?;
         match bucket {
-            // 1000:b3c4..1000:b3ce -- bucket 1's only lasting effect. The
-            // two line sets it writes are still not extracted (see
-            // `docs/re/gaps.md`), but the toggle itself is not optional:
-            // `FUN_1000_0d14` branches on it twice.
+            // 1000:b3c4..1000:b3ce -- bucket 1's only lasting effect.
+            // `FUN_1000_0d14` branches on the toggle twice, so it is not
+            // optional even though the line it picks is flavour only.
             1 => {
                 self.flag_3693 = !self.flag_3693;
+                // 1000:b3db../1000:b45b.. -- four lines per half, districts
+                // 1..4 only. `docs/re/port-gaps.md` row 12.
+                if (1..=4).contains(&self.district) {
+                    let base = if self.flag_3693 { 0 } else { 4 };
+                    term::println(wander::BUCKET1[base + usize::from(self.district - 1)]);
+                }
                 return Ok(());
             }
             2 => return self.wander_girl(lines),
             3 => {}
-            // 0 (church-cancelled) and 4: nothing this port models.
-            _ => return Ok(()),
+            4 => return self.wander_flavor(lines),
+            // 0 -- the church-cancelled turn; `1000:b92a`'s mismatch arm.
+            _ => {
+                term::println(wander::BUCKET4[3]);
+                return Ok(());
+            }
         }
 
         // 1000:b5b5/1000:b5b8 -- `mov al,0` / `push ax` / `call 0xd14`.
@@ -3148,6 +3195,67 @@ impl Game {
         self.run_combat(0, enemy, lines)
     }
 
+    /// Wander bucket 4 -- `1000:b82f`..`1000:b94a`, flavour only.
+    /// `docs/re/port-gaps.md` row 11; `crate::wander`'s module doc has the
+    /// address-order note for [`wander::BUCKET4`], which this indexes by
+    /// name rather than by walking it in order.
+    ///
+    /// Not stoned (`1000:b863`'s `[0x38cd] == 0`, `!self.player.stoned`):
+    /// prints `wander::BUCKET4[2]` ("Ничё не происходит.",
+    /// `1000:b90f`/`LAB_1000_b90c`) and spends nothing.
+    ///
+    /// Stoned: two `Random(7)` draws, unconditionally.
+    /// * `1000:b841` -- a zero (`1000:b846`) additionally prints
+    ///   `wander::BUCKET4[0]` first.
+    /// * `1000:b871` -- non-zero (`1000:b878`) joins the not-stoned line at
+    ///   the same `LAB_1000_b90c` site (`wander::BUCKET4[2]`) and ends the
+    ///   turn; zero composes `wander::BUCKET4_FRAGMENTS` around a rank roll
+    ///   (`1000:b891`, `Random(7)`, into [`data::rank_name`]) and a fill
+    ///   roll (`1000:b8bd`, `Random(district * 10 + 1)`), reads one line
+    ///   (`1000:b8e2`..`b8ec`, a `ReadLn` never compared against anything)
+    ///   and prints `wander::BUCKET4[1]`.
+    ///
+    /// **This is a Phase 2 correction, not a citation update**: before this
+    /// batch bucket 4 fell all the way to `walk_verb`'s wildcard arm and
+    /// spent no draw and printed nothing, in every case. That was silently
+    /// right for the (overwhelmingly common) not-stoned path only because
+    /// the original ALSO spends no draw there -- the text was still
+    /// missing. It was wrong for the stoned path, which the five captured
+    /// `tests/wander_sequence.rs` runs never happen to exercise (none of
+    /// them are stoned on a bucket-4 turn), so nothing there could have
+    /// caught it.
+    fn wander_flavor(
+        &mut self,
+        lines: &mut dyn Iterator<Item = io::Result<String>>,
+    ) -> io::Result<()> {
+        if !self.player.stoned {
+            term::println(wander::BUCKET4[2]);
+            return Ok(());
+        }
+        if self.rng.below_at("1000:b841", 7) == 0 {
+            term::println(wander::BUCKET4[0]);
+        }
+        if self.rng.below_at("1000:b871", 7) != 0 {
+            term::println(wander::BUCKET4[2]);
+            return Ok(());
+        }
+        let rank_roll = self.rng.below_at("1000:b891", 7);
+        let fill = self
+            .rng
+            .below_at("1000:b8bd", u16::from(self.district) * 10 + 1);
+        term::print(wander::BUCKET4_FRAGMENTS[0]);
+        term::print(data::rank_name(rank_roll));
+        term::println(&text::fill(
+            wander::BUCKET4_FRAGMENTS[1],
+            &[i64::from(fill)],
+        ));
+        // 1000:b8e2..b8ec -- a ReadLn into DS:3a72 that nothing downstream
+        // compares; see the module doc.
+        let _ = lines.next();
+        term::println(wander::BUCKET4[1]);
+        Ok(())
+    }
+
     /// `1000:aea1`..`1000:b3b9`: everything a walk does before the bucket
     /// dispatch, in execution order. Returns the value `20ae:3970` holds
     /// when `1000:b3ba` reads it.
@@ -3171,6 +3279,7 @@ impl Game {
     ///   discovery flag still being clear; the roll happens either way.
     fn wander_preamble(
         &mut self,
+        ran: bool,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
     ) -> io::Result<u8> {
         // seq 1, 1000:aea1 -- the joint buff decays, and hitting zero takes
@@ -3186,10 +3295,15 @@ impl Game {
             }
         }
 
-        // seq 2, 1000:aeda -- `run` (and only `run`) writes file 0x9D7D
-        // here. `crate::commands::parse` folds `w` and `run` into one
-        // `Command::Walk`, so this port cannot tell them apart and writes
-        // nothing. It costs no draw; recorded in `docs/re/gaps.md`.
+        // seq 2, 1000:aee4 -- the shared preamble re-reads the just-typed
+        // line and compares it against `run` a second time, independent of
+        // which of the two dispatch compares reached here; `ran` is that
+        // comparison's result, computed by the caller because
+        // `crate::commands::parse` cannot make it itself. `1000:aeff`'s
+        // line. `docs/re/port-gaps.md` row 22.
+        if ran {
+            term::println(wander::RAN);
+        }
 
         // seq 3, 1000:af04 -- the den's loan credit tops up once per walk
         // while it is below district*10 (`jnl 0xaf1d` skips otherwise).
@@ -3249,18 +3363,20 @@ impl Game {
             // Draw 3, 1000:b030 -- Random(200), the wrong-number gag. The
             // original spaces these with 0f16:031a `ReadKey`s (not a delay
             // -- docs/re/rtl.md:494; `Delay` is the unrelated 0f16:02a8),
-            // waiting for a keystroke between each message; this site does
-            // not port that wait. [`Game::enter_district_5`] shows the port
-            // DOES have a working substitution for a `ReadKey` (a discarded
-            // line read, the same trick `src/persist.rs`'s `choose_slot`
-            // uses) -- it just is not applied to these phone-call gags. See
-            // docs/re/gaps.md.
+            // waiting for a keystroke between each message. `docs/re/port-
+            // gaps.md` row 24: the three sites are `1000:b055`, `1000:b092`
+            // and `1000:b0b0`, each ported the way [`Game::enter_district_5`]
+            // already substitutes for a `ReadKey` -- a discarded line read,
+            // the same trick `src/persist.rs`'s `choose_slot` uses.
             if self.rng.below_at("1000:b030", 200) == 0 {
                 term::println("Телефон:^6Алё Вася?");
+                let _ = lines.next(); // 1000:b055
                 term::print("^2Нет это ");
                 term::print(&self.player.name);
                 term::println(".");
+                let _ = lines.next(); // 1000:b092
                 term::println("Телефон:^6А Васю можно?");
+                let _ = lines.next(); // 1000:b0b0
                 term::println("^2Нет, он будет в больнице в ближайшие 2 месяца.");
             }
             // Draw 4, 1000:b0dc -- Random(100); prints only with a girl.
@@ -10757,6 +10873,242 @@ mod tests {
         assert!(
             lines.next().is_some(),
             "the already-found arm must not ReadLn"
+        );
+    }
+
+    /// The first seed whose `1000:b353` bucket roll (draw 12) lands on
+    /// `want`, with the church (`1000:b39e`) NOT overriding it to 0.
+    /// `docs/re/port-gaps.md` rows 11, 12 and 22's tests all key off this
+    /// rather than a hand-picked seed, so a change to the bucket-roll
+    /// arithmetic in `Game::wander_preamble` cannot silently desync the
+    /// tests from it.
+    fn bucket_seed(want: u8) -> u32 {
+        (1u32..40_000)
+            .find(|&seed| {
+                let mut g = Game::new(player(), Progress::new(), seed);
+                g.rng.start_log();
+                term::capture::lines(|| {
+                    g.walk(&mut no_input()).unwrap();
+                });
+                let log = g.rng.take_log();
+                let Some(roll) = log.iter().find(|d| d.site == "1000:b353").map(|d| d.r) else {
+                    return false;
+                };
+                let bucket = match roll + 1 {
+                    r if r >= 10 => 4,
+                    r if r >= 5 => 3,
+                    r if r >= 2 => 2,
+                    _ => 1,
+                };
+                let church_cancelled = log.iter().any(|d| d.site == "1000:b39e" && d.r == 0);
+                bucket == want && !church_cancelled
+            })
+            .unwrap_or_else(|| panic!("no seed produced wander bucket {want}"))
+    }
+
+    /// `run`'s own extra line (`wander::RAN`, `1000:aee4`..`aeff`) prints
+    /// when `Game::walk_verb`'s `ran` is true and never otherwise -- both
+    /// spellings still run the SAME preamble and land on the SAME bucket,
+    /// since `ran` only gates this one line. `docs/re/port-gaps.md` row 22.
+    #[test]
+    fn run_prints_its_own_extra_line_and_w_does_not() {
+        let seed = bucket_seed(1);
+        let w = term::capture::lines(|| {
+            let mut g = Game::new(player(), Progress::new(), seed);
+            g.walk_verb(false, &mut no_input()).unwrap();
+        });
+        let run = term::capture::lines(|| {
+            let mut g = Game::new(player(), Progress::new(), seed);
+            g.walk_verb(true, &mut no_input()).unwrap();
+        });
+        assert!(
+            !w.iter().any(|l| l == wander::RAN),
+            "`w` must not print {:?}: {w:?}",
+            wander::RAN
+        );
+        assert_eq!(
+            run,
+            {
+                let mut want = vec![wander::RAN.to_string()];
+                want.extend(w.clone());
+                want
+            },
+            "`run` must print exactly `w`'s output with {:?} first",
+            wander::RAN
+        );
+    }
+
+    /// Bucket 1 (`1000:b3c4`..`b4e8`): the toggle and the district line move
+    /// together, and there is no line at all outside districts 1..4.
+    /// `docs/re/port-gaps.md` row 12.
+    #[test]
+    fn bucket_one_prints_the_entered_or_left_line_for_its_district() {
+        let seed = bucket_seed(1);
+        for district in 1u8..=5 {
+            let mut g = Game::new(player(), Progress::new(), seed);
+            g.district = district;
+            let starting_flag = g.flag_3693;
+            let out = term::capture::lines(|| {
+                g.walk(&mut no_input()).unwrap();
+            });
+            assert_eq!(
+                g.flag_3693, !starting_flag,
+                "district {district} must still toggle 20ae:3693"
+            );
+            if district == 5 {
+                assert!(
+                    out.is_empty(),
+                    "district 5 has no line in either half: {out:?}"
+                );
+                continue;
+            }
+            let want = if g.flag_3693 {
+                wander::BUCKET1[usize::from(district - 1)]
+            } else {
+                wander::BUCKET1[4 + usize::from(district - 1)]
+            };
+            assert_eq!(out, vec![want.to_string()], "district {district}");
+        }
+    }
+
+    /// Bucket 4 (`1000:b82f`..`b94a`), not stoned: prints
+    /// `wander::BUCKET4[2]` and spends no draw. `docs/re/port-gaps.md`
+    /// row 11 -- this is the arm all five `tests/wander_sequence.rs` runs
+    /// take, since none of them are stoned on a bucket-4 turn.
+    #[test]
+    fn bucket_four_prints_nothing_happens_when_not_stoned() {
+        let seed = bucket_seed(4);
+        let mut g = Game::new(player(), Progress::new(), seed);
+        assert!(!g.player.stoned);
+        g.rng.start_log();
+        let out = term::capture::lines(|| {
+            g.walk(&mut no_input()).unwrap();
+        });
+        assert_eq!(out, vec![wander::BUCKET4[2].to_string()]);
+        assert!(
+            g.rng
+                .take_log()
+                .iter()
+                .all(|d| d.site != "1000:b841" && d.site != "1000:b871"),
+            "the not-stoned arm must spend neither of bucket 4's own draws"
+        );
+    }
+
+    /// Bucket 4, stoned: both `Random(7)` draws fire, in address order, and
+    /// the composed encounter line's rank and fill are drawn -- not
+    /// recomputed from `enemy` the way bucket 3's similarly-worded line is.
+    /// `docs/re/port-gaps.md` row 11.
+    #[test]
+    fn bucket_four_spends_two_draws_and_can_compose_an_encounter_when_stoned() {
+        let seed = bucket_seed(4);
+        // Both draws non-zero: no floating line, no composed line, just the
+        // shared "Ничё не происходит." site.
+        let quiet = (0u32..2000)
+            .find(|&s| {
+                let mut g = Game::new(player(), Progress::new(), seed);
+                g.buff_countdown = 5;
+                g.player.stoned = true;
+                g.rng = Rng::new(s);
+                g.rng.start_log();
+                term::capture::lines(|| g.walk(&mut no_input()).unwrap());
+                let log = g.rng.take_log();
+                let a = log.iter().find(|d| d.site == "1000:b841").map(|d| d.r);
+                let b = log.iter().find(|d| d.site == "1000:b871").map(|d| d.r);
+                matches!((a, b), (Some(a), Some(b)) if a != 0 && b != 0)
+            })
+            .expect("no inner seed avoided both bucket-4 zeros");
+        {
+            let mut g = Game::new(player(), Progress::new(), seed);
+            g.buff_countdown = 5;
+            g.player.stoned = true;
+            g.rng = Rng::new(quiet);
+            let out = term::capture::lines(|| g.walk(&mut no_input()).unwrap());
+            assert_eq!(
+                out,
+                vec![wander::BUCKET4[2].to_string()],
+                "both draws non-zero must print only the shared line"
+            );
+        }
+
+        // The composed arm: both draws zero.
+        let compose = (0u32..2000)
+            .find(|&s| {
+                let mut g = Game::new(player(), Progress::new(), seed);
+                g.buff_countdown = 5;
+                g.player.stoned = true;
+                g.rng = Rng::new(s);
+                g.rng.start_log();
+                term::capture::lines(|| {
+                    g.walk(&mut input(&["anything"])).unwrap();
+                });
+                let log = g.rng.take_log();
+                let a = log.iter().find(|d| d.site == "1000:b841").map(|d| d.r);
+                let b = log.iter().find(|d| d.site == "1000:b871").map(|d| d.r);
+                matches!((a, b), (Some(0), Some(0)))
+            })
+            .expect("no inner seed hit both bucket-4 zeros");
+        let mut g = Game::new(player(), Progress::new(), seed);
+        g.buff_countdown = 5;
+        g.player.stoned = true;
+        g.district = 3;
+        g.rng = Rng::new(compose);
+        let mut lines = input(&["anything"]);
+        let out = term::capture::lines(|| g.walk(&mut lines).unwrap());
+        assert_eq!(out[0], wander::BUCKET4[0], "first draw 0 floats first");
+        assert!(
+            out[1].starts_with(wander::BUCKET4_FRAGMENTS[0]),
+            "{:?} must open the composed line",
+            out[1]
+        );
+        assert!(
+            out[1].ends_with(wander::BUCKET4_FRAGMENTS[1].trim_start_matches(' '))
+                || out[1].contains(" уровня. Хочешь наехать?"),
+            "{:?} must carry the fill fragment",
+            out[1]
+        );
+        assert_eq!(out[2], wander::BUCKET4[1]);
+        assert!(
+            lines.next().is_none(),
+            "the ReadLn at 1000:b8e2 must consume the one line the script offered"
+        );
+    }
+
+    /// Bucket 0 (the church-cancelled turn): the outer dispatch's mismatch
+    /// arm at `1000:b92a` prints the SAME text as bucket 4's shared site,
+    /// via a SEPARATE CS reference (`wander::BUCKET4[3]`, not `[2]`).
+    /// `docs/re/port-gaps.md` row 11's "bucket 0" note.
+    #[test]
+    fn bucket_zero_prints_the_outer_mismatch_line() {
+        // Any seed whose FIRST wander turn's church draw (1000:b39e) is 0
+        // forces bucket 0 on that turn, whatever the bucket roll was.
+        let seed = (1u32..40_000)
+            .find(|&s| {
+                let mut g = Game::new(player(), Progress::new(), s);
+                g.rng.start_log();
+                term::capture::lines(|| g.walk(&mut no_input()).unwrap());
+                g.rng
+                    .take_log()
+                    .iter()
+                    .any(|d| d.site == "1000:b39e" && d.r == 0)
+            })
+            .expect("no seed rolled the church on its first wander turn");
+        let mut g = Game::new(player(), Progress::new(), seed);
+        // The church itself blocks on ReadKeys; feed it enough lines and
+        // ignore its own output, then isolate the bucket-0 line alone by
+        // diffing against a second walk from the same point is unnecessary
+        // here -- `wander::BUCKET4[3]` is asserted to be the LAST line
+        // this walk prints, which is what `1000:82b2`'s straight-line
+        // ending (parting, then the bucket dispatch) guarantees.
+        let out = term::capture::lines(|| {
+            g.walk(&mut input(&[
+                "k", "k", "k", "k", "k", "k", "k", "k", "k", "k", "k", "k",
+            ]))
+            .unwrap();
+        });
+        assert_eq!(
+            out.last().map(String::as_str),
+            Some(wander::BUCKET4[3]),
+            "a church-cancelled turn must end on the outer mismatch line: {out:?}"
         );
     }
 

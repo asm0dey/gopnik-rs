@@ -1133,6 +1133,91 @@ def church(img):
     return lines
 
 
+#: The wander spans batch C part 2 adds text to -- `docs/re/port-gaps.md`
+#: rows 22, 12 and 11 -- in the same shape as `CHURCH_SPANS`: `(tag, start,
+#: stop, plain lines, composed halves)`. Each entry carries its own expected
+#: literal count, so a span that scans short raises instead of quietly
+#: comparing a short list.
+#:
+#: `ran`'s span is the shared wander preamble's OWN re-compare of the
+#: just-typed line against `run` (`1000:aee4`), not a second verb dispatch --
+#: `w` and `run` both reach `1000:aea1` first; see `src/wander.rs`'s module
+#: doc.
+#:
+#: `bucket4`'s span holds FOUR plain lines, not three: `1000:b92a`, the
+#: OUTER dispatch's mismatch arm ("bucket 0", any `20ae:3970` value the
+#: church didn't leave at 1..4), sits inside this same `1000:b82f`..`b94a`
+#: range and prints the same text as one of bucket 4's own sites
+#: (`1000:b90f`) through a SEPARATE CS reference -- confirmed by
+#: `literal_sites` finding two distinct `PLAIN_WRITELN_RE` hits, not one.
+WANDER_SPANS = [
+    ("ran", 0xAEE4, 0xAF04, 1, 0),
+    ("bucket1", 0xB3DB, 0xB4E8, 8, 0),
+    ("bucket4", 0xB82F, 0xB94A, 4, 2),
+]
+
+
+def wander_lines(img):
+    """The wander spans' plain text, as `(tag, index, stripped text)`."""
+    out = []
+    for tag, start, stop, want, _ in WANDER_SPANS:
+        hits = literal_sites(img, PLAIN_WRITELN_RE, start, stop)
+        if len(hits) != want:
+            raise DifftestError(
+                "1000:%04x..%04x (%s) holds %d plain WriteLns, expected %d"
+                % (start, stop, tag, len(hits), want)
+            )
+        for i, (_, cs, _) in enumerate(hits):
+            out.append((tag, i, strip_markup(shortstring(img, cs))))
+    return out
+
+
+def wander_gaps(img):
+    """What each wander span does between its literals, `'C'` included."""
+    out = []
+    for tag, start, stop, _, _ in WANDER_SPANS:
+        sites = [s for s, _, _ in literal_sites(img, PLAIN_WRITELN_RE, start, stop)]
+        for i, seq in gaps_of(img, sites, start, stop,
+                              extra=((COMPOSED_LINE_RE, "C"),)):
+            out.append((tag, i, seq))
+    return out
+
+
+def wander_fragments(img):
+    """The CS literals of each span's composed line, in address order.
+
+    The DGROUP half of `bucket4`'s composed line -- the rank row at
+    `DS:002e` -- is appended with `push ds`, so `STR_APPEND_RE`'s `push cs`
+    does not match it and it does not appear here; the port interpolates it
+    from `crate::data::rank_name`, the same way `help`'s and the church's
+    composed lines already do.
+    """
+    out = []
+    for tag, start, stop, _, want in WANDER_SPANS:
+        sites = [(s, cs) for s, cs, _ in literal_sites(img, COMPOSED_LINE_RE, start, stop)]
+        sites += [(s, cs) for s, cs, _ in literal_sites(img, STR_APPEND_RE, start, stop)]
+        if len(sites) != want:
+            raise DifftestError(
+                "1000:%04x..%04x (%s) composes from %d CS literals, expected %d"
+                % (start, stop, tag, len(sites), want)
+            )
+        for i, (_, cs) in enumerate(sorted(sites)):
+            out.append((tag, i, strip_markup(shortstring(img, cs))))
+    return out
+
+
+def wander(img):
+    """Every wander record (rows 11, 12, 22), appended in this order."""
+    lines = []
+    for tag, i, text in wander_lines(img):
+        lines.append("wander_line %s %d %s" % (tag, i, text))
+    for tag, i, events in wander_gaps(img):
+        lines.append("wander_gap %s %d %s" % (tag, i, events))
+    for tag, i, frag in wander_fragments(img):
+        lines.append("wander_fragment %s %d %s" % (tag, i, frag))
+    return lines
+
+
 def opening(img):
     """Every opening record, appended to the stream in this order."""
     lines = []
@@ -1264,6 +1349,13 @@ def reference(img):
     church_records = church(img)
     lines += church_records
     ev["church_line"] = sum(1 for l in church_records if l.startswith("church_line "))
+
+    # `run`'s own extra line, bucket 1's district lines and bucket 4's
+    # flavour turn -- Phase 2 batch C part 2, appended last for the same
+    # reason as everything else above.
+    wander_records = wander(img)
+    lines += wander_records
+    ev["wander_line"] = sum(1 for l in wander_records if l.startswith("wander_line "))
     return lines, ev
 
 
@@ -1606,6 +1698,8 @@ def main(argv=None):
           % (ev["opening_line"], len(OPENING_SPANS)))
     print("  %d church lines found the same way, across %d spans"
           % (ev["church_line"], len(CHURCH_SPANS)))
+    print("  %d wander lines found the same way, across %d spans"
+          % (ev["wander_line"], len(WANDER_SPANS)))
     print()
     for line in report:
         print(line)

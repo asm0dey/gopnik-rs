@@ -20,3 +20,4 @@ pub mod term;
 pub mod text;
 pub mod trace;
 pub mod vet;
+pub mod wander;
