@@ -120,8 +120,28 @@ ported and audited before Phase 1. Every game function is accounted for.
   (`fc0d0c7`) is a call-site-for-call-site match; the survey found nothing to
   change.
 - The three dispatches used three different PARTIAL-counting conventions.
-- "PORTED" for the large shop/den/club/gym bodies rests on string presence and
-  citation density, not a line-by-line flow diff.
+- "PORTED" for the large shop/~~den~~/club/gym bodies rests on string presence
+  and citation density, not a line-by-line flow diff. **The den is struck: the
+  claim was already false when this file was written.** `docs/re/den.md`
+  (`8b46249`) is a line-for-line flow map of `1000:d802`..`1000:df06` and
+  `c352f3f` is its port, both landed 2026-08-30 -- three weeks before this
+  file (`eb5b323`, 2026-09-19) asserted the opposite. A follow-up survey
+  re-verified the range independently against `orig/g.exe` rather than
+  against those docs: 44 of 44 branches have a counterpart (22 a literal
+  `if`/`match` arm, 18 dissolved into a shared helper or the `match (loc,key)`
+  table, 4 absorbed into a sibling conjunct, **0 with none**), all 5 `Random`
+  draws match their `below_at` citation by `pushed-n`, and all 17 absolute
+  `20ae:` writes have the same write in `src/`. Shop, club and gym are NOT
+  struck -- no equivalent diff has been run on them.
+
+  What the den does lack is an **oracle**: no `tools/difftest.py` record is
+  scoped to its range (the only `--dump` lines matching "притон" are
+  `opening_line help 21` and `23`, the help text). `data/den_arms.json`
+  verifies the ARTIFACT against `orig/g.exe` and its own header says
+  "Nothing here reads `src/`", so it is not a port-behaviour oracle.
+  `tests/den_reveal_subprocess.rs` covers exactly two branches
+  (`1000:dcbf`/`1000:dcc6`). Everything else rests on the in-process unit
+  tests in `src/game.rs`.
 - ~~`FUN_1000_0aec`'s marquee semantics come from Ghidra's C only; this project
   has never disassembled it.~~ Disassembled with row 4: the phase wrap
   (`1000:0ce5`) and the 32-space indent bound (`1000:0b8f`) were decoded with
@@ -216,10 +236,26 @@ Three have run:
    colour code wrong (`^4` for `^6`), which no oracle could have caught
    because `difftest.py` strips markup before comparing.
 
+4. The **den handler** (`pr`, `1000:d802`..`1000:df06`, 1,796 B, 44
+   branches), picked because `## Method and confidence` named the
+   shop/den/club/gym bodies as the weakest "PORTED" claim in the file.
+   Clean: 44 of 44 branches counterparted, 0 with none. The survey's real
+   product is that the weakest-parts bullet itself was **wrong about the
+   den** and has been narrowed -- see `## Method and confidence`.
+
 `entry` is 17,143 B and slice 1 is 12% of it. The remaining slices are not
-being taken in address order: the next target is whichever body the surveys
-themselves rate weakest, which is the shop / den / club / gym handlers per
-`## Method and confidence`.
+being taken in address order: the target is whichever body the surveys
+themselves rate weakest. After the den, that is **shop, club and gym** --
+`1000:df06`..`1000:e390` (club, 1,162 B, 20 branches) and
+`1000:e390`..`1000:e973` (gym, 1,507 B, 38 branches) are the two sized so
+far.
+
+**Three of the four surveys came back clean.** That is worth stating plainly
+rather than reading as a coverage figure: the one that did not
+(`entry` slice 1) found a real gap, and two of the four found stale
+documents instead -- a claim of absence that the code had already refuted.
+On this evidence the port's remaining risk sits more in the map than in
+`src/`.
 
 **What that survey established, with a re-derivable per-branch mapping.**
 `0e44787`'s "32 decision points" and "33 branches" were both eyeballed off
