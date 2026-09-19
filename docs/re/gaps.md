@@ -3101,3 +3101,107 @@ carrying `status` and `fixed_by`, and `tools/test_beer_arms.py`'s
 `test_the_recorded_divergence_is_in_gaps` keeps this section and that record
 from drifting apart — including the CLOSED marker in this heading, which that
 test requires whenever the record says `status` is closed.
+
+## `what_the_port_must_change` blocks go stale inside a plan's own range, and only `beer_arms.json` is now guarded
+
+**Opened by the whole-branch review of the beer plan; a lead, not a task
+anyone has claimed.**
+
+**What the defect is.** `data/*_arms.json`'s `what_the_port_must_change`
+block is prose that describes the port AS OF the commit it was written
+against. Nothing in it names a `status`, and until this plan nothing in
+`tools/` ran its `verify` claims against `src/`. A block like that is not a
+finding frozen in time — it is a claim a reader takes as still true, and
+`docs/re/METHODOLOGY.md`'s recurring defect is exactly this shape: a check
+that cannot fail, presented as verification. Here the "check" was a human
+rereading prose that no test ever contradicted.
+
+**How it was found.** `data/beer_arms.json`'s block held four entries, all
+four written to describe the port at the plan's base commit `fe2e8bf`. All
+four were fixed inside the plan's own range, by Task 42
+(`fe2e8bf..2b3fceb`), and the block was never updated to say so — entry
+`[1]` kept quoting `grep -n 'Six later' src/game.rs`, a command that by the
+time the range closed returned zero hits. Task 42's own review was scoped to
+`3c0ff20..db9fd24` and read "only `beer_uncited.json` touched under `data/`"
+as reassurance about the five frozen oracles, not as a sign that
+`beer_arms.json` should have moved too. Every per-task review in this plan
+was scoped to one commit range for exactly this reason — to keep the diff a
+reviewer re-derives small — and that same scoping is why none of them could
+see a file that was correct when it was written and wrong only once the
+whole range had closed around it. Only the whole-branch pass, reading
+`fe2e8bf..2b3fceb` as one span, caught it.
+
+**What was done for `beer_arms.json`.** Commit `e4fb124` gave all four
+entries a `status` (`CLOSED`) and a `closed_by` block (`task`, `commit`,
+`what_changed`), and added `tools/test_beer_arms.py`'s
+`test_every_port_change_record_is_true_of_the_shipped_tree`, which requires
+every entry to carry a `status`, requires a `CLOSED` entry's `closed_by` to
+name all three fields, and actually runs each entry's `verify` commands
+against the shipped tree rather than trusting the prose. That test is what
+would have caught the stale `grep` — it asserts the command's output, not
+just that the field exists.
+
+**What remains open, recounted, not copied.** The same block exists in five
+sibling `data/*_arms.json` files, and as of this commit none of their entries
+carry a `status` field and no test runs their `verify`-shaped claims against
+`src/`. Recounted directly from each file, rather than taken from the plan
+ledger that first noticed it:
+
+```
+$ python3 -c "
+import json
+
+def find_wpmc(obj, path=''):
+    out = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            p = f'{path}.{k}' if path else k
+            if k == 'what_the_port_must_change':
+                out.append((p, v))
+            else:
+                out.extend(find_wpmc(v, p))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            out.extend(find_wpmc(v, f'{path}[{i}]'))
+    return out
+
+total = with_status = 0
+for f in ('club', 'den', 'gym', 'shop', 'vet'):
+    d = json.load(open(f'data/{f}_arms.json'))
+    for path, v in find_wpmc(d):
+        n = len(v)
+        s = sum(1 for e in v if isinstance(e, dict) and 'status' in e)
+        total += n; with_status += s
+        print(f'{f} ({path}): {n} entries, {s} with status')
+print('total:', total, 'with status:', with_status)
+"
+club (club.what_the_port_must_change): 13 entries, 0 with status
+club (command_list.what_the_port_must_change): 4 entries, 0 with status
+den (what_the_port_must_change): 8 entries, 0 with status
+gym (what_the_port_must_change): 9 entries, 0 with status
+shop (sell.what_the_port_must_change): 8 entries, 0 with status
+vet (what_the_port_must_change): 6 entries, 0 with status
+total: 48 with status: 0
+```
+
+Per file that is `club` 13 + 4 = 17, `den` 8, `gym` 9, `shop` 8, `vet` 6 —
+48 entries across five files, and 0 of the 48 carry a `status` field. Note
+that `club`'s block is split across two nested objects
+(`club.what_the_port_must_change` and `command_list.what_the_port_must_change`)
+and `shop`'s lives under `sell`, not at the file's top level — a scan that
+only checked the top-level key would undercount both.
+
+Unchecked, and stated as such: whether any of the 48 entries individually
+describes a port state that has already moved on, the way three of beer's
+four had. That would require reading each entry's own `verify`-shaped claim
+against the current tree, which is exactly the audit
+`test_every_port_change_record_is_true_of_the_shipped_tree` does for `beer`
+and nothing yet does for the other five files.
+
+**This is a lead, not a task anyone has claimed.** No plan has been opened
+against `club`, `den`, `gym`, `shop`, or `vet`'s blocks. The fix, when
+someone takes it, is the same shape `e4fb124` already shipped once: give
+each entry a `status`, and — for whichever entries are `CLOSED` — a
+`closed_by` naming the task, commit, and what changed, then extend (or
+mirror, per file) `test_every_port_change_record_is_true_of_the_shipped_tree`
+to run each file's `verify` commands against `src/`.
