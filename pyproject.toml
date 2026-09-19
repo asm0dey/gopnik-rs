@@ -117,8 +117,10 @@ dev = [
 #
 # The list restates pytest's own defaults because setting norecursedirs
 # REPLACES them rather than extending them.
+# `target` is cargo's, not pytest's: a bare `pytest` run concurrently with a
+# cargo build collects out of transient `target/` directories and errors.
 norecursedirs = [
-    "mutants", "mutants.out*",
+    "mutants", "mutants.out*", "target",
     "*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv",
     "{arch}",
 ]

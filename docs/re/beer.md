@@ -299,10 +299,14 @@ pushes, at file `0x4197` and `0x4199`; `1000:2a18` really is the jaw guard;
 | "The `#.#л.` pair is `beer/2` and `(beer mod 2) * 5` (`1000:2ab9`)" | `1000:2ab9` is the load that opens the idiom, and the expression drops the `mod 10` at `1000:2ad5` | `1000:2ab9`..`1000:2adb` |
 | "file `0x4240` if nothing was drunk at all" | that line needs a **second** conjunct | `1000:2c36` **and** `1000:2c3d` — nothing drunk **and** beer exhausted |
 
-The same "Six later" sentence appears a second time, in `src/commands.rs`'s
-module doc; `grep -n 'Six further' src/commands.rs` finds it. Both are for Task
-42 to correct — `docs/re/METHODOLOGY.md` is explicit that a near miss reads as
-authoritative, so replacing these is worth more than adding new ones.
+**The miscount appears twice, and not in the same words.** `src/game.rs` says
+"Six later `"h"` compares"; `src/commands.rs`'s module doc says "Six
+**further** `"h"` compares". Grepping the `game.rs` wording in `commands.rs`
+comes up empty, so it takes two commands to find both:
+`grep -n 'Six later' src/game.rs` and `grep -n 'Six further' src/commands.rs`,
+one hit each. Both are for Task 42 to correct — `docs/re/METHODOLOGY.md` is
+explicit that a near miss reads as authoritative, so replacing these is worth
+more than adding new ones.
 
 ## The classification, and the one divergence
 

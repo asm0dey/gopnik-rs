@@ -3766,7 +3766,79 @@
       "tools/test_beer_arms.py",
       "BeerTest.test_the_recorded_divergence_is_in_gaps"
     ],
-    "expect": "the divergence names docs/re/gaps.md and the entry is not there"
+    "expect": "mh-with-a-broken-jaw-skips-the-tail says it is recorded in docs/re/gaps.md under"
+  },
+  {
+    "label": "beer-uncited-second-divergence-unwritten",
+    "defends": "the CLASS the case above only instanced.  A SECOND divergence, whose docs/re/gaps.md entry was never written, must red too -- the first revision of test_the_recorded_divergence_is_in_gaps hunted one literal heading inside the loop, so a second divergence could be added with no gaps entry at all and the loop still passed.  The heading is now DERIVED from each divergence's own recorded_in record.",
+    "artifact": "data/beer_uncited.json",
+    "mutate": {
+      "op": "json-append",
+      "path": [
+        "divergences"
+      ],
+      "value": {
+        "id": "a-second-divergence-whose-gaps-entry-was-never-written",
+        "found_by": "tools/mutations.json",
+        "original": "no citation here, so only the recorded_in check can fire",
+        "port": "no citation here either",
+        "reachable": "n/a -- this record exists only inside the mutation shadow tree",
+        "recorded_in": {
+          "file": "docs/re/gaps.md",
+          "heading": "a heading that was never written into docs/re/gaps.md"
+        },
+        "for": "nothing -- the gate restores the artifact"
+      }
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "BeerTest.test_the_recorded_divergence_is_in_gaps"
+    ],
+    "expect": "a-second-divergence-whose-gaps-entry-was-never-written says it is recorded in docs/re/gaps.md under"
+  },
+  {
+    "label": "beer-arms-globals-are-a-measurement",
+    "defends": "data/beer_arms.json's globals[] is claimed to be EVERY DGROUP address the range touches, not a list of the four someone noticed.  The two tests that iterate globals[] cannot see a fifth, and the effects sweep only buckets WRITES -- so a global the routine merely READS was invisible to the whole suite.  This mutation drops 20ae:38b0, which this range only reads, and exactly one test notices.",
+    "artifact": "data/beer_arms.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "globals",
+        2,
+        "ds"
+      ],
+      "from": "20ae:38b0",
+      "to": "20ae:38b2"
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "BeerTest.test_the_recorded_globals_are_every_dgroup_address_the_range_touches"
+    ],
+    "expect": "the DGROUP sweep and `globals[]` disagree"
+  },
+  {
+    "label": "beer-uncited-shared-construct-discriminator",
+    "defends": "rows that share one src construct -- the port evaluates a predicate once where the original tests it three times -- must each name the sub-expression they mean, and it must really BE a sub-expression.  1000:2c36 shipped with 1000:2c3d's expr and recompute, byte for byte, while testing a different predicate; the identifier pairing test passes on that because every ident occurs in Game::beer.  A drifted row cannot buy silence by inventing a discriminator either, which is what this case perturbs.",
+    "artifact": "data/beer_uncited.json",
+    "mutate": {
+      "op": "json-set",
+      "path": [
+        "branches",
+        11,
+        "src",
+        "discriminator"
+      ],
+      "from": "self.player.hp >= self.player.hpmax",
+      "to": "healed != 0"
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "SrcPairingTest.test_no_two_rows_share_a_construct_without_saying_which_half_they_mean"
+    ],
+    "expect": "is not a sub-expression of the `expr` it shares"
   }
  ]
 }

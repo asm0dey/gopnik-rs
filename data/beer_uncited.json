@@ -1,7 +1,7 @@
 {
  "note": "Every game branch of `FUN_1000_29c4` -- the `h` / `mh` beer routine, image `1000:29c4`..`1000:2c5e` -- classified against the port by Task 41. All 19 carried no `SEG:OFF` citation at the branch or its guard when Task 41 ran EXCEPT `1000:2a1d` and `1000:2a4c`, whose guards (`1000:2a18`, `1000:2a47`) the shipped `Game::beer` doc comment already names; those two are the `touched 2` in `docs/re/branches.md`'s per-entry row for this entry. The row set is therefore the whole branch population of the function, not the uncited subset -- `data/combat_uncited.json` is the shape, and the difference is deliberate: Task 42 has to cite 17 and must not re-cite the two, so both halves have to be present and derived. `tools/test_beer_arms.py` re-derives the population from `data/branches.json` and requires this file to cover it EXACTLY; no count here is hard-coded.",
  "classes": {
-  "implemented": "`src/` evaluates this condition NOW. `src.module`, `src.function` and `src.expr` name the construct that does, and `src.recompute` is the command that finds it -- never a `src/` line number, which `docs/re/METHODOLOGY.md` forbids. `src.expr` is a paraphrase close enough to locate the construct and never a substitute for reading it.",
+  "implemented": "`src/` evaluates this condition NOW. `src.module`, `src.function` and `src.expr` name the construct that does, and `src.recompute` is the command that finds it -- never a `src/` line number, which `docs/re/METHODOLOGY.md` forbids. `src.expr` is a paraphrase close enough to locate the construct and never a substitute for reading it. When two rows name the SAME construct -- the port evaluates one predicate where the original tests it more than once -- each carries a `src.discriminator`: the exact sub-expression of `expr` that row means. `tools/test_beer_arms.py`'s `test_no_two_rows_share_a_construct_without_saying_which_half_they_mean` requires it, so a row cannot silently borrow a sibling's construct while testing a different predicate.",
   "unimplemented": "`src/` does not evaluate it. NO ROW USES THIS CLASS -- see `empty_classes_are_reported`.",
   "unreachable-in-port": "the port deliberately diverges and `docs/re/gaps.md` records it. NO ROW USES THIS CLASS -- see `empty_classes_are_reported`."
  },
@@ -22,7 +22,10 @@
    "original": "1000:2a1d not taken -> 1000:2a1f prints CS 0x28cc (`^4Ты не можешь пить пиво из-за сломаной челюсти.`) and 1000:2a38 `jmp 0x2baa` enters the `mh` TAIL. For `mh` the tail then runs 1000:2bba..1000:2c53 with hp untouched, so 1000:2bc6 and 1000:2c0d both take, 1000:2c36 does not, and 1000:2c3d prints `^4Пива нету` (CS 0x2970) whenever 20ae:38c3 <= 0.",
    "port": "`Game::beer` prints the jaw refusal and `return`s, so `mh` + broken jaw + no beer writes one line where the original writes two.",
    "reachable": "yes -- 20ae:38b0 is set by combat at 1000:47ee / 1000:4820 and the beer counter is routinely 0; `mh` is accepted in combat through the second call site 1000:4b00.",
-   "recorded_in": "docs/re/gaps.md, `mh` with a broken jaw skips the tail the original still runs",
+   "recorded_in": {
+    "file": "docs/re/gaps.md",
+    "heading": "`mh` with a broken jaw skips the tail the original still runs"
+   },
    "for": "Task 42, Half 1"
   }
  ],
@@ -129,7 +132,7 @@
     "function": "Game::beer",
     "expr": "if self.player.beer_dl == 0 { if single { term::println(\"^4Пива нету\"); } break; }",
     "recompute": "grep -n -A2 'if self.player.beer_dl == 0 {' src/game.rs",
-    "why": "The first of the two hits is the loop gate. `== 0` on a `u16` versus the original's signed `jg` is the posture `docs/re/gaps.md` already records for 20ae:38c3 under the sheet's quantity gates, closed by the load path's `.max(0) as u16`."
+    "why": "The loop gate is the FIRST of the command's three hits (the second is the `^4Кончилось пиво` test inside the `mh` tail, and the third is the same text matching as a substring of `} else if self.player.beer_dl == 0 {`). An earlier revision of this row said `two`, which is the unasserted-prose-quantifier class this project keeps committing -- the construct named was right and only the count was wrong. `== 0` on a `u16` versus the original's signed `jg` is the posture `docs/re/gaps.md` already records for 20ae:38c3 under the sheet's quantity gates, closed by the load path's `.max(0) as u16`."
    }
   },
   {
@@ -239,7 +242,8 @@
     "function": "Game::beer",
     "expr": "if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 { break; }",
     "recompute": "grep -n 'if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {' src/game.rs",
-    "why": "This row is the `single` disjunct of that condition; 1000:2b9e and 1000:2ba5 are the other two, in the original's own order."
+    "why": "This row is the `single` disjunct of that condition; 1000:2b9e and 1000:2ba5 are the other two, in the original's own order.",
+    "discriminator": "single"
    }
   },
   {
@@ -257,7 +261,8 @@
     "function": "Game::beer",
     "expr": "if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 { break; }",
     "recompute": "grep -n 'if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {' src/game.rs",
-    "why": "This row is the `self.player.hp >= self.player.hpmax` disjunct."
+    "why": "This row is the `self.player.hp >= self.player.hpmax` disjunct.",
+    "discriminator": "self.player.hp >= self.player.hpmax"
    }
   },
   {
@@ -275,7 +280,8 @@
     "function": "Game::beer",
     "expr": "if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 { break; }",
     "recompute": "grep -n 'if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {' src/game.rs",
-    "why": "This row is the `self.player.beer_dl == 0` disjunct."
+    "why": "This row is the `self.player.beer_dl == 0` disjunct.",
+    "discriminator": "self.player.beer_dl == 0"
    }
   },
   {
@@ -363,9 +369,9 @@
    "src": {
     "module": "src/game.rs",
     "function": "Game::beer",
-    "expr": "} else if self.player.beer_dl == 0 { term::println(\"^4Пива нету\"); }",
-    "recompute": "grep -n '} else if self.player.beer_dl == 0 {' src/game.rs",
-    "why": "The `else` arm is reached exactly when `healed == 0`, which is 1000:2c36's NOT-taken direction. This branch is one of the 192 addresses Ghidra folded out of `build/decomp/FUN_1000_29c4_1000_29c4.c`."
+    "expr": "if healed != 0 { .. } else { .. }",
+    "recompute": "grep -n 'if healed != 0 {' src/game.rs",
+    "why": "The `else` arm is reached exactly when `healed == 0`, which is 1000:2c36's NOT-taken direction -- so the construct that EVALUATES this branch's predicate is the `if healed != 0` HEAD, not the `} else if self.player.beer_dl == 0 {` line the arm happens to start with. An earlier revision of this row named that line, which made it byte-identical to 1000:2c3d's `expr` and `recompute` while testing a different predicate; Task 42 would have put `1000:2c36` on the `beer_dl` test, which is the near-miss citation `docs/re/METHODOLOGY.md` forbids. `test_no_two_rows_share_a_construct_without_saying_which_half_they_mean` is the check that now catches the shape rather than the instance. This branch is also one of the 192 addresses Ghidra folded out of `build/decomp/FUN_1000_29c4_1000_29c4.c`."
    }
   },
   {

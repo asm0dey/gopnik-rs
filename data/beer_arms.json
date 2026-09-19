@@ -555,7 +555,7 @@
   {
    "what": "The `Game::beer` doc comment says `Six later \"h\" compares` and then lists five addresses.",
    "original": "the census: `\"h\"` (CS 0x28c7) is pushed at 1000:29f0, 1000:2a6a, 1000:2aa0, 1000:2af2, 1000:2b40 and 1000:2b89 -- six in TOTAL, five AFTER the token compare.",
-   "port": "the same sentence appears twice: in `Game::beer`'s doc comment and in `src/commands.rs`'s module doc.",
+   "port": "the same MISCOUNT appears twice, with two different wordings: `src/game.rs` says `Six later \"h\" compares` and `src/commands.rs`'s module doc says `Six further \"h\" compares`. They are not verbatim, so a single grep does not find both -- `grep -n 'Six later' src/game.rs` and `grep -n 'Six further' src/commands.rs` each find one.",
    "consequence": "an off-by-one that reads as a completed census.",
    "falsifiable_as": "`data/beer_arms.json`'s `strings[0].pushed_at` has six entries and `tools/test_beer_arms.py` derives it from the binary.",
    "blocked": false,
@@ -593,6 +593,8 @@
   "write_calls": 1,
   "absolute_writes": 3,
   "random_calls": 0,
-  "note": "Every one of these is the aligned decode's own count, asserted by `tools/test_beer_arms.py` against a fresh walk of `orig/g.exe`."
- }
+  "note": "Every one of these is the aligned decode's own count, asserted by `tools/test_beer_arms.py` against a fresh walk of `orig/g.exe`.",
+  "dgroup_addresses_touched": 4
+ },
+ "globals_are_a_measurement": "`globals[]` is every DGROUP address the range touches, not a list of the four someone noticed. `tools/test_beer_arms.py`'s `test_the_recorded_globals_are_every_dgroup_address_the_range_touches` sweeps every absolute-memory operand in the aligned decode and asserts SET EQUALITY against the `ds` keys below, so a fifth global -- including one that is only READ, which the effects sweep cannot see because it only buckets writes -- reds the test. The same sweep also requires every instruction carrying an absolute-memory operand to fall in the READ or the WRITE bucket, so an unrecognised shape fails loudly instead of being counted as neither. This artifact is outside `tools/test_arms_artifacts.py`'s corpus, which is where `test_the_dgroup_addresses_touched_are_the_recorded_globals` lives for the three handler maps; that exclusion is why the sweep had to be written here rather than inherited."
 }

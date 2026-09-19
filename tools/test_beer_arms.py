@@ -119,6 +119,15 @@ WRITES_ABS_MEM = re.compile(
     r"|shl|shr|sar|rol|ror|rcl|rcr)\s+"
     r"(byte |word |dword )?\[0x[0-9a-f]+\]")
 
+#: An instruction that only READS an absolute-memory operand. Copied verbatim
+#: from `tools/test_arms_artifacts.py`, including the `xchg` exclusion -- it
+#: belongs in NEITHER bucket so an unclassified shape fails the sweep instead
+#: of passing as a read.
+READS_ABS_MEM = re.compile(
+    r"^(cmp|test|push)\s+(byte |word |dword )?\[0x[0-9a-f]+\]"
+    r"|^(?!xchg\b)[a-z]{2,5}\s+[a-z]{2,3},"
+    r"(byte |word |dword )?\[0x[0-9a-f]+\]")
+
 #: An instruction whose DESTINATION is anywhere in memory at all -- absolute
 #: or frame-relative.  Used to prove the effect inventory is not merely a list
 #: of the absolute writes someone happened to notice.
@@ -351,16 +360,42 @@ class BeerTest(Base):
         self.assertTrue(self.uncited["empty_classes_are_reported"].strip())
 
     def test_the_recorded_divergence_is_in_gaps(self):
-        gaps = GAPS.read_text(encoding="utf-8")
+        """Every divergence's OWN `recorded_in` must resolve, not one literal.
+
+        The first revision of this test hunted the string
+        `"mh` with a broken jaw skips the tail"` -- a literal, not
+        `d["recorded_in"]`. A SECOND divergence added later, whose gaps entry
+        was never written, would have passed the loop while the mutation case
+        beside it claimed to defend the class. That is the project's named
+        recurring defect: a guard written against one past symptom rather than
+        the class. `recorded_in` is a structured `{file, heading}` record so
+        the heading is derived rather than parsed out of a sentence.
+        """
         self.assertTrue(self.uncited["divergences"],
                         "the divergence list is empty; Task 41 found one")
         for d in self.uncited["divergences"]:
-            for a in CITE.findall(d["original"]) + CITE.findall(d["port"]):
-                self.at(a)
-            self.assertIn(
-                "mh` with a broken jaw skips the tail", gaps,
-                "the divergence names docs/re/gaps.md and the entry is not "
-                "there")
+            with self.subTest(divergence=d["id"]):
+                for a in (CITE.findall(d["original"])
+                          + CITE.findall(d["port"])):
+                    self.at(a)
+                rec = d["recorded_in"]
+                self.assertIsInstance(
+                    rec, dict,
+                    "`recorded_in` must be a {file, heading} record so the "
+                    "heading can be DERIVED; a sentence has to be parsed and "
+                    "a literal cannot be checked at all")
+                path = REPO / rec["file"]
+                self.assertTrue(path.is_file(),
+                                "%s records its divergence in %s, which does "
+                                "not exist" % (d["id"], rec["file"]))
+                self.assertTrue(rec["heading"].strip(),
+                                "%s records an empty heading" % d["id"])
+                self.assertIn(
+                    rec["heading"], path.read_text(encoding="utf-8"),
+                    "%s says it is recorded in %s under %r and that heading "
+                    "is not there -- the finding exists in one artifact and "
+                    "not the other"
+                    % (d["id"], rec["file"], rec["heading"]))
 
     # ------------------------------------------------------------- the gates
     def test_the_recorded_gates_are_every_conditional_branch_in_range(self):
@@ -540,6 +575,55 @@ class BeerTest(Base):
         # as residue
         self.assertEqual(moves, ["1000:29e2", "1000:29e6"])
         self.assertEqual(frame, ["1000:2a14"])
+
+    def test_the_recorded_globals_are_every_dgroup_address_the_range_touches(
+            self):
+        """A SET EQUALITY, which is what makes `globals[]` a measurement.
+
+        `test_the_globals_read_and_write_lists_are_the_decode` iterates the
+        four already recorded, so it cannot see a fifth -- and the effects
+        sweep only buckets WRITES, so a global the routine merely READS is
+        invisible to both. That gap is exactly what
+        `tools/test_arms_artifacts.py`'s
+        `test_the_dgroup_addresses_touched_are_the_recorded_globals` covers for
+        the three handler maps, and this artifact is outside that corpus on
+        purpose, so the sweep is written here rather than inherited.
+
+        Two directions, plus a bucketing completeness check: every instruction
+        carrying an absolute-memory operand must be classified a READ or a
+        WRITE, so an unrecognised shape fails by name instead of counting as
+        neither.
+        """
+        swept, unclassified = set(), []
+        for i in self.ins:
+            hits = re.findall(r"\[0x([0-9a-f]+)\]", i.text)
+            if not hits:
+                continue
+            swept.update("20ae:" + h for h in hits)
+            if not (WRITES_ABS_MEM.match(i.text)
+                    or READS_ABS_MEM.match(i.text)):
+                unclassified.append((cit(i.off), i.text))
+        self.assertEqual(
+            unclassified, [],
+            "an instruction carrying an absolute-memory operand fell in "
+            "neither the READ nor the WRITE bucket, so the census below is "
+            "not a sweep")
+        recorded = {g["ds"] for g in self.arms["globals"]}
+        self.assertEqual(
+            swept, recorded,
+            "the DGROUP sweep and `globals[]` disagree: only in the decode "
+            "%s, only in the artifact %s -- `globals[]` is claimed to be "
+            "EVERY address the range touches"
+            % (sorted(swept - recorded), sorted(recorded - swept)))
+        self.assertEqual(
+            self.arms["sweeps"]["dgroup_addresses_touched"], len(swept),
+            "sweeps.dgroup_addresses_touched records %s, the decode touches "
+            "%d" % (self.arms["sweeps"]["dgroup_addresses_touched"],
+                    len(swept)))
+        self.assertTrue(
+            self.arms["globals_are_a_measurement"].strip(),
+            "the artifact must say that `globals[]` is a measurement, so the "
+            "claim this test defends is written down beside it")
 
     def test_the_globals_read_and_write_lists_are_the_decode(self):
         for g in self.arms["globals"]:
@@ -895,9 +979,18 @@ class ProseTest(Base):
                     "data/beer_uncited.json's divergence cites %s and "
                     "docs/re/beer.md does not name it -- the two halves of "
                     "the finding have drifted" % a)
-            self.assertIn(d["recorded_in"].split(",")[0], self.md,
-                          "the prose does not point at %s"
-                          % d["recorded_in"])
+            rec = d["recorded_in"]
+            self.assertIn(rec["file"], self.md,
+                          "the prose does not point at %s" % rec["file"])
+            # The prose wraps, so both sides are flattened -- otherwise this
+            # would fail on a line break and tempt the next author to weaken
+            # it back to a prefix match.
+            self.assertIn(
+                " ".join(rec["heading"].split()), " ".join(self.md.split()),
+                "docs/re/beer.md points at %s but does not quote the heading "
+                "%r the record names, so a reader cannot find the entry and a "
+                "renamed heading would not be caught here"
+                % (rec["file"], rec["heading"]))
 
 
 class SrcPairingTest(Base):
@@ -955,6 +1048,66 @@ class SrcPairingTest(Base):
                             "NOWHERE IN THE MODULE at all"))
             seen += 1
         self.assertEqual(seen, self.uncited["counts"]["implemented"])
+
+    def test_no_two_rows_share_a_construct_without_saying_which_half_they_mean(
+            self):
+        """The CLASS behind the `1000:2c36` defect, not just that instance.
+
+        `1000:2c36` tests hp-vs-hp0 and was filed with the `expr` and
+        `recompute` of `1000:2c3d`, which tests `beer_dl == 0` -- byte
+        identical, distinguishable only by a `why` sentence no test reads. The
+        identifier check cannot see it: `player`, `beer_dl` and `term` all
+        occur in `Game::beer`, so the pairing passes for the wrong construct,
+        and Task 42 would have put `// 1000:2c36` on the `beer_dl` line.
+
+        Sharing a construct is LEGITIMATE here -- the port evaluates one
+        predicate where the original tests it more than once -- so the rule is
+        not "never share". It is: a shared construct must be declared, and each
+        sharer must name the exact sub-expression it means. A row that has
+        drifted onto a sibling's construct then has to write a discriminator
+        that is not in that expression, and this goes red.
+        """
+        groups = collections.defaultdict(list)
+        for r in self.rows:
+            if r["class"] != "implemented":
+                continue
+            src = r["src"]
+            groups[(src["module"], src["function"], src["expr"],
+                    src["recompute"])].append(r)
+        shared = {k: v for k, v in groups.items() if len(v) > 1}
+        for key, rs in sorted(shared.items()):
+            addrs = [r["addr"] for r in rs]
+            with self.subTest(rows=addrs):
+                discs = []
+                for r in rs:
+                    d = r["src"].get("discriminator")
+                    self.assertTrue(
+                        d,
+                        "%s shares its `expr` and `recompute` with %s and "
+                        "names no `src.discriminator`, so nothing says which "
+                        "half of that construct it means -- and a row that "
+                        "has drifted onto a sibling's construct is "
+                        "indistinguishable from one that legitimately shares "
+                        "it" % (r["addr"],
+                                [a for a in addrs if a != r["addr"]]))
+                    self.assertIn(
+                        d, key[2],
+                        "%s's discriminator %r is not a sub-expression of the "
+                        "`expr` it shares (%r) -- either the discriminator is "
+                        "wrong or the row is filed against the wrong construct"
+                        % (r["addr"], d, key[2]))
+                    discs.append(d)
+                self.assertEqual(
+                    len(set(discs)), len(discs),
+                    "%s share a construct and two of them claim the same "
+                    "half (%s), so at least one names a predicate it does not "
+                    "evaluate" % (addrs, discs))
+        # And the shape must actually occur, or the check above is vacuous.
+        self.assertTrue(
+            shared,
+            "no two `implemented` rows share a construct, so this test "
+            "asserted nothing -- if the artifact really has no shared "
+            "constructs, delete it rather than leave it passing vacuously")
 
     def test_every_recompute_command_still_finds_its_construct(self):
         """A `src/` citation is a COMMAND here, so the command is run.
