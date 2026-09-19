@@ -331,6 +331,7 @@
       "docs/re/difftest.md `src/trace.rs:202,210` -> src/trace.rs:202,210 -- no symbol span adjacent to it",
       "docs/re/gaps.md `src/game.rs:1421-1422` -> src/game.rs:1421-1422 -- no symbol span adjacent to it",
       "docs/re/gaps.md `src/game.rs:883` -> src/game.rs:883 -- no symbol span adjacent to it",
+      "docs/re/port-gaps.md `src/game.rs:5507` -> src/game.rs:5507 -- no symbol span adjacent to it",
       "docs/superpowers/RESUME.md `:3001-3040` -> src/game.rs:3001-3040 -- no symbol span adjacent to it",
       "docs/superpowers/RESUME.md `src/game.rs:1188-1214` -> src/game.rs:1188-1214 -- no symbol span adjacent to it",
       "docs/superpowers/RESUME.md `src/locations.rs:175` -> src/locations.rs:175 -- no symbol span adjacent to it",
