@@ -155,9 +155,15 @@ side:
 2. `1000:ae86`/`1000:ae97`: compare against `"w"`/`"run"`; both jump to
    `1000:aea1`.
 3. `1000:aea1`..`1000:af04`: decays a "stoned" counter (`DS:38cd`); on it
-   hitting zero, applies `^4Глюки прошли. Сила -2.` (file `0x9D64`). Not
-   reproduced in `src/game.rs` (no countdown field on `Fighter`, only
-   `stoned: bool`).
+   hitting zero, applies `^6Глюки прошли. Сила -2.` (file `0x9D64`,
+   CS `0x8494`, pushed by `1000:aec1 mov di,0x8494`). **Reproduced** in
+   `Game::wander_preamble` (`src/game.rs`, seq 1), which cites `1000:aea1`
+   and takes back exactly what `1000:4b57` granted. The countdown is
+   `Game::buff_countdown`, not a field on `Fighter` — which is what this
+   note used to read as "not reproduced"; `docs/re/gaps.md` separately flags
+   `Fighter::stoned` and `Game::buff_countdown` as two models of one
+   variable. The colour is `^6`, not `^4`: `difftest.py` strips markup
+   before comparing, so no oracle would have caught that.
 4. `1000:af04` onward: a long run of one-shot flavour/discovery events
    (phone calls, finding the market sign, the silencer's 25-wander counter
    `docs/re/tables.md` already documents at `20ae:3e32`), each gated by its

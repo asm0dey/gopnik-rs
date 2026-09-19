@@ -1130,15 +1130,21 @@ once.
   remaining divergence is the four calls at `ae27`..`ae39` — in practice the
   two fights, since `FUN_1000_11c2` only fills the enemy record.
 
-  **The reason that stays open is now the whole reason**, with nothing
+  ~~**The reason that stays open is now the whole reason**, with nothing
   propping it up: `FUN_1000_3d11`'s `param_1` is not modelled by
-  `Game::run_combat` — the XP-award skip at `1000:51b9`..`1000:51e9` and the
-  `param_1 == 4` victory ending at `1000:5085`, which has never been traced
-  (`docs/re/wander.md`: "Whether `FUN_1000_3d11(4)` returns is not traced
-  here"). Closing it is a combat-dispatch task: trace `param_1`, then call
-  the two fights from a per-turn `rector_showdown` check. The earlier
-  argument that repeating the arm "would announce two fights every turn"
-  was built on the false half and is withdrawn. Full detail on
+  `Game::run_combat`.~~ **CLOSED — this paragraph was stale**, caught by the
+  `entry` slice-1 survey. `param_1` IS modelled: `Game::run_combat` takes it
+  as an `opponent_kind: u8` parameter, and its own doc heading says
+  "`opponent_kind` IS `param_1`, and all five of its effects are here" —
+  six arms read it, the `param_1 == 4` victory ending among them
+  (`grep -n opponent_kind src/game.rs`). The two fights
+  are ported too: `Game::rector_endgame` calls `run_combat(3, boss(
+  "rektor_ngu_v0"), ..)` and `run_combat(4, boss("rektor_ngu_v1"), ..)`,
+  which is `1000:ae2d`'s `FUN_1000_3d11(3)` and `1000:ae39`'s
+  `FUN_1000_3d11(4)`. `rector_endgame`'s own doc comment already had this
+  right, including that the block repeats per turn; only this entry lagged.
+  The earlier argument that repeating the arm "would announce two fights
+  every turn" was built on a false half and is withdrawn. Full detail on
   `FUN_1000_11c2`, which Task 20 DID fully trace, is in
   "`FUN_1000_11c2` -- traced (Task 20), not ported", below.
 
