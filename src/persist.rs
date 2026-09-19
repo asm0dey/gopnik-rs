@@ -567,7 +567,7 @@ pub fn choose_slot(
     // (`crate::term` writes only), so it reads a line and takes its first
     // character. A PORT DECISION, and the one place this path knowingly
     // differs from `1000:6b56`.
-    let Some(line) = lines.next() else {
+    let Some(line) = term::read_line(lines) else {
         return Ok(SlotMenu::NewCharacter);
     };
     Ok(match line?.chars().next() {

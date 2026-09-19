@@ -73,5 +73,74 @@ class ReadKeyTakesOneKeystroke(unittest.TestCase):
             os.close(fd)
 
 
+class CtrlDDoesNotQuit(unittest.TestCase):
+    """Ctrl+D is a Unix key the original cannot see.
+
+    DOS has no EOF keystroke, and the `Crt` unit this game links runs with
+    `CheckEof = False` -- set at `1f16:003b` (`xor ax,ax` / `mov
+    [0x3eb9],al`) and never overridden in the game's own code -- so not
+    even DOS's own Ctrl+Z ends input there. Nothing the player types can
+    stop the original this way.
+
+    Ctrl+D only MEANS end-of-input at a `ReadLn`; at a `ReadKey` the tty is
+    in raw mode and `0x04` is simply the key that was pressed, which is
+    faithful and not what this tests. So this drives the game to its first
+    real `ReadLn` -- the class prompt -- and sends Ctrl+D there.
+
+    Only a pty can check it: on a pipe an end-of-input IS the genuine end
+    of the input, and every other test in this repo depends on that.
+    """
+
+    CLASS_PROMPT = "Выбери кем ты будешь"
+
+    @classmethod
+    def setUpClass(cls):
+        subprocess.run(
+            ["cargo", "build", "-q"], cwd=str(REPO), check=True)
+        if not BIN.exists():
+            raise unittest.SkipTest(f"no debug binary at {BIN}")
+
+    def test_ctrl_d_at_a_readln_does_not_end_the_process(self):
+        pid, fd = pty.fork()
+        if pid == 0:
+            os.execv(str(BIN), ["gopnik"])
+        try:
+            # Pump keystrokes through the opening's ReadKeys until the
+            # first ReadLn prompt shows up.
+            seen = ""
+            for _ in range(40):
+                seen += run_until(fd, 0.4).decode("utf-8", "replace")
+                if self.CLASS_PROMPT in seen:
+                    break
+                os.write(fd, b"n")
+            self.assertIn(self.CLASS_PROMPT, seen,
+                          "never reached the class prompt")
+
+            os.write(fd, b"\x04")   # Ctrl+D at a ReadLn
+            run_until(fd, 1.0)
+            os.write(fd, b"\x04")
+            run_until(fd, 1.0)
+
+            done, status = os.waitpid(pid, os.WNOHANG)
+            self.assertEqual(
+                (done, status), (0, 0),
+                "Ctrl+D ended the process; the original cannot be quit "
+                "this way")
+
+            # Still listening: a real answer must still be accepted.
+            os.write(fd, b"0\n")
+            after = seen + run_until(fd, 2.0).decode("utf-8", "replace")
+            self.assertIn(
+                "зовут тебя", after,
+                "the game stopped accepting input after Ctrl+D")
+        finally:
+            try:
+                os.kill(pid, 9)
+                os.waitpid(pid, 0)
+            except (ProcessLookupError, ChildProcessError):
+                pass
+            os.close(fd)
+
+
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)

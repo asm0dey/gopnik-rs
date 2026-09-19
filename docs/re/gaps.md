@@ -575,6 +575,36 @@ Off a terminal `read_key` still consumes a line, deliberately: there is no
 raw mode to set on a pipe, and a one-byte read would split scripted input
 and desynchronise every `ReadLn` after it.
 
+**Ctrl+D was the same class of artifact, and is fixed with it. Ctrl+C is
+NOT an artifact and is deliberately left alone.** Both answers come from one
+place: `Crt`'s init at `1f16:003b` does `xor ax,ax` / `mov [0x3eb9],al`
+(`CheckEof := False`) then `inc ax` / `mov [0x3eb8],al`
+(`CheckBreak := True`), and `re_query.py xrefs-to 20ae:3eb8` finds exactly
+two references in the whole image — that store and a `cmp byte
+[0x3eb8],0x0` in the RTL's input path. **The game's own code never writes
+either variable.**
+
+The DGROUP layout behind those two addresses is corroborated three ways, not
+assumed from the `Crt` declaration order alone: `TextColor` (`0f16:0263`)
+writes `TextAttr` at `0x3ebe`; `ClrScr` (`0f16:01cc`) reads `WindMin`/
+`WindMax` at `0x3ec0`/`0x3ec2`, the one byte of alignment padding a
+word-aligned layout predicts; and the init above stores `CheckEof` at
+`0x3eb9`, one byte after `CheckBreak`.
+
+So: `CheckBreak = True` for the whole run means Turbo Pascal aborts on
+Ctrl+C, and **this port's Ctrl+C is faithful**. `CheckEof = False` means not
+even DOS's own Ctrl+Z ends input, and DOS has no Ctrl+D at all, so **nothing
+the player types can stop the original**. `crate::term::read_line` and
+`read_line_raw` therefore retry an end-of-input on a terminal and pass
+`None` straight through off one, where it is the genuine end of the input
+every caller's `else` arm is written to end on.
+
+Ctrl+D at a `ReadKey` is not affected and should not be: the tty is in raw
+mode there, so `0x04` is simply the key that was pressed.
+`tools/test_readkey_pty.py`'s second case therefore drives the game to its
+first real `ReadLn` — the class prompt — before sending it, and it too was
+shown RED against the old behaviour before it was shown green.
+
 ## ~~No typed save verb, and no "saved" message~~ — half closed, half REFUTED
 
 *Cited from `src/persist.rs`.*

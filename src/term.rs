@@ -63,6 +63,71 @@ pub fn read_key(lines: &mut dyn Iterator<Item = io::Result<String>>) {
     stty(&[&saved]);
 }
 
+/// How many consecutive end-of-inputs on a TERMINAL are treated as Ctrl+D
+/// before this port gives up and lets the caller exit.
+///
+/// ponytail: a plain counter, not tty liveness detection. On a live
+/// terminal a read BLOCKS, so the count never advances and the ceiling is
+/// never approached; it exists only so a terminal that goes away (the
+/// window closes, the pty is torn down) ends the process instead of
+/// spinning on instant `None`s forever. Raise it or replace it with a
+/// `poll()` on fd 0 if a real case ever reaches it.
+const EOF_RETRIES_ON_A_TTY: u32 = 1024;
+
+/// Read one line, ignoring a terminal's end-of-input.
+///
+/// **Ctrl+D is a Unix key the original cannot see.** DOS has no such
+/// keystroke, and the `Crt` unit this game links runs with
+/// `CheckEof = False` -- set at `1f16:003b` (`xor ax,ax` / `mov
+/// [0x3eb9],al`, DGROUP `0x3eb9`) and never overridden anywhere in the
+/// game's own code -- so not even DOS's own Ctrl+Z ends input there.
+/// Nothing the player types can stop the original this way.
+///
+/// (Ctrl+C is the opposite case and is deliberately left alone: the same
+/// init sets `CheckBreak = True` at DGROUP `0x3eb8` -- `inc ax` / `mov
+/// [0x3eb8],al` -- and `xrefs-to 20ae:3eb8` finds no write in the game at
+/// all, so Turbo Pascal's abort-on-Ctrl+C is faithful and this port keeps
+/// it.)
+///
+/// On a terminal an end-of-input is therefore not an end of anything: it
+/// is retried, which reads as "Ctrl+D did nothing". Off a terminal --
+/// every test, `tools/difftest.py`, any piped run -- `None` still means
+/// the input is genuinely exhausted and is passed straight through, since
+/// that is what every caller's `else` arm is written to end on.
+pub fn read_line<I>(lines: &mut I) -> Option<io::Result<String>>
+where
+    I: Iterator<Item = io::Result<String>> + ?Sized,
+{
+    if !io::stdin().is_terminal() {
+        return lines.next();
+    }
+    for _ in 0..EOF_RETRIES_ON_A_TTY {
+        if let Some(line) = lines.next() {
+            return Some(line);
+        }
+    }
+    None
+}
+
+/// [`read_line`]'s policy for a caller holding a `BufRead` rather than the
+/// line iterator -- `main`'s character creation. Returns the line with its
+/// terminator intact, as `BufRead::read_line` does, because
+/// `main::create_character` inspects that terminator.
+pub fn read_line_raw(stdin: &mut impl io::BufRead) -> String {
+    let mut buf = String::new();
+    if !io::stdin().is_terminal() {
+        let _ = stdin.read_line(&mut buf);
+        return buf;
+    }
+    for _ in 0..EOF_RETRIES_ON_A_TTY {
+        match stdin.read_line(&mut buf) {
+            Ok(0) => continue, // Ctrl+D: not an end, on a terminal
+            _ => return buf,
+        }
+    }
+    buf
+}
+
 /// Run `stty` against this process's own terminal, returning its trimmed
 /// stdout on success. `stdin` is inherited so it acts on the real tty;
 /// only `stdout` is captured.

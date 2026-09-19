@@ -68,8 +68,7 @@ fn create_character(stdin: &mut impl BufRead) -> (Fighter, Progress) {
     let answer = if (0..=3).contains(&answer) { answer } else { 0 };
 
     term::print("^2А зовут тебя:^7 ");
-    let mut name = String::new();
-    let _ = stdin.read_line(&mut name);
+    let name = term::read_line_raw(stdin);
     // 1000:7220 `cmp byte [0x379c],0` tests the just-read shortstring's
     // LENGTH BYTE, not its trimmed content -- see `Game::rename`'s doc for
     // the identical idiom at `1000:ed5f`. `read_line` (unlike
@@ -89,9 +88,7 @@ fn create_character(stdin: &mut impl BufRead) -> (Fighter, Progress) {
 /// Turbo Pascal's `Val` (`1f78:131b`) leaves the target untouched on a bad
 /// parse; the caller at `1000:712d` then clamps. Zero is the same outcome.
 fn read_number(stdin: &mut impl BufRead) -> i32 {
-    let mut buf = String::new();
-    let _ = stdin.read_line(&mut buf);
-    buf.trim().parse().unwrap_or(0)
+    term::read_line_raw(stdin).trim().parse().unwrap_or(0)
 }
 
 /// The original seeds `RandSeed` from the DOS clock (`Randomize`,

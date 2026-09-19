@@ -863,7 +863,9 @@ impl Game {
                 }
             }
             self.prompt();
-            let Some(line) = lines.next() else { break };
+            let Some(line) = term::read_line(&mut lines) else {
+                break;
+            };
             let line = line?;
             match self.mode.clone() {
                 Mode::Street => {
@@ -1030,7 +1032,7 @@ impl Game {
         // 1000:ac1e is `0eed:0000`, the no-newline Write -- the same call and
         // the same string (`cs:0x8321`) the street prompt at 1000:ae3c uses.
         term::print("\\");
-        let Some(line) = lines.next() else {
+        let Some(line) = term::read_line(lines) else {
             self.running = false;
             return Ok(());
         };
@@ -3103,7 +3105,7 @@ impl Game {
             },
             &[enemy.level as i64],
         ));
-        let Some(line) = lines.next() else {
+        let Some(line) = term::read_line(lines) else {
             self.running = false;
             return Ok(());
         };
@@ -3228,8 +3230,9 @@ impl Game {
             &[i64::from(fill)],
         ));
         // 1000:b8e2..b8ec -- a ReadLn into DS:3a72 that nothing downstream
-        // compares; see the module doc.
-        let _ = lines.next();
+        // compares; see the module doc. Still a ReadLn, so it goes through
+        // `term::read_line` and ignores a terminal's Ctrl+D like the rest.
+        let _ = term::read_line(lines);
         term::println(wander::BUCKET4[1]);
         Ok(())
     }
@@ -3715,7 +3718,7 @@ impl Game {
             &[i64::from(self.district) * 25],
         ));
         term::println("Ты хочешь сохраниться?");
-        let Some(line) = lines.next() else {
+        let Some(line) = term::read_line(lines) else {
             self.running = false;
             return Ok(());
         };
@@ -3784,7 +3787,7 @@ impl Game {
             return Ok(());
         }
         term::println("^5Идет типа клёвая цыпа. Хочешь её зацепить?");
-        let Some(line) = lines.next() else {
+        let Some(line) = term::read_line(lines) else {
             self.running = false;
             return Ok(());
         };
@@ -4061,7 +4064,7 @@ impl Game {
         term::print("^2Звали тебя:^7 ");
         term::println(&self.player.name);
         term::print("^2А теперь будут:^7 ");
-        let Some(line) = lines.next() else {
+        let Some(line) = term::read_line(lines) else {
             self.running = false;
             return Ok(());
         };
@@ -4441,7 +4444,7 @@ impl Game {
         // (pushed 1000:cf14, 1000:cfc9, 1000:d07e, 1000:d141, 1000:d1fd,
         // 1000:d2b2), written by the no-newline `0eed:0000`.
         term::print("^0Продать вещи\\");
-        let Some(line) = lines.next() else {
+        let Some(line) = term::read_line(lines) else {
             return Ok(None);
         };
         let answer = line?;
@@ -5878,7 +5881,7 @@ impl Game {
                     log.prompts.push(state);
                 }
             }
-            let Some(line) = lines.next() else {
+            let Some(line) = term::read_line(lines) else {
                 self.running = false;
                 return Ok(());
             };
