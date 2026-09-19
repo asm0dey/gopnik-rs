@@ -1029,7 +1029,7 @@
   },
   {
     "label": "market-port-literal",
-    "defends": "tools/test_string_citations.py binds comment -> code for src/market.rs, which joined its SOURCES list in Phase 2 batch E.  scan() proves a cited offset holds the backticked text in the COMMENT; comment_code_pairs() proves the Rust literal one line below says the same thing, which is the half a comment-only check cannot see.  The perturbation is a Cyrillic \u041a typed as a Latin K inside the market bust's accusation -- it renders identically in a diff.",
+    "defends": "tools/test_string_citations.py binds comment -> code for src/market.rs, which joined its SOURCES list in Phase 2 batch E.  scan() proves a cited offset holds the backticked text in the COMMENT; comment_code_pairs() proves the Rust literal one line below says the same thing, which is the half a comment-only check cannot see.  The perturbation is a Cyrillic \u041a typed as a Latin K inside the market bust's accusation -- it renders identically in a diff.  The `expect` names the MUTATED literal rather than the generic failure line, because `gym-comment-and-code-literal-agree` already drives the same test method: a shared `expect` would make each case pass on the other's failure, which is what test_no_two_cases_defend_the_same_assertion refuses.",
     "artifact": "src/market.rs",
     "mutate": {
       "op": "text-replace",
@@ -1042,7 +1042,7 @@
       "tools/test_string_citations.py",
       "StringCitationTest.test_a_backticked_citation_agrees_with_the_literal_beside_it"
     ],
-    "expect": "but the code beside it prints"
+    "expect": "prints '^4K\u043e\u0440\u044f\u0432\u044b\u0439"
   },
   {
     "label": "market-port-citation",
