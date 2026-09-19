@@ -1011,11 +1011,6 @@ impl Game {
     /// **What is still NOT reproduced here**, and why it is not this
     /// method's job:
     ///
-    /// * The discovery-flag resets are `Places::reset_for_new_district`,
-    ///   which clears all seven unconditionally while `1000:aba0`,
-    ///   `1000:abb1` and `1000:abc2` spare Club and Girl for class 3 and the
-    ///   Den for class 5. That divergence predates this task and is recorded
-    ///   in `src/locations.rs`'s module doc and `docs/re/gaps.md`.
     /// * `1000:ad12`'s district-keyed announcement arms (`cmp al,2` and the
     ///   chain after it) are unported text.
     /// * The chapter-5 arm's two forced fights, `1000:ae2d`
@@ -1052,7 +1047,9 @@ impl Game {
             return Ok(());
         }
         self.district += 1; // 1000:ab92
-        self.places.reset_for_new_district(); // 1000:ab96..1000:abc9
+                            // 1000:ab96..1000:abc9 -- `self.player.class` is `[20ae:389c]`, the
+                            // word the three skips at `1000:aba0`/`abb1`/`abc2` compare.
+        self.places.reset_for_new_district(self.player.class);
         self.market_ban_countdown = 0; // 1000:abce
         self.club_ban_countdown = 0; // 1000:abd3
         term::println("^1Ты доказал, что ты самый крутой в этом районе - отправляйся в следующий");

@@ -340,7 +340,7 @@ fn game_for(run: &Run) -> Game {
     // capture that loaded a save started this district fresh. Same
     // reconstruction `tests/wander_sequence.rs` uses, and the capture's own
     // first per-turn sample is what settles it there.
-    g.places.reset_for_new_district();
+    g.places.reset_for_new_district(g.player.class);
     // 1000:73bb runs on the load path too: a Вор gets the dealers back.
     g.places.mark_found(Location::Dealers);
     g

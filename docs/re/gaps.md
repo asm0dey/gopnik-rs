@@ -1044,17 +1044,24 @@ once.
 
 **What is still NOT reproduced, and why:**
 
-* **The discovery-flag resets are unconditional in the port.** `1000:aba0`,
-  `1000:abb1` and `1000:abc2` each compare `[0x389c]` (the class) and skip
-  exactly one clear — Club (`1000:aba7`) and Girl (`1000:abb8`) are spared
-  for class 3, the Den (`1000:abc9`) for class 5; Gym (`1000:abac`) and
-  Dealers (`1000:abbd`) are always cleared, being the second store in each
-  pair, past the skip. `Places::reset_for_new_district` clears all seven.
-  This divergence predates Task 21 and Task 21 did not spend the opening it
-  created: the class is now in scope at the one call site, so passing it in
-  is a local change, but it alters which locations a player keeps across a
-  promotion and wants its own test. `src/locations.rs`'s module doc records
-  the same.
+* ~~**The discovery-flag resets are unconditional in the port.**~~
+  **CLOSED** by the `entry` slice-1 survey. `1000:aba0`, `1000:abb1` and
+  `1000:abc2` each compare `[0x389c]` (the class) and skip exactly one
+  clear — Club (`1000:aba7`) and Girl (`1000:abb8`) are spared for class 3,
+  the Den (`1000:abc9`) for class 5; Gym (`1000:abac`) and Dealers
+  (`1000:abbd`) are always cleared, being the second store in each pair,
+  past the skip. `Places::reset_for_new_district` now takes the class and
+  models all three skips, and `Game::district_advance` passes
+  `self.player.class`. The test the old entry said it "wants" is
+  `src/locations.rs`'s `a_promotion_spares_the_flags_the_class_keeps`, with
+  `sparing_a_flag_never_sets_one_that_was_clear` beside it for the half a
+  re-mark implementation would get wrong. The full store sequence is quoted
+  in `src/locations.rs`'s module doc; re-derive it with
+  `python3 tools/re_query.py resolve 1000:ab96 -n 60 -i 30`.
+
+  **No oracle covers it.** Neither `tools/difftest.py` nor
+  `data/rng_trace.json` exercises a class-3 or class-5 district promotion,
+  so the two unit tests above are the only thing holding this behaviour.
 * **The district-keyed announcement arms at `1000:ad12`..`1000:adbf`**
   (`cmp al,2` at `1000:ad15` and the chain after it) are unported text.
 * **The chapter-5 arm's two forced fights** — and *only* those.

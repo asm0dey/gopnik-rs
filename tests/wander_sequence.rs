@@ -297,7 +297,7 @@ fn game_for(run: &Run) -> Game {
     // and `20ae:3698 = 0`, with only `20ae:3695` set. That is what this
     // reconstruction already assumed, and it is now observed rather than
     // argued.
-    g.places.reset_for_new_district();
+    g.places.reset_for_new_district(g.player.class);
     // 1000:73bb runs on the load path too (`docs/re/wander.md`, "What
     // reaches 1000:73bb"): a Вор gets the dealers back.
     g.places.mark_found(Location::Dealers);

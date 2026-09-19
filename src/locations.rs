@@ -10,28 +10,39 @@
 //! `20ae:3692`, raised once понтовость reaches `district * 10`, file `0xC462`
 //! / `1000:ab92`).
 //!
-//! KNOWN DIVERGENCE, established from flow: the original's reset is NOT
-//! unconditional. `1000:ab96` clears Vet and Market, then three `74 05` skips
-//! each spare exactly one flag -- Club at `1000:aba7` and Girl at `1000:abb8`
-//! are spared when `[20ae:389c] == 3`, Den at `1000:abc9` when it is `5`
-//! (Gym at `1000:abac` and Dealers at `1000:abbd` are always cleared, being
-//! the second store in each pair, past the skip). `reset_for_new_district`
-//! clears all seven unconditionally.
+//! The reset is NOT unconditional, and `reset_for_new_district` now models
+//! that. `1000:ab96` clears Vet and Market, then three `74 05` skips each
+//! spare exactly one flag -- Club at `1000:aba7` and Girl at `1000:abb8` are
+//! spared when `[20ae:389c] == 3`, Den at `1000:abc9` when it is `5`. Gym at
+//! `1000:abac` and Dealers at `1000:abbd` are always cleared, being the
+//! second store in each pair, past the skip -- which is the whole reason the
+//! guards read as sparing one flag rather than two:
 //!
-//! `[0x389c]` is no longer the blocker this comment used to name: Task 11b
-//! established it as the character class, and Task 11c reads it in
-//! `Game::apply_class_bonus` (`1000:73bb`). What is still missing is that
-//! `Places` has no class to consult -- the fix is to pass one in.
+//! ```text
+//! 1000:ab96  mov byte [0x3698],0x0    Vet      -- always
+//! 1000:ab9b  mov byte [0x3694],0x0    Market   -- always
+//! 1000:aba0  cmp word [0x389c],0x3
+//! 1000:aba5  jz 0xabac                         -- class 3 skips the next store
+//! 1000:aba7  mov byte [0x3699],0x0    Club
+//! 1000:abac  mov byte [0x369a],0x0    Gym      -- always (jump lands here)
+//! 1000:abb1  cmp word [0x389c],0x3
+//! 1000:abb6  jz 0xabbd
+//! 1000:abb8  mov byte [0x3697],0x0    Girl
+//! 1000:abbd  mov byte [0x3695],0x0    Dealers  -- always
+//! 1000:abc2  cmp word [0x389c],0x5
+//! 1000:abc7  jz 0xabce
+//! 1000:abc9  mov byte [0x3696],0x0    Den
+//! ```
 //!
-//! **Task 21 removed the second half of that blocker and did not spend it.**
-//! The one caller is now `Game::district_advance`, the port of the
-//! district-transition block itself (`1000:ab75`..`1000:ad12`, at the top of
-//! `Game::run`'s loop), where `self.player.class` IS in scope -- so passing
-//! it in is a local change now rather than a restructuring. It was left out
-//! deliberately: Task 21's brief scoped the resets to this function as it
-//! stands, and sparing a flag for a class changes which locations a player
-//! keeps across a promotion, which wants its own test. Still open in
-//! `docs/re/gaps.md`.
+//! Re-derive with
+//! `python3 tools/re_query.py resolve 1000:ab96 -n 60 -i 30`.
+//!
+//! `[0x389c]` is the character class (Task 11b), read the same way in
+//! `Game::apply_class_bonus` (`1000:73bb`). This was a KNOWN DIVERGENCE for
+//! three tasks -- `Places` had no class to consult, and after `Task 21` made
+//! `Game::district_advance` the one caller (where `self.player.class` is in
+//! scope) the only thing left holding it open was that the brief had scoped
+//! it out. The class is now a parameter.
 
 /// `Dealers` is `20ae:3695`, the `bmar` verb -- the original calls the place
 /// **Барыги**, not a market. Named from its own handler's strings: entry text
@@ -142,8 +153,22 @@ impl Places {
         out
     }
 
-    pub fn reset_for_new_district(&mut self) {
-        self.found = [false; 7];
+    /// `1000:ab96`..`1000:abc9` -- hide the rediscoverable locations again
+    /// on a district promotion, sparing the three the player's class keeps.
+    ///
+    /// `class` is `[20ae:389c]`, compared as a word at `1000:aba0`,
+    /// `1000:abb1` and `1000:abc2`.
+    pub fn reset_for_new_district(&mut self, class: u16) {
+        for (i, slot) in self.found.iter_mut().enumerate() {
+            let spared = match TRACKED[i] {
+                // 1000:aba0 / 1000:abb1 -- the Club and Girl skips.
+                Location::Club | Location::Girl => class == 3,
+                // 1000:abc2 -- the Den skip.
+                Location::Den => class == 5,
+                _ => false,
+            };
+            *slot &= spared;
+        }
     }
 
     /// Whether `loc` has been discovered. A location outside [`TRACKED`]
@@ -167,6 +192,37 @@ impl Places {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `1000:aba0`/`abb1`/`abc2` -- a class-3 player keeps Club and Girl
+    /// across a promotion, a class-5 player keeps the Den, and nobody keeps
+    /// Gym or Dealers: those two are the second store in each guarded pair
+    /// and sit past the `jz`, so the skip never reaches them.
+    #[test]
+    fn a_promotion_spares_the_flags_the_class_keeps() {
+        let kept = |class| {
+            let mut p = Places::from_bytes(&[1u8; 7]);
+            p.reset_for_new_district(class);
+            let mut out: Vec<Location> =
+                TRACKED.iter().copied().filter(|&l| p.is_found(l)).collect();
+            out.sort_by_key(|l| format!("{l:?}"));
+            out
+        };
+        assert_eq!(kept(3), vec![Location::Club, Location::Girl]);
+        assert_eq!(kept(5), vec![Location::Den]);
+        // Every other class clears all seven -- 0, 4 and 6 stand for them.
+        for class in [0u16, 1, 2, 4, 6, 7] {
+            assert_eq!(kept(class), vec![], "class {class}");
+        }
+    }
+
+    /// The spare is a SKIP, not a re-mark: a flag the player had not found
+    /// stays unfound even when the class would have spared it.
+    #[test]
+    fn sparing_a_flag_never_sets_one_that_was_clear() {
+        let mut p = Places::from_bytes(&[0u8; 7]);
+        p.reset_for_new_district(3);
+        assert_eq!(p.to_bytes(), [0u8; 7]);
+    }
 
     #[test]
     fn locations_outside_tracked_are_always_found() {

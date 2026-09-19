@@ -31,7 +31,7 @@ fn places_round_trips_the_real_file() {
 #[test]
 fn new_district_hides_all_places() {
     let mut places = Places::from_bytes(&[1u8; 7]);
-    places.reset_for_new_district();
+    places.reset_for_new_district(0);
     assert_eq!(places.to_bytes(), [0u8; 7]);
 }
 
