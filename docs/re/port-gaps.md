@@ -28,7 +28,13 @@ printed anything before. Row 5 (~546 B) is done as well, and it was the
 largest single row left: the enemy sheet's крутизна suffix, its two
 injury flags, its health-colour digit, its whole accuracy block, and the
 armour gate that used to show every unarmoured opponent a `^2Броня 0`
-line the original never prints.
+line the original never prints. Rows 9 and 25 (~333 B) are done as well —
+the market's pickpocket verb `t`, its three `Random` draws, its bust (a real
+fight and the flag it sets), the police ban the bust leaves behind, the gate
+that keeps a wanted player out of the market, and the `girl` clear that lifts
+it. Landing row 9 also gave row 21's opener (`1000:3e8d`) its first caller:
+`1000:c436` is the only `FUN_1000_3d11(1)` site in the image, so that arm had
+been correct and unreachable since `fc0d0c7`.
 
 **Row 19 stays open even though five batches' `ReadKey`s are now paced.** Its
 ~34 sites are spread across rows 23 and 24 as well, and only the sites inside
@@ -44,9 +50,13 @@ the rows already struck have landed. Those are, by batch:
 * batch C part 2, three sites, `1000:b055`/`b092`/`b0b0` -- the phone gag
   (row 24), paced directly in `Game::wander_preamble`'s existing draw-3 arm.
 
-Batch D adds none: `1000:135c`..`165e`, row 5's whole span, holds **no**
-`ReadKey` at all, and that is compared rather than assumed -- `difftest.py`'s
-`enemy_gap` sweep would put a `'K'` into a record if one appeared.
+Batches D and E add none. Row 5's whole span (`1000:135c`..`165e`), row 9's
+(`1000:c329`..`c46a`) and row 25's refusal arm (`1000:c480`..`c499`) hold
+**no** `ReadKey` at all, and that is compared rather than assumed:
+`difftest.py`'s `enemy_gap` and `market_gap` sweeps run the same
+`call 0f16:031a` scan over those spans and would put a `'K'` into a record if
+one appeared. The image holds 59 such sites and none of them is in the three
+spans.
 
 What is still open is row 23's three sites -- the mage's. (8 + 22 + 3 + 3 = 36
 against the survey's `~34`; the tilde is the survey's own, and the row keeps
@@ -66,7 +76,7 @@ Status values: `open` · `done (<commit>)`. Add no other column.
 | 6 | `FUN_1000_02c2` — the splash screen | `1000:02c2`..`04be` | 508 | MISSING | done (61f0f1c) |
 | 7 | `1000:3d11` — the two rector openers + the two endings + the XP gates | `1000:3ead`..`3fa7`, `5085`..`5189`, `51a6`, `51f6` | ~534 | MISSING | done (fc0d0c7) |
 | 8 | `1000:6de6` — the university backstory | `1000:6de6`..`6f2b` | 325 | MISSING | done (61f0f1c) |
-| 9 | `1000:c329` — the market pickpocket, verb `t` | `1000:c329`..`c46a` | 321 | MISSING | open |
+| 9 | `1000:c329` — the market pickpocket, verb `t` | `1000:c329`..`c46a` | 321 | MISSING | done (1ae22f6) |
 | 10 | `1000:7262` — the start-up district announcements + the district-1 tutorial | `1000:7262`..`7347`, `7369`..`73bb` | 311 | MISSING | done (61f0f1c) |
 | 11 | `1000:b82f` — wander bucket 4 (and bucket 0's line) | `1000:b82f`..`b94a` | 283 | MISSING | done (19055ab) |
 | 12 | `1000:b3c4` — bucket 1's eight flavour lines | `1000:b3db`..`b4ca` | ~279 | PARTIAL | done (19055ab) |
@@ -78,11 +88,11 @@ Status values: `open` · `done (<commit>)`. Add no other column.
 | 18 | `1000:7f8e` — the church's forced-level rank names | `1000:7f8e`..`7fe4` | 86 | PARTIAL | done (ecbeb9b) |
 | 19 | `1000:3eca` … — `ReadKey` pacing across the new text | ~34 sites | ~190 | PARTIAL | open |
 | 20 | `1000:828c` — the church's parting line | `1000:828c`..`82af` | 35 | MISSING | done (ecbeb9b) |
-| 21 | `1000:3e8d` — `param_1 == 1`'s opener (reachable only once #9 lands) | `1000:3e8d`..`3ead` | 32 | MISSING | done (fc0d0c7) |
+| 21 | `1000:3e8d` — `param_1 == 1`'s opener (reachable now that #9 has landed) | `1000:3e8d`..`3ead` | 32 | MISSING | done (fc0d0c7) |
 | 22 | `1000:aee4` — `run`'s own extra line | `1000:aee4`, `aeff` | ~30 | PARTIAL | done (19055ab) |
 | 23 | `1000:7560` … — the mage's three `ReadKey`s | `1000:7560`, `757e`, `75a4` | ~15 | PARTIAL | open |
 | 24 | `1000:b055` … — the phone gag's three `ReadKey`s | `1000:b055`, `b092`, `b0b0` | ~15 | PARTIAL | done (19055ab) |
-| 25 | `1000:b95e` / `1000:d793` — the market ban gate and the `girl` clear | 2 sites | ~12 | MISSING | open |
+| 25 | `1000:b95e` / `1000:d793` — the market ban gate and the `girl` clear | 2 sites | ~12 | MISSING | done (1ae22f6) |
 
 ## Method and confidence
 
@@ -164,11 +174,12 @@ dispatch. Batch reports are in `.superpowers/sdd/phase2/` and the surveys in
 its banner — `difftest` 163→255), batch C part 1 the church and the level-up
 (`ecbeb9b`, rows 3, 18, 20, 14 — `difftest` 255→314), batch C part 2 the
 wander text (`19055ab`, rows 11, 12, 22, 24 — `difftest` 314→330), batch D the
-enemy sheet (`89fdb72`, row 5 — `difftest` 330→347).
+enemy sheet (`89fdb72`, row 5 — `difftest` 330→347), batch E the market
+pickpocket (`1ae22f6`, rows 9 and 25 — `difftest` 347→356, and row 21's
+opener finally has a caller).
 
-**Next:** batch E the market pickpocket verb `t` (rows 9, 25, which also make
-row 21's opener reachable). Row 19's `ReadKey` pacing spans several rows; land
-each row's share with that row — row 23 is all that is left of it.
+**Next:** row 23, the mage's three `ReadKey`s — all that is left of row 19,
+and with it the last two open rows in this file.
 
 **Do not trust a string-coverage metric built on `data/strings.json`.** That
 file covers one pool of 796 entries and does not contain the opening text — a
