@@ -430,26 +430,27 @@ fn buy_tooth_guard(g: &mut Game) {
 /// sits INSIDE the ceiling branch, so `^6Качай дальше в следующем районе`
 /// follows the ceiling line only while `district < 4`.
 ///
-/// **`20ae:3e34` is the one value this port does not have.** The original
-/// recomputes it on every entry to the gym (`1000:e3a4`..`1000:e3e2`) as the
-/// armour byte `20ae:38b2` minus the armour that came from equipment, so it
-/// is the armour the player TRAINED; `Game::imm_row_visible` substitutes
-/// `armor` for it, and this arm makes the same substitution against its own
-/// threshold. The consequence is one-directional and identical to the row's:
-/// the port's value is never smaller than the original's, so the arm can only
-/// stop EARLIER than the original would. That is the standing
+/// **`20ae:3e34` is ported.** The original recomputes it on every entry to
+/// the gym (`1000:e3a4`..`1000:e3e2`) as the armour byte `20ae:38b2` minus
+/// the armour that came from equipment, so it is the armour the player
+/// TRAINED. `Game::trained_armour` is that recompute, and both readers --
+/// this arm's ceiling and `Game::imm_row_visible`'s `("trn","5")` row --
+/// call it instead of substituting `armor`. This used to be the standing
 /// `docs/re/gaps.md` entry "The four armour flags are carried but the gym's
-/// `abs` ignores them", whose population this arm joins; closing it is the
-/// recompute at `1000:e3a4`..`1000:e3e2` and it is not this task's subject.
-/// Under that substitution `1000:e8d6` and `1000:e8da` are the same
-/// increment, which is why the single `armor += 1` below carries both
-/// citations -- and the arm still terminates, which
-/// `arm_5_stops_when_the_ceiling_is_reached` asserts by counting.
+/// `abs` ignores them", whose one-directional consequence was that the arm
+/// stopped EARLIER than the original would.
+///
+/// `1000:e8d6` (`inc [0x38b2]`) and `1000:e8da` (`inc [0x3e34]`) are still
+/// one statement here, but now for a different reason: the scratch is
+/// derived, so incrementing the armour it is derived from moves both. The
+/// arm still terminates, which `arm_5_stops_when_the_ceiling_is_reached`
+/// asserts by counting.
 fn train_abs(g: &mut Game) {
     // 1000:e87f..1000:e892 / 1000:e894 `jnl 0xe8f9`.
     let ceiling = (i32::from(g.district) - 2) * 10;
-    // 1000:e88d reads 20ae:3e34; see the doc above for the substitution.
-    if i32::from(g.player.armor) >= ceiling {
+    // 1000:e88d `mov al,[0x3e34]` / `xor ah,ah` -- the trained-armour
+    // scratch, zero-extended. `Game::trained_armour` is its port.
+    if i32::from(g.trained_armour()) >= ceiling {
         // file `0xBE6E` `^6Ты максимально прокачал пресс для своего уровня`,
         // pushed at 1000:e8f9 and printed by 1000:e90d.
         term::println("^6Ты максимально прокачал пресс для своего уровня");
@@ -829,6 +830,31 @@ mod tests {
         }
         assert_eq!(bought, 10, "(3 - 2) * 10 at 1000:e884..1000:e889");
         assert_eq!(g.player.armor, 10);
+    }
+
+    /// The ceiling at `1000:e894` reads `20ae:3e34`, not the armour byte, so
+    /// equipment does NOT eat into the training budget: the same district-3
+    /// player buys the same 10 whether or not he owns the Крутая кожанка,
+    /// and ends on armour 14 instead of 10 because the jacket's 4 sat on top
+    /// of the trained 10 the whole time. Substituting plain `armor` counted
+    /// the jacket against the ceiling and stopped him at 6.
+    #[test]
+    fn arm_5_counts_trained_armour_not_worn_armour() {
+        let mut g = gym(3, 10_000);
+        g.player.armor = 4; // the jacket's own +4, already granted
+        g.wear_jacket_krutaya_38b9 = true;
+        let mut bought = 0;
+        for _ in 0..40 {
+            let out = turn(&mut g, "5");
+            if out[0] == "^6Ты максимально прокачал пресс для своего уровня"
+            {
+                break;
+            }
+            bought += 1;
+        }
+        assert_eq!(bought, 10, "the ceiling is (3 - 2) * 10 of TRAINED armour");
+        assert_eq!(g.player.armor, 14);
+        assert_eq!(g.trained_armour(), 10);
     }
 
     /// `1000:e912`/`1000:e917` is inside the ceiling branch: the hint

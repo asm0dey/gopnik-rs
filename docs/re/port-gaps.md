@@ -120,8 +120,9 @@ ported and audited before Phase 1. Every game function is accounted for.
   (`fc0d0c7`) is a call-site-for-call-site match; the survey found nothing to
   change.
 - The three dispatches used three different PARTIAL-counting conventions.
-- "PORTED" for the large shop/~~den~~/club/gym bodies rests on string presence
-  and citation density, not a line-by-line flow diff. **The den is struck: the
+- "PORTED" for the large shop/~~den~~/~~club~~/~~gym~~ bodies rests on string
+  presence and citation density, not a line-by-line flow diff. **Only `shop`
+  is left standing.** **The den is struck: the
   claim was already false when this file was written.** `docs/re/den.md`
   (`8b46249`) is a line-for-line flow map of `1000:d802`..`1000:df06` and
   `c352f3f` is its port, both landed 2026-08-30 -- three weeks before this
@@ -133,6 +134,19 @@ ported and audited before Phase 1. Every game function is accounted for.
   draws match their `below_at` citation by `pushed-n`, and all 17 absolute
   `20ae:` writes have the same write in `src/`. Shop, club and gym are NOT
   struck -- no equivalent diff has been run on them.
+
+  **Club and gym went the same way**, and for the same reason: `docs/re/club.md`
+  (`08dfb09`) and `docs/re/gym.md` (`0f6749a`) are line-for-line flow maps
+  dated 2026-09-06, two weeks before this file asserted none existed. A
+  survey re-derived both ranges from `orig/g.exe`: club is 20 of 20 branches
+  counterparted with **0** having none, and gym is 38 of 38 with **6** that
+  had none -- all six the trained-armour recompute at `1000:e3a4`..`e3e2`,
+  which was a registered open divergence rather than an unknown, and which
+  that survey's dispatch closed. Their oracle position matches the den's:
+  `difftest.py` carries `priced_row` / `imm_row_site` / `menu_order` records
+  for the MENU rows only, nothing for the arm bodies, and the real
+  port-behaviour coverage is the module-local unit tests in `src/club.rs`
+  (14) and `src/gym.rs` (26).
 
   What the den does lack is an **oracle**: no `tools/difftest.py` record is
   scoped to its range (the only `--dump` lines matching "притон" are

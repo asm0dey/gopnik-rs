@@ -1790,29 +1790,76 @@ impl Game {
     /// this divergence is two readers; the two predicates are deliberately
     /// NOT shared, because they are different numbers.
     ///
-    /// **This became live in Task 19 and is not fixed here.** Before it,
-    /// nothing in the port could set the four bytes (buying a `mar` row
-    /// deducts the price and prints the text but applies no effect), so the
-    /// divergence was theoretical. A loaded `.SAV` sets them, and it has a
-    /// concrete witness in the shipped corpus: **`SAVE_R4` at slot 4** holds
-    /// `38b4`/`38b6`/`38b7` set and `38b9` clear with `armour` 10, so the
-    /// original computes `abs = 10 - 2 - 2 = 6` against a threshold of 8 and
-    /// shows the row, while this port computes `abs = 10` and hides it.
-    /// (`SAVE_R3` and `SAVE_R5` agree either way; no shipped save carries
-    /// all four flags -- an earlier revision of this comment said `SAVE_R3`
-    /// and `SAVE_R4` did, and the frozen corpus refutes it: both carry
-    /// three.)
+    /// **FIXED.** Both readers now call [`Game::trained_armour`], the port
+    /// of `1000:e3a4`..`1000:e3e2`. The reason this stayed open was that
+    /// "buying a `mar` row deducts the price and prints the text but applies
+    /// no effect", so the flags could only arrive from a loaded `.SAV` and
+    /// the row would depend on a flag the player could not earn. That is no
+    /// longer true: all four purchases set their flag -- `1000:bf80`,
+    /// `1000:c0e0`, `1000:c183` and `1000:c2ca`, each in its own `bmar` arm.
+    /// The witness the old comment named still works as a test: **`SAVE_R4`
+    /// at slot 4** holds `38b4`/`38b6`/`38b7` set and `38b9` clear with
+    /// `armour` 10, so `abs = 10 - 2 - 2 = 6` against this row's threshold
+    /// of 8 and the row shows. It used to compute `abs = 10` and hide it.
+    /// `1000:e3a4`..`1000:e3e2` -- `20ae:3e34`, the gym's trained-armour
+    /// scratch, recomputed from scratch on every `trn` entry.
     ///
-    /// Correcting it means deciding what a `mar` purchase does, which is the
-    /// unimplemented shop-effects gap and a different task's subject;
-    /// applying the subtraction here while purchases still grant nothing
-    /// would make the gym row depend on a flag the player cannot earn.
-    /// Registered in `docs/re/gaps.md`, "The four armour flags are carried
-    /// but the gym's `abs` ignores them".
+    /// ```text
+    /// e3a4  mov al,[0x38b2] / mov [0x3e34],al   abs := armour
+    /// e3aa  cmp byte [0x38b4],0 / jz  0xe3bc
+    /// e3b1  cmp byte [0x38b7],0 / jnz 0xe3bc
+    /// e3b8  dec [0x3e34]                        Abibas and no Adidas: -1
+    /// e3bc  cmp byte [0x38b7],0 / jz  0xe3c8
+    /// e3c3  sub byte [0x3e34],0x2               Adidas: -2
+    /// e3c8  cmp byte [0x38b6],0 / jz  0xe3db
+    /// e3cf  cmp byte [0x38b9],0 / jnz 0xe3db
+    /// e3d6  sub byte [0x3e34],0x2               Кожанка and no Крутая: -2
+    /// e3db  cmp byte [0x38b9],0 / jz  0xe3e7
+    /// e3e2  sub byte [0x3e34],0x4               Крутая кожанка: -4
+    /// ```
+    ///
+    /// Re-derive with
+    /// `python3 tools/re_query.py resolve 1000:e3a4 -n 70 -i 34`.
+    ///
+    /// The subtraction is the item's own armour contribution, so `abs` is
+    /// the armour the player trained rather than bought -- the lesser item
+    /// is skipped when the better one is owned, exactly the pairing
+    /// `crate::character_sheet`'s `armour_block` prints.
+    ///
+    /// **Byte arithmetic, and it can underflow.** `20ae:3e34` and
+    /// `20ae:38b2` are both bytes (`1000:e3a4 mov al`, `1000:e8d6 inc`), and
+    /// both readers zero-extend (`xor ah,ah` at `1000:e589` and
+    /// `1000:e890`). So armour 1 with the Крутая кожанка gives `1 - 4 = 253`,
+    /// not `-3`, which reads as *above* either threshold and blocks the row
+    /// and the arm. `wrapping_sub` on `u8` is that, not a convenience.
+    ///
+    /// The scratch's own `1000:e8da inc [0x3e34]` needs no counterpart:
+    /// `1000:e8d6` increments `20ae:38b2` in the same breath, and this
+    /// recomputes from it on the next read.
+    pub(crate) fn trained_armour(&self) -> u8 {
+        // 1000:e3a4 `mov al,[0x38b2]` -- the low byte only.
+        let mut abs = self.player.armor as u8;
+        if self.wear_suit_abibas_38b4 && !self.wear_suit_adidas_38b7 {
+            abs = abs.wrapping_sub(1); // 1000:e3b8
+        }
+        if self.wear_suit_adidas_38b7 {
+            abs = abs.wrapping_sub(2); // 1000:e3c3
+        }
+        if self.wear_jacket_38b6 && !self.wear_jacket_krutaya_38b9 {
+            abs = abs.wrapping_sub(2); // 1000:e3d6
+        }
+        if self.wear_jacket_krutaya_38b9 {
+            abs = abs.wrapping_sub(4); // 1000:e3e2
+        }
+        abs
+    }
+
     pub(crate) fn imm_row_visible(&self, row: &ImmRow) -> bool {
         let district = i32::from(self.district);
         let level = i32::from(self.player.level);
-        let abs = i32::from(self.player.armor);
+        // 1000:e586 `mov al,[0x3e34]` / `xor ah,ah` -- zero-extended, so an
+        // underflowed scratch reads as a large positive and hides the row.
+        let abs = i32::from(self.trained_armour());
         match (row.shop, row.key) {
             ("kl", "2") => district > 1,
             ("trn", "3") => district > 1 && district * 10 - 3 > level,
@@ -11231,13 +11278,85 @@ mod tests {
     }
 
     /// `trn` row 5 needs `district > 2` and `abs < district * 2`
-    /// (`1000:e576`, `1000:e57d`..`1000:e58d`). `abs` is `20ae:3e34`, which
-    /// this port carries as plain armour -- see [`Game::imm_row_visible`].
+    /// (`1000:e576`, `1000:e57d`..`1000:e58d`). `abs` is `20ae:3e34`,
+    /// [`Game::trained_armour`] -- with no equipment it equals the armour.
     #[test]
     fn the_gyms_abs_row_needs_a_third_district_and_room_to_train() {
         assert!(!visible(2, 0, 0).contains(&("trn", "5")));
         assert!(visible(3, 0, 5).contains(&("trn", "5")));
         assert!(!visible(3, 0, 6).contains(&("trn", "5")));
+    }
+
+    /// `1000:e3a4`..`1000:e3e2` -- each item subtracts the armour it granted,
+    /// and the lesser of a pair is skipped when the better one is owned
+    /// (`1000:e3b1` `jnz` and `1000:e3cf` `jnz`), so the two suits never
+    /// subtract 3 and the two jackets never subtract 6.
+    #[test]
+    fn trained_armour_subtracts_what_the_equipment_granted() {
+        let abs = |armor, abibas, adidas, jacket, krutaya| {
+            let mut g = game();
+            g.player.armor = armor;
+            g.wear_suit_abibas_38b4 = abibas;
+            g.wear_suit_adidas_38b7 = adidas;
+            g.wear_jacket_38b6 = jacket;
+            g.wear_jacket_krutaya_38b9 = krutaya;
+            g.trained_armour()
+        };
+        // Nothing owned: the scratch is the armour byte.
+        assert_eq!(abs(10, false, false, false, false), 10);
+        // One of each, alone.
+        assert_eq!(abs(10, true, false, false, false), 9); // 1000:e3b8, -1
+        assert_eq!(abs(10, false, true, false, false), 8); // 1000:e3c3, -2
+        assert_eq!(abs(10, false, false, true, false), 8); // 1000:e3d6, -2
+        assert_eq!(abs(10, false, false, false, true), 6); // 1000:e3e2, -4
+                                                           // Both of a pair: the lesser is skipped, not added.
+        assert_eq!(abs(10, true, true, false, false), 8);
+        assert_eq!(abs(10, false, false, true, true), 6);
+        // Everything: 10 - 2 - 4.
+        assert_eq!(abs(10, true, true, true, true), 4);
+    }
+
+    /// `20ae:3e34` is a BYTE and both readers zero-extend (`xor ah,ah` at
+    /// `1000:e589` and `1000:e890`), so the subtraction wraps instead of
+    /// going negative -- and a wrapped scratch reads as far ABOVE either
+    /// threshold, shutting the row and the arm rather than opening them.
+    #[test]
+    fn a_trained_armour_underflow_wraps_and_shuts_the_row() {
+        let mut g = game();
+        g.district = 3;
+        g.player.armor = 1;
+        g.wear_jacket_krutaya_38b9 = true;
+        assert_eq!(g.trained_armour(), 253); // 1 - 4, as a byte
+        let row = IMM_ROWS
+            .iter()
+            .find(|r| r.shop == "trn" && r.key == "5")
+            .unwrap();
+        // 253 < 6 is false, so the row is hidden -- not shown as -3 would be.
+        assert!(!g.imm_row_visible(row));
+    }
+
+    /// The witness the divergence was registered against: `SAVE_R4` holds
+    /// `38b4`/`38b6`/`38b7` set and `38b9` clear with armour 10, so
+    /// `abs = 10 - 2 - 2 = 6` against district 4's threshold of 8 and the
+    /// row SHOWS. Substituting plain `armor` computed 10 and hid it, which
+    /// is the whole of what this fix changes.
+    #[test]
+    fn the_save_r4_witness_now_shows_the_row_it_used_to_hide() {
+        let mut g = game();
+        g.district = 4;
+        g.player.armor = 10;
+        g.wear_suit_abibas_38b4 = true;
+        g.wear_suit_adidas_38b7 = true;
+        g.wear_jacket_38b6 = true;
+        g.wear_jacket_krutaya_38b9 = false;
+        assert_eq!(g.trained_armour(), 6);
+        let row = IMM_ROWS
+            .iter()
+            .find(|r| r.shop == "trn" && r.key == "5")
+            .unwrap();
+        assert!(g.imm_row_visible(row));
+        // The old substitution: armour 10 is not below 8.
+        assert!(i32::from(g.player.armor) >= i32::from(g.district) * 2);
     }
 
     /// The composed line, for the two rows that exercise everything the

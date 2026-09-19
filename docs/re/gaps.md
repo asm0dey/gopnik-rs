@@ -696,7 +696,7 @@ those run exactly once in the original too, and the port matches them. Detail,
 and the decode that separates the two halves, is in "The district-advance
 autosave — wired (Task 21)", below.
 
-## The four armour flags are carried but the gym's `abs` ignores them
+## The four armour flags are carried but the gym's `abs` ignores them — CLOSED
 
 *Cited from `src/game.rs`'s `imm_row_visible` and `src/persist.rs`.*
 
@@ -754,10 +754,40 @@ sets them, and the shipped corpus contains a witness.
 `Game::buy_market_row` now sets all four in their own arms (`1000:bf80`,
 `1000:c0e0`, `1000:c183`, `1000:c2ca`) and adds the matching armour, so a
 player who buys the suits and jackets at the market walks into the gym with
-the same state `SAVE_R4` carries — and `imm_row_visible` still ignores all
-four. The divergence is unchanged in size and direction; only the number of
-ways to reach it grew. Closing it is a change to the gym's recompute
-(`1000:e3a4`..`1000:e3e2`), not to the market, and it stays open.
+the same state `SAVE_R4` carries.
+
+**CLOSED by the club/gym flow survey.** `Game::trained_armour` is the port of
+`1000:e3a4`..`1000:e3e2` — the table above, in order — and both readers now
+call it: `imm_row_visible`'s `("trn","5")` arm and `crate::gym`'s `train_abs`
+ceiling. The two predicates stay unshared, because they are still two
+different numbers.
+
+Two things the port of it had to get right that the prose above does not say:
+
+* **It is byte arithmetic and it underflows.** `20ae:3e34` and `20ae:38b2`
+  are bytes (`1000:e3a4 mov al`, `1000:e8d6 inc`) and BOTH readers
+  zero-extend (`xor ah,ah` at `1000:e589` and `1000:e890`), so armour 1 with
+  the crutaya kozhanka is `253`, not `-3`. A wrapped scratch reads as far
+  ABOVE either threshold, so it shuts the row and the arm rather than opening
+  them — the opposite of what a signed model would do.
+  `a_trained_armour_underflow_wraps_and_shuts_the_row` pins it.
+* **`1000:e8da inc [0x3e34]` needs no counterpart.** `1000:e8d6` increments
+  `20ae:38b2` in the same breath and the port recomputes from it on the next
+  read, so the derived value moves with it.
+
+The witness this entry was registered against is now a test:
+`the_save_r4_witness_now_shows_the_row_it_used_to_hide` — armour 10 with
+`38b4`/`38b6`/`38b7` set gives `abs = 6` against district 4's threshold of 8,
+and the row shows. `arm_5_counts_trained_armour_not_worn_armour` covers the
+other reader, where the effect is the reverse and larger: equipment no longer
+eats the training budget, so a district-3 player still buys all 10.
+
+**What `src/game.rs` said was stale, not this entry.** `imm_row_visible`'s
+own doc comment still carried Task 19's reason — "nothing in the port could
+set the four bytes… applying the subtraction here while purchases still grant
+nothing would make the gym row depend on a flag the player cannot earn" —
+three tasks after Task 26 recorded above had made that false. The entry here
+was current; the code comment beside the divergence was not.
 
 | save | `38b4` | `38b6` | `38b7` | `38b9` | `armour` | original `abs` | port `abs` |
 |---|---:|---:|---:|---:|---:|---:|---:|
