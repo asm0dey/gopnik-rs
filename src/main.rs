@@ -126,8 +126,22 @@ fn main() -> io::Result<()> {
         }
     }
 
+    // `docs/re/port-gaps.md`'s "Known defects not yet filed as rows" flagged
+    // an unconditional print here of `^4Gopnik: ^7version 1.02 june,sept
+    // 2003`. **Fixed by the `FUN_1000_6a0d` survey.** The original prints no
+    // version text at start-up at all -- the screen it opens with is
+    // `FUN_1000_02c2`'s ASCII-art splash (`opening::splash`, called from
+    // `1000:6a5a`), ported below. That exact string appears twice in the
+    // image, and NEITHER site is a start-up print:
+    // * `1000:6dcd`..`1000:6ddb` copies it into `DS:369c`, the save record's
+    //   `magic` slot (`docs/re/save-format.md`), a plain memory move with no
+    //   console call -- ported as `save::MAGIC` / `Save::blank()`.
+    // * `1000:edb2`..`1000:edd0`, inside `entry`, is the `version` verb's
+    //   OWN separate copy (file `0xC3C1`), read only when the player types
+    //   `version` at the street prompt -- ported as `Game::banner`.
+    // Neither runs at process start, so this port must not print it there
+    // either.
     term::init();
-    term::println("^4Gopnik: ^7version 1.02 june,sept 2003");
     let stdin = io::stdin();
     let seed = clock_seed();
     let here = std::env::current_dir()?;

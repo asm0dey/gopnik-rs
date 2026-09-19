@@ -188,8 +188,14 @@ pickpocket (`1ae22f6`, rows 9 and 25 — `difftest` 347→356, and row 21's
 opener finally has a caller), batch F the wandering mage (`5552482`, row
 23 and, with it, row 19 — `difftest` 356→363).
 
-**Next:** nothing — every row in this file is struck. The next Phase 2 work
-is whatever a fresh gap survey finds outside this list, per `docs/re/gaps.md`.
+**Next:** nothing new to port. Every row in this file is struck, and a
+follow-up flow survey of `FUN_1000_6a0d` (the save-load / new-game setup path,
+the weakest-verified body left per `docs/re/branches.md:803`) walked all 33
+branches against `src/persist.rs`, `src/save.rs`, `src/opening.rs`,
+`src/main.rs` and `Game::apply_class_bonus`/`announce_district` and found the
+whole path already ported and correct, with one exception: the stale
+start-up banner print below, now fixed. The next Phase 2 work is whatever a
+fresh gap survey finds outside this list, per `docs/re/gaps.md`.
 
 **Do not trust a string-coverage metric built on `data/strings.json`.** That
 file covers one pool of 796 entries and does not contain the opening text — a
@@ -201,8 +207,15 @@ cs_off` from actual code references, the way the Phase 1 dispatch-2 survey did.
 
 ## Known defects not yet filed as rows
 
-- `src/main.rs` prints `^4Gopnik: ^7version 1.02 june,sept 2003` at start-up.
-  The original never prints it there — `1000:6dcd` only copies that string into
-  `DS:369c` for the `v` verb.
+- ~~`src/main.rs` prints `^4Gopnik: ^7version 1.02 june,sept 2003` at
+  start-up.~~ **Fixed by the `FUN_1000_6a0d` survey.** The original never
+  prints it there: `1000:6dcd` copies that string silently into `DS:369c`,
+  the save record's `magic` slot (`docs/re/save-format.md`), with no console
+  call at all -- not "for the `v` verb" as this bullet used to say. The
+  `version` verb's on-screen text is a THIRD, separate copy of the same
+  string at `1000:edb2` (file `0xC3C1`), read only on demand
+  (`src/commands.rs`'s `version` row, corrected in the same pass). `main.rs`
+  no longer prints it at start; `Game::banner` (the `version` verb) is
+  unaffected.
 - The victory marquee runs one 9-phase cycle; the original loops
   `until KeyPressed`, with `Delay`/`ClrScr`. Recorded in `docs/re/gaps.md`.

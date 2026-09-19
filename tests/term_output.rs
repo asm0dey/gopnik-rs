@@ -24,7 +24,6 @@
 
 use std::process::{Command, Stdio};
 
-const BANNER: &str = "^4Gopnik: ^7version 1.02 june,sept 2003"; // file 0x7D59
 const CHOOSE: &str = "Выбери кем ты будешь: "; // file 0x7F67, written at 1000:6f2b
 const OPT0: &str = "0-Пацан"; // file 0x7F7E
 const OPT1: &str = "1-Отморозок"; // file 0x7F86
@@ -72,7 +71,6 @@ fn expected(f: impl Fn(&str) -> String) -> String {
         out.push_str(&f(s));
         out.push('\n');
     };
-    line(BANNER);
     // 1000:02c2's splash, then -- with stdin at EOF and no save file --
     // straight into 1000:6de6's backstory. Both blocks' blank lines and
     // `ReadKey`s come from their gap tables; a `ReadKey` at EOF writes

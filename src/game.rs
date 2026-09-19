@@ -803,9 +803,15 @@ impl Game {
         }
     }
 
-    /// The banner is printed once by `main.rs` before character creation,
-    /// matching a DOS splash-then-prompt startup; `run()` itself does not
-    /// print it again (only `Command::Version` calls [`Game::banner`]).
+    /// [`Game::banner`] is never printed at start-up -- neither by `main.rs`
+    /// nor by this method. The original prints no version text there either:
+    /// `1000:6dcd`'s copy of that string goes silently into `DS:369c`, the
+    /// save record's `magic` slot, and the only on-screen copy is the
+    /// `version` verb's own literal, read on demand
+    /// (`docs/re/port-gaps.md`'s `FUN_1000_6a0d` survey; `src/commands.rs`'s
+    /// `version` row). `main.rs`'s start-up screen is `FUN_1000_02c2`'s
+    /// ASCII splash (`opening::splash`); only `Command::Version` calls
+    /// [`Game::banner`].
     ///
     /// **The loop starts with [`Game::district_advance`], not with the
     /// prompt.** That is `1000:ab75` in the original, and it is upstream of

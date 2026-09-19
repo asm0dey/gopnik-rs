@@ -63,7 +63,7 @@
 //! | `f` | `1000:ec96` | `0xC31C` | shoot, **traced** in Task 18: `1000:ec9d cmp byte [0x394d],0` / `eca2 jz 0xecbd` gates the refusal `^6Ты чё псих? мигом менты накроют!` (file `0xC31E`) on owning a pistol, and without one the verb is accepted and answered with silence |
 //! | `k` | `1000:ecc7` | `0xC341` | handler not traced past its `jz`; corroborated as "fight" the same way, via `^6Чё машешь копытами? Ищи мудака которого будешь пинать!` at `0xC343` (the colour code is `^6`, not `^4`) |
 //! | `name` | `1000:ecf1` | `0xC37C` | rename |
-//! | `version` | `1000:edab` | `0xC3B9` | **not in the help text at all** -- prints the version banner (its own text is at `0xC3C1`, the same `^4Gopnik: ^7version 1.02 june,sept 2003` the game opens with) |
+//! | `version` | `1000:edab` | `0xC3B9` | **not in the help text at all** -- prints the version banner from its own copy of the string at `0xC3C1`, `^4Gopnik: ^7version 1.02 june,sept 2003`. **Not what the game opens with**: that parenthetical was wrong -- the start-up screen is `FUN_1000_02c2`'s ASCII splash (`opening::splash`), and this verb's copy is read only on demand, never at start (`docs/re/port-gaps.md`'s `FUN_1000_6a0d` survey) |
 //! | `help` | `1000:edd5` | `0xC3E9` | dispatched, content not traced (see [`Command::Help`]) |
 //! | `exit` | `1000:ede9` | `0xC3EE` | **not in the help text** -- a second spelling of quit |
 //! | `e` | `1000:edfa` | `0xB43E` | quit (help text: `"если захочешь выйти"`) |
