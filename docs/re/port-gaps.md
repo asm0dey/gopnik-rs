@@ -24,7 +24,11 @@ announcements, which were completely silent before. Rows 11, 12 and 22
 (~592 B) are done too -- wander bucket 4's flavour turn (and bucket 0's
 line, which `Game::walk`'s own doc had wrongly called silent), bucket 1's
 eight district-keyed lines, and `run`'s own extra line, none of which
-printed anything before.
+printed anything before. Row 5 (~546 B) is done as well, and it was the
+largest single row left: the enemy sheet's крутизна suffix, its two
+injury flags, its health-colour digit, its whole accuracy block, and the
+armour gate that used to show every unarmoured opponent a `^2Броня 0`
+line the original never prints.
 
 **Row 19 stays open even though five batches' `ReadKey`s are now paced.** Its
 ~34 sites are spread across rows 23 and 24 as well, and only the sites inside
@@ -40,6 +44,10 @@ the rows already struck have landed. Those are, by batch:
 * batch C part 2, three sites, `1000:b055`/`b092`/`b0b0` -- the phone gag
   (row 24), paced directly in `Game::wander_preamble`'s existing draw-3 arm.
 
+Batch D adds none: `1000:135c`..`165e`, row 5's whole span, holds **no**
+`ReadKey` at all, and that is compared rather than assumed -- `difftest.py`'s
+`enemy_gap` sweep would put a `'K'` into a record if one appeared.
+
 What is still open is row 23's three sites -- the mage's. (8 + 22 + 3 + 3 = 36
 against the survey's `~34`; the tilde is the survey's own, and the row keeps
 it rather than being quietly re-counted here.) A row is struck when its whole
@@ -54,7 +62,7 @@ Status values: `open` · `done (<commit>)`. Add no other column.
 | 2 | `FUN_1000_074b` — the end screen, both endings reach it | `1000:074b`..`0aca` | 896 | MISSING | done (fc0d0c7) |
 | 3 | `1000:7c67` — the church's two long sermons | `1000:7ceb`..`7f63` | 622 | MISSING | done (ecbeb9b) |
 | 4 | `FUN_1000_0aec` — the victory marquee | `1000:0aec`..`0d13` | 552 | MISSING | done (fc0d0c7) |
-| 5 | `1000:1348` — the enemy sheet's five halves | `1000:135c`..`165e` | ~546 | MISSING + PARTIAL | open |
+| 5 | `1000:1348` — the enemy sheet's five halves | `1000:135c`..`165e` | ~546 | MISSING + PARTIAL | done (89fdb72) |
 | 6 | `FUN_1000_02c2` — the splash screen | `1000:02c2`..`04be` | 508 | MISSING | done (61f0f1c) |
 | 7 | `1000:3d11` — the two rector openers + the two endings + the XP gates | `1000:3ead`..`3fa7`, `5085`..`5189`, `51a6`, `51f6` | ~534 | MISSING | done (fc0d0c7) |
 | 8 | `1000:6de6` — the university backstory | `1000:6de6`..`6f2b` | 325 | MISSING | done (61f0f1c) |
@@ -155,12 +163,12 @@ dispatch. Batch reports are in `.superpowers/sdd/phase2/` and the surveys in
 `difftest` 126→163), batch B the opening (`61f0f1c..ab98fea`, the game prints
 its banner — `difftest` 163→255), batch C part 1 the church and the level-up
 (`ecbeb9b`, rows 3, 18, 20, 14 — `difftest` 255→314), batch C part 2 the
-wander text (`19055ab`, rows 11, 12, 22, 24 — `difftest` 314→330).
+wander text (`19055ab`, rows 11, 12, 22, 24 — `difftest` 314→330), batch D the
+enemy sheet (`89fdb72`, row 5 — `difftest` 330→347).
 
-**Next:** batch D the enemy sheet (row 5). Then batch E the market pickpocket
-verb `t` (rows 9, 25, which also make row 21's opener reachable). Row 19's
-`ReadKey` pacing spans several rows; land each row's share with that row —
-row 23 is all that is left of it.
+**Next:** batch E the market pickpocket verb `t` (rows 9, 25, which also make
+row 21's opener reachable). Row 19's `ReadKey` pacing spans several rows; land
+each row's share with that row — row 23 is all that is left of it.
 
 **Do not trust a string-coverage metric built on `data/strings.json`.** That
 file covers one pool of 796 entries and does not contain the opening text — a
