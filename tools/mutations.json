@@ -1028,6 +1028,40 @@
     "expect": "CS 0x12CB holds"
   },
   {
+    "label": "market-port-literal",
+    "defends": "tools/test_string_citations.py binds comment -> code for src/market.rs, which joined its SOURCES list in Phase 2 batch E.  scan() proves a cited offset holds the backticked text in the COMMENT; comment_code_pairs() proves the Rust literal one line below says the same thing, which is the half a comment-only check cannot see.  The perturbation is a Cyrillic \u041a typed as a Latin K inside the market bust's accusation -- it renders identically in a diff.",
+    "artifact": "src/market.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "\"^4\u041a\u043e\u0440\u044f\u0432\u044b\u0439! \u0442\u044b \u043f\u043e\u043f\u0430\u043b\u0441\u044f!\"",
+      "to": "\"^4K\u043e\u0440\u044f\u0432\u044b\u0439! \u0442\u044b \u043f\u043e\u043f\u0430\u043b\u0441\u044f!\"",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_string_citations.py",
+      "StringCitationTest.test_a_backticked_citation_agrees_with_the_literal_beside_it"
+    ],
+    "expect": "but the code beside it prints"
+  },
+  {
+    "label": "market-port-citation",
+    "defends": "The CS/file citations in src/market.rs are pinned to the literal beside them.  0x90c0 and 0x90c7 are the two halves of the opponent announcement, 7 bytes apart, both real, and both cited correctly elsewhere in the same file -- the Task 19 defect class, which only decoding the bytes tells apart.  The image holds three copies of this announcement run (1000:c3f1, 1000:dc16, 1000:e1a2) and the market's is the only one any citation check reaches.",
+    "artifact": "src/market.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "CS `0x90c0`",
+      "to": "CS `0x90c7`",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_string_citations.py",
+      "StringCitationTest.test_no_cited_offset_in_the_tree_holds_the_wrong_string"
+    ],
+    "expect": "CS 0x90C7 holds"
+  },
+  {
     "label": "shop-arms-instruction-identity",
     "defends": "tools/test_shop_arms.py walks every {addr,text} record in data/shop_arms.json and requires orig/g.exe to decode that instruction at that address -- the identity half of the two signals docs/re/METHODOLOGY.md keeps apart.",
     "artifact": "data/shop_arms.json",

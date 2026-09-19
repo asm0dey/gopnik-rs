@@ -73,6 +73,7 @@ use crate::ending;
 use crate::enemy_sheet;
 use crate::gym;
 use crate::locations::{Location, Places};
+use crate::market;
 use crate::model::Fighter;
 use crate::opening;
 use crate::progress::{self, Progress};
@@ -338,30 +339,30 @@ pub struct Game {
     /// it did not.
     ///
     /// The second block's **three** draws (`1000:c344`, `1000:c361`,
-    /// `1000:c371` -- the three enumerated above) are **not modelled** by this
-    /// port -- see `docs/re/gaps.md`, "Opened by Task 11c".
+    /// `1000:c371` -- the three enumerated above) are modelled by
+    /// [`crate::market::pickpocket`] as of `docs/re/port-gaps.md` row 9.
+    /// They are the first draws this port spends inside a shop submenu, and
+    /// no capture under `data/` observes any of them.
     ///
     /// `20ae:3b76` -- the market ban's countdown, set to 5 at `1000:c465`
     /// (`c6 06 76 3b 05`), gated on at `1000:b95e`, cleared by `girl` at
     /// `1000:d793`, and decremented once per walk at `1000:b173`.
     ///
-    /// **Only the decrement is implemented.** Nothing in this port assigns a
-    /// non-zero value, so the field is permanently 0 here and the two things
-    /// that read it -- the `== 1` phone message in [`Game::walk`] and the
-    /// decrement itself -- never fire. Registered in `docs/re/gaps.md`, "The
-    /// two ban countdowns are modelled and decremented but never set", with
-    /// every missing site's address.
+    /// **All five sites are implemented**, as of rows 9 and 25: the setter
+    /// and the gate in [`crate::market`] and [`Game::enter_shop`], the clear
+    /// in [`Game::visit_girl`], the decrement in [`Game::wander_preamble`]
+    /// and the district-advance clear at `1000:abce`. So the `== 1` phone
+    /// message at `1000:b11e` is reachable too.
     pub market_ban_countdown: u8,
     /// `20ae:3b77` -- the club ban's countdown: set to 5 at `1000:e23e`
     /// (`c6 06 77 3b 05`) by [`crate::club`]'s caught-cheating block, gated
     /// on at `1000:df1a` in [`Game::enter_shop`], decremented at
     /// `1000:b17e`, cleared by the district reset at `1000:abd3`.
     ///
-    /// **Unlike [`Game::market_ban_countdown`], all four sites are now
-    /// implemented.** The `docs/re/gaps.md` entry "The two ban countdowns
-    /// are modelled and decremented but never set" survives for the market
-    /// half only -- `1000:c465` (the setter), `1000:b95e` (the gate) and
-    /// `1000:d793` (the `girl` clear) are still missing.
+    /// All four sites are implemented, and so are
+    /// [`Game::market_ban_countdown`]'s five: `docs/re/gaps.md`'s "The two ban
+    /// countdowns" entry is closed on both halves as of
+    /// `docs/re/port-gaps.md` rows 9 and 25.
     pub club_ban_countdown: u8,
     /// `20ae:3c82` -- the club card game's stake, in rubles.
     ///
@@ -389,17 +390,20 @@ pub struct Game {
     /// (`data/den_arms.json`'s `globals[]` census, recomputed by
     /// `python3 tools/re_query.py xrefs-to 20ae:3b72`).
     ///
-    /// **The den's `hp` arm is the only writer this port carries.**
-    /// `1000:dc11` `mov byte [0x3b72],0x1` is ported in
-    /// [`Game::den_beat_up`]. The wander's own seven stores
-    /// (`1000:b5bb`, `1000:b698`, `1000:b71a`, `1000:b747`, `1000:b81a`,
-    /// and `1000:c3d3` / `1000:e184` outside it) are modelled by
-    /// [`Game::walk`] as CONTROL FLOW -- it calls `run_combat` where the
-    /// original sets the flag and lets `1000:b81f` read it -- so nothing in
-    /// this port reads this field. Carried anyway, per the brief's "add
-    /// whatever state the arms need ... on `Game` when it is a standalone
-    /// global", and registered in `docs/re/gaps.md`, "The den's `hp` arm
-    /// sets `20ae:3b72` and nothing in this port reads it".
+    /// **Three of the eight stores are carried, one per submenu that starts
+    /// a fight of its own:** `1000:dc11` in [`Game::den_beat_up`],
+    /// `1000:e184` in `crate::club`'s caught-cheating block and `1000:c3d3`
+    /// in [`crate::market`]'s bust. An earlier revision of this line called
+    /// the den's the only one; the club's landed with Task 34 and the
+    /// market's with `docs/re/port-gaps.md` row 9, and neither updated it.
+    /// The wander's own five stores (`1000:b5bb`, `1000:b698`, `1000:b71a`,
+    /// `1000:b747`, `1000:b81a`) are modelled by [`Game::walk`] as CONTROL
+    /// FLOW instead -- it calls `run_combat` where the original sets the
+    /// flag and lets `1000:b81f` read it -- so nothing in this port reads
+    /// this field. Carried anyway, per the brief's "add whatever state the
+    /// arms need ... on `Game` when it is a standalone global", and
+    /// registered in `docs/re/gaps.md`, "The den's `hp` arm sets
+    /// `20ae:3b72` and nothing in this port reads it".
     pub fight_accepted_3b72: bool,
     /// `20ae:394d` / `.SAV 0x2b1`, `20ae:394e`, `20ae:394f` -- the pistol, its
     /// silencer and its magazine. See [`crate::combat_dispatch::Pistol`],
@@ -1323,13 +1327,24 @@ impl Game {
         // unsigned byte against zero `jbe` is `== 0`, so the club is open
         // only while the countdown is zero; a non-zero countdown falls
         // THROUGH to 1000:df21, prints its refusal at 1000:df35 and leaves
-        // at 1000:df3a. `mar`'s own countdown gate at 1000:b95e decides the
-        // same condition with `jz` and is **still** not ported -- see
-        // `docs/re/gaps.md`.
+        // at 1000:df3a.
         if loc == Location::Club && self.club_ban_countdown > 0 {
             // 1000:df21 pushes file `0xB9BD`
             // `^6Тебе не стоит пока туда соваться`.
             term::println("^6Тебе не стоит пока туда соваться");
+            return;
+        }
+        // 1000:b95e `cmp byte [0x3b76],0x0` / 1000:b963 `jz 0xb968` -- the
+        // same condition with the opposite branch polarity: the market is
+        // open only while the countdown is zero, and a non-zero one takes
+        // 1000:b965 `jmp 0xc480` to the refusal. It runs AFTER the discovery
+        // gate at 1000:b954, whose own miss jumps to 1000:c49b instead, so
+        // an undiscovered market prints its own line and never this one.
+        // `docs/re/port-gaps.md` row 25, landed with row 9 -- setting the
+        // countdown without this gate would be worse than neither.
+        if loc == Location::Market && self.market_ban_countdown > 0 {
+            // 1000:c480 pushes file `0xA9C4`, printed at 1000:c494.
+            term::println(market::BANNED);
             return;
         }
         self.location = loc;
@@ -1383,14 +1398,13 @@ impl Game {
     /// * `1000:d756`/`1000:d76f` -- files `0xB4CD`, `0xB4F6`.
     /// * `1000:d788`..`1000:d793` -- `hp := hpmax`, `money -= 12`, and
     ///   `1000:d793` `c6 06 76 3b 00` clears the market ban countdown
-    ///   `20ae:3b76`. **Not modelled here**, and the field it would clear
-    ///   *does* exist ([`Game::market_ban_countdown`]) -- nothing in this
-    ///   port ever sets it non-zero, so clearing it would be a no-op. The
-    ///   whole omission -- both setters, both gates and this clear -- is
-    ///   registered in `docs/re/gaps.md`, "The two ban countdowns are
-    ///   modelled and decremented but never set". An earlier revision of this
-    ///   line said "(not modelled here)" before the field existed and was
-    ///   never revisited.
+    ///   `20ae:3b76`. All three are modelled; the clear landed with
+    ///   `docs/re/port-gaps.md` row 25, in the batch that gave the countdown
+    ///   its setter ([`crate::market`]'s `1000:c465`) and its gate
+    ///   ([`Game::enter_shop`]'s `1000:b95e`). Until then it would have been
+    ///   a no-op, which is why two earlier revisions of this line said "not
+    ///   modelled here". **All three stores sit past the refusal at
+    ///   `1000:d706`**, so a visit the player cannot pay for clears nothing.
     fn visit_girl(&mut self) {
         if self.player.money < 12 {
             term::println("^6Ну непойдёшь же как придурок без ничего.");
@@ -1403,8 +1417,9 @@ impl Game {
         }
         term::println("^6Ты купил ей чё-то, потратив 12 рублей.");
         term::println("^2Ты расслабился, отдохнул и снова можешь творить свои гоповские дела.");
-        self.player.hp = self.player.hpmax;
-        self.player.money -= 12;
+        self.player.hp = self.player.hpmax; // 1000:d788
+        self.player.money -= 12; // 1000:d78e
+        self.market_ban_countdown = 0; // 1000:d793
     }
 
     /// The colour digit the original appends to a price row's prefix.
@@ -2106,6 +2121,13 @@ impl Game {
             {
                 self.shop_action(k.chars().next().unwrap());
             }
+            // 1000:c329, key literal CS 0x9089 (`t`) -- the market's
+            // pickpocket, ported by [`crate::market`]. It sits AFTER the
+            // priced-row compares in the original's chain and the two key
+            // sets are disjoint, so the order here is the image's rather
+            // than a Rust match-arm accident. `bmar` has no such compare:
+            // 1000:c329 is inside the `mar` loop (1000:bd08..1000:c479).
+            (Location::Market, "t") => return market::pickpocket(self, lines),
             _ => {
                 // The den's own exit compare is 1000:ded7 against CS 0x848e
                 // (`w`), whose hit jumps out at 1000:dee1. That literal is
@@ -3368,13 +3390,13 @@ impl Game {
             // seq 9/10, 1000:b11e and 1000:b145 -- the "it blew over" calls,
             // on the last turn of each ban and only with the den known.
             //
-            // CURRENTLY UNREACHABLE. Both countdowns are permanently 0 in
-            // this port: no `mov byte [0x3b76],5` (1000:c465), no
-            // `mov byte [0x3b77],5` (1000:e23e), and no gate at 1000:b95e /
-            // 1000:df1a. Kept at the right addresses and in the right order
-            // so that implementing those three closes the gap in one place --
-            // see docs/re/gaps.md, "The two ban countdowns are modelled and
-            // decremented but never set".
+            // BOTH ARE REACHABLE. The club's setter (1000:e23e) and gate
+            // (1000:df1a) landed with `crate::club`; the market's setter
+            // (1000:c465), gate (1000:b95e) and `girl` clear (1000:d793)
+            // landed with `crate::market` -- `docs/re/port-gaps.md` rows 9
+            // and 25. Both tests read the countdown BEFORE the decrement
+            // below, so the message fires on the countdown's last turn and
+            // the same turn takes it to zero.
             if self.market_ban_countdown == 1 && self.places.is_found(Location::Den) {
                 term::println(
                     "Телефон:^2Это ты там на базаре шухер наводил? Ну короче там менты свалили.",
@@ -3386,8 +3408,8 @@ impl Game {
         }
 
         // seq 11, 1000:b16c/1000:b177 -- both cooldowns tick down
-        // (`fe 0e 76 3b` / `fe 0e 77 3b`). Dead for the same reason as the
-        // two branches above: nothing sets either field non-zero.
+        // (`fe 0e 76 3b` / `fe 0e 77 3b`), each behind its own `jz` on the
+        // byte, so zero is not decremented into 0xff.
         if self.market_ban_countdown > 0 {
             self.market_ban_countdown -= 1;
         }
@@ -5803,9 +5825,12 @@ impl Game {
         match opponent_kind {
             // 1000:3e8d `cmp al,0x1` / 1000:3e8f `jnz 0x3ead` -- the market
             // pickpocket's opener (CS 0x2cfa, printed 1000:3ea5). One line
-            // and no ReadKey. Its only caller is 1000:c433/1000:c436, the
-            // verb `t`, which is `docs/re/port-gaps.md` row 9 and not this
-            // batch's -- so the arm is correct and currently unreachable.
+            // and no ReadKey. Its only caller image-wide is
+            // 1000:c433/1000:c436, the verb `t`, and that landed with
+            // `docs/re/port-gaps.md` row 9: the arm had no caller until
+            // then. `crate::market`'s
+            // `the_bust_is_the_only_caller_of_the_param_one_opener` is what
+            // drives it.
             1 => term::println(ending::OPENER_1[0]),
             // 1000:3ead `cmp al,0x3` / 1000:3eaf `jnz 0x3f2b` -- the first
             // rector fight. Four lines, each followed by a ReadKey
@@ -12192,6 +12217,118 @@ mod tests {
         assert_eq!(g.district, 2);
         assert_eq!(g.market_ban_countdown, 0, "1000:abce");
         assert_eq!(g.club_ban_countdown, 0, "1000:abd3");
+    }
+
+    /// `1000:b95e` `cmp byte [0x3b76],0x0` / `1000:b963 jz 0xb968` -- the
+    /// market is open only while the countdown is zero, and a non-zero one
+    /// takes `1000:b965 jmp 0xc480` to a refusal that neither enters nor
+    /// changes anything. `docs/re/port-gaps.md` row 25.
+    #[test]
+    fn the_market_ban_gate_refuses_entry_while_the_countdown_stands() {
+        for standing in [5u8, 1] {
+            let mut g = game();
+            g.market_ban_countdown = standing;
+            let out = term::capture::lines(|| {
+                g.dispatch(Command::Market, &mut no_input()).unwrap();
+            });
+            assert_eq!(out, vec![market::BANNED.to_string()], "1000:c494");
+            assert_eq!(g.location, Location::Street, "1000:b965 never enters");
+            assert_eq!(g.mode, Mode::Street, "and no submenu is opened");
+            assert_eq!(g.market_ban_countdown, standing, "the gate only reads");
+        }
+        // Zero takes `jz 0xb968`, the intro at 1000:b96b.
+        let mut g = game();
+        let out = term::capture::lines(|| {
+            g.dispatch(Command::Market, &mut no_input()).unwrap();
+        });
+        assert!(
+            out.first().map(|l| l.starts_with("Ты пришел на базар")) == Some(true),
+            "1000:b96b, got {out:?}"
+        );
+        assert_eq!(g.mode, Mode::Shop(Location::Market));
+    }
+
+    /// `1000:b954` runs BEFORE `1000:b95e` and its miss jumps to
+    /// `1000:c49b`, not `1000:c480`, so an undiscovered market prints its
+    /// own refusal whatever the countdown says. A port that tested the ban
+    /// first would print the other line.
+    #[test]
+    fn the_discovery_gate_runs_before_the_market_ban_gate() {
+        let mut g = game();
+        g.places = Places::from_bytes(&[0u8; 7]);
+        g.market_ban_countdown = 5;
+        let out = term::capture::lines(|| {
+            g.dispatch(Command::Market, &mut no_input()).unwrap();
+        });
+        assert_eq!(
+            out,
+            vec!["^6Ты незнаешь, пока ешё, где находтся базар".to_string()],
+            "1000:b95b jumps to 0xc49b"
+        );
+    }
+
+    /// `1000:d788`..`1000:d793` -- the `girl` block heals, charges 12 and
+    /// clears the market ban, all three past the refusal at `1000:d706`.
+    #[test]
+    fn the_girl_clears_the_market_ban_only_when_she_is_paid() {
+        let mut g = game();
+        g.places.mark_found(Location::Girl);
+        g.market_ban_countdown = 4;
+        g.player.money = 100;
+        g.player.hp = 3;
+        term::capture::lines(|| {
+            g.dispatch(Command::Girl, &mut no_input()).unwrap();
+        });
+        assert_eq!(g.market_ban_countdown, 0, "1000:d793");
+        assert_eq!(g.player.hp, g.player.hpmax, "1000:d788");
+        assert_eq!(g.player.money, 88, "1000:d78e sub 0xc");
+
+        let mut g = game();
+        g.places.mark_found(Location::Girl);
+        g.market_ban_countdown = 4;
+        g.player.money = 11;
+        term::capture::lines(|| {
+            g.dispatch(Command::Girl, &mut no_input()).unwrap();
+        });
+        assert_eq!(g.market_ban_countdown, 4, "1000:d706 jumps past 1000:d793");
+    }
+
+    /// The countdown's whole life cycle, driven through the real walk
+    /// preamble: set to 5 (`1000:c465`, [`crate::market`]), ticked down once
+    /// per walk by `1000:b173`, announced on its last turn by `1000:b11e`,
+    /// and gone on the fifth. The `== 1` test at `1000:b11e` runs BEFORE the
+    /// `dec` at `1000:b173`, so the message and the last tick share a turn.
+    #[test]
+    fn the_market_ban_ticks_down_once_per_walk_and_announces_its_last_turn() {
+        let mut g = game();
+        g.market_ban_countdown = market::BAN_TURNS;
+        g.has_mobile = true; // 1000:b022's gate on 20ae:38bb
+        g.places.mark_found(Location::Den); // 1000:b125's gate on 20ae:3696
+        let mut seen = Vec::new();
+        let mut announced = Vec::new();
+        for _ in 0..market::BAN_TURNS {
+            let before = g.market_ban_countdown;
+            let out = term::capture::lines(|| {
+                g.wander_preamble(false, &mut input(&["", "", "", ""]))
+                    .unwrap();
+            });
+            announced.push(out.iter().any(|l| l.contains("там менты свалили")));
+            seen.push((before, g.market_ban_countdown));
+        }
+        assert_eq!(
+            seen,
+            vec![(5, 4), (4, 3), (3, 2), (2, 1), (1, 0)],
+            "1000:b171 `jz` guards 1000:b173 `dec`"
+        );
+        assert_eq!(
+            announced,
+            vec![false, false, false, false, true],
+            "1000:b11e fires only on the turn the countdown reads 1"
+        );
+        // And zero is not decremented into 0xff.
+        g.wander_preamble(false, &mut input(&["", "", "", ""]))
+            .unwrap();
+        assert_eq!(g.market_ban_countdown, 0, "1000:b171 guards the `dec`");
     }
 
     // -----------------------------------------------------------------

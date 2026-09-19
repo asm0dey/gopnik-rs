@@ -292,10 +292,11 @@ fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>)
 ///
 /// **`1000:e23e` is the only writer of `20ae:3b77`** outside the walk
 /// decrement at `1000:b17e` and the district reset at `1000:abd3`, so
-/// landing it turns `docs/re/gaps.md`'s "two ban countdowns ... never set"
-/// into one live countdown -- but only because the GATE at `1000:df1a`
-/// lands with it in [`Game::enter_shop`]. Setting the countdown without the
-/// gate would be worse than neither.
+/// landing it made the club's countdown live -- but only because the GATE at
+/// `1000:df1a` landed with it in [`Game::enter_shop`]. Setting the countdown
+/// without the gate would be worse than neither. `crate::market` landed the
+/// market's three the same way (`docs/re/port-gaps.md` rows 9 and 25), which
+/// is what closed `docs/re/gaps.md`'s entry on both halves.
 ///
 /// **The block ends the visit without the player typing anything.**
 /// `1000:e251` is `rtl_str_assign_max`, whose SOURCE is the first push

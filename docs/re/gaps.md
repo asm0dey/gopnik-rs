@@ -1719,46 +1719,46 @@ emulates `Delete` must pick the clamping semantics, not the library's.
 `tools/test_rtlmatch.py::test_deletes_divergence_is_visible_in_the_image_itself`
 pins the 11 bytes against `orig/g.exe`, so this needs no library to re-check.
 
-## The two ban countdowns — the club's is now set and gated, the market's is not
+## The two ban countdowns — CLOSED by Phase 2 batch E
 
 *Cited from `src/game.rs`'s `market_ban_countdown` / `club_ban_countdown`,
-`Game::walk_preamble` and `Game::visit_girl`.*
+`Game::wander_preamble` and `Game::visit_girl`, and from `src/market.rs`.*
 
 `20ae:3b76` (market) and `20ae:3b77` (club) are two byte cooldowns. The port
 declares both at the right addresses, ticks both down once per walk, and reads
 both for a phone message.
 
-**The club's half is live.** `grep -rn 'club_ban_countdown = 5' src/` finds one
-site, in `crate::club`'s caught-cheating block, commented `1000:e23e`; the `kl`
-gate at `1000:df1a` is in `Game::enter_shop`. So the club's `== 1` message
-branch and its `> 0` decrement are both reachable.
+**The club's half went live with Task 34.** `grep -rn 'club_ban_countdown = 5'
+src/` finds one site, in `crate::club`'s caught-cheating block, commented
+`1000:e23e`; the `kl` gate at `1000:df1a` is in `Game::enter_shop`.
 
-**The market's half is not.** `grep -rn 'market_ban_countdown = ' src/` prints
-exactly two assignments — the district-advance clear (`= 0`, `1000:abce`) and a
-`= 4` inside `the_advance_clears_both_ban_countdowns`, a `#[test]` that plants
-the value in order to watch the clear remove it. **No production path assigns
-it a non-zero value**, so the market's `== 1` message branch and its `> 0`
-decrement are still dead code. Three sites remain unported: `1000:c465`
-(the setter), `1000:b95e` (`mar`'s gate) and `1000:d793` (`girl`'s clear).
-That is a real omission, registered here rather than left implicit; all six
-sites below are **established from flow** and were re-derived from
-`orig/g.exe` for this entry.
+**The market's half went live with `docs/re/port-gaps.md` rows 9 and 25.**
+`grep -rn 'market_ban_countdown = ' src/` now prints the setter in
+`crate::market`'s `busted` (`= market::BAN_TURNS`, `1000:c465`), the `girl`
+clear (`= 0`, `1000:d793`), the district-advance clear (`= 0`, `1000:abce`)
+and the tests that drive them; the `mar` gate at `1000:b95e` is the second
+gate in `Game::enter_shop`. So the market's `== 1` message branch at
+`1000:b11e` and its `> 0` decrement at `1000:b173` are both reachable, and
+`src/game.rs`'s
+`the_market_ban_ticks_down_once_per_walk_and_announces_its_last_turn` drives
+the whole 5 → 0 cycle through the real walk preamble. All six sites below are
+**established from flow** and were re-derived from `orig/g.exe` for this
+entry.
 
 | what | site | bytes | in the port? |
 |---|---|---|---|
-| set the market ban to 5 | `1000:c465` | `c6 06 76 3b 05` | **no** |
+| set the market ban to 5 | `1000:c465` | `c6 06 76 3b 05` | yes (batch E, `crate::market`) |
 | set the club ban to 5 | `1000:e23e` | `c6 06 77 3b 05` | yes (Task 34, `crate::club`) |
-| `mar`'s gate on it | `1000:b95e` | `80 3e 76 3b 00` + `jz 0xb968` | **no** |
+| `mar`'s gate on it | `1000:b95e` | `80 3e 76 3b 00` + `jz 0xb968` | yes (batch E, `Game::enter_shop`) |
 | `kl`'s gate on it | `1000:df1a` | `80 3e 77 3b 00` + `jbe 0xdf3d` | yes (Task 34, `Game::enter_shop`) |
-| `girl` clears the market ban | `1000:d793` | `c6 06 76 3b 00` | **no** |
+| `girl` clears the market ban | `1000:d793` | `c6 06 76 3b 00` | yes (batch E, `Game::visit_girl`) |
 | both tick down, once per walk | `1000:b173` / `1000:b17e` | `fe 0e 76 3b` / `fe 0e 77 3b` | yes |
 | the district advance clears both | `1000:abce` / `1000:abd3` | `c6 06 76 3b 00` / `c6 06 77 3b 00` | yes (Task 21) |
 
-The last row does **not** change the verdict for the MARKET: clearing a byte
-that nothing ever sets is still inert, so `1000:abce` starts mattering only
-when `1000:c465` lands. For the CLUB it is already load-bearing —
-`1000:abd3` now clears a byte `crate::club` really writes, so a promotion
-genuinely lifts a club ban.
+The last row is now load-bearing on both halves: `1000:abce` clears a byte
+`crate::market` really writes and `1000:abd3` one `crate::club` really writes,
+so a promotion genuinely lifts either ban. Before batch E the market column
+read "clearing a byte that nothing ever sets is still inert".
 
 The gates are what the countdowns are *for*, and each has its own refusal
 line. `1000:b95e` runs immediately after `mar`'s discovery-flag check at
@@ -1773,11 +1773,12 @@ zero takes `jbe 0xdf3d` into the club, ban non-zero falls through to
 **Task 34 landed the club's pair together**, setter and gate, which is why
 this entry listed them as one omission rather than five: `1000:e23e` is
 `crate::club`'s caught-cheating block and `1000:df1a` is the second gate in
-`Game::enter_shop`, and file `0xB9BD` is now printed. What remains open is the
-MARKET half — `1000:c465`, `1000:b95e` and the `girl` clear at `1000:d793` —
-and it is still one omission, not three: `Game::market_ban_countdown` is
-permanently 0 in this port and its two readers stay unreachable until all
-three land.
+`Game::enter_shop`, and file `0xB9BD` is now printed. **Phase 2 batch E landed
+the market's three the same way**, for the same reason: a setter without the
+gate would have shut nothing and a gate without the setter would never have
+fired. `1000:c465` is `crate::market`'s `busted`, `1000:b95e` is the second
+gate in `Game::enter_shop` and `1000:d793` is the last store of
+`Game::visit_girl`; file `0xA9C4` is now printed.
 
 **Task 33 settled WHEN `1000:e23e` runs**, which this entry never said:
 it is the last effect of the club's caught-cheating block, reached only when
@@ -1786,19 +1787,16 @@ wins. `docs/re/club.md` and `data/club_arms.json` have the whole arm. So the
 club setter is not a loose end waiting on new research; it is one item in the
 `p` arm's port, and the gate at `1000:df1a` must land in the same change.
 
-**Consequence, stated plainly:** the MARKET half of `src/game.rs`'s two "it
-blew over" phone messages (`1000:b11e`, `1000:b145`) can never print in this
-port. The club half now can, because `1000:e23e` lands: a player caught
-cheating carries a countdown of 5 into the walk preamble, where `1000:b17e`
-ticks it down and the `== 1` branch fires. They are left in place —
-at the right addresses, in the right order in the walk preamble — so that
-implementing the market setter at `1000:c465` and the `girl` clear at
-`1000:d793` is the only work needed to make the market half live too. Nothing
-about the market half is *wrong*; it is unreachable.
+**Consequence, stated plainly:** both of `src/game.rs`'s "it blew over" phone
+messages (`1000:b11e`, `1000:b145`) can now print. A player caught cheating at
+the club or busted picking pockets carries a countdown of 5 into the walk
+preamble, where `1000:b17e` / `1000:b173` tick it down and the `== 1` branch
+fires on its last turn — before the decrement, which is why the message and
+the last tick share a turn. Earlier revisions of this paragraph said the market
+half "can never print in this port"; that is false as of batch E.
 
-`Game::visit_girl`'s doc previously said the clear at `1000:d793` was "not
-modelled here" without saying that the field it would clear exists; it now
-points at this entry.
+`Game::visit_girl`'s doc said the clear at `1000:d793` was "not modelled here"
+through two revisions; it now models it and points at this entry.
 
 ---
 
@@ -2328,9 +2326,23 @@ are the questions that pass left open, and the ones it created.
   all five captured runs replay their whole draw stream and their whole
   `final_state`, and `cargo test` is green. What remains open inside the
   fight flow is enumerated there, and none of it costs a draw.
-* **The market's second pickpocket block spends three draws this port never
-  makes** — `1000:c344` `Random(district * 5 + 5)`, `1000:c361` `Random(10)`
-  and `1000:c371` `Random(luck * 2)`.
+* ~~**The market's second pickpocket block spends three draws this port never
+  makes**~~ — **CLOSED by Phase 2 batch E** (`docs/re/port-gaps.md` row 9).
+  `1000:c344` `Random(district * 5 + 5)`, `1000:c361` `Random(10)` and
+  `1000:c371` `Random(luck * 2)` are `crate::market::pickpocket`'s three
+  `below_at` sites, in that order. The walk below is what the port was written
+  from and is left standing, because it is also the evidence that **no capture
+  under `data/` observes any of the three**: the call-site census of
+  `data/rng_trace.json` holds 35 distinct `1000:` addresses and none of them is
+  one of these, so adding the draws cannot move `tests/wander_sequence.rs` or
+  `tests/combat_sequence.rs`. Recomputed from the shipped artifact, not
+  remembered:
+
+  ```bash
+  grep -o '"1000:[0-9a-f]\{4\}"' data/rng_trace.json | sort -u | wc -l   # 35
+  grep -c '1000:c344\|1000:c361\|1000:c371' data/rng_trace.json          # 0
+  ```
+
   **Established from flow.** An earlier revision of this entry said
   "re-derived from an aligned start at `1000:c2a0`" — `1000:c2a0` is **not**
   an aligned start; it is three bytes into `1000:c29d`

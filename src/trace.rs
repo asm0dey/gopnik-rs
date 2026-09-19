@@ -86,6 +86,15 @@
 //! enemy_fragment  <i> <CS literal of a composed enemy-sheet line>
 //! ```
 //!
+//! A sixth group appends after those -- the market's pickpocket and the
+//! police ban it leaves behind (rows 9 and 25):
+//!
+//! ```text
+//! market_line     <tag> <i> <ln|w> <text of a literal the span prints>
+//! market_gap      <tag> <i> <B|K|C events between line i-1 and line i>
+//! market_fragment <tag> <i> <CS literal the span hands to the string RTL>
+//! ```
+//!
 //! `levelup_gain` rows are sorted by field name inside each stat rather than
 //! left in the original's instruction order: this side derives them by
 //! applying [`crate::progress::grant`] and diffing the record, which cannot
@@ -99,6 +108,7 @@ use crate::data;
 use crate::ending;
 use crate::enemy_sheet;
 use crate::game::IMM_ROWS;
+use crate::market;
 use crate::model::Fighter;
 use crate::opening;
 use crate::progress::{
@@ -278,6 +288,7 @@ pub fn emit(out: &mut impl Write) -> io::Result<()> {
     church_records(out)?;
     wander_records(out)?;
     enemy_records(out)?;
+    market_records(out)?;
 
     Ok(())
 }
@@ -405,6 +416,53 @@ fn enemy_records(out: &mut impl Write) -> io::Result<()> {
     }
     for (i, frag) in enemy_sheet::FRAGMENTS.iter().enumerate() {
         writeln!(out, "enemy_fragment {i} {}", text::strip(frag))?;
+    }
+    Ok(())
+}
+
+/// One market span's three tables: its tag, its `(closes, text)` lines, its
+/// gap table and its composed line's CS halves.
+type MarketGroup = (
+    &'static str,
+    &'static [(bool, &'static str)],
+    opening::Gaps,
+    &'static [&'static str],
+);
+
+/// The market's pickpocket and the ban's refusal -- `docs/re/port-gaps.md`
+/// rows 9 and 25, landed in Phase 2 batch E. Same reasoning as
+/// [`enemy_records`], appended after it so no record above moves.
+///
+/// Two spans, because they are two blocks the original reaches by different
+/// branches: `1000:c329`..`c46a` is the verb and `1000:c480`..`c499` is the
+/// arm `1000:b965` jumps to when the countdown stands. `difftest.py` walks
+/// each linearly and compares the literals in address order, so the tables
+/// below have to hold that order for a record to mean anything.
+fn market_records(out: &mut impl Write) -> io::Result<()> {
+    let groups: [MarketGroup; 2] = [
+        (
+            "pickpocket",
+            &market::PICKPOCKET_EMITTED,
+            market::PICKPOCKET_GAPS,
+            &market::PICKPOCKET_FRAGMENTS,
+        ),
+        ("banned", &market::BANNED_EMITTED, opening::NO_GAPS, &[]),
+    ];
+    for (tag, emitted, _, _) in groups {
+        for (i, (closes, line)) in emitted.iter().enumerate() {
+            let how = if *closes { "ln" } else { "w" };
+            writeln!(out, "market_line {tag} {i} {how} {}", text::strip(line))?;
+        }
+    }
+    for (tag, _, gaps, _) in groups {
+        for (at, events) in gaps {
+            writeln!(out, "market_gap {tag} {at} {events}")?;
+        }
+    }
+    for (tag, _, _, frags) in groups {
+        for (i, frag) in frags.iter().enumerate() {
+            writeln!(out, "market_fragment {tag} {i} {}", text::strip(frag))?;
+        }
     }
     Ok(())
 }

@@ -1261,12 +1261,20 @@ MOV_DI_IMM = re.compile(r"mov di,(0x[0-9a-f]+)$")
 CALL_FAR = re.compile(r"call (0x[0-9a-f]+:0x[0-9a-f]+)$")
 
 
-def enemy_walk(img):
-    """`(emitted, composed, fragments)` for `1000:135c`..`165e`.
+def literal_walk(img, start, stop, want):
+    """`(emitted, composed, fragments)` for one span, by linear decode.
 
-    One aligned linear decode of the whole span -- not a byte-pattern scan --
-    because the seven emitted lines push between zero and four values each
-    and no single regex covers them without enumerating the arities.
+    One aligned linear decode of the whole span -- not a byte-pattern scan.
+    Two spans need it and each needs it for its own reason: the enemy
+    sheet's seven emitted lines push between zero and four values each, so no
+    single regex covers them without enumerating the arities; the market's
+    pickpocket is BRANCHY rather than wide -- its four `WriteLn`s carry 0, 1
+    and 1 fills, its composed line is assembled across two conditional arms,
+    and its last literal (the forced `w`) is consumed by `0f78:0b01` with a
+    `mov di,<dgroup>` sitting between the `push di` and the call, which no
+    contiguous byte pattern spans.  A linear decode reads both without
+    knowing either shape in advance, and its landing assertion is what says
+    the span's bounds really are instruction starts.
 
     A CS literal is a `mov di,<imm16>` / `push cs` / `push di` triple; the
     next call in `ENEMY_CALLS` consumes it.  `emitted` is
@@ -1276,9 +1284,10 @@ def enemy_walk(img):
     `fragments` `[(site, text), ...]` for the literals the string RTL takes.
 
     The walk must land exactly on `stop`; a decode that stepped over it would
-    mean the span's bounds are not instruction starts.
+    mean the span's bounds are not instruction starts.  `want` is the span's
+    own literal count, asserted so a short walk raises instead of quietly
+    comparing a short list.
     """
-    start, stop = ENEMY_SPAN
     pos, pending = start, None
     emitted, composed, fragments = [], [], []
     while pos < stop:
@@ -1318,12 +1327,17 @@ def enemy_walk(img):
             % pending
         )
     found = len(emitted) + len(fragments)
-    if found != ENEMY_LITERALS:
+    if found != want:
         raise DifftestError(
             "1000:%04x..%04x holds %d CS literals, expected %d"
-            % (start, stop, found, ENEMY_LITERALS)
+            % (start, stop, found, want)
         )
     return emitted, composed, fragments
+
+
+def enemy_walk(img):
+    """`literal_walk` over `1000:135c`..`165e` -- row 5's span."""
+    return literal_walk(img, *ENEMY_SPAN, ENEMY_LITERALS)
 
 
 def enemy(img):
@@ -1348,6 +1362,58 @@ def enemy(img):
     for i, (_, cs) in enumerate(fragments):
         lines.append("enemy_fragment %d %s"
                      % (i, strip_markup(shortstring(img, cs))))
+    return lines
+
+
+# ---------------------------------------------------------------------------
+# The market's pickpocket and its ban (`docs/re/port-gaps.md` rows 9 and 25)
+# ---------------------------------------------------------------------------
+
+#: The two spans, as `(tag, start, stop, literals)`.  Both bounds of both are
+#: aligned instruction starts AND branch targets the image itself names, so
+#: they are not byte-scan hits:
+#:
+#:  * `1000:c329` is the `call 0f78:0bd8` that compares the market's buffer
+#:    against `t` -- the literal it consumes (`cs:0x9089`) is pushed BEFORE
+#:    the span, which is why the walk starts with nothing pending; `1000:c46a`
+#:    is the `mov di,0x3a72` of the loop's own `w` compare, the target of
+#:    `1000:c3ca jmp 0xc46a`.
+#:  * `1000:c480` is the target of `1000:b965 jmp 0xc480`, the ban gate's
+#:    non-zero arm, and `1000:c499` is the `jmp short 0xc4b4` that leaves it.
+#:
+#: The literal counts are the walk's own assertion, not a transcription: a
+#: span that stopped finding one raises rather than comparing a short list.
+MARKET_SPANS = [
+    ("pickpocket", 0xC329, 0xC46A, 7),
+    ("banned", 0xC480, 0xC499, 1),
+]
+
+
+def market(img):
+    """Every market record (rows 9 and 25), appended in this order."""
+    walks = [(tag, literal_walk(img, lo, hi, want), lo, hi)
+             for tag, lo, hi, want in MARKET_SPANS]
+    lines = []
+    for tag, (emitted, _, _), _, _ in walks:
+        for i, (_, closes, cs) in enumerate(emitted):
+            lines.append("market_line %s %d %s %s"
+                         % (tag, i, "ln" if closes else "w",
+                            strip_markup(shortstring(img, cs))))
+    # The announcement at `1000:c42e` prints the stack local the four
+    # `0f78:0ae7`/`0b66` calls before it assembled, so it carries no CS
+    # literal and a gap record is the only place a comparison can put it.
+    # The same sweep collects bare `WriteLn`s and `ReadKey`s over both spans,
+    # which is what makes "the `t` verb blocks on nothing" a COMPARED claim:
+    # one `call 0f16:031a` anywhere in either span would put a `'K'` into a
+    # record and `docs/re/port-gaps.md` row 19 would gain a site here.
+    for tag, (emitted, composed, _), lo, hi in walks:
+        for i, seq in gaps_of(img, [s for s, _, _ in emitted], lo, hi,
+                              seed=[(s, "C") for s in composed]):
+            lines.append("market_gap %s %d %s" % (tag, i, seq))
+    for tag, (_, _, fragments), _, _ in walks:
+        for i, (_, cs) in enumerate(fragments):
+            lines.append("market_fragment %s %d %s"
+                         % (tag, i, strip_markup(shortstring(img, cs))))
     return lines
 
 
@@ -1495,6 +1561,12 @@ def reference(img):
     enemy_records = enemy(img)
     lines += enemy_records
     ev["enemy_line"] = sum(1 for l in enemy_records if l.startswith("enemy_line "))
+
+    # The market's pickpocket and its ban -- Phase 2 batch E, rows 9 and 25 --
+    # appended last for the same reason as everything else above.
+    market_records = market(img)
+    lines += market_records
+    ev["market_line"] = sum(1 for l in market_records if l.startswith("market_line "))
     return lines, ev
 
 
@@ -1842,6 +1914,11 @@ def main(argv=None):
     print("  %d enemy-sheet lines of the span's %d CS literals, found by one "
           "aligned walk of 1000:%04x..%04x"
           % (ev["enemy_line"], ENEMY_LITERALS, *ENEMY_SPAN))
+    print("  %d market lines of the two spans' %d CS literals, found by the "
+          "same walk over %s"
+          % (ev["market_line"], sum(w for _, _, _, w in MARKET_SPANS),
+             ", ".join("1000:%04x..%04x" % (lo, hi)
+                       for _, lo, hi, _ in MARKET_SPANS)))
     print()
     for line in report:
         print(line)

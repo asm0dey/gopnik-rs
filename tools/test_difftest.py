@@ -130,6 +130,26 @@ class ReferenceEnumerations(unittest.TestCase):
             sites[2:4], ["imm_row_site kl 1 1000:df6f", "imm_row_site kl 2 1000:dfcb"]
         )
 
+    def test_the_market_walk_asserts_its_own_bounds_and_literal_counts(self):
+        """`literal_walk`'s three guards are live, not decoration.
+
+        The market's two spans are read by a linear decode rather than a byte
+        pattern, so what stands in for a regex's "no match" is the walk's own
+        landing check.  Both directions are exercised per span: a `stop` one
+        byte short of the real one must raise (the decode steps over it), and
+        a literal count one too high must raise rather than compare a short
+        list.  Without this the assertions inside `literal_walk` would be two
+        more checks nobody has seen fail.
+        """
+        lines = [l for l in REFERENCE if l.startswith("market_")]
+        self.assertEqual(len(lines), 9)
+        self.assertEqual(EVIDENCE["market_line"], 5)
+        for _, lo, hi, want in difftest.MARKET_SPANS:
+            with self.assertRaises(difftest.DifftestError):
+                difftest.literal_walk(IMG, lo, hi - 1, want)
+            with self.assertRaises(difftest.DifftestError):
+                difftest.literal_walk(IMG, lo, hi, want + 1)
+
     def test_no_colour_markup_survives_into_the_reference(self):
         """Colour MARKUP is `^` followed by a digit -- that, not every caret.
 

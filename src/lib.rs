@@ -11,6 +11,7 @@ pub mod enemy_sheet;
 pub mod game;
 pub mod gym;
 pub mod locations;
+pub mod market;
 pub mod model;
 pub mod opening;
 pub mod persist;

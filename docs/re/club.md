@@ -109,11 +109,13 @@ the ZERO case out of the fall-through; what differs is the mnemonic (`jz`
 against `jbe`, equivalent on an unsigned byte against 0) and where the refusal
 lives.
 
-`docs/re/gaps.md`'s "The two ban countdowns are modelled and decremented but
-never set" already owns the omission and already names both `1000:df1a` and
-`1000:e23e`. What this map adds is the *condition* under which `1000:e23e`
-runs: it is not a random event, it is the punishment for winning six hands in a
-row. See "The `p` arm" below.
+`docs/re/gaps.md`'s "The two ban countdowns" entry owns both halves and names
+`1000:df1a` and `1000:e23e` as well as the market's `1000:b95e`, `1000:c465`
+and `1000:d793`; it is CLOSED as of Phase 2 batch E, which landed the market's
+three. (It was headed "... are modelled and decremented but never set" while
+this sentence first named it.) What this map adds is the *condition* under
+which `1000:e23e` runs: it is not a random event, it is the punishment for
+winning six hands in a row. See "The `p` arm" below.
 
 ## The two intro lines and the two menu rows
 
