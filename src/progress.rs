@@ -34,6 +34,8 @@
 
 use crate::model::Fighter;
 use crate::rng::Rng;
+use crate::term;
+use crate::text;
 
 /// `1000:2580`, `cmp word [0x38a6],0x28` — the понтовость cap.
 pub const MAX_LEVEL: u16 = 40;
@@ -81,6 +83,26 @@ pub const START_STATS: [[u16; 4]; 4] = [[3, 3, 3, 3], [5, 2, 4, 1], [4, 3, 3, 2]
 /// is the stored class/rank index.
 pub const CLASS_OF_ANSWER_OFFSET: u16 = 3;
 
+/// `1000:2591`..`25a5`, cs `0x248f` — what opens every level's line. A
+/// `Write`, not a `WriteLn` (`call 0eed:0000`, not `0eed:01c2`), so the two
+/// stat gains land on the same line and `1000:288b`'s bare `WriteLn` ends it.
+pub const LEVELUP_PREFIX: &str = "^1Понтовость увеличивается: ";
+
+/// `1000:28ab`, cs `0x24ea` — printed once after the whole loop, and only
+/// when the routine's `param_1` is zero (`1000:28a0`). Its two `#`s are
+/// filled from [`LEVELUP_TAIL_FILLS`]' two globals, in that order.
+pub const LEVELUP_TAIL: &str = "^6Сейчас у тебя # качков опыта. До слеующей прокачки надо #";
+
+/// Which globals `1000:28ab` pushes into [`LEVELUP_TAIL`]'s two `#`s, in
+/// push order: `push [0x38ce]` then `push [0x38d0]` — the XP left over and
+/// the new threshold, i.e. [`Progress::xp`] then [`Progress::threshold`].
+///
+/// Named rather than left implicit in the `fill` call below so
+/// `tools/difftest.py` compares the ORDER against the two `ff 36` operands
+/// it reads out of the image; swapping the two values in the port is then a
+/// failing record instead of two plausible numbers in the wrong slots.
+pub const LEVELUP_TAIL_FILLS: [u16; 2] = [0x38CE, 0x38D0];
+
 /// One of the four stats a level-up can raise.
 ///
 /// The discriminants are the branch order of `FUN_1000_2526`
@@ -107,6 +129,19 @@ impl Stat {
             Stat::Agility => b'2',
             Stat::Vitality => b'3',
             Stat::Luck => b'4',
+        }
+    }
+
+    /// The `Write` this stat's arm makes before it appends its code —
+    /// `1000:2635` (cs `0x24ac`), `1000:26dd` (`0x24b9`), `1000:2779`
+    /// (`0x24ca`) and `1000:2831` (`0x24dc`). All four keep their trailing
+    /// space: the gains run together on one line, ended by `1000:288b`.
+    pub fn message(self) -> &'static str {
+        match self {
+            Stat::Strength => "^1Сила +1 ",
+            Stat::Agility => "^1Ловкость +1 ",
+            Stat::Vitality => "^1Живучесть +1 ",
+            Stat::Luck => "^1Удача +1 ",
         }
     }
 
@@ -371,12 +406,18 @@ pub fn apply_levels(
             break;
         }
         f.level += 1;
+        // 1000:25a5, before the weight sum is built and before either draw.
+        term::print(LEVELUP_PREFIX);
         let hpmax_before = f.hpmax;
         let mut gains = [None; GAINS_PER_LEVEL];
         for slot in gains.iter_mut() {
             let roll = rng.below_at("1000:25fe", sum).wrapping_add(1);
             let stat = pick(weights, roll);
             if let Some(stat) = stat {
+                // 1000:2635/26dd/2779/2831 -- inside the arm, so a draw that
+                // matches no range prints nothing, the same way it records
+                // nothing.
+                term::print(stat.message());
                 grant(f, stat);
                 // 1000:2657/26ff/279b/2853 -- the code is appended inside the
                 // arm that granted the stat, so a roll that matches no range
@@ -386,11 +427,22 @@ pub fn apply_levels(
             }
             *slot = stat;
         }
+        // 1000:288b -- the bare `WriteLn` that ends this level's line.
+        term::println("");
         ups.push(LevelUp {
             new_level: f.level,
             hpmax_gain: f.hpmax.wrapping_sub(hpmax_before),
             gains,
         });
+    }
+    // 1000:28a0 `cmp byte [bp+0x4],0x0` -- the tail is the capped caller's
+    // only. It is inside the `xp >= threshold` test, so the early return
+    // above is what keeps it off a no-op call.
+    if !uncapped {
+        term::println(&text::fill(
+            LEVELUP_TAIL,
+            &[i64::from(p.xp), i64::from(p.threshold)],
+        ));
     }
     ups
 }

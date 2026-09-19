@@ -62,6 +62,7 @@
 //! — wired (Task 21)".
 
 use crate::character_sheet;
+use crate::church;
 use crate::club;
 use crate::combat::{self, blows_per_round, resolve_blow_nth, Break, Swing};
 use crate::combat_dispatch::{self, Backup, Called, Shot, Status};
@@ -3401,7 +3402,7 @@ impl Game {
         // Draw 13, 1000:b39e -- Random(200); a zero calls the church at
         // 1000:b3a7.
         if self.rng.below_at("1000:b39e", 200) == 0 {
-            self.church();
+            self.church(lines);
             // 1000:8282 `c6 06 70 39 00` is the routine's last act before
             // its single epilogue and no jump inside it targets an address
             // above that, so EVERY path zeroes the bucket: a church turn
@@ -3428,27 +3429,34 @@ impl Game {
     /// two lower arms raise the stage on their way out (`1000:7dc7`,
     /// `1000:7f5b`), which is why it saturates at 2.
     ///
-    /// **Not reproduced:** the two long sermons (the `== 0` and `== 1`
-    /// arms), and the old/new rank names the level-up arm prints from the
-    /// `DS:0b42` 256-byte-stride table. Both are text only and cost no
-    /// draw; recorded in `docs/re/gaps.md`.
-    fn church(&mut self) {
+    /// All three sermons, their `ReadKey`s, the forced level-up's composed
+    /// line and the parting lines are [`crate::church`]
+    /// (`docs/re/port-gaps.md` rows 3, 18, 20 and row 19's share). Nothing
+    /// in any of them costs a draw, so the draw sequence this routine makes
+    /// is exactly what it was before they landed.
+    fn church(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) {
         let stage = self.church_visits;
+        // The sermon reads the stage BEFORE 1000:7dc7 / 1000:7f5b raise it.
+        church::sermon(lines, stage, &self.player);
         if stage <= 1 {
             self.church_visits += 1;
-        } else {
-            // The `== 2` arm's four lines, files 0x904C/0x9083/0x909F/0x90B4.
-            term::println("Бродя по окрестностям с самыми грязными намериниями...");
-            term::println("Ты наткнулся на храм Божий.");
-            term::println("^1Бог: \"А ты опять.\"");
-            term::println("^1Ну ладно насылаю на тебя \"благославление\"");
         }
 
         // Draw 15, 1000:7f63 -- Random(5). Five equally likely arms.
         match self.rng.below_at("1000:7f63", 5) {
             // 1000:7f68's zero arm: a forced level-up.
             0 => {
-                term::println("^1Да увеличится твоя понтовость!");
+                // 1000:7f84's line, 1000:7f89's `ReadKey` and 1000:7f8e's
+                // composed `Был ты X а стал Y`. Both halves of that line
+                // read `[0x38a6]` BEFORE the call below moves it, so the
+                // level is captured here.
+                let level = self.player.level;
+                opening::play(
+                    lines,
+                    &church::FORCED_LEVEL,
+                    church::FORCED_LEVEL_GAPS,
+                    Some(&church::forced_level_composed(level)),
+                );
                 // 1000:7fe4/1000:7fe7 `mov ax,[0x38d0]` / `mov [0x38ce],ax`
                 // -- xp := threshold -- then `mov al,0` / `call 0x2526`.
                 // 1000:2526's entry test (1000:2535..1000:253c) therefore
@@ -3558,13 +3566,19 @@ impl Game {
             }
         }
 
+        // 1000:8242 -- the `ReadKey` every draw-15 arm converges on, which
+        // is `church::PARTING_GAPS`' gap 0.
+        let _ = lines.next();
         // 1000:8247 `cmp byte [0x3951],0x2` / `jnc 0x8269`, read AFTER the
-        // stage was raised.
-        if self.church_visits < 2 {
-            term::println("^1А теперь вали отсюда и никогда здесь не появляйся!");
-        } else {
-            term::println("^1А теперь проваливай!");
-        }
+        // stage was raised. Only one of the two arms ever prints, which is
+        // why `PARTING` is indexed here rather than played through
+        // `opening::play`.
+        term::println(church::PARTING[usize::from(self.church_visits >= 2)]);
+        // 1000:828c's bare `WriteLn` -- gap 2 -- then 1000:82aa. The
+        // `[0x3970] := 0` at 1000:8282 between them is the bucket the caller
+        // zeroes.
+        term::println("");
+        term::println(church::PARTING[2]);
     }
 
     /// The wandering mage Рушель Блаво, `1000:7538`..`1000:7778`, called
@@ -11517,13 +11531,36 @@ mod tests {
             "three draws in range, in order, with the `n` each site pushes"
         );
         assert_eq!(
-            out,
-            vec![
+            out[..4],
+            [
                 "^0Давай быстрее..".to_string(),
                 "^2Ты пришел воровать деньги".to_string(),
                 "^2Ты наваровал денег".to_string(),
                 "^6Ты получаешь 12 качков опыта".to_string(),
             ]
+        );
+        // The last two lines are `FUN_1000_2526`'s own, landed with
+        // `docs/re/port-gaps.md` row 14: the 12 качков the line above awards
+        // buy a level, so `1000:2591`'s opener, its two stat gains and
+        // `1000:28ab`'s tail follow. Built from `crate::progress`'s
+        // constants rather than re-transcribed -- `tools/difftest.py`
+        // already re-decodes all six of those literals out of `orig/g.exe`,
+        // so a second hand copy would be a second place to be wrong and no
+        // second reading.
+        assert_eq!(out.len(), 6, "{out:?}");
+        assert!(out[4].starts_with(progress::LEVELUP_PREFIX), "{:?}", out[4]);
+        assert_eq!(
+            out[4].matches("+1 ").count(),
+            progress::GAINS_PER_LEVEL,
+            "one `+1` per gain, on one line: {:?}",
+            out[4]
+        );
+        assert_eq!(
+            out[5],
+            text::fill(
+                progress::LEVELUP_TAIL,
+                &[i64::from(g.progress.xp), i64::from(g.progress.threshold)],
+            )
         );
         assert_eq!(
             g.player.money,

@@ -56,6 +56,18 @@
 //! help_weight_line  <i> <weight index> <text>
 //! ```
 //!
+//! A third group appends after those -- the church and the level-up
+//! announcements (rows 3, 14, 18, 20 and row 19's share):
+//!
+//! ```text
+//! church_line     <tag> <i> <text>
+//! church_gap      <tag> <i> <B|K|C events between line i-1 and line i>
+//! church_fragment <tag> <i> <CS literal of a composed church line>
+//! levelup_write   <i> <text of a `Write`, not a `WriteLn`>
+//! levelup_gap     <i> <B events in that span>
+//! levelup_tail    <first fill global> <second> <text>
+//! ```
+//!
 //! `levelup_gain` rows are sorted by field name inside each stat rather than
 //! left in the original's instruction order: this side derives them by
 //! applying [`crate::progress::grant`] and diffing the record, which cannot
@@ -64,6 +76,7 @@
 
 use std::io::{self, Write};
 
+use crate::church;
 use crate::data;
 use crate::ending;
 use crate::game::IMM_ROWS;
@@ -242,7 +255,87 @@ pub fn emit(out: &mut impl Write) -> io::Result<()> {
 
     endings(out)?;
     opening_records(out)?;
+    church_records(out)?;
 
+    Ok(())
+}
+
+/// The church and the level-up announcements -- `docs/re/port-gaps.md` rows
+/// 3, 18, 20, 14 and row 19's share, landed in Phase 2 batch C.
+///
+/// Same reasoning as [`endings`] and [`opening_records`], and appended after
+/// both so no record above moves.
+///
+/// Two things here that the opening's records could not express:
+///
+/// * a `'C'` gap event -- the two lines the church assembles on the stack
+///   rather than quoting. Emitting it places the composed line among the
+///   plain ones, and the CS halves go out as `church_fragment` records;
+/// * `levelup_write` -- `FUN_1000_2526` prints its per-level line with
+///   `Write` (`0eed:0000`), not `WriteLn`, so those five literals are a
+///   different instruction shape from every `*_line` record above.
+fn church_records(out: &mut impl Write) -> io::Result<()> {
+    let groups: [(&str, &[&str], opening::Gaps, &[&str]); 5] = [
+        ("sermon2", &church::SERMON_2, church::SERMON_2_GAPS, &[]),
+        ("sermon1", &church::SERMON_1, church::SERMON_1_GAPS, &[]),
+        (
+            "sermon0",
+            &church::SERMON_0,
+            church::SERMON_0_GAPS,
+            &church::SERMON_0_FRAGMENTS,
+        ),
+        (
+            "forced_level",
+            &church::FORCED_LEVEL,
+            church::FORCED_LEVEL_GAPS,
+            &church::FORCED_LEVEL_FRAGMENTS,
+        ),
+        ("parting", &church::PARTING, church::PARTING_GAPS, &[]),
+    ];
+    for (tag, lines, _, _) in groups {
+        for (i, line) in lines.iter().enumerate() {
+            writeln!(out, "church_line {tag} {i} {}", text::strip(line))?;
+        }
+    }
+    for (tag, _, gaps, _) in groups {
+        for (at, events) in gaps {
+            writeln!(out, "church_gap {tag} {at} {events}")?;
+        }
+    }
+    for (tag, _, _, fragments) in groups {
+        for (i, fragment) in fragments.iter().enumerate() {
+            writeln!(out, "church_fragment {tag} {i} {}", text::strip(fragment))?;
+        }
+    }
+
+    // `FUN_1000_2526`'s five `Write`s, in address order: the line's opener
+    // and then the four stat arms, which is also `Stat`'s own order.
+    writeln!(
+        out,
+        "levelup_write 0 {}",
+        text::strip(progress::LEVELUP_PREFIX)
+    )?;
+    for (i, stat) in [Stat::Strength, Stat::Agility, Stat::Vitality, Stat::Luck]
+        .into_iter()
+        .enumerate()
+    {
+        writeln!(
+            out,
+            "levelup_write {} {}",
+            i + 1,
+            text::strip(stat.message())
+        )?;
+    }
+    // `1000:288b`'s bare `WriteLn`, in the same `(index, events)` shape the
+    // gap tables use: the tail gap of the five-`Write` span.
+    writeln!(out, "levelup_gap 5 B")?;
+    writeln!(
+        out,
+        "levelup_tail {:04x} {:04x} {}",
+        progress::LEVELUP_TAIL_FILLS[0],
+        progress::LEVELUP_TAIL_FILLS[1],
+        text::strip(progress::LEVELUP_TAIL)
+    )?;
     Ok(())
 }
 

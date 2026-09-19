@@ -875,19 +875,8 @@ def opening_gaps(img):
     out = []
     for tag, start, stop, _ in OPENING_SPANS:
         sites = [s for s, _, _ in literal_sites(img, PLAIN_WRITELN_RE, start, stop)]
-        events = []
-        for rx, code in ((BARE_WRITELN_RE, "B"), (READKEY_RE, "K")):
-            events += [(m.start(), code) for m in rx.finditer(img)
-                       if start <= m.start() < stop]
-        events.sort()
-        # `bisect`-free on purpose: the site list is at most 30 long, and an
-        # explicit scan is what makes the boundary rule readable.
-        for i in range(len(sites) + 1):
-            lo = sites[i - 1] if i else start
-            hi = sites[i] if i < len(sites) else stop
-            seq = "".join(c for off, c in events if lo < off < hi)
-            if seq:
-                out.append((tag, i, seq))
+        for i, seq in gaps_of(img, sites, start, stop):
+            out.append((tag, i, seq))
     return out
 
 
@@ -952,6 +941,196 @@ def help_district_line(img):
             "help's gate skips %d lines, expected 1" % len(skipped)
         )
     return len(before)
+
+
+#: The church's spans, as `(tag, start, stop, plain lines, composed halves)`.
+#:
+#: `FUN_1000_7c67` is one procedure and these are its five straight-line
+#: pieces; the arms of its `Random(5)` chain that were already ported are not
+#: here.  Each entry carries its own expected literal count, so a span that
+#: scans short raises instead of quietly comparing a short list.
+#:
+#: `parting` starts at `1000:823d` -- the `call 0eed:01c2` that ends the
+#: `Random(5)` chain's last arm -- and NOT at the convergence point
+#: `1000:8242`, because `church_gaps` collects events STRICTLY inside a gap's
+#: bounds: a `ReadKey` sitting exactly on the span's lower bound would be
+#: dropped, which is the church's row-19 site.
+CHURCH_SPANS = [
+    ("sermon2", 0x7C76, 0x7CEB, 4, 0),
+    ("sermon1", 0x7CEB, 0x7DCB, 7, 0),
+    ("sermon0", 0x7DCB, 0x7F63, 10, 3),
+    ("forced_level", 0x7F68, 0x7FE4, 1, 2),
+    ("parting", 0x823D, 0x82B2, 3, 0),
+]
+
+#: `lea di,[bp+<disp16>]` / `push ss` / `push di` / `mov di,<cs literal>` /
+#: `push cs` / `push di` / `call 0f78:0ae7` -- the opening of a line the game
+#: assembles on a stack local rather than quoting.
+#:
+#: This is `STR_ASSIGN_RE` with the `lea`/`push ss`/`push di` that supplies the
+#: destination put in front of it, so a match starts where the CONSTRUCTION
+#: starts and not at its first literal.  It is not a narrowing: the two forms
+#: find the same sites inside the church's spans, and the shape is the game's
+#: ordinary way of building a string -- 69 sites image-wide, `help`'s two
+#: composed lines and the end screen's banner rows among them.  What makes it
+#: worth a record is what comes AFTER: the assembled string is written by a
+#: `WriteLn` of `ss:[bp-0x100]`, which carries no CS literal, so
+#: `PLAIN_WRITELN_RE` cannot see the line at all and this site is the only
+#: place a scan can put it.
+COMPOSED_LINE_RE = re.compile(
+    rb"\x8d\xbe..\x16\x57\xbf(..)\x0e\x57\x9a\xe7\x0a\x78\x0f", re.S
+)
+
+#: `1000:2591`..`28c0` -- `FUN_1000_2526`'s printing half.
+LEVELUP_SPAN = (0x2591, 0x28C0)
+
+#: The same shape as `PLAIN_WRITELN_RE` but `call 0eed:0000` -- `Write`, which
+#: does not end the line.  Every one of `FUN_1000_2526`'s five per-level
+#: literals uses it, which is why they run together on one line that
+#: `1000:288b`'s bare `WriteLn` closes.
+PLAIN_WRITE_RE = re.compile(
+    rb"\xbf(..)\x0e\x57(?:\x31\xc0\x50){5}\x9a\x00\x00\xed\x0e", re.S
+)
+
+#: `mov di,<cs literal>` / `push cs` / `push di` / `push [<addr>]` /
+#: `push [<addr>]` / three `xor ax,ax` + `push ax` / `call 0eed:01c2` -- a
+#: `WriteLn` with TWO `#`s filled straight out of DGROUP.  Both addresses are
+#: captured, so which global lands in which `#` is compared.
+TWO_FILL_WRITELN_RE = re.compile(
+    rb"\xbf(..)\x0e\x57\xff\x36(..)\xff\x36(..)"
+    rb"(?:\x31\xc0\x50){3}\x9a\xc2\x01\xed\x0e",
+    re.S,
+)
+
+
+def gaps_of(img, sites, start, stop, extra=()):
+    """`[(index, events), ...]` for one span, given its literal `sites`.
+
+    `events` is `'B'` for a bare `WriteLn`, `'K'` for a `ReadKey` and `'C'`
+    for a composed line, in address order, for the region after literal
+    `index - 1` and before literal `index`; `index == len(sites)` is the
+    tail.  Gaps with nothing in them are skipped.
+
+    Collection is STRICTLY inside `(lo, hi)`, so an event sitting exactly on
+    a literal's site or on the span's lower bound is not collected -- see
+    `CHURCH_SPANS`' note on where `parting` starts.
+    """
+    events = []
+    for rx, code in ((BARE_WRITELN_RE, "B"), (READKEY_RE, "K")) + tuple(extra):
+        events += [(m.start(), code) for m in rx.finditer(img)
+                   if start <= m.start() < stop]
+    events.sort()
+    out = []
+    for i in range(len(sites) + 1):
+        lo = sites[i - 1] if i else start
+        hi = sites[i] if i < len(sites) else stop
+        seq = "".join(c for off, c in events if lo < off < hi)
+        if seq:
+            out.append((i, seq))
+    return out
+
+
+def church_lines(img):
+    """`FUN_1000_7c67`'s plain text, as `(tag, index, stripped text)`."""
+    out = []
+    for tag, start, stop, want, _ in CHURCH_SPANS:
+        hits = literal_sites(img, PLAIN_WRITELN_RE, start, stop)
+        if len(hits) != want:
+            raise DifftestError(
+                "1000:%04x..%04x (%s) holds %d plain WriteLns, expected %d"
+                % (start, stop, tag, len(hits), want)
+            )
+        for i, (_, cs, _) in enumerate(hits):
+            out.append((tag, i, strip_markup(shortstring(img, cs))))
+    return out
+
+
+def church_gaps(img):
+    """What each church span does between its literals, `'C'` included."""
+    out = []
+    for tag, start, stop, _, _ in CHURCH_SPANS:
+        sites = [s for s, _, _ in literal_sites(img, PLAIN_WRITELN_RE, start, stop)]
+        for i, seq in gaps_of(img, sites, start, stop,
+                              extra=((COMPOSED_LINE_RE, "C"),)):
+            out.append((tag, i, seq))
+    return out
+
+
+def church_fragments(img):
+    """The CS literals of each span's composed line, in address order.
+
+    The DGROUP halves -- the player's name at `DS:379c`, the rank row at
+    `DS:002e` and the крутизна row at `DS:0b42` -- are appended with
+    `push ds`, so `STR_APPEND_RE`'s `push cs` does not match them and they do
+    not appear here.  The port interpolates them, the same way `help`'s two
+    composed lines already do.
+    """
+    out = []
+    for tag, start, stop, _, want in CHURCH_SPANS:
+        sites = [(s, cs) for s, cs, _ in literal_sites(img, COMPOSED_LINE_RE, start, stop)]
+        sites += [(s, cs) for s, cs, _ in literal_sites(img, STR_APPEND_RE, start, stop)]
+        if len(sites) != want:
+            raise DifftestError(
+                "1000:%04x..%04x (%s) composes from %d CS literals, expected %d"
+                % (start, stop, tag, len(sites), want)
+            )
+        for i, (_, cs) in enumerate(sorted(sites)):
+            out.append((tag, i, strip_markup(shortstring(img, cs))))
+    return out
+
+
+def levelup_writes(img):
+    """`FUN_1000_2526`'s five `Write` literals, in address order."""
+    start, stop = LEVELUP_SPAN
+    hits = literal_sites(img, PLAIN_WRITE_RE, start, stop)
+    if len(hits) != 5:
+        raise DifftestError(
+            "the level-up block holds %d `Write` literals, expected 5" % len(hits)
+        )
+    return [strip_markup(shortstring(img, cs)) for _, cs, _ in hits]
+
+
+def levelup_gaps(img):
+    """The bare `WriteLn`s and `ReadKey`s among those five `Write`s.
+
+    One record, `(5, 'B')`: `1000:288b` ends each level's line and there is
+    no `ReadKey` anywhere in the routine.  A `ReadKey` appearing here would
+    change the record, which is what makes "the level-up blocks on nothing"
+    a compared claim rather than an assumed one.
+    """
+    start, stop = LEVELUP_SPAN
+    sites = [s for s, _, _ in literal_sites(img, PLAIN_WRITE_RE, start, stop)]
+    return gaps_of(img, sites, start, stop)
+
+
+def levelup_tail(img):
+    """`1000:28ab`'s two-fill `WriteLn`: `(first global, second, text)`."""
+    start, stop = LEVELUP_SPAN
+    hits = literal_sites(img, TWO_FILL_WRITELN_RE, start, stop)
+    if len(hits) != 1:
+        raise DifftestError(
+            "the level-up block holds %d two-fill WriteLns, expected 1" % len(hits)
+        )
+    _, cs, extra = hits[0]
+    return extra[0], extra[1], strip_markup(shortstring(img, cs))
+
+
+def church(img):
+    """Every church and level-up record, appended in this order."""
+    lines = []
+    for tag, i, text in church_lines(img):
+        lines.append("church_line %s %d %s" % (tag, i, text))
+    for tag, i, events in church_gaps(img):
+        lines.append("church_gap %s %d %s" % (tag, i, events))
+    for tag, i, frag in church_fragments(img):
+        lines.append("church_fragment %s %d %s" % (tag, i, frag))
+    for i, text in enumerate(levelup_writes(img)):
+        lines.append("levelup_write %d %s" % (i, text))
+    for i, events in levelup_gaps(img):
+        lines.append("levelup_gap %d %s" % (i, events))
+    first, second, text = levelup_tail(img)
+    lines.append("levelup_tail %04x %04x %s" % (first, second, text))
+    return lines
 
 
 def opening(img):
@@ -1079,6 +1258,12 @@ def reference(img):
     opening_records = opening(img)
     lines += opening_records
     ev["opening_line"] = sum(1 for l in opening_records if l.startswith("opening_line "))
+
+    # The church and the level-up announcements, appended last for the same
+    # reason.
+    church_records = church(img)
+    lines += church_records
+    ev["church_line"] = sum(1 for l in church_records if l.startswith("church_line "))
     return lines, ev
 
 
@@ -1419,6 +1604,8 @@ def main(argv=None):
           % ev["ending_line"])
     print("  %d opening lines found the same way, across %d spans"
           % (ev["opening_line"], len(OPENING_SPANS)))
+    print("  %d church lines found the same way, across %d spans"
+          % (ev["church_line"], len(CHURCH_SPANS)))
     print()
     for line in report:
         print(line)

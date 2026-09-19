@@ -84,6 +84,7 @@
 //! five matching end states is a real second check on the encounter generator
 //! and not a restatement of the draw comparison.
 
+use gopnik::church;
 use gopnik::combat_dispatch::Pistol;
 use gopnik::game::Game;
 use gopnik::locations::Location;
@@ -723,6 +724,14 @@ fn run_e_matches_the_preamble_prefix() {
 /// Asserted here through the input script rather than through the draws (the
 /// full-sequence test above already covers those): an encounter reads a
 /// line, a cancelled turn does not.
+///
+/// The church itself reads lines now -- its own `ReadKey`s, landed with
+/// `docs/re/port-gaps.md` rows 3, 18, 20 and 19 -- so "consumed nothing" is
+/// no longer the right claim. The claim is that the turn consumes **exactly**
+/// the church's own budget and not one line more, and the budget is counted
+/// out of `gopnik::church`'s gap tables rather than written down here, so a
+/// table that changes moves both sides of the assertion together while an
+/// encounter prompt sneaking in still fails it.
 #[test]
 fn the_church_cancels_an_already_rolled_bucket_three_turn() {
     let run = run_named("C");
@@ -736,16 +745,32 @@ fn the_church_cancels_an_already_rolled_bucket_three_turn() {
         ("1000:b39e", 0)
     );
     assert_eq!(run.draws[8].site, "1000:7f63", "the church was entered");
+    assert_eq!(run.draws[8].r, 0, "draw 15 took the forced-level arm");
 
     let mut g = game_for(&run);
-    let mut input = declines(8);
+    // A fresh character, so 20ae:3951 is 0 and the church takes its longest
+    // arm -- the one with the composed line in it.
+    assert_eq!(g.church_visits, 0);
+    let church_keys = keystrokes(church::SERMON_0_GAPS)
+        + keystrokes(church::FORCED_LEVEL_GAPS)
+        + keystrokes(church::PARTING_GAPS);
+    let budget = church_keys + 8;
+    let mut input = declines(budget);
     g.walk(&mut input).unwrap();
     assert_eq!(
         input.count(),
-        8,
+        budget - church_keys,
         "wander_roll 9 is bucket 3, but the church zeroed it at 1000:8282: \
-         the turn must not reach an encounter prompt"
+         the turn must read the church's {church_keys} keystrokes and then \
+         stop, never reaching an encounter prompt"
     );
+}
+
+/// How many `ReadKey`s one gap table stands for.
+fn keystrokes(gaps: gopnik::opening::Gaps) -> usize {
+    gaps.iter()
+        .map(|(_, events)| events.chars().filter(|c| *c == 'K').count())
+        .sum()
 }
 
 // ---------------------------------------------------------------------------

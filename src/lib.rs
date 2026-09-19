@@ -1,4 +1,5 @@
 pub mod character_sheet;
+pub mod church;
 pub mod club;
 pub mod combat;
 pub mod combat_dispatch;

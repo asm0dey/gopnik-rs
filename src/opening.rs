@@ -47,8 +47,15 @@ use crate::term;
 /// (`0f16:031a`). Gaps with no events are **omitted**, so an empty table
 /// means a block that runs straight through.
 ///
+/// `'C'` is a third shape [`crate::church`] needs and this module's blocks
+/// never use: a line assembled on a stack local out of CS literals and DGROUP
+/// strings (`lea di,[bp-0x100]` / `push ss` / `push di` / `call 0f78:0ae7`,
+/// then appends) and written with a `WriteLn` of `ss:[bp-0x100]`. That
+/// `WriteLn` carries no CS literal, so the plain-`WriteLn` scan cannot see
+/// the line at all; the caller supplies the built string.
+///
 /// `tools/difftest.py` rebuilds exactly this from `orig/g.exe` by scanning
-/// for those two instruction shapes between the literal sites it already
+/// for those three instruction shapes between the literal sites it already
 /// found, which is why the blank-line counts and the `ReadKey` placement
 /// below are compared rather than eyeballed.
 pub type Gaps = &'static [(usize, &'static str)];
@@ -335,21 +342,34 @@ pub const HELP_WEIGHT_INDEX: usize = 0;
 /// same stand-in [`crate::game::Game::enter_district_5`] and
 /// [`crate::persist::choose_slot`] use.
 pub fn splash(lines: &mut dyn Iterator<Item = io::Result<String>>) {
-    play(lines, &SPLASH, SPLASH_GAPS);
+    play(lines, &SPLASH, SPLASH_GAPS, None);
 }
 
-/// Print `text` with `gaps`' blank lines and `ReadKey`s interleaved.
+/// Print `text` with `gaps`' blank lines, `ReadKey`s and composed lines
+/// interleaved.
 ///
 /// The gap table is load-bearing here, not documentation: it is the same
 /// object `tools/difftest.py` re-derives from the image, so a wrong blank
 /// count or a misplaced `ReadKey` is a failing record rather than a silent
 /// difference on screen.
-fn play(lines: &mut dyn Iterator<Item = io::Result<String>>, text: &[&str], gaps: Gaps) {
+///
+/// `composed` is the already-built text for the `'C'` event -- the one line
+/// in a block that is assembled rather than quoted. A table with a `'C'` and
+/// no `composed` is a caller bug and panics rather than dropping the line.
+pub fn play(
+    lines: &mut dyn Iterator<Item = io::Result<String>>,
+    text: &[&str],
+    gaps: Gaps,
+    composed: Option<&str>,
+) {
     for i in 0..=text.len() {
         if let Some((_, events)) = gaps.iter().find(|(at, _)| *at == i) {
             for event in events.chars() {
                 match event {
                     'B' => term::println(""),
+                    'C' => {
+                        term::println(composed.expect("a 'C' gap event needs the composed line"))
+                    }
                     'K' => {
                         // `lines.next()` is this port's `ReadKey`: one line
                         // read and discarded, `None` at EOF treated the same
@@ -358,7 +378,7 @@ fn play(lines: &mut dyn Iterator<Item = io::Result<String>>, text: &[&str], gaps
                         // `persist::choose_slot`'s.
                         let _ = lines.next();
                     }
-                    other => unreachable!("gap event {other:?} is not B or K"),
+                    other => unreachable!("gap event {other:?} is not B, K or C"),
                 }
             }
         }
@@ -375,5 +395,5 @@ fn play(lines: &mut dyn Iterator<Item = io::Result<String>>, text: &[&str], gaps
 /// and is already ported as `crate::progress::THRESHOLD_BASE`, so it is not
 /// repeated here.
 pub fn backstory(lines: &mut dyn Iterator<Item = io::Result<String>>) {
-    play(lines, &BACKSTORY, BACKSTORY_GAPS);
+    play(lines, &BACKSTORY, BACKSTORY_GAPS, None);
 }
