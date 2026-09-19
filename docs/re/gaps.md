@@ -240,10 +240,15 @@ inner loop bound at `1000:287d` is exactly 2). The mage (`Game::mage`) spends
 no draw but consumes a line, and charges `district * 50` while printing
 `district * 25` — the original's own divergence, reproduced.
 
-**Still not reproduced inside those two:** the church's two long sermons (the
+~~**Still not reproduced inside those two:** the church's two long sermons (the
 `== 0` and `== 1` stage arms, `1000:7cf5`.. and `1000:7dd5`..) and the
 old/new rank names its level-up arm prints from the `DS:0b42` 256-byte-stride
-table. Both are text; neither costs a draw. ~~and the mage's two file writes
+table.~~ -- **Phase 2 batch C landed both** (`docs/re/port-gaps.md` rows 3, 18,
+20 and row 19's church share): `crate::church` holds all three sermons, the
+composed `Был ты X а стал Y` line, the parting lines and every `ReadKey`. The
+`DS:0b42` table is крутизна, indexed by LEVEL, not the rank table -- the
+mislabel port-gaps.md already records. Neither cost a draw and none does now.
+~~and the mage's two file writes
 on the paid path~~ — **Task 19 implemented those**: `save_r0.sav`
 (`1000:764e`/`1000:765d`), `places.sav` (`1000:766f`..`1000:7724`) and
 `^0Сохранено! ^1Можешь беспредельничать дальше.` (`1000:7729`) are all in
@@ -2329,8 +2334,9 @@ are the questions that pass left open, and the ones it created.
   module, keeping the two in step in `Game::smoke` and in the decay step. One
   of them should go.
 * **Text the wander turn writes that this port still does not.** None costs a
-  draw: `run`'s extra line (`1000:aeda`, above), the church's two long
-  sermons and its rank-name pair, bucket 1's and bucket 4's flavour lines, and
+  draw: `run`'s extra line (`1000:aeda`, above), ~~the church's two long
+  sermons and its rank-name pair~~ (landed by Phase 2 batch C), bucket 1's and
+  bucket 4's flavour lines, and
   the `0f16:031a` `ReadKey`s the original spaces its phone-call gags with --
   waiting for a keystroke between each, not a timed pause. This line
   previously called `0f16:031a` a delay; it is `ReadKey`

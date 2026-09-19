@@ -18,12 +18,26 @@ by the surveys' counts) are done -- that is the batch that made the game
 finishable. Rows 1, 6, 8, 10, 15 and 16 (~2,437 B) are done too -- that is the
 batch that gave it an opening: before it the port printed nothing at all of the
 splash, the backstory, the district announcements, `help`, or the quit tail.
+Rows 3, 18, 20 and 14 (~916 B) are done as well -- the church's three sermons,
+its composed `Был ты X а стал Y` line, its parting line, and the level-up
+announcements, which were completely silent before.
 
-**Row 19 stays open even though those six rows' `ReadKey`s are now paced.** Its
-~34 sites are spread across rows 3, 14, 23 and 24 as well, and only the sites
-inside the six rows above have landed -- eight of them, all in
-`crate::opening`'s gap tables. A row is struck when its whole span ships, not
-when part of it does.
+**Row 19 stays open even though four batches' `ReadKey`s are now paced.** Its
+~34 sites are spread across rows 23 and 24 as well, and only the sites inside
+the rows already struck have landed. Those are, by batch:
+
+* batch B, eight sites, in `crate::opening`'s gap tables (splash, backstory,
+  quit tail);
+* batch C, twenty-two sites, in `crate::church`'s: `1000:7caf`/`7ce6` (the
+  third-visit arm), `1000:7d0e`..`7dc2` (seven, the second), `1000:7dee`..
+  `7f56` (eleven, the first, one of them after the composed line),
+  `1000:7f89` (the forced level-up) and `1000:8242` (the convergence, which
+  every draw-15 arm reaches).
+
+What is still open is rows 23 and 24's six sites -- the mage's three and the
+phone gag's three. (8 + 22 + 6 = 36 against the survey's `~34`; the tilde is
+the survey's own, and the row keeps it rather than being quietly re-counted
+here.) A row is struck when its whole span ships, not when part of it does.
 
 Status values: `open` · `done (<commit>)`. Add no other column.
 
@@ -32,7 +46,7 @@ Status values: `open` · `done (<commit>)`. Add no other column.
 |---:|---|---|---:|---|---|
 | 1 | `1000:5f55` — the whole `help` text | `1000:5f64`..`633c` | 985 | MISSING | done (61f0f1c) |
 | 2 | `FUN_1000_074b` — the end screen, both endings reach it | `1000:074b`..`0aca` | 896 | MISSING | done (fc0d0c7) |
-| 3 | `1000:7c67` — the church's two long sermons | `1000:7ceb`..`7f63` | 622 | MISSING | open |
+| 3 | `1000:7c67` — the church's two long sermons | `1000:7ceb`..`7f63` | 622 | MISSING | done (ecbeb9b) |
 | 4 | `FUN_1000_0aec` — the victory marquee | `1000:0aec`..`0d13` | 552 | MISSING | done (fc0d0c7) |
 | 5 | `1000:1348` — the enemy sheet's five halves | `1000:135c`..`165e` | ~546 | MISSING + PARTIAL | open |
 | 6 | `FUN_1000_02c2` — the splash screen | `1000:02c2`..`04be` | 508 | MISSING | done (61f0f1c) |
@@ -43,13 +57,13 @@ Status values: `open` · `done (<commit>)`. Add no other column.
 | 11 | `1000:b82f` — wander bucket 4 (and bucket 0's line) | `1000:b82f`..`b94a` | 283 | MISSING | open |
 | 12 | `1000:b3c4` — bucket 1's eight flavour lines | `1000:b3db`..`b4ca` | ~279 | PARTIAL | open |
 | 13 | `1000:11c2` — the two boss stat blocks have no caller | `1000:11c2`..`1274` | 178 | MISSING | done (fc0d0c7) |
-| 14 | `1000:2526` — the level-up announcements | `1000:2591`..`28c0` | ~173 | PARTIAL | open |
+| 14 | `1000:2526` — the level-up announcements | `1000:2591`..`28c0` | ~173 | PARTIAL | done (ecbeb9b) |
 | 15 | `1000:ad12` — the district 2/3/4 arrival announcements | `1000:ad12`..`adbf` | 173 | MISSING | done (61f0f1c) |
 | 16 | `1000:ee04` — the quit tail (message + character sheet + `ReadKey`) | `1000:ee04`..`ee8b` | 135 | MISSING | done (61f0f1c) |
 | 17 | `1000:57ce` — `param_1 == 6`, the den fight's reward block | `1000:57ce`..`5838` | 106 | MISSING | done (fc0d0c7) |
-| 18 | `1000:7f8e` — the church's forced-level rank names | `1000:7f8e`..`7fe4` | 86 | PARTIAL | open |
+| 18 | `1000:7f8e` — the church's forced-level rank names | `1000:7f8e`..`7fe4` | 86 | PARTIAL | done (ecbeb9b) |
 | 19 | `1000:3eca` … — `ReadKey` pacing across the new text | ~34 sites | ~190 | PARTIAL | open |
-| 20 | `1000:828c` — the church's parting line | `1000:828c`..`82af` | 35 | MISSING | open |
+| 20 | `1000:828c` — the church's parting line | `1000:828c`..`82af` | 35 | MISSING | done (ecbeb9b) |
 | 21 | `1000:3e8d` — `param_1 == 1`'s opener (reachable only once #9 lands) | `1000:3e8d`..`3ead` | 32 | MISSING | done (fc0d0c7) |
 | 22 | `1000:aee4` — `run`'s own extra line | `1000:aee4`, `aeff` | ~30 | PARTIAL | open |
 | 23 | `1000:7560` … — the mage's three `ReadKey`s | `1000:7560`, `757e`, `75a4` | ~15 | PARTIAL | open |
@@ -90,7 +104,12 @@ wrong in both directions on adjacent functions.
   consumed by the `0aec` marquee, and `difftest.py`'s `marquee word` record
   now re-derives the word from the image.
 - `dispatch2`'s gap 6 calls `DS:0b42` the "rank" table. It is `krutizna`
-  (43 level rows); `ranks` is `DS:002e` (11 class rows).
+  (43 level rows); `ranks` is `DS:002e` (11 class rows). **Confirmed by landing
+  row 18**, whose composed line reads `DS:0b42` indexed by `[0x38a6]` (the
+  level) at `1000:7f9e` while `1000:7ee9`, twelve instructions of the same
+  routine earlier, reads `DS:002e` indexed by `[0x389c]` (the class). The two
+  tables are used side by side in `FUN_1000_7c67` with different indices, so
+  the mislabel would have put the wrong strings on screen.
 - **`Game::apply_class_bonus` runs TWICE on a load**, found by landing row 10.
   `Game::new` calls it with the struct literal's `district: 1`, and
   `persist::from_save` calls it again once the loaded district is installed.
@@ -112,13 +131,14 @@ dispatch. Batch reports are in `.superpowers/sdd/phase2/` and the surveys in
 
 **Landed so far:** batch A the endings (`fc0d0c7`, the game can be finished —
 `difftest` 126→163), batch B the opening (`61f0f1c..ab98fea`, the game prints
-its banner — `difftest` 163→255).
+its banner — `difftest` 163→255), batch C part 1 the church and the level-up
+(`ecbeb9b`, rows 3, 18, 20, 14 — `difftest` 255→314).
 
-**Next:** batch C — the church (rows 3, 18, 20), the wander text (rows 11, 12,
-22, 24), level-up (row 14). Then batch D the enemy sheet (row 5), batch E the
-market pickpocket verb `t` (rows 9, 25, which also make row 21's opener
-reachable). Row 19's `ReadKey` pacing spans several rows; land each row's share
-with that row.
+**Next:** batch C part 2 — the wander text (rows 11, 12, 22, 24). Then batch D
+the enemy sheet (row 5), batch E the market pickpocket verb `t` (rows 9, 25,
+which also make row 21's opener reachable). Row 19's `ReadKey` pacing spans
+several rows; land each row's share with that row — rows 23 and 24 are all
+that is left of it.
 
 **Do not trust a string-coverage metric built on `data/strings.json`.** That
 file covers one pool of 796 entries and does not contain the opening text — a
