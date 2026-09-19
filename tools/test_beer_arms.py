@@ -1063,9 +1063,19 @@ class SrcPairingTest(Base):
         Sharing a construct is LEGITIMATE here -- the port evaluates one
         predicate where the original tests it more than once -- so the rule is
         not "never share". It is: a shared construct must be declared, and each
-        sharer must name the exact sub-expression it means. A row that has
-        drifted onto a sibling's construct then has to write a discriminator
-        that is not in that expression, and this goes red.
+        sharer must name the exact sub-expression it means.
+
+        WHAT THIS DOES NOT CATCH, stated because the shape it misses is the
+        one it was written for. The three assertions below are PRESENT,
+        SUBSTRING and DISTINCT: a discriminator must exist, must occur in the
+        shared `expr`, and must differ from its siblings'. Nothing here knows
+        which predicate the BRANCH evaluates, so a row that has drifted onto a
+        sibling's construct still passes if it picks any other substring of
+        that expression -- revert `1000:2c36` onto `1000:2c3d`'s `expr` and
+        give it `discriminator: "term::println"` and all four tests in this
+        class go green. Reading the `why` against the flow remains the only
+        thing that catches that; this test narrows the opening, it does not
+        close it.
         """
         groups = collections.defaultdict(list)
         for r in self.rows:
