@@ -188,14 +188,37 @@ pickpocket (`1ae22f6`, rows 9 and 25 — `difftest` 347→356, and row 21's
 opener finally has a caller), batch F the wandering mage (`5552482`, row
 23 and, with it, row 19 — `difftest` 356→363).
 
-**Next:** nothing new to port. Every row in this file is struck, and a
-follow-up flow survey of `FUN_1000_6a0d` (the save-load / new-game setup path,
-the weakest-verified body left per `docs/re/branches.md:803`) walked all 33
-branches against `src/persist.rs`, `src/save.rs`, `src/opening.rs`,
-`src/main.rs` and `Game::apply_class_bonus`/`announce_district` and found the
-whole path already ported and correct, with one exception: the stale
-start-up banner print below, now fixed. The next Phase 2 work is whatever a
-fresh gap survey finds outside this list, per `docs/re/gaps.md`.
+**Next:** every row in this file is struck, and one follow-up flow survey has
+run outside the list -- `FUN_1000_6a0d`, the save-load / new-game setup path,
+picked as the weakest-verified body left. It found and fixed one divergence:
+the stale start-up banner print recorded below.
+
+**What that survey established, and what it did not.** It read
+`build/decomp/FUN_1000_6a0d_1000_6a0d.c` top to bottom against
+`src/persist.rs`, `src/save.rs`, `src/opening.rs`, `src/main.rs` and
+`Game::apply_class_bonus`/`announce_district`, and named a counterpart for
+each decision point it passed: the `FindNext` loop, the any-saves-found gate,
+the slot-key alphabet, the `IOResult` check on both `Reset` calls, the
+`places.sav` byte order and its three class-keyed clear exceptions, the
+district-from-slot-digit vs. district-from-level split on slot `0`, the
+class-answer reprompt and clamp, the four-way class stat table, and the
+five-way district/class chain at `1000:7262`..`73e5`.
+
+It did **not** produce a per-branch address mapping, so it does not establish
+a count. Its own report said "~32 decision points" against the 33 that
+`docs/re/branches.md:803` prints, and the two are not known to be the same
+set. The machine-derived figure disagrees with both:
+
+```
+python3 -c "import json;print([f for f in json.load(open('data/branches.json'))['functions'] if f['entry']=='1000:6a0d'][0])"
+# branch_count 33, branches_touched_by_port 6, port_citation_count 71
+```
+
+`branches.md:803`'s own "touched" column says 15 for the same function, and
+nothing in this repo reconciles the three numbers. Read the survey as "no
+second divergence was found on the path walked", not as coverage. The next
+Phase 2 work is whatever a fresh gap survey finds outside this list, per
+`docs/re/gaps.md`.
 
 **Do not trust a string-coverage metric built on `data/strings.json`.** That
 file covers one pool of 796 entries and does not contain the opening text — a
