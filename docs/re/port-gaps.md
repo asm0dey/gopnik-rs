@@ -107,13 +107,18 @@ Status values: `open` · `done (<commit>)`. Add no other column.
 
 Surveys: `entry` (17,143 B), then `3d11`/`6a0d`/`7c67`/`1a03`/`11c2` (13,988 B),
 then `0d14`/`5f55`/`2526`/`1348`/`7538`/`0acc` (4,511 B). `074b`/`0aec`/`02c2`
-(1,956 B) were pulled in as gaps but never block-surveyed. `29c4` (666 B) was
+(1,956 B) were pulled in as gaps but never block-surveyed -- `074b` (896 B)
+since has been, leaving `0aec` (552 B) and `02c2` (508 B). `29c4` (666 B) was
 ported and audited before Phase 1. Every game function is accounted for.
 
 **Weakest parts, stated by the surveys themselves:**
 
-- The total carries about ±200 B. `FUN_1000_074b` (896 B) is counted wholly
-  unported on a grep, never block-surveyed by anyone.
+- The total carries about ±200 B. ~~`FUN_1000_074b` (896 B) is counted wholly
+  unported on a grep, never block-surveyed by anyone.~~ **Block-surveyed and
+  flow-diffed** -- see `## FUN_1000_074b, flow-diffed` below. The grep was
+  right that it was unported when row 2 was written, and row 2's port
+  (`fc0d0c7`) is a call-site-for-call-site match; the survey found nothing to
+  change.
 - The three dispatches used three different PARTIAL-counting conventions.
 - "PORTED" for the large shop/den/club/gym bodies rests on string presence and
   citation density, not a line-by-line flow diff.
@@ -310,6 +315,134 @@ reason; this function's 19 uncited-but-verified branches are the same
 pattern, just larger. The 33-row table above was built by reading `src/`
 directly, not by grepping for address strings, so `6` and `15` measuring
 something else is expected, not a contradiction to resolve.
+
+## `FUN_1000_074b`, flow-diffed -- row 2's grep caveat, discharged
+
+Row 2 shipped at `fc0d0c7` but `## Method and confidence` flagged it as
+"counted wholly unported on a grep, never block-surveyed by anyone". This
+discharges that: an unbroken instruction sweep from the aligned entry
+`1000:074b` to the `ret 0x2` at `1000:0ac8`, diffed against
+`src/ending.rs::end_screen`. **No divergence; no `src/` change.**
+
+**The two branches.** `data/branches.json` records exactly two conditional
+jumps in the function, and both test the same byte:
+
+```
+python3 -c "import json;bs=[b for b in json.load(open('data/branches.json'))['branches'] if b['func']=='FUN_1000_074b'];print(len(bs));[print(b['addr'],b['guard']['addr'],b['guard']['text']) for b in bs]"
+# 2
+# 1000:0763 1000:075f CMP byte ptr [BP + 0x4],0x0
+# 1000:0791 1000:078d CMP byte ptr [BP + 0x4],0x0
+```
+
+| branch (jcc) | guard | test | `src/` counterpart |
+|---|---|---|---|
+| `0763` | `075f cmp byte [bp+4],0` | `param_1 == 0` -> banner colour digit | `end_screen`: `let digit = if victory { '2' } else { '4' }` |
+| `0791` | `078d cmp byte [bp+4],0` | `param_1 == 0` -> verdict line | `end_screen`: `if victory { VICTORY_LINE } else { DEATH_LINE }` |
+
+2 rows, 2 branches, both literal one-to-one conditionals -- the 14/15/1/3
+breakdown the `FUN_1000_6a0d` table needed has no analogue here because there
+is nothing to dissolve. `param_1` is read at `1000:075f` and `1000:078d` and
+nowhere else in the function, so those two `if`s are the whole of its effect.
+
+**A two-row table proves almost nothing about a 896-byte function**, which is
+the point the `6a0d` write-up makes about counting coverage off branches: this
+function is straight-line output. The real inventory is its call sites, and
+they are enumerated rather than eyeballed:
+
+```
+python3 -c "
+import sys, collections; sys.path.insert(0,'.')
+from tools import dis16, difftest as D
+img=D.load(); off=0x074b; c=collections.Counter()
+while off<0x0acb:
+    i=dis16.decode(img,off)
+    if i.text.startswith('call'): c[i.text]+=1
+    off+=i.length
+print(sum(c.values())); [print('%3d  %s'%(n,t)) for t,n in c.most_common()]"
+# 78
+#  16  call 0xf78:0xb66     rtl_str_append
+#  14  call 0xf78:0x5dd     WriteLn (bare -- writes the CR/LF pair, no argument)
+#  14  call 0xf78:0x291     rtl_io_check, the {$I+} half of each WriteLn
+#  11  call 0xeed:0x1c2     the game's colour-markup WriteLn
+#   8  call 0xf78:0xae7     rtl_str_assign
+#   8  call 0xf78:0xc03     rtl_char_to_str
+#   2  call 0xf16:0x1cc     ClrScr
+#   2  call 0xf16:0x263     TextColor
+#   1  call 0xf78:0x2cd     rtl_stack_check
+#   1  call 0xf16:0x31a     ReadKey
+#   1  call 0xf78:0x116     rtl_halt
+```
+
+Names are `docs/re/rtl.md`'s, keyed by that file's `1fXX` = `0fXX` convention.
+`0f78:05dd` being a BARE `WriteLn` is the one identity the structure depends
+on, and it is `re_query.py`'s own evidence string, not an inference:
+`0f78:05dd writes exactly 2 bytes from 20ae:3690 through 0f78:0546: the CR/LF
+pair`. Every one of the 14 is preceded only by `push ds` / `push di` with
+`di = 0x3fcc`, the output `Text` variable -- no string argument exists to push.
+
+**The output sequence, in address order**, which is what `end_screen` must
+reproduce:
+
+| addresses | effect | `src/ending.rs` |
+|---|---|---|
+| `0751` | `rtl_stack_check` | none needed |
+| `075a` | `ClrScr` | dropped, documented |
+| `0765` / `076b` | `mov byte [bp-1],0x34` / `0x32` | `digit` |
+| `0774`, `0783` | 2 blank `WriteLn` | `term::println("")` x2 |
+| `07a7` / `07c2` | verdict line, CS `0x4be` / `0x4ef` | `DEATH_LINE` / `VICTORY_LINE` |
+| `07cc`, `07db`, `07ea` | 3 blank | `for _ in 0..3` |
+| `0831`..`09ff` | 8 banner rows | `for row in BANNER` |
+| `0a09`, `0a18`, `0a27`, `0a36`, `0a45` | 5 blank | `for _ in 0..5` |
+| `0a63` | CS `0x715` | `ANY_KEY` |
+| `0a6d`, `0a7c`, `0a8b`, `0a9a` | 4 blank | `for _ in 0..4` |
+| `0aa4` | `TextColor(0)` | dropped, documented |
+| `0aac` | `ReadKey` | `term::read_key` |
+| `0ab1` | `TextColor(15)` | dropped, documented |
+| `0ab9` | `ClrScr` | dropped, documented |
+| `0abe`/`0ac0` | `xor ax,ax` / `call 0f78:0116` = `Halt(0)` | `self.running = false` in the caller |
+| `0ac5`..`0ac8` | epilogue | unreachable behind `Halt` |
+
+The blank runs are 2 / 3 / 5 / 4 = 14, matching the call census above and
+`end_screen`'s four loops exactly.
+
+**Ghidra was wrong about the two `TextColor` arguments and the disassembly
+settles it.** `build/decomp/FUN_1000_074b_1000_074b.c` renders them
+`(uint)extraout_AH_07 << 8` and `CONCAT11(extraout_AH_08,0xf)`, which reads as
+if the high byte carried information. It does not -- `TextColor` takes a
+`Byte` and reads only `AL`, so Ghidra never pins `AH`:
+
+```
+python3 tools/re_query.py resolve 1000:0aa4 -n 16 -i 8
+# 1000:0aa4  mov al,0x0
+# 1000:0aa6  push ax
+# 1000:0aa7  call 0xf16:0x263
+# 1000:0aac  call 0xf16:0x31a
+# 1000:0ab1  mov al,0xf
+# 1000:0ab3  push ax
+# 1000:0ab4  call 0xf16:0x263
+```
+
+`src/ending.rs`'s doc already said `TextColor(0)` and `TextColor(15)`; this is
+the first time those two values were read off an aligned instruction rather
+than off the decompilation.
+
+**The twelve string literals are byte-identical** to `DEATH_LINE`,
+`VICTORY_LINE`, `BANNER_INDENT`, `BANNER[0..8]` and `ANY_KEY`, compared as
+CP866 shortstrings at CS `0x04be`, `0x04ef`, `0x0521`, `0x052d`, `0x056a`,
+`0x05a7`, `0x05e4`, `0x0621`, `0x065e`, `0x069b`, `0x06d8`, `0x0715`. Eleven of
+the twelve were already COMPARED facts before this survey -- `difftest.py`
+re-derives them as `ending_line endscreen 0..2`, `end_banner indent`, both
+colour digits and `banner_row 0..7`. The survey adds `0x0521`'s own bytes and
+the row-assembly ORDER, which no record covered.
+
+**What this survey did NOT establish.** The 14 blank `WriteLn`s, the `ReadKey`
+at `0aac`, both `ClrScr`s, both `TextColor`s and the `Halt` are read off the
+disassembly here but are compared by no oracle: of the 78 call sites, the 12
+that feed a `difftest` record are the 11 `0eed:01c2` prints plus the first
+`rtl_str_assign`. A regression that deleted one blank `WriteLn` from
+`end_screen` would pass `difftest` and every test in `tests/`, which holds no
+end-screen case at all. Left as a deferred-minor: the structure is now read,
+and the row it belonged to is closed.
 
 The next Phase 2 work is whatever a fresh gap survey finds outside this
 list, per `docs/re/gaps.md`.
