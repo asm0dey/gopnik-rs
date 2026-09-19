@@ -1136,7 +1136,7 @@ at file `0x9BF3` (`01 79`), except the mage's, whose copy is file `0x8D79`:
 | prompt | buffer | case-fold | compare | port |
 |---|---|---|---|---|
 | the district autosave | `DS:3a72` | `1000:ac45` | `1000:ac54` | `Game::district_advance` |
-| the encounter accept | `DS:3a72` | `1000:b704` | `1000:b713` | `Game::walk` |
+| the encounter accept | `DS:3a72` | `1000:b704` | `1000:b713` | `Game::walk_verb` |
 | wander bucket 2, the girl | `DS:3a72` | `1000:b534` | `1000:b543` | `Game::wander_girl` |
 | the mage's paid save | `SS:[bp-0x100]` | `1000:75e6` | `1000:75f6` | `Game::mage` |
 
@@ -1164,16 +1164,17 @@ port-side inventory is a **command**, not a pasted listing:
 $ grep -rn '\.trim()' src/*.rs | grep -v 'trim_end_matches\|trim_start_matches'
 ```
 
-**Sixteen hits: ten call sites and six lines of prose about them.** Run it
-and the counts are what to check, not the line numbers.
+**Seventeen hits: eleven call sites and six lines of prose about them.** Run
+it and the counts are what to check, not the line numbers.
 
 | where | what it normalises |
 |---|---|
 | `crate::commands::parse` | the street verb table |
 | `main.rs`'s `read_number` | `Val()` on the class answer — a number, not a token |
+| `Game::run` | the street verb line again, to tell `run` from `w` — the wander preamble's own `1000:aee4` re-compare, which `parse` cannot make since it folds both into one `Command::Walk` |
 | `Game::district_advance` | the district autosave's `y` |
 | `Game::shop_turn` | the location submenu key — the dealers', the den's, the gym's (Task 32) and, since Task 34, the club's (`1000:e060`) and the vet's (`1000:d528`) |
-| `Game::walk` | the encounter accept's `y` |
+| `Game::walk_verb` | the encounter accept's `y` |
 | `Game::mage` | the mage's `y` |
 | `Game::wander_girl` | wander bucket 2's `y` |
 | `Game::sell_offer` | the six `wes` sell offers' `y` (`1000:cf6d` and its five twins) |
