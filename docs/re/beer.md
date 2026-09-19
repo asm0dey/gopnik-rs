@@ -274,13 +274,26 @@ So `tests/combat_sequence.rs` and `tests/wander_sequence.rs` must stay green
 draw-for-draw across any change to `Game::beer`; movement in either is a bug,
 never a rebaseline.
 
-## The audit of the shipped doc comment
+## The audit of the shipped doc comment — and what Task 42 did with it
 
-The `Game::beer` doc comment is the artifact this task audits, not a source it
+The `Game::beer` doc comment is the artifact Task 41 audited, not a source it
 may inherit from. Recompute what it says with
 `grep -n -B2 -A48 'fn beer(&mut self, how: Beer)' src/game.rs`. Two of its
-addresses are load-bearing and correct; the rest are near misses, and one is a
-miscount.
+addresses were load-bearing and correct; the rest were near misses, and one
+was a miscount.
+
+**Task 42 CORRECTED every row of the table below in place** rather than adding
+new addresses beside the old ones, because `docs/re/METHODOLOGY.md` is explicit
+that an address four bytes off a guard reads as authoritative. The table is
+kept as the record of what was wrong and what replaced it: the "the comment
+says" column is what the comment said at Task 41's tree, and the third column
+is what it says now. Check the replacement rather than this prose:
+`grep -n '1000:2a3b\|1000:2a55\|1000:2b83' src/game.rs` returns four lines and
+**none of them sits on a condition** — the doc comment's own disclosure of this
+correction, the loop's back-edge target in the same comment, the shortfall load
+beside `1000:2a58`, and one test's doc. Each of the three addresses is now used
+for what the instruction at it actually is, never for the decision four to
+sixteen bytes later.
 
 **Correct, and re-derived here.** `1000:e966` is the call site and its bytes
 really are `e8 5b 40`; `1000:29f0` and `1000:2a02` really are the two token
@@ -299,19 +312,31 @@ pushes, at file `0x4197` and `0x4199`; `1000:2a18` really is the jaw guard;
 | "The `#.#л.` pair is `beer/2` and `(beer mod 2) * 5` (`1000:2ab9`)" | `1000:2ab9` is the load that opens the idiom, and the expression drops the `mod 10` at `1000:2ad5` | `1000:2ab9`..`1000:2adb` |
 | "file `0x4240` if nothing was drunk at all" | that line needs a **second** conjunct | `1000:2c36` **and** `1000:2c3d` — nothing drunk **and** beer exhausted |
 
-**The miscount appears twice, and not in the same words.** `src/game.rs` says
-"Six later `"h"` compares"; `src/commands.rs`'s module doc says "Six
+**The miscount appeared twice, and not in the same words.** `src/game.rs` said
+"Six later `"h"` compares"; `src/commands.rs`'s module doc said "Six
 **further** `"h"` compares". Grepping the `game.rs` wording in `commands.rs`
-comes up empty, so it takes two commands to find both:
-`grep -n 'Six later' src/game.rs` and `grep -n 'Six further' src/commands.rs`,
-one hit each. Both are for Task 42 to correct — `docs/re/METHODOLOGY.md` is
-explicit that a near miss reads as authoritative, so replacing these is worth
-more than adding new ones.
+came up empty, so it took two commands to find both. **Task 42 corrected
+both.** The replacements are `grep -rn '\*\*Five\*\* further\|\*\*five\*\* later' src/`
+— one hit each, `src/commands.rs` and `src/game.rs` — and each now spells the
+census out (six pushes in all, `1000:29f0` plus five) instead of leaving a bare
+count over a list that contradicts it. The old wording survives **only** where
+each comment quotes it to say it was wrong, which
+`grep -rn '"Six further"\|"six later"' src/` shows: those two disclosures and
+nothing else. Both greps were run against this tree; a bare
+`grep -rn 'Six later\|Six further' src/` would still hit one of the
+disclosures, which is why the quoted forms are the commands written down here.
 
-## The classification, and the one divergence
+## The classification, and the one divergence (closed)
 
 All nineteen branches are `implemented`; `data/beer_uncited.json` carries the
-rows, the `src` construct for each, and the command that finds it.
+rows, the `src` construct for each, and the command that finds it. **Task 42
+wrote all nineteen addresses into `src/`**, so `docs/re/branches.md`'s
+per-entry row for `1000:29c4` went from `touched 2` to `touched 19`, and the
+5-branch uncited span the ranking carried across this routine's tail left it.
+Both figures are the Recomputation block's output at a named commit, quoted
+there, never asserted here. (The span's own endpoints are not instruction
+addresses and are deliberately not repeated in this file — `docs/re/branches.md`
+is where a span is written down.)
 `unimplemented` and `unreachable-in-port` are both **empty**, which is stated
 rather than filled — see that file's `empty_classes_are_reported` for the
 candidates that were checked and rejected.
@@ -323,26 +348,41 @@ two lines into the body and `1000:2a0e` returns for every other, and the buffer
 at `[bp-0x100]` is written only by `1000:29e2` and `1000:29e6` in the prologue.
 So each later compare re-evaluates a predicate that cannot have changed.
 
-**The one divergence: `mh` with a broken jaw skips the tail.** Miss the jaw
-gate at `1000:2a1d` and the refusal at CS `0x28cc` prints, and then
-`1000:2a38 jmp 0x2baa` lands in the tail rather than at the return. With hp
-untouched since the snapshot at `1000:2a14`, `1000:2bba jz 0x2bbf` admits `mh`,
-`1000:2bc6 jz 0x2c06` and `1000:2c0d jz 0x2c2f` both take,
+**The one divergence: `mh` with a broken jaw skips the tail — CLOSED by Task
+42.** Miss the jaw gate at `1000:2a1d` and the refusal at CS `0x28cc` prints,
+and then `1000:2a38 jmp 0x2baa` lands in the tail rather than at the return.
+With hp untouched since the snapshot at `1000:2a14`, `1000:2bba jz 0x2bbf`
+admits `mh`, `1000:2bc6 jz 0x2c06` and `1000:2c0d jz 0x2c2f` both take,
 `1000:2c36 jnz 0x2c58` does not, and `1000:2c3d jnle 0x2c58` falls through
 whenever `20ae:38c3` is at or below zero — so `mh` + broken jaw + no beer writes
 the refusal **and** `^4Пива нету` (CS `0x2970`, pushed at `1000:2c3f` and
-written by `1000:2c53 call 0xeed:0x1c2`). The
-shipped `Game::beer` returns immediately after the refusal and writes one line.
-It is reachable — `20ae:38b0` is set by combat at `1000:47ee` and `1000:4820`,
-and `mh` is accepted inside a fight through `1000:4b00`. Recorded in
-`docs/re/gaps.md` under "`mh` with a broken jaw skips the tail the original
-still runs", and it is Task 42's Half 1.
+written by `1000:2c53 call 0xeed:0x1c2`). The `Game::beer` Task 41 audited
+returned immediately after the refusal and wrote one line.
+
+It was reachable — `20ae:38b0` is set by combat at `1000:47ee` and
+`1000:4820`, and `mh` is accepted inside a fight through `1000:4b00` — so
+Task 42 **fixed** it rather than keeping it: the refusal arm no longer returns
+and the drink loop moved into its `else`, so both arms reach the `1000:2bba`
+gate. `docs/re/gaps.md`'s entry "`mh` with a broken jaw skips the tail the
+original still runs" now carries the closure and the reason, and
+`data/beer_uncited.json`'s `divergences[0]` its `status` and `fixed_by`. The
+behaviour is held by `cargo test --lib
+a_broken_jaw_still_runs_the_tail_for_mh_and_returns_for_h` and that assertion
+has been seen failing, as `python3 tools/mutate.py --case
+beer-jaw-arm-falls-into-the-tail`.
 
 **Everything else compared clean.** The gate order, the flat-5 versus top-up
 split, the six `h`/`mh` suppressions, the ungated full-health line, the loop
 termination and all four combinations of the tail's two predicates match the
 shipped `Game::beer` construct for construct; the comparison is the
-row-by-row `src` block of `data/beer_uncited.json`.
+row-by-row `src` block of `data/beer_uncited.json`. Task 41 established that by
+reading; Task 42 put assertions under the three properties a `src` diff can
+silently break without moving any state — `the_beer_gates_run_in_the_originals_order`
+(jaw before full-health, full-health before no-beer),
+`the_h_arms_write_the_literals_the_pool_holds` (each arm's exact literal,
+including the two strings `1000:2a8f`'s `Write` joins into one line), and
+`mh_stops_at_hpmax_and_at_the_last_half_litre` (both exits from the loop, and
+what the tail writes for each).
 
 ## Two signedness postures, both already recorded
 

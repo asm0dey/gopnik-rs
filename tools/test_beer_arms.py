@@ -370,6 +370,15 @@ class BeerTest(Base):
         recurring defect: a guard written against one past symptom rather than
         the class. `recorded_in` is a structured `{file, heading}` record so
         the heading is derived rather than parsed out of a sentence.
+
+        A record that declares itself CLOSED must also have said so in the
+        prose, and that is checked here rather than trusted. Task 42 fixed
+        this divergence in `src/`; the failure mode it opens is the mirror of
+        the one above -- the code stops diverging, the artifact says so, and
+        `docs/re/gaps.md` goes on describing an open defect that no longer
+        exists. The marker is looked for on the heading's OWN line, so a
+        "CLOSED" appearing anywhere else in that 3000-line file cannot stand
+        in for it.
         """
         self.assertTrue(self.uncited["divergences"],
                         "the divergence list is empty; Task 41 found one")
@@ -390,12 +399,30 @@ class BeerTest(Base):
                                 "not exist" % (d["id"], rec["file"]))
                 self.assertTrue(rec["heading"].strip(),
                                 "%s records an empty heading" % d["id"])
+                text = path.read_text(encoding="utf-8")
                 self.assertIn(
-                    rec["heading"], path.read_text(encoding="utf-8"),
+                    rec["heading"], text,
                     "%s says it is recorded in %s under %r and that heading "
                     "is not there -- the finding exists in one artifact and "
                     "not the other"
                     % (d["id"], rec["file"], rec["heading"]))
+                if "CLOSED" in d.get("status", "").upper():
+                    lines = [ln for ln in text.splitlines()
+                             if ln.startswith("#") and rec["heading"] in ln]
+                    self.assertTrue(
+                        lines,
+                        "%s names a heading that is not a heading in %s"
+                        % (d["id"], rec["file"]))
+                    self.assertTrue(
+                        all("CLOSED" in ln.upper() for ln in lines),
+                        "%s records `status` CLOSED and %s's heading %r does "
+                        "not say so -- the port stopped diverging and the "
+                        "gaps entry still reads as an open defect: %s"
+                        % (d["id"], rec["file"], rec["heading"], lines))
+                    self.assertIn(
+                        "recompute", d.get("fixed_by", {}),
+                        "%s says CLOSED and names no `fixed_by.recompute`, "
+                        "so nothing holds the fix in place" % d["id"])
 
     # ------------------------------------------------------------- the gates
     def test_the_recorded_gates_are_every_conditional_branch_in_range(self):

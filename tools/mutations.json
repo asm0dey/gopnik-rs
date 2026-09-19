@@ -3839,6 +3839,41 @@
       "SrcPairingTest.test_no_two_rows_share_a_construct_without_saying_which_half_they_mean"
     ],
     "expect": "is not a sub-expression of the `expr` it shares"
+  },
+  {
+    "label": "beer-jaw-arm-falls-into-the-tail",
+    "defends": "Task 42, Half 1, in the PORT.  1000:2a1d missed prints the refusal and then 1000:2a38 `jmp 0x2baa` enters the `mh` TAIL, not the return at 1000:2c58 -- so `mh` + broken jaw + no beer writes TWO lines.  Game::beer shipped with a `return` there and wrote one.  The state is identical either way (the jaw arm spends no half-litre and touches no hp), so nothing but a line-for-line assertion can see it.  This mutation puts the `return` back.",
+    "artifact": "src/game.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "            term::println(\"^4Ты не можешь пить пиво из-за сломаной челюсти.\");\n        } else {\n",
+      "to": "            term::println(\"^4Ты не можешь пить пиво из-за сломаной челюсти.\");\n            return;\n        }\n        {\n",
+      "count": 1
+    },
+    "test": [
+      "cargo",
+      "test",
+      "--lib",
+      "a_broken_jaw_still_runs_the_tail_for_mh_and_returns_for_h"
+    ],
+    "expect": "1000:2a38 enters the tail"
+  },
+  {
+    "label": "beer-gaps-closed-marker",
+    "defends": "the MIRROR of beer-gaps-divergence-entry.  That case defends a finding recorded in the code and not in docs/re/gaps.md; this one defends the opposite drift, which Task 42 created by fixing the divergence: data/beer_uncited.json's divergences[0] declares `status` CLOSED, and docs/re/gaps.md must say so on the entry's own heading rather than go on describing an open defect.  Stripping the CLOSED marker leaves every other assertion in that test green.",
+    "artifact": "docs/re/gaps.md",
+    "mutate": {
+      "op": "text-replace",
+      "from": "still runs (Task 41) — CLOSED by Task 42",
+      "to": "still runs (Task 41)",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_beer_arms.py",
+      "BeerTest.test_the_recorded_divergence_is_in_gaps"
+    ],
+    "expect": "does not say so -- the port stopped diverging"
   }
  ]
 }

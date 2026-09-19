@@ -3950,89 +3950,145 @@ impl Game {
     /// compare in `entry`: `entry` pushes the just-read line `DS:3972` and
     /// calls it at `1000:e966` (`E8 5B 40`, wrapping to `1000:29c4`), and
     /// the routine compares its own argument against `"h"` (token file
-    /// `0x4197`) at `1000:29f0` and `"mh"` (token file `0x4199`) at
-    /// `1000:2a02`, returning immediately when it is neither. Six later
-    /// `"h"` compares (`1000:2a6a`, `2aa0`, `2af2`, `2b40`, `2b89`) and one
-    /// more `"mh"` compare (`1000:2bb0`) select which messages are written
-    /// and whether the drink loop repeats. `FUN_1000_3d11` calls the same
-    /// routine at `1000:4b00` with its own `DS:3a72`, which is why beer works
-    /// inside a fight too.
+    /// `0x4197`) at `1000:29f0` / `1000:29fa` and `"mh"` (token file
+    /// `0x4199`) at `1000:2a02` / `1000:2a0c`, returning immediately when it
+    /// is neither. Those two hits are [`crate::commands::parse`]'s `"h"` and
+    /// `"mh"` arms, which is the only way this function is reached.
+    /// `FUN_1000_3d11` calls the same routine at `1000:4b00` with its own
+    /// `DS:3a72`, which is why beer works inside a fight too.
+    ///
+    /// **`"h"` is pushed six times in all** -- `1000:29f0` above plus the
+    /// **five** later compares `1000:2a6a`, `1000:2aa0`, `1000:2af2`,
+    /// `1000:2b40` and `1000:2b89` -- and `"mh"` twice, `1000:2a02` and
+    /// `1000:2bb0`. An earlier revision of this comment wrote "six later"
+    /// over a list of five; the census is `docs/re/beer.md`'s string table.
+    /// All five later `"h"` compares re-read a buffer that cannot have
+    /// changed -- `1000:29e2` and `1000:29e6` are its only writers and both
+    /// are in the prologue -- which is why the one `single` boolean below is
+    /// faithful to every one of them (`data/beer_uncited.json`,
+    /// `one_boolean_for_six_compares`).
     ///
     /// Traced body, with `DS:38ac` = hp, `DS:38ae` = hpmax, `DS:38b0` =
-    /// broken jaw, `DS:38c3` = beer in half-litres:
+    /// broken jaw, `DS:38c3` = beer in half-litres. Each row names the GUARD
+    /// and the BRANCH, not the string load that follows them -- an earlier
+    /// revision named `1000:2a3b`, `1000:2a55` and `1000:2b83`, which are the
+    /// `mov`/`lea` that open those blocks, four to sixteen bytes short of the
+    /// compare that decides anything:
     ///
-    /// * `1000:2a18` broken jaw -> file `0x419C`, nothing else.
-    /// * `1000:2a3b` already at full hp -> file `0x424C`, immediate return.
-    /// * `1000:2a47` no beer -> `h` writes file `0x4240`.
-    /// * `1000:2a51` otherwise spend one half-litre. `1000:2a55`: when the
-    ///   shortfall is under 5, `h` writes file `0x41CD` (no newline) then
-    ///   file `0x41E4` and hp goes to `hpmax`; otherwise hp += 5 and `h`
-    ///   writes the combined file `0x4208`.
-    /// * `1000:2b83` `h` stops after that one unit; `mh` loops back to
-    ///   `1000:2a3b` while hp < hpmax and beer remains, writing nothing.
+    /// * `1000:2a18` / `1000:2a1d` broken jaw -> file `0x419C`, and then
+    ///   `1000:2a38 jmp 0x2baa`: into the `mh` TAIL, not to the return at
+    ///   `1000:2c58`.
+    /// * `1000:2a3e` / `1000:2a42` already at full hp -> file `0x424C` (the
+    ///   one message with no `h`/`mh` gate) and `1000:2b80`'s return, so this
+    ///   arm never reaches the tail.
+    /// * `1000:2a47` / `1000:2a4c` no beer -> `h` writes file `0x4240`.
+    /// * `1000:2a51` otherwise spend one half-litre. `1000:2a5c` /
+    ///   `1000:2a5f`: when the shortfall is under 5, `h` writes file `0x41CD`
+    ///   (no newline, `1000:2a8f call 0eed:0000`) then file `0x41E4` and hp
+    ///   goes to `hpmax`; otherwise hp += 5 and `h` writes the combined file
+    ///   `0x4208`.
+    /// * `1000:2b93` `h` stops after that one unit; `mh` loops back to
+    ///   `1000:2a3b` while `1000:2b9e` and `1000:2ba5` both miss.
     /// * `1000:2bbf`..`1000:2c53` `mh`'s tail: the file `0x4208` summary with
     ///   the total healed, then file `0x4283` if that drank the last of it,
-    ///   or file `0x4240` if nothing was drunk at all.
+    ///   or file `0x4240` when nothing was drunk **and** the beer is gone --
+    ///   `1000:2c36` and `1000:2c3d`, two conjuncts. An earlier revision of
+    ///   this comment wrote only the first.
     ///
-    /// The `#.#л.` pair is `beer/2` and `(beer mod 2) * 5` (`1000:2ab9`).
+    /// The `#.#л.` pair is `beer/2` and `((beer mod 2) * 5) mod 10`, built at
+    /// `1000:2ab9`..`1000:2adb`; the `mod 10` is the `cwd` at `1000:2ad5` and
+    /// the `idiv cx` after it, which an earlier revision of this comment
+    /// dropped.
     fn beer(&mut self, how: Beer) {
         let single = how == Beer::One;
+        // 1000:2a11 / 1000:2a14 snapshot hp BEFORE the jaw gate, which is
+        // what lets the refusal path still mean "nothing was drunk".
         let hp0 = self.player.hp;
+        // 1000:2a18 / 1000:2a1d. Missed, the refusal prints and 1000:2a38
+        // `jmp 0x2baa` enters the tail -- so this arm falls THROUGH to it
+        // rather than returning. `docs/re/gaps.md`, "`mh` with a broken jaw
+        // skips the tail the original still runs", is where that was opened.
         if self.player.broken_jaw {
             term::println("^4Ты не можешь пить пиво из-за сломаной челюсти.");
-            return;
+        } else {
+            loop {
+                // 1000:2a3e / 1000:2a42, hp < hpmax, SIGNED.
+                if self.player.hp >= self.player.hpmax {
+                    term::println("^6Блин только тупить не надо - и так здоровья до фига.");
+                    return;
+                }
+                // 1000:2a47 / 1000:2a4c, beer > 0, SIGNED.
+                if self.player.beer_dl == 0 {
+                    // 1000:2b4a
+                    if single {
+                        term::println("^4Пива нету");
+                    }
+                    break;
+                }
+                // 1000:2a51 spends the half-litre before any message;
+                // 1000:2a55 / 1000:2a58 are the shortfall.
+                self.player.beer_dl -= 1;
+                let shortfall = self.player.hpmax - self.player.hp;
+                // 1000:2a5c / 1000:2a5f size the drink against 5.
+                if shortfall < 5 {
+                    // 1000:2a74
+                    if single {
+                        term::print(&text::fill("^2Пиво прибавляет #з. ", &[shortfall as i64]));
+                    }
+                    // 1000:2a94 / 1000:2a97 top hp up to hpmax.
+                    self.player.hp = self.player.hpmax;
+                    // 1000:2aaa
+                    if single {
+                        term::println(&text::fill(
+                            "^2Здоровья:#/#. Осталось #.#л. пива",
+                            &self.beer_numbers(),
+                        ));
+                    }
+                } else {
+                    // 1000:2ae7
+                    self.player.hp += 5;
+                    // 1000:2afc
+                    if single {
+                        let n = self.beer_numbers();
+                        term::println(&text::fill(
+                            "^2Пиво прибавляет #з. Здоровья:#/#. Осталось #.#л. пива",
+                            &[5, n[0], n[1], n[2], n[3]],
+                        ));
+                    }
+                }
+                // The loop-continue test, in the original's own order:
+                // 1000:2b93 (`h` leaves), 1000:2b9a / 1000:2b9e (hp >= hpmax)
+                // and 1000:2ba0 / 1000:2ba5 (beer <= 0).
+                if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {
+                    break;
+                }
+            }
         }
-        loop {
-            if self.player.hp >= self.player.hpmax {
-                term::println("^6Блин только тупить не надо - и так здоровья до фига.");
-                return;
-            }
-            if self.player.beer_dl == 0 {
-                if single {
-                    term::println("^4Пива нету");
-                }
-                break;
-            }
-            self.player.beer_dl -= 1;
-            let shortfall = self.player.hpmax - self.player.hp;
-            if shortfall < 5 {
-                if single {
-                    term::print(&text::fill("^2Пиво прибавляет #з. ", &[shortfall as i64]));
-                }
-                self.player.hp = self.player.hpmax;
-                if single {
-                    term::println(&text::fill(
-                        "^2Здоровья:#/#. Осталось #.#л. пива",
-                        &self.beer_numbers(),
-                    ));
-                }
-            } else {
-                self.player.hp += 5;
-                if single {
-                    let n = self.beer_numbers();
-                    term::println(&text::fill(
-                        "^2Пиво прибавляет #з. Здоровья:#/#. Осталось #.#л. пива",
-                        &[5, n[0], n[1], n[2], n[3]],
-                    ));
-                }
-            }
-            if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {
-                break;
-            }
-        }
+        // 1000:2bb0 / 1000:2bba -- everything below is `mh`-only.
         if single {
             return;
         }
+        // 1000:2bd0 is the subtraction that makes the summary's first field
+        // the TOTAL healed rather than the last unit's gain.
         let healed = i64::from(self.player.hp) - i64::from(hp0);
+        // The original re-reads `20ae:38ac` against `[bp-0x102]` three times
+        // -- 1000:2bc2 / 1000:2bc6, 1000:2c09 / 1000:2c0d and 1000:2c32 /
+        // 1000:2c36 -- and this one test stands for all three: the only
+        // writers of `20ae:38ac` in the range, 1000:2a97 and 1000:2ae7, are
+        // both above it.
         if healed != 0 {
             let n = self.beer_numbers();
             term::println(&text::fill(
                 "^2Пиво прибавляет #з. Здоровья:#/#. Осталось #.#л. пива",
                 &[healed, n[0], n[1], n[2], n[3]],
             ));
+            // 1000:2c0f / 1000:2c14, beer > 0, SIGNED.
             if self.player.beer_dl == 0 {
                 term::println("^4Кончилось пиво");
             }
+            // Reaching the `else if` below at all is 1000:2c36 NOT taken;
+            // its own test is 1000:2c38 / 1000:2c3d, and it writes the
+            // second of the two `^4Пива нету` sites.
         } else if self.player.beer_dl == 0 {
             term::println("^4Пива нету");
         }
@@ -8111,6 +8167,176 @@ mod tests {
         g.player.hp = 5;
         g.player.beer_dl = 0;
         g.beer(Beer::One);
+        assert_eq!(g.player.hp, 5);
+    }
+
+    /// The Task 41 divergence, closed by Task 42.
+    ///
+    /// `1000:2a1d` missed prints the refusal and then `1000:2a38 jmp 0x2baa`
+    /// lands in the `mh` TAIL, not at the return `1000:2c58`. The snapshot
+    /// `1000:2a11` / `1000:2a14` was already taken, so hp == hp0 there:
+    /// `1000:2bc6` and `1000:2c0d` both take, `1000:2c36` does not, and
+    /// `1000:2c3d` falls through whenever `20ae:38c3` is at or below zero.
+    /// `h` is unaffected -- `1000:2bba` misses for it and `1000:2bbc` returns.
+    #[test]
+    fn a_broken_jaw_still_runs_the_tail_for_mh_and_returns_for_h() {
+        let refusal = "^4Ты не можешь пить пиво из-за сломаной челюсти.";
+
+        let mut g = game();
+        g.player.hp = 5;
+        g.player.beer_dl = 0;
+        g.player.broken_jaw = true;
+        let out = term::capture::lines(|| g.beer(Beer::Binge));
+        assert_eq!(
+            out,
+            vec![refusal.to_string(), "^4Пива нету".to_string()],
+            "1000:2a38 enters the tail: `mh` + broken jaw + no beer writes \
+             the refusal AND file 0x4240"
+        );
+        assert_eq!(g.player.hp, 5, "the tail writes no hp");
+        assert_eq!(g.player.beer_dl, 0);
+
+        // Beer in hand: the tail runs, but `1000:2c3d` takes and it is silent.
+        let mut g = game();
+        g.player.hp = 5;
+        g.player.beer_dl = 4;
+        g.player.broken_jaw = true;
+        let out = term::capture::lines(|| g.beer(Beer::Binge));
+        assert_eq!(
+            out,
+            vec![refusal.to_string()],
+            "1000:2c3d takes while beer > 0, so the tail adds nothing"
+        );
+        assert_eq!(g.player.beer_dl, 4, "the jaw arm spends no half-litre");
+
+        // `h` never reaches the tail at all.
+        let mut g = game();
+        g.player.hp = 5;
+        g.player.beer_dl = 0;
+        g.player.broken_jaw = true;
+        let out = term::capture::lines(|| g.beer(Beer::One));
+        assert_eq!(
+            out,
+            vec![refusal.to_string()],
+            "1000:2bba misses for `h` and 1000:2bbc returns"
+        );
+    }
+
+    /// Gate ORDER, which no state assertion can see.
+    ///
+    /// `1000:2a18` is reached before `1000:2a3e`, and `1000:2a3e` before
+    /// `1000:2a47`. Swap either pair and the state is identical while a
+    /// different line is written.
+    #[test]
+    fn the_beer_gates_run_in_the_originals_order() {
+        // Jaw before full-health: 1000:2a18 precedes 1000:2a3e.
+        let mut g = game();
+        g.player.hp = g.player.hpmax;
+        g.player.beer_dl = 4;
+        g.player.broken_jaw = true;
+        let out = term::capture::lines(|| g.beer(Beer::One));
+        assert_eq!(
+            out,
+            vec!["^4Ты не можешь пить пиво из-за сломаной челюсти.".to_string()],
+            "1000:2a18 runs before 1000:2a3e, so a full-health drunk with a \
+             broken jaw hears about the jaw"
+        );
+
+        // Full-health before no-beer: 1000:2a3e precedes 1000:2a47. And
+        // 1000:2b80 returns, so `mh` does not reach the tail's 0x4240 either.
+        let mut g = game();
+        g.player.hp = g.player.hpmax;
+        g.player.beer_dl = 0;
+        let out = term::capture::lines(|| g.beer(Beer::Binge));
+        assert_eq!(
+            out,
+            vec!["^6Блин только тупить не надо - и так здоровья до фига.".to_string()],
+            "1000:2a3e runs before 1000:2a47 and 1000:2b80 returns, so this \
+             arm never reaches the tail"
+        );
+    }
+
+    /// Message TEXT, literal for literal, against the nine-string pool
+    /// `docs/re/beer.md` tiles at file `0x4197`..`0x4294`.
+    ///
+    /// The partial arm's two strings are one physical line: `1000:2a8f` is
+    /// `call 0eed:0000` (`Write`, no newline) and `1000:2ae0` is
+    /// `call 0eed:01c2` (`WriteLn`), so file `0x41CD` and file `0x41E4`
+    /// arrive joined.
+    #[test]
+    fn the_h_arms_write_the_literals_the_pool_holds() {
+        // Partial arm, 1000:2a64: shortfall 3 -> file 0x41CD + file 0x41E4.
+        let mut g = game();
+        g.player.hp = 17;
+        g.player.beer_dl = 3;
+        let out = term::capture::lines(|| g.beer(Beer::One));
+        assert_eq!(
+            out,
+            vec!["^2Пиво прибавляет 3з. ^2Здоровья:20/20. Осталось 1.0л. пива".to_string()],
+            "1000:2a8f writes file 0x41CD without a newline"
+        );
+        assert_eq!(g.player.hp, 20, "1000:2a97 tops hp up to hpmax");
+
+        // Flat arm, 1000:2ae7: shortfall 5 is NOT under 5 -> file 0x4208.
+        let mut g = game();
+        g.player.hp = 15;
+        g.player.beer_dl = 10;
+        let out = term::capture::lines(|| g.beer(Beer::One));
+        assert_eq!(
+            out,
+            vec!["^2Пиво прибавляет 5з. Здоровья:20/20. Осталось 4.5л. пива".to_string()],
+            "1000:2a5f is `jl 5`, so a shortfall of exactly 5 takes the flat arm"
+        );
+
+        // No-beer arm, 1000:2b3a -> file 0x4240.
+        let mut g = game();
+        g.player.hp = 5;
+        g.player.beer_dl = 0;
+        let out = term::capture::lines(|| g.beer(Beer::One));
+        assert_eq!(out, vec!["^4Пива нету".to_string()]);
+    }
+
+    /// Loop TERMINATION: the two ways out of `1000:2a3b`'s loop, and what
+    /// the tail writes for each.
+    #[test]
+    fn mh_stops_at_hpmax_and_at_the_last_half_litre() {
+        // Out through 1000:2b9e -- hp reached hpmax with beer left over.
+        let mut g = game();
+        g.player.hp = 5;
+        g.player.beer_dl = 10;
+        let out = term::capture::lines(|| g.beer(Beer::Binge));
+        assert_eq!(g.player.hp, 20);
+        assert_eq!(g.player.beer_dl, 7, "three half-litres, not four");
+        assert_eq!(
+            out,
+            vec!["^2Пиво прибавляет 15з. Здоровья:20/20. Осталось 3.5л. пива".to_string()],
+            "1000:2bd0 makes the first field the TOTAL healed, and 1000:2c14 \
+             takes while beer remains"
+        );
+
+        // Out through 1000:2ba5 -- the beer ran out first.
+        let mut g = game();
+        g.player.hp = 5;
+        g.player.beer_dl = 2;
+        let out = term::capture::lines(|| g.beer(Beer::Binge));
+        assert_eq!(g.player.hp, 15);
+        assert_eq!(g.player.beer_dl, 0);
+        assert_eq!(
+            out,
+            vec![
+                "^2Пиво прибавляет 10з. Здоровья:15/20. Осталось 0.0л. пива".to_string(),
+                "^4Кончилось пиво".to_string(),
+            ],
+            "1000:2c14 misses when the drink emptied it, so file 0x4283 follows"
+        );
+
+        // Never entered: 1000:2a4c misses on the first pass, and the tail's
+        // 1000:2c36 / 1000:2c3d pair writes file 0x4240.
+        let mut g = game();
+        g.player.hp = 5;
+        g.player.beer_dl = 0;
+        let out = term::capture::lines(|| g.beer(Beer::Binge));
+        assert_eq!(out, vec!["^4Пива нету".to_string()]);
         assert_eq!(g.player.hp, 5);
     }
 

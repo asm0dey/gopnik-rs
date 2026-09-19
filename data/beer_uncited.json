@@ -1,11 +1,11 @@
 {
- "note": "Every game branch of `FUN_1000_29c4` -- the `h` / `mh` beer routine, image `1000:29c4`..`1000:2c5e` -- classified against the port by Task 41. All 19 carried no `SEG:OFF` citation at the branch or its guard when Task 41 ran EXCEPT `1000:2a1d` and `1000:2a4c`, whose guards (`1000:2a18`, `1000:2a47`) the shipped `Game::beer` doc comment already names; those two are the `touched 2` in `docs/re/branches.md`'s per-entry row for this entry. The row set is therefore the whole branch population of the function, not the uncited subset -- `data/combat_uncited.json` is the shape, and the difference is deliberate: Task 42 has to cite 17 and must not re-cite the two, so both halves have to be present and derived. `tools/test_beer_arms.py` re-derives the population from `data/branches.json` and requires this file to cover it EXACTLY; no count here is hard-coded.",
+ "note": "Every game branch of `FUN_1000_29c4` -- the `h` / `mh` beer routine, image `1000:29c4`..`1000:2c5e` -- classified against the port by Task 41. All 19 carried no `SEG:OFF` citation at the branch or its guard when Task 41 ran EXCEPT `1000:2a1d` and `1000:2a4c`, whose guards (`1000:2a18`, `1000:2a47`) the shipped `Game::beer` doc comment already named; those two were the `touched 2` in `docs/re/branches.md`'s per-entry row for this entry AT TASK 41'S TREE. Task 42 cited the other seventeen, so that row now reads `touched 19` -- the figure is the output of `docs/re/branches.md`'s Recomputation block at a named commit, never a fact about this file, and the `2` above is kept only as the base the +17 was measured from. The row set is the whole branch population of the function, not the uncited subset -- `data/combat_uncited.json` is the shape, and the difference is deliberate: Task 42 had to cite 17 and must not re-cite the two, so both halves have to be present and derived. `tools/test_beer_arms.py` re-derives the population from `data/branches.json` and requires this file to cover it EXACTLY; no count here is hard-coded.",
  "classes": {
   "implemented": "`src/` evaluates this condition NOW. `src.module`, `src.function` and `src.expr` name the construct that does, and `src.recompute` is the command that finds it -- never a `src/` line number, which `docs/re/METHODOLOGY.md` forbids. `src.expr` is a paraphrase close enough to locate the construct and never a substitute for reading it. When two rows name the SAME construct -- the port evaluates one predicate where the original tests it more than once -- each carries a `src.discriminator`: the exact sub-expression of `expr` that row means. `tools/test_beer_arms.py`'s `test_no_two_rows_share_a_construct_without_saying_which_half_they_mean` requires it. What that test enforces is exactly PRESENT, SUBSTRING and DISTINCT -- the discriminator exists, occurs in the shared `expr`, and differs from its siblings'. It does NOT establish that the discriminator is the predicate the branch evaluates: a row drifted onto a sibling's construct still passes if it names any other substring of that expression (`1000:2c36` back on `1000:2c3d`'s `expr` with `discriminator: term::println` goes green). The check narrows that opening; reading each row's `why` against the flow is still what closes it.",
   "unimplemented": "`src/` does not evaluate it. NO ROW USES THIS CLASS -- see `empty_classes_are_reported`.",
   "unreachable-in-port": "the port deliberately diverges and `docs/re/gaps.md` records it. NO ROW USES THIS CLASS -- see `empty_classes_are_reported`."
  },
- "empty_classes_are_reported": "Two of the three classes are empty and that is stated rather than filled, because an escape-hatch class is how an inventory stops being falsifiable. The candidates were checked and rejected one by one. `1000:2a1d` (broken jaw) looked like `unreachable-in-port`: the port DOES evaluate the condition, so the class does not fit -- what diverges is the code AFTER the refusal prints, and that is recorded as a divergence in `divergences` and in `docs/re/gaps.md` instead of by mislabelling a branch. The six `h`/`mh` selections (`1000:2a74`, `2aaa`, `2afc`, `2b4a`, `2b93`, `2bba`) looked like `unimplemented` because one `single` boolean stands for six separate shortstring compares; `one_boolean_for_six_compares` is the flow argument that they are the same predicate, so they are `implemented`. Nothing in this routine is unported behaviour.",
+ "empty_classes_are_reported": "Two of the three classes are empty and that is stated rather than filled, because an escape-hatch class is how an inventory stops being falsifiable. The candidates were checked and rejected one by one. `1000:2a1d` (broken jaw) looked like `unreachable-in-port`: the port DOES evaluate the condition, so the class does not fit -- what diverged was the code AFTER the refusal prints, and that was recorded as a divergence in `divergences` and in `docs/re/gaps.md` instead of by mislabelling a branch, then FIXED by Task 42 rather than kept (`docs/re/gaps.md` is for a divergence the port keeps, and no reason to keep this one was ever on record). The six `h`/`mh` selections (`1000:2a74`, `2aaa`, `2afc`, `2b4a`, `2b93`, `2bba`) looked like `unimplemented` because one `single` boolean stands for six separate shortstring compares; `one_boolean_for_six_compares` is the flow argument that they are the same predicate, so they are `implemented`. Nothing in this routine is unported behaviour.",
  "one_boolean_for_six_compares": {
   "claim": "`Game::beer`'s single `single` boolean is faithful to the six later `call 0f78:0bd8` compares at `1000:2a6a`, `2aa0`, `2af2`, `2b40`, `2b89` (against `\"h\"`, CS 0x28c7) and `1000:2bb0` (against `\"mh\"`, CS 0x28c9).",
   "established_from_flow": [
@@ -20,13 +20,20 @@
    "id": "mh-with-a-broken-jaw-skips-the-tail",
    "found_by": "Task 41",
    "original": "1000:2a1d not taken -> 1000:2a1f prints CS 0x28cc (`^4Ты не можешь пить пиво из-за сломаной челюсти.`) and 1000:2a38 `jmp 0x2baa` enters the `mh` TAIL. For `mh` the tail then runs 1000:2bba..1000:2c53 with hp untouched, so 1000:2bc6 and 1000:2c0d both take, 1000:2c36 does not, and 1000:2c3d prints `^4Пива нету` (CS 0x2970) whenever 20ae:38c3 <= 0.",
-   "port": "`Game::beer` prints the jaw refusal and `return`s, so `mh` + broken jaw + no beer writes one line where the original writes two.",
-   "reachable": "yes -- 20ae:38b0 is set by combat at 1000:47ee / 1000:4820 and the beer counter is routinely 0; `mh` is accepted in combat through the second call site 1000:4b00.",
+   "status": "CLOSED by Task 42 -- the port no longer diverges here. The record stays because the FINDING, not the defect, is what a later task needs: it names the flow the port now follows, and `fixed_by.recompute` is the test that holds it there. `port` below describes the tree as it ships, so this entry can be read against the source without knowing which side is stale.",
+   "port": "`Game::beer` prints the jaw refusal and then falls THROUGH to the tail, as 1000:2a38 `jmp 0x2baa` does: `mh` + broken jaw + no beer now writes the refusal AND `^4Пива нету`, both lines, in that order. `h` is unaffected -- 1000:2bba misses for it and 1000:2bbc returns -- and the jaw arm still spends no half-litre, because 1000:2a51 sits past the gate.",
+   "reachable": "yes -- 20ae:38b0 is set by combat at 1000:47ee / 1000:4820 and the beer counter is routinely 0; `mh` is accepted in combat through the second call site 1000:4b00. That reachability is WHY it was fixed rather than kept.",
    "recorded_in": {
     "file": "docs/re/gaps.md",
     "heading": "`mh` with a broken jaw skips the tail the original still runs"
    },
-   "for": "Task 42, Half 1"
+   "fixed_by": {
+    "task": "Task 42, Half 1",
+    "shape": "the refusal arm no longer `return`s; the drink loop moved into its `else`, so both arms reach the 1000:2bba gate.",
+    "recompute": "cargo test --lib a_broken_jaw_still_runs_the_tail_for_mh_and_returns_for_h",
+    "mutation_case": "python3 tools/mutate.py --case beer-jaw-arm-falls-into-the-tail"
+   },
+   "for": "Task 42, Half 1 -- done"
   }
  ],
  "derivation": {
@@ -94,9 +101,9 @@
    "src": {
     "module": "src/game.rs",
     "function": "Game::beer",
-    "expr": "if self.player.broken_jaw { term::println(\"^4Ты не можешь пить пиво из-за сломаной челюсти.\"); return; }",
-    "recompute": "grep -n -A2 'let hp0 = self.player.hp;' src/game.rs",
-    "why": "The condition is evaluated, and first, exactly as at 1000:2a18. What follows it DIVERGES -- the port returns where the original enters the tail; see `divergences` and the `docs/re/gaps.md` entry it names."
+    "expr": "if self.player.broken_jaw { term::println(\"^4Ты не можешь пить пиво из-за сломаной челюсти.\"); } else { loop { .. } }",
+    "recompute": "grep -nF -B1 'term::println(\"^4Ты не можешь пить пиво из-за сломаной челюсти.\");' src/game.rs",
+    "why": "The condition is evaluated, and first, exactly as at 1000:2a18. Task 42 closed what followed it: the refusal arm no longer `return`s and the drink loop moved into its `else`, so the arm falls through to the 1000:2bba gate exactly as 1000:2a38 `jmp 0x2baa` does. `divergences[0]` carries the closed record. The recompute was `grep -n -A2 'let hp0 = self.player.hp;'` while the `return` was there; that window no longer reaches the `if`, and an -A window widened to chase it would be stale again on the next comment, so the anchor is now the refusal line itself -- one hit in `src/game.rs` with `term::println(`, whose -B1 IS the construct."
    }
   },
   {

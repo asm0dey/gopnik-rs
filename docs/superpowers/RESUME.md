@@ -545,9 +545,11 @@ for the right, `data/branches.json`'s `port_touched` over `src/**/*.rs` and
 | `d20340e` | Task 38 (whole-branch fix wave: six stale documents, one comment, one floor) | *not recomputed* | 519/838 |
 | `aef46ba` | Task 39 (RE, the combat opener + all 117 uncited classified) | *not recomputed* | 519/838 |
 | — | Task 40 (port, the combat opener and the agility lines; + 101 citations) | *not recomputed* | **634/838** |
+| `3c0ff20` | Task 41 (RE, the beer routine decoded whole, all 19 branches classified) | *not recomputed* | 634/838 |
+| — | Task 42 (port, the beer routine's one divergence fixed; + 17 citations) | *not recomputed* | **651/838** |
 
 **The `not recomputed` cells in the left column are an honest gap, not a
-measurement** -- eight of them now, Tasks 31-34 and 37-40.
+measurement** -- ten of them now, Tasks 31-34 and 37-42.
 Task 32 recomputed only the right column — `838 game branches | touched 476
 (56.8%)`, from the *Recomputation → Coverage* block against its own tree, and
 `449` re-derived the same way at `36137a0` before it started. The left column
@@ -593,8 +595,17 @@ Task 38 end              d20340e   519/838
 pre-plan tip             b139158   519/838
 plan commit              c8ab775   519/838
 Task 39 end              aef46ba   519/838
-Task 40 HEAD             HEAD      634/838
+Task 40 feat             b11dd6d   634/838
+Task 40 end (fix wave)   fe2e8bf   634/838
+Task 41 end              3c0ff20   634/838
+Task 42 HEAD             HEAD      651/838
 ```
+
+(The `Task 40 HEAD  HEAD` row this list carried went stale the moment `HEAD`
+moved past it, which is the defect `docs/re/METHODOLOGY.md` names about
+`file:line`s applied to a revision label. Both of Task 40's commits are named
+above and both measure 634, so its fix wave moved the metric by zero the same
+way Task 38's did. Only the last row may say `HEAD`, and only while it is.)
 
 Six consecutive commits at 519 is the shape this file keeps recording: Task 37
 built an instrument, Task 38 fixed documents, Task 39 wrote a map, and none of
@@ -613,6 +624,27 @@ that already implemented them**, `14 + 101 = 115`, `lost 0`, computed by the
 `aef46ba` and quoted verbatim in `docs/re/branches.md`. Compare Task 34's +43,
 whose split was never printed: the caveat there records that eleven of the
 forty-three moved without a line of behaviour changing.
+
+**Task 41's `634` is a measurement, not the byte-identical-input argument.**
+That argument has been wrong in this file once already (Task 33), so it was
+not used again: the *Recomputation → Coverage* block run inside a `git
+worktree` of `3c0ff20` prints `game branches 838 | touched 634 (75.7%) |
+uncited 204`. It does happen to also be a sixth RE task that moved the port
+metric by exactly 0 — `git diff --stat fe2e8bf..3c0ff20 -- src/
+data/command_dispatch.json` is empty — and both facts are written down because
+the measurement is the evidence and the diff is only the reason.
+
+**Task 42's split is `N = 0` implemented, `M = 17` cited**, `0 + 17 = 17`,
+`lost 0`, from the per-task-delta block at `BASE = 3c0ff20`, quoted verbatim in
+`docs/re/branches.md`. **`N = 0` does not mean Half 1 was empty**, and this is
+the first row in this table where the two come apart: Task 42 fixed a real
+divergence (`mh` with a broken jaw now runs the tail the original runs,
+`docs/re/gaps.md`, CLOSED), but the branch that fix turns on is `1000:2a1d`,
+whose guard `1000:2a18` was already cited at `3c0ff20` — so it was
+`port_touched` before and after and shows in neither `gained` nor `lost`.
+The metric asks whether an address is written down, not how well the port
+reckons with it; `docs/re/branches.md` records both directions of that lie and
+this is the newest instance.
 
 Read the alternating rows together. **Task 25 moved the documents metric by +42
 and the port metric by exactly 0**; **Task 26 moved the port metric by +40 and

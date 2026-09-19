@@ -485,9 +485,14 @@ own columns when Ghidra last ran (`82a08d8`); the table below is recomputed from
 the shipped tree, and the block under *Recomputation* prints it. Quote the
 command, not the cell.
 
-After Task 40: 838 game branches; **634 touched (75.7%)**; 204 with no
-citation at the branch or its guard. (After Task 34 it was **519 (61.9%)** and
-319 uncited; the +115 is decomposed below.)
+After Task 42: 838 game branches; **651 touched (77.7%)**; 187 with no
+citation at the branch or its guard. (After Task 40 it was **634 (75.7%)** and
+204 uncited; after Task 34, **519 (61.9%)** and 319. The +17 and the +115 are
+both decomposed below.)
+
+**`FUN_1000_29c4` is now complete: `branches 19 touched 19`.** Task 42 cited
+all nineteen of the beer routine's game branches, which is the whole
+population `data/beer_uncited.json` carries.
 
 **`FUN_1000_3d11` is at its ceiling, and the ceiling is 222, not 224.** The
 combat function's per-entry row now reads `branches 224 touched 222`. The two
@@ -501,6 +506,33 @@ never-taken branches are permanently excluded from citation", is the ruling and
 form, defended by
 `tools/test_combat_opener.py`'s
 `test_the_two_never_taken_rows_are_excluded_from_citation`.
+
+**The +17, decomposed — and the half of Task 42 that moved it by zero.** Run
+with the per-task-delta block below at `BASE = 3c0ff20` (`BUCKETS` = the jaw
+arm `0x2a18`..`0x2a1d`, then the whole routine `0x29c4`..`0x2c5e`), it prints,
+verbatim:
+
+```
+base 3c0ff20: touched 634 | head: touched 651 | gained 17 | lost 0
+  Half 2, cited, already implemented   17  1000:29fa 1000:2a0c 1000:2a42 1000:2a5f 1000:2a74 1000:2aaa 1000:2afc 1000:2b4a 1000:2b93 1000:2b9e 1000:2ba5 1000:2bba 1000:2bc6 1000:2c0d 1000:2c14 1000:2c36 1000:2c3d
+```
+
+**N = 0 implemented, M = 17 cited**, 0 + 17 = 17, `lost 0`, and the first
+bucket and `elsewhere` are both empty. The `base` figure reproduces
+independently: the coverage block above, run inside a `git worktree` of
+`3c0ff20`, prints `game branches 838 | touched 634 (75.7%) | uncited 204`.
+
+**N = 0 is the honest figure and it is not "Half 1 was empty."** Task 42's
+Half 1 changed behaviour — `Game::beer`'s broken-jaw arm no longer returns, so
+`mh` with a broken jaw runs the tail the original runs
+(`docs/re/gaps.md`, "`mh` with a broken jaw skips the tail the original still
+runs", CLOSED). The branch that fix turns on is `1000:2a1d`, whose guard
+`1000:2a18` the shipped doc comment ALREADY cited at `3c0ff20`, so the branch
+was `port_touched` before and after and appears in neither `gained` nor `lost`.
+Supplementary to the block, over the same two indices: `1000:2a1d` is
+`hit` at base `True`, at head `True`. **This is the metric's under-reporting
+direction with the sign flipped** — a branch can be reckoned with *harder*
+without moving a number that only asks whether an address was written down.
 
 **The +115, decomposed into the two numbers that matter.** Task 40's report
 contract is that a port task states *how many branches moved because it
@@ -731,10 +763,16 @@ still 9: citing the inside of a routine is not the same as touching a branch
 in it.
 
 **The per-entry table below is Task 26's and is NOT recomputed here.** Every
-cell Tasks 28, 30 and 32 changed is in the blocks just above; the rest of the
-columns are byte-for-byte what the *Recomputation* block prints at this tree,
-with the one recorded exception in the paragraph above. Quote the command, not
-the cell.
+cell Tasks 28, 30 and 32 changed is in the blocks just above. **The claim this
+sentence used to make — that the rest of the columns are byte-for-byte what
+the *Recomputation* block prints at this tree — has not been true since Task
+32**, and saying it while `1000:ab59` read 188 here and 308 there was the
+defect this document keeps naming. Tasks 34, 40 and 42 moved more cells again
+(`1000:29c4` is `2 | 26` below and `19 | 98` at this tree). Read the table as
+Task 26's frozen snapshot, the way the ranking table further down is read, and
+quote the command rather than any cell of it. The one *recorded* exception —
+a cell that did not reproduce even at its own revision — is in the paragraph
+above.
 
 **Over the whole shop-arms branch the figure is +83, and it does NOT all land
 in one function.** `bfad0b4` → `e4e929b` is 305 → 388, splitting **+81 in
@@ -794,8 +832,10 @@ game branches (at `e657bbe`, 416 spans held 767; at `82a08d8`, when
 array in that file still says so). **More spans, fewer branches in them** is
 what porting looks like on this metric. **The table below is Task 26's
 snapshot and is NOT recomputed here** — the top 12 at the shipped tree is the
-one the block under *Recomputation* prints, and at Task 40's tree that is
-343 spans holding 445 branches, headed by `1000:1e07`..`1000:1e34` at six.
+one the block under *Recomputation* prints, and at Task 42's tree that is
+330 spans holding 426 branches, headed by `1000:1e07`..`1000:1e34` at six.
+(At Task 40's it was 343 holding 445; Task 42 took rank 12 below,
+`1000:2bc0`..`1000:2c52`, by citing all five of its branches.)
 (At Task 32's it was 422 spans holding 614, headed by
 `1000:4169`..`1000:43f5` at seventeen; Task 40 shattered that one.) An earlier revision of this sentence said the table itself was
 recomputed; it was already untrue at Task 30, whose own +25 had shattered the
@@ -863,12 +903,13 @@ of its 224 game branches are touched and the two that are not are the
 never-taken pair above, so the four-branch spans it used to hold
 (`1000:5411`..`1000:5426`, `1000:5463`..`1000:547d`) are gone with the rest.
 What is left at the head is `FUN_1000_1a03`'s `1000:1e07`..`1000:1e34` (6),
-then four five-branch spans — `1000:0aec`..`1000:0d13`,
-`1000:2bc0`..`1000:2c52` and two in the wander preamble
-(`1000:b35d`..`1000:b392` and `1000:b3dc`..`1000:b464`). By function the
-untouched population is now headed by `entry` (98 of 406 uncited),
-`FUN_1000_1a03` (29 of 83), `FUN_1000_6a0d` (18 of 33) and `FUN_1000_29c4`
-(17 of 19) — combat has left that list entirely. The status screen, which
+then three five-branch spans — `1000:0aec`..`1000:0d13` and two in the wander
+preamble (`1000:b35d`..`1000:b392` and `1000:b3dc`..`1000:b464`). **Task 42
+took the fourth**, `1000:2bc0`..`1000:2c52`, the beer routine's tail. By
+function the untouched population is now headed by `entry` (98 of 406
+uncited), `FUN_1000_1a03` (29 of 83) and `FUN_1000_6a0d` (18 of 33) —
+`FUN_1000_29c4` is at 0 of 19 and has left that list, as combat did at Task
+40. The status screen, which
 headed the span list for four tasks, is off it: `FUN_1000_1a03` is ported
 (`src/character_sheet.rs`, Task 22), 54 of its 83 branches touched across 176
 citation sites, and its largest remaining uncited span is six branches.
@@ -960,7 +1001,7 @@ for s in spans[:12]:
 EOF
 ```
 
-At Task 40's tree that prints, verbatim, the numbers this document's tables
+At Task 42's tree that prints, verbatim, the numbers this document's tables
 carry. Task 40 ported the class-keyed combat opener and the two
 agility-reduction lines and cited the 101 conditions `src/` already evaluated,
 which is why every span the ranking still carried inside `FUN_1000_3d11` --
@@ -968,17 +1009,23 @@ which is why every span the ranking still carried inside `FUN_1000_3d11` --
 `1000:5411..1000:5426` (4) and `1000:5463..1000:547d` (4) -- is gone from it,
 exactly as the location handlers' spans went at Tasks 28, 30, 32 and 34.
 **Combat contributes no uncited span at all any more**, and what remains at the
-head is the character sheet. The Task 24, Task 26, Task 30, Task 32 and Task 34
-totals this block used to print are in the history sentence above, and in
-`docs/superpowers/RESUME.md`'s measured-history table:
+head is the character sheet. Task 42 then cited all nineteen branches of the
+beer routine, so `1000:29c4` reads `touched 19 citations 98` (it was
+`touched 2 citations 26` for the five revisions before) and the five-branch
+span `1000:2bc0..1000:2c52` is gone from the ranking too -- which is why the
+span count FELL, from 343 holding 445 to 330 holding 426: citing a span's
+interior removes the branches from the ranking rather than splitting them, once
+every branch in it is covered. The Task 24, Task 26, Task 30, Task 32, Task 34
+and Task 40 totals this block used to print are in the history sentence above,
+and in `docs/superpowers/RESUME.md`'s measured-history table:
 
 ```
-game branches 838 | touched 634 (75.7%) | uncited 204
+game branches 838 | touched 651 (77.7%) | uncited 187
 1000:ab59    bytes 17143 branches 406 touched 308 citations 2143
 1000:3d11    bytes  6971 branches 224 touched 222 citations 903
 1000:1a03    bytes  2700 branches  83 touched  54 citations 176
 1000:6a0d    bytes  2527 branches  33 touched  15 citations 164
-1000:29c4    bytes   666 branches  19 touched   2 citations  26
+1000:29c4    bytes   666 branches  19 touched  19 citations  98
 1000:0d14    bytes  1196 branches  17 touched  11 citations  59
 1000:2526    bytes   929 branches  17 touched   9 citations  62
 1000:7c67    bytes  1612 branches  16 touched  12 citations  39
@@ -990,10 +1037,9 @@ game branches 838 | touched 634 (75.7%) | uncited 204
 1000:5f55    bytes  1000 branches   1 touched   0 citations   4
 1000:02c2    bytes   508 branches   0 touched   0 citations   0
 1000:0acc    bytes    15 branches   0 touched   0 citations   0
-343 spans hold 445 of the 838
+330 spans hold 426 of the 838
     6  1000:1e07..1000:1e34     1000:1a03         46 bytes
     5  1000:0aec..1000:0d13     1000:0aec        552 bytes
-    5  1000:2bc0..1000:2c52     1000:29c4        147 bytes
     5  1000:b35d..1000:b392     1000:ab59         54 bytes
     5  1000:b3dc..1000:b464     1000:ab59        137 bytes
     4  1000:0efe..1000:0fed     1000:0d14        240 bytes
@@ -1003,6 +1049,7 @@ game branches 838 | touched 634 (75.7%) | uncited 204
     4  1000:7263..1000:7346     1000:6a0d        228 bytes
     4  1000:b466..1000:b4e7     1000:ab59        130 bytes
     4  1000:b837..1000:b92f     1000:ab59        249 bytes
+    4  1000:c81e..1000:c8c8     1000:ab59        171 bytes
 ```
 
 Task 34's own output, the one this block printed for six revisions, is the

@@ -76,12 +76,18 @@
 //! that routine compares its own argument against the token `"h"` (file
 //! `0x4197`, a length-prefixed `01 68`) at `1000:29f0` and `"mh"` (file
 //! `0x4199`, `02 6D 68`) at `1000:2a02`, and returns immediately when the
-//! line is neither. Six further `"h"` compares (`1000:2a6a`, `2aa0`, `2af2`,
-//! `2b40`, `2b89`) and one further `"mh"` compare (`1000:2bb0`) choose which
-//! messages it writes. So both **are** top-level verbs; the earlier revision
-//! of this file was right to keep them, and the reviewer's lead that they
-//! are not top-level verbs at all does not hold -- `FUN_1000_3d11`'s call at
-//! `1000:4b00` is a *second* call site, not the only one.
+//! line is neither. The two hits are `1000:29fa` and `1000:2a0c`, and they
+//! are the two [`parse`] arms below. **Five** further `"h"` compares
+//! (`1000:2a6a`, `1000:2aa0`, `1000:2af2`, `1000:2b40`, `1000:2b89` -- six
+//! pushes of the token in all, counting `1000:29f0`) and one further `"mh"`
+//! compare (`1000:2bb0`) choose which messages it writes. An earlier revision
+//! of this line wrote "Six further" over a list of five, and `Game::beer`'s
+//! doc comment carried the same miscount in different words -- two wordings
+//! is why it took two greps to find both. So both **are** top-level verbs;
+//! the earlier revision of this file was right to keep them, and the
+//! reviewer's lead that they are not top-level verbs at all does not hold --
+//! `FUN_1000_3d11`'s call at `1000:4b00` is a *second* call site, not the
+//! only one.
 //!
 //! `sv`, `v`, `x`, `wes` are **not** in this `DS:3972` list, and the reason
 //! for two of them is now known rather than open.
@@ -253,8 +259,13 @@ pub fn parse(input: &str) -> Command {
         "exit" | "e" => Command::Quit,
         "sv" => Command::Inspect,
         "v" => Command::Backup,
-        "h" => Command::Drink,
-        "mh" => Command::BingeDrink,
+        // `FUN_1000_29c4`'s own two token compares, hoisted here: the routine
+        // is reached through nothing else, so these arms ARE 1000:29fa and
+        // 1000:2a0c. Neither token -> `Command::Unknown`, which writes
+        // nothing, exactly as 1000:2a0e's `jmp 0x2c58` returns without a
+        // store or a line.
+        "h" => Command::Drink,       // 1000:29fa
+        "mh" => Command::BingeDrink, // 1000:2a0c
         "x" => Command::SellJunk,
         "wes" => Command::SellItems,
         _ => Command::Unknown(v),
