@@ -1008,7 +1008,7 @@
       "tools/test_character_sheet_port.py",
       "CharacterSheetPortTest.test_every_shipped_literal_is_a_shortstring_in_the_image"
     ],
-    "expect": "is not in orig/g.exe"
+    "expect": "челюcть  ' is not in orig/g.exe"
   },
   {
     "label": "enemy-sheet-port-citation",
@@ -1025,7 +1025,7 @@
       "tools/test_character_sheet_port.py",
       "CharacterSheetPortTest.test_every_cs_citation_holds_the_literal_beside_it"
     ],
-    "expect": "which is not a fragment of"
+    "expect": "CS 0x12CB holds"
   },
   {
     "label": "shop-arms-instruction-identity",

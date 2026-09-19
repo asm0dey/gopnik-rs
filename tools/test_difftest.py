@@ -24,6 +24,7 @@ when it is not, that test SKIPs with a message rather than passing quietly.
     python3 tools/test_difftest.py
 """
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -130,8 +131,23 @@ class ReferenceEnumerations(unittest.TestCase):
         )
 
     def test_no_colour_markup_survives_into_the_reference(self):
+        """Colour MARKUP is `^` followed by a digit -- that, not every caret.
+
+        `strip_markup` drops `^0`..`^7` and leaves a bare caret alone, and so
+        does the port's `crate::text::strip`, so the two agree on one record
+        that IS a single caret: `1000:1523` assigns a one-character
+        shortstring holding `^`, which the enemy sheet's health line appends
+        its colour digit to at run time.  This used to read
+        `assertNotIn("^", line)`, which was the same check until that record
+        existed and would have banned a faithful one.  The exemption is
+        bounded: the second assertion names that exact record as the only
+        caret-bearing line in the stream.
+        """
         for line in REFERENCE:
-            self.assertNotIn("^", line, line)
+            self.assertIsNone(
+                re.search(r"\^[0-9]", line), line)
+        self.assertEqual([l for l in REFERENCE if "^" in l],
+                         ["enemy_fragment 6 ^"])
 
 
 class TheComparisonCanFail(unittest.TestCase):
