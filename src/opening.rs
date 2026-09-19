@@ -376,7 +376,7 @@ pub fn play(
                         // as any other keystroke. The convention is
                         // `Game::enter_district_5`'s and
                         // `persist::choose_slot`'s.
-                        let _ = lines.next();
+                        term::read_key(lines);
                     }
                     other => unreachable!("gap event {other:?} is not B, K or C"),
                 }

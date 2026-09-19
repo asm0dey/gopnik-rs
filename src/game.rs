@@ -1154,7 +1154,7 @@ impl Game {
                     term::println(line);
                 }
                 self.show_stats();
-                let _ = lines.next();
+                term::read_key(lines);
                 self.running = false;
             }
             Command::Stats => self.show_stats(),
@@ -3348,13 +3348,13 @@ impl Game {
             // the same trick `src/persist.rs`'s `choose_slot` uses.
             if self.rng.below_at("1000:b030", 200) == 0 {
                 term::println("Телефон:^6Алё Вася?");
-                let _ = lines.next(); // 1000:b055
+                term::read_key(lines); // 1000:b055
                 term::print("^2Нет это ");
                 term::print(&self.player.name);
                 term::println(".");
-                let _ = lines.next(); // 1000:b092
+                term::read_key(lines); // 1000:b092
                 term::println("Телефон:^6А Васю можно?");
-                let _ = lines.next(); // 1000:b0b0
+                term::read_key(lines); // 1000:b0b0
                 term::println("^2Нет, он будет в больнице в ближайшие 2 месяца.");
             }
             // Draw 4, 1000:b0dc -- Random(100); prints only with a girl.
@@ -3662,7 +3662,7 @@ impl Game {
 
         // 1000:8242 -- the `ReadKey` every draw-15 arm converges on, which
         // is `church::PARTING_GAPS`' gap 0.
-        let _ = lines.next();
+        term::read_key(lines);
         // 1000:8247 `cmp byte [0x3951],0x2` / `jnc 0x8269`, read AFTER the
         // stage was raised. Only one of the two arms ever prints, which is
         // why `PARTING` is indexed here rather than played through
@@ -5810,7 +5810,7 @@ impl Game {
             3 => {
                 for line in ending::OPENER_3 {
                     term::println(line);
-                    let _ = lines.next();
+                    term::read_key(lines);
                 }
             }
             // 1000:3f2b `cmp al,0x4` / 1000:3f2d -- the second. Same shape,
@@ -5818,7 +5818,7 @@ impl Game {
             4 => {
                 for line in ending::OPENER_4 {
                     term::println(line);
-                    let _ = lines.next();
+                    term::read_key(lines);
                 }
             }
             _ => {}
@@ -6040,7 +6040,7 @@ impl Game {
             if self.rector_showdown {
                 term::println("^4Ты сдох. Ректор тебя замочил. Ты так и не доказал свою крутизну.");
                 // 1000:4fac ReadKey, then 1000:4fb4 FUN_1000_074b(0).
-                let _ = lines.next();
+                term::read_key(lines);
                 ending::end_screen(false, lines);
                 self.running = false;
                 return Ok(());
@@ -6052,7 +6052,7 @@ impl Game {
             // FUN_1000_074b(0), whose own tail is the RTL's `mov ah,0x4c` /
             // `int 0x21`: death ends the process.
             term::println("^4Ты сдох.");
-            let _ = lines.next();
+            term::read_key(lines);
             ending::end_screen(false, lines);
             self.running = false;
             return Ok(());
@@ -6074,14 +6074,14 @@ impl Game {
                 .expect("ENDING_4 is not empty");
             for line in first_four {
                 term::println(line);
-                let _ = lines.next();
+                term::read_key(lines);
             }
             // CS 0x3915, printed 1000:5126 -- no ReadKey behind it.
             term::println(last);
             // 1000:512b `call 0x1a03`, the character sheet, then 1000:512e
             // ReadKey and 1000:5133 the marquee.
             self.show_stats();
-            let _ = lines.next();
+            term::read_key(lines);
             ending::marquee(lines);
             self.running = false;
             return Ok(());
@@ -6100,7 +6100,7 @@ impl Game {
             // at 1000:5164 and 1000:5182.
             for line in ending::ENDING_3 {
                 term::println(line);
-                let _ = lines.next();
+                term::read_key(lines);
             }
         } else {
             // 1000:519d -- the ordinary `^2Враг сдох.`, in the ELSE of the
@@ -6322,7 +6322,7 @@ impl Game {
         // never read afterward. `lines.next()` is this port's line-based
         // stand-in (see the doc comment above); `None` at EOF is treated the
         // same as any other discarded keystroke.
-        let _ = lines.next();
+        term::read_key(lines);
         term::println("^1Ты пробрался в универ, в тёмный ректорский кабинет...");
         term::println("^1А вот и он...");
         self.rector_showdown = true;

@@ -7,9 +7,77 @@
 //! makes possible — never as a styling API. The `^N` markup, already parsed
 //! by `text::parse`, is what chooses colours; this module never does.
 
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Read, Write};
+use std::process::{Command, Stdio};
 
 use crate::text;
+
+/// Turbo Pascal `Crt.ReadKey` (`0f16:031a`): wait for ONE keystroke and
+/// throw it away.
+///
+/// The original returns on a single key. This port used to consume a whole
+/// LINE at every one of these sites, so the splash's own
+/// `Нажми какую-нибудь кнопку` was a lie -- pressing a key did nothing until
+/// you also pressed Enter.
+///
+/// On a terminal this now reads a single byte with the tty in raw mode,
+/// which is what the banner promises. `stty` does the mode switch so the
+/// port stays dependency-free; if it is missing or fails, the line read is
+/// the fallback rather than a hang.
+///
+/// Off a terminal -- every unit test, `tools/difftest.py`, any piped run --
+/// it keeps consuming one line. There is no raw mode to set on a pipe, and a
+/// one-byte read would split scripted input mid-line and desynchronise every
+/// `ReadLn` after it. That is why this takes `lines` at all.
+///
+/// `None` at EOF is treated as any other keystroke, as before.
+pub fn read_key(lines: &mut dyn Iterator<Item = io::Result<String>>) {
+    if !io::stdin().is_terminal() {
+        let _ = lines.next();
+        return;
+    }
+    let Some(saved) = stty(&["-g"]) else {
+        let _ = lines.next();
+        return;
+    };
+    if stty(&["raw", "-echo"]).is_none() {
+        let _ = lines.next();
+        return;
+    }
+    // Through `io::stdin()` deliberately: it is the same buffer `lines`
+    // reads from, so a byte cannot be stranded in one of two buffers. The
+    // lock is reentrant, so holding `StdinLock` in `main` is not a deadlock.
+    let mut byte = [0u8; 1];
+    // Direct on fd 0, NOT through `io::stdin()`. Measured, not assumed:
+    // with the tty in raw mode, `io::stdin().lock().read(&mut [0u8; 1])`
+    // does NOT return on a single keypress -- a pty test sent one byte and
+    // the read never came back -- while the same read on fd 0 returns
+    // `Ok(1)` immediately. `io::stdin()` is a `BufReader`, so the cause is
+    // somewhere in its fill path; the exact mechanism is not established
+    // here and this comment does not claim one.
+    // `ManuallyDrop` keeps fd 0 open when the handle goes away.
+    let mut f = std::mem::ManuallyDrop::new(unsafe {
+        <std::fs::File as std::os::fd::FromRawFd>::from_raw_fd(0)
+    });
+    let _ = f.read(&mut byte);
+    stty(&[&saved]);
+}
+
+/// Run `stty` against this process's own terminal, returning its trimmed
+/// stdout on success. `stdin` is inherited so it acts on the real tty;
+/// only `stdout` is captured.
+fn stty(args: &[&str]) -> Option<String> {
+    // `output()` would give the child a NULL stdin, and `stty` acts on its
+    // OWN stdin -- without this inherit it configures nothing at all.
+    let out = Command::new("stty")
+        .args(args)
+        .stdin(Stdio::inherit())
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
 
 /// Enable Windows VT processing. Call once at startup, before any output.
 ///

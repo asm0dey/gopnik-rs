@@ -151,7 +151,7 @@ pub fn end_screen(victory: bool, lines: &mut dyn Iterator<Item = std::io::Result
         term::println("");
     }
     // 1000:0aac -- ReadKey, value discarded.
-    let _ = lines.next();
+    term::read_key(lines);
 }
 
 /// `1000:0b8f cmp byte [bp-0xb],0x20` -- the marquee's indent, written one
@@ -211,8 +211,8 @@ pub fn marquee(lines: &mut dyn Iterator<Item = std::io::Result<String>>) {
         term::println(&marquee_frame(phase));
     }
     // 1000:0d00 and 1000:0d05 -- two ReadKeys.
-    let _ = lines.next();
-    let _ = lines.next();
+    term::read_key(lines);
+    term::read_key(lines);
     // 1000:0d0a -- FUN_1000_074b(1).
     end_screen(true, lines);
 }

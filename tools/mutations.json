@@ -2169,15 +2169,15 @@
     "artifact": "docs/re/gaps.md",
     "mutate": {
       "op": "text-replace",
-      "from": "**Seventeen hits: eleven call sites and six lines of prose about them.**",
-      "to": "**Sixteen hits: ten call sites and six lines of prose about them.**"
+      "from": "**Eighteen hits: twelve call sites and six lines of prose about them.**",
+      "to": "**Seventeen hits: eleven call sites and six lines of prose about them.**"
     },
     "test": [
       "python3",
       "tools/test_string_citations.py",
       "TrimInventoryTest.test_the_counts_the_entry_states_are_what_src_holds"
     ],
-    "expect": "says 10 call sites and 6 prose lines"
+    "expect": "says 11 call sites and 6 prose lines"
   },
   {
     "label": "sell-arm-immediates-come-from-the-artifact",

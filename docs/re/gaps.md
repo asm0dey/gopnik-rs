@@ -544,15 +544,36 @@ the slot digit (`1000:6bf9`), and slot 0's two extras — `places.sav`
 `tests/save_load.rs` covers it; `src/main.rs` runs the menu before character
 creation, the order `FUN_1000_6a0d` uses.
 
-**Still not reproduced, and it is one thing.** The original does the
-save-slot menu, the district-advance check and the whole main loop inside one
+**Half of this is still not reproduced.** The original does the save-slot
+menu, the district-advance check and the whole main loop inside one
 procedure, so its `ReadKey` at `1000:6b56` and its `ReadLn` at `1000:ac31`
-are both available where they are needed. This port's menu reads a **line**
-and takes its first character, because nothing in it does raw-key input at
-all — a port decision, recorded in `crate::persist::choose_slot`. A second
-site substitutes the same way: `Game::enter_district_5`'s `1000:addc` call
-to `0f16:031a` (`ReadKey`) is ported as a discarded line read, matching this
-one's "one keystroke, value unused" shape.
+are both available where they are needed. This port's menu still reads a
+**line** and takes its first character. `1000:6b56` uses its keystroke's
+VALUE, so it is a `ReadKey` whose result matters, not a discarded one, and
+it is not converted below.
+
+**The other half said "nothing in it does raw-key input at all". That was
+true, is not any more, and should never have read as a settled decision.**
+Every DISCARDED `0f16:031a` `ReadKey` — twenty sites, the splash's at
+`1000:04aa` and `Game::enter_district_5`'s at `1000:addc` among them — now
+goes through `crate::term::read_key`, which on a terminal sets raw mode and
+takes ONE keystroke. The splash banner asks for exactly that
+(`Нажми какую-нибудь кнопку`); the port used to require a key AND Enter.
+
+**Why the net could not see it — the part worth keeping.** Every oracle here
+drives the game through a PIPE, and on a pipe a keypress `ReadKey` and a
+line-reading one are the same observation: both consume one newline-
+terminated line. So 437 unit tests, 347 `difftest` records and five frozen
+oracles were all structurally incapable of failing on it — a check that
+cannot fail, which `docs/re/METHODOLOGY.md` names as this project's
+recurring defect. `tools/test_readkey_pty.py` is the one check that can: it
+allocates a real pty, sends one byte with no newline, and requires the game
+to move on. It was shown RED against the old line-reading `read_key` before
+it was shown green.
+
+Off a terminal `read_key` still consumes a line, deliberately: there is no
+raw mode to set on a pipe, and a one-byte read would split scripted input
+and desynchronise every `ReadLn` after it.
 
 ## ~~No typed save verb, and no "saved" message~~ — half closed, half REFUTED
 
@@ -1164,7 +1185,7 @@ port-side inventory is a **command**, not a pasted listing:
 $ grep -rn '\.trim()' src/*.rs | grep -v 'trim_end_matches\|trim_start_matches'
 ```
 
-**Seventeen hits: eleven call sites and six lines of prose about them.** Run
+**Eighteen hits: twelve call sites and six lines of prose about them.** Run
 it and the counts are what to check, not the line numbers.
 
 | where | what it normalises |
@@ -1180,6 +1201,7 @@ it and the counts are what to check, not the line numbers.
 | `Game::sell_offer` | the six `wes` sell offers' `y` (`1000:cf6d` and its five twins) |
 | `Game::run_combat` | combat's `run` (`1000:48e1`) |
 | `Game::run_combat` | combat's `e` (`1000:4c56`) |
+| `crate::term::stty` | `stty -g`'s saved terminal settings, before they are handed back to `stty` — not a typed token at all, and the only row here that normalises a CHILD PROCESS's output rather than the player's input |
 
 The six prose hits are the autosave comment that points at this section,
 `Game::sell_offer`'s own comment saying the same, one in
