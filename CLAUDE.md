@@ -28,6 +28,11 @@ The errors it admits are mechanical classes (signedness, 16-bit wraparound, a
 mis-typed variable) that Phase 3 finds once and fixes as a sweep. It is cheaper
 than gating every line to prevent them.
 
+**Where the work is tracked.** `docs/re/port-gaps.md` is the live work list —
+every block with no counterpart in `src/`, one row each, with a status. It is
+the single answer to "what is left". Phase 2 tasks strike their rows in the
+commit that lands them.
+
 ### How to apply
 
 - **Know which phase you are in, and say so.** A Phase 2 task does not stop to

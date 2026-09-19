@@ -102,3 +102,36 @@ wrong in both directions on adjacent functions.
   `tests/district_advance_subprocess.rs`, which saw the district-1 announcement
   and then the district-2 one in a single load.
 
+
+## Resuming
+
+Phase 1 is complete: every game function surveyed, this list is its output.
+Phase 2 is in progress — work the open rows, biggest first, one batch per
+dispatch. Batch reports are in `.superpowers/sdd/phase2/` and the surveys in
+`.superpowers/sdd/phase1-gap-survey/` (git-ignored, retained on disk).
+
+**Landed so far:** batch A the endings (`fc0d0c7`, the game can be finished —
+`difftest` 126→163), batch B the opening (`61f0f1c..ab98fea`, the game prints
+its banner — `difftest` 163→255).
+
+**Next:** batch C — the church (rows 3, 18, 20), the wander text (rows 11, 12,
+22, 24), level-up (row 14). Then batch D the enemy sheet (row 5), batch E the
+market pickpocket verb `t` (rows 9, 25, which also make row 21's opener
+reachable). Row 19's `ReadKey` pacing spans several rows; land each row's share
+with that row.
+
+**Do not trust a string-coverage metric built on `data/strings.json`.** That
+file covers one pool of 796 entries and does not contain the opening text — a
+sweep over it reported the same 100 missing strings before and after batch B
+ported the splash, the backstory and the whole of `help`. A blind
+Pascal-shortstring walk of the image is noisier but real (659 Cyrillic strings,
+161 absent from `src/` at `ab98fea`); the sound form anchors on `0x18d0 +
+cs_off` from actual code references, the way the Phase 1 dispatch-2 survey did.
+
+## Known defects not yet filed as rows
+
+- `src/main.rs` prints `^4Gopnik: ^7version 1.02 june,sept 2003` at start-up.
+  The original never prints it there — `1000:6dcd` only copies that string into
+  `DS:369c` for the `v` verb.
+- The victory marquee runs one 9-phase cycle; the original loops
+  `until KeyPressed`, with `Delay`/`ClrScr`. Recorded in `docs/re/gaps.md`.
