@@ -181,27 +181,32 @@ pub struct Kit {
 ///
 /// See the module doc: the original's `Write` / `WriteLn` split is what this
 /// reproduces, and it is why a bare `WriteLn` can produce an empty line.
+///
+/// `pub(crate)` because [`crate::enemy_sheet`] emits the same way -- its
+/// accuracy block is one `Write` closed by a later `WriteLn`, exactly the
+/// shape this type exists for. The two fields stay private; the enemy sheet
+/// only ever reaches the four methods below.
 #[derive(Default)]
-struct Out {
+pub(crate) struct Out {
     lines: Vec<String>,
     open: String,
 }
 
 impl Out {
     /// `call 0eed:0x0` -- leaves the line open.
-    fn write(&mut self, s: &str) {
+    pub(crate) fn write(&mut self, s: &str) {
         self.open.push_str(s);
     }
 
     /// `call 0eed:0x1c2` -- appends and closes the line.
-    fn writeln(&mut self, s: &str) {
+    pub(crate) fn writeln(&mut self, s: &str) {
         self.open.push_str(s);
         self.newline();
     }
 
     /// `call 0f78:0x5dd` + `call 0f78:0x291` on the `Text` at `20ae:3fcc` --
     /// closes the line with nothing appended.
-    fn newline(&mut self) {
+    pub(crate) fn newline(&mut self) {
         self.lines.push(std::mem::take(&mut self.open));
     }
 
@@ -222,7 +227,7 @@ impl Out {
     /// stray unterminated append. The `debug_assert!` makes it executable, so
     /// a future edit that opens a line and forgets to close it fails the
     /// debug-profile test run instead of silently losing the text.
-    fn finish(self) -> Vec<String> {
+    pub(crate) fn finish(self) -> Vec<String> {
         debug_assert!(
             self.open.is_empty(),
             "Out::finish dropped an unterminated line: {:?}",
@@ -522,13 +527,20 @@ fn health_line(o: &mut Out, p: &Fighter, kit: &Kit) {
 /// read that doc before trusting either number. Only their ORDER is the
 /// original's.
 ///
+/// [`crate::enemy_sheet`] calls this too. Its copy of the block,
+/// `1000:14b8`..`1000:151d`, is the same sequence over the enemy record --
+/// `1000:14da mov cx,0x7f` and `1000:150a mov cx,0x80` against the player
+/// sheet's `1000:211d` / `1000:214d`, with `si`/`di` zeroed both times and
+/// the same `jbe`-skips-the-store sense -- so the two comparands are the
+/// same two and the unresolved-value decision above covers both.
+///
 /// `hpmax == 0` is a **port decision**: `0f78:1117`'s `or cl,cl` / `je`
 /// rejects a zero divisor, and `docs/re/rtl.md` does not establish what it
 /// returns, so this port keeps the `1000:20fb` default `'4'` rather than
 /// guessing. Nothing in play reaches it -- `1000:49ca` and `1000:4a30`, the
 /// only writers that lower `hpmax`, are `dec` and `sub 5` on a value the
 /// creation block seeds well above zero -- but a hand-built `Fighter` can.
-fn health_digit(hp: u16, hpmax: u16) -> char {
+pub(crate) fn health_digit(hp: u16, hpmax: u16) -> char {
     if hpmax == 0 {
         return '4';
     }
@@ -542,11 +554,38 @@ fn health_digit(hp: u16, hpmax: u16) -> char {
     }
 }
 
+/// The accuracy block's four literals, shipped by both sheets.
+///
+/// [`crate::enemy_sheet`] prints the same four through [`accuracy_block`].
+/// The enemy sheet holds its OWN copies of the shortstrings and pushes them
+/// at `1000:157b`, `1000:15a4`, `1000:15e7` and `1000:1611`; they are
+/// byte-identical to the four cited below. They carry no `CS` citation here
+/// because a literal can hold only one -- `tools/difftest.py`'s `enemy_line`
+/// records decode the enemy's four out of the image by instruction shape and
+/// compare them against these same constants, which pins them harder than a
+/// comment would.
+// CS `0x1909`.
+pub(crate) const ACCURACY_FLAT: &str = "Точность #%";
+// CS `0x1915` -- trailing space, and a `Write`, so the line stays open.
+pub(crate) const ACCURACY_CAPPED: &str = "Точность 90% ";
+// CS `0x1923` -- three leading spaces.
+pub(crate) const ACCURACY_SECOND: &str = "   Второй удар #%";
+// CS `0x1935` -- two spaces after the comma.
+pub(crate) const ACCURACY_MANY: &str = "- # ударов,  Точность # удара #%";
+
 /// `1000:21b0`..`1000:2276` -- the accuracy block, from Ловкость alone.
 ///
+/// **This is both sheets' copy.** The original writes the block twice --
+/// here and at `1000:156d`..`1000:1638` inside `FUN_1000_1348` -- and the
+/// two are the same program: the same `> 14` gate, the same `agility * 5 +
+/// 20`, the same `sub 14` / `while > 18` loop, the same three literals, and
+/// the same `Write`-then-`WriteLn` shape. [`crate::enemy_sheet`] therefore
+/// calls this function rather than transcribing it a second time; the
+/// per-branch addresses of its copy are in the comments below, beside this
+/// one's.
+///
 /// The arithmetic is **not** reimplemented here: `crate::combat` already
-/// carries it from the enemy sheet (`FUN_1000_1348`, whose copy of this
-/// block is `1000:1574`..`1000:15e7`), and the two agree because the sheet
+/// carries it from the enemy sheet, and the two agree because the sheet
 /// computes an *unopposed* budget. `crate::combat::blow_budget` is
 /// `attacker.agility + 4` unless the defender's own budget exceeds 18, and
 /// against a defaulted `Fighter` the defender's is 4 -- so the loop at that
@@ -561,30 +600,31 @@ fn health_digit(hp: u16, hpmax: u16) -> char {
 ///   per extra hit. The hit counter at `[bp-0x106]` ends one BELOW
 ///   `crate::combat::blows_per_round`, and what is left in `[bp-0x104]` is
 ///   exactly `accuracy_pct_nth`'s budget at that blow index divided by 5.
-fn accuracy_block(o: &mut Out, p: &Fighter) {
+pub(crate) fn accuracy_block(o: &mut Out, p: &Fighter) {
     let unopposed = Fighter::default();
-    // `1000:21b7 cmp word [bp-0x104],0xe` / `1000:21bc jnle 0x21e7`.
+    // `1000:21b7 cmp word [bp-0x104],0xe` / `1000:21bc jnle 0x21e7`, and the
+    // enemy sheet's `1000:1574 cmp word [bp-0x204],0xe` / `1000:1579 jnle
+    // 0x15a4`.
     if p.agility <= 0xe {
         o.writeln(&text::fill(
-            // CS `0x1909`.
-            "Точность #%",
+            ACCURACY_FLAT,
             &[i64::from(combat::accuracy_pct(p, &unopposed))],
         ));
         return;
     }
-    o.write("Точность 90% "); // CS `0x1915`, trailing space, no newline
+    o.write(ACCURACY_CAPPED);
     let extra = combat::blows_per_round(p, &unopposed) - 1;
     let pct = i64::from(combat::accuracy_pct_nth(p, &unopposed, extra));
-    // `1000:2223 cmp word [bp-0x106],0x1` / `1000:2228 jnz 0x224d`.
+    // `1000:2223 cmp word [bp-0x106],0x1` / `1000:2228 jnz 0x224d`, and
+    // `1000:15e0` / `1000:15e5 jnz 0x160a`.
     if extra == 1 {
-        // CS `0x1923`, three leading spaces.
-        o.writeln(&text::fill("   Второй удар #%", &[pct]));
+        o.writeln(&text::fill(ACCURACY_SECOND, &[pct]));
     }
-    // `1000:224d cmp word [bp-0x106],0x1` / `1000:2252 jle 0x227b`.
+    // `1000:224d cmp word [bp-0x106],0x1` / `1000:2252 jle 0x227b`, and
+    // `1000:160a` / `1000:160f jle 0x1638`.
     if extra > 1 {
         o.writeln(&text::fill(
-            // CS `0x1935`, two spaces after the comma.
-            "- # ударов,  Точность # удара #%",
+            ACCURACY_MANY,
             &[i64::from(extra), i64::from(extra) + 1, pct],
         ));
     }

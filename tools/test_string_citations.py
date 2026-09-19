@@ -63,6 +63,7 @@ SOURCES = [
     "src/club.rs",
     "src/vet.rs",
     "src/character_sheet.rs",
+    "src/enemy_sheet.rs",
     "docs/re/save-format.md",
 ]
 

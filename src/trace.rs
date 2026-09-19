@@ -78,6 +78,14 @@
 //! wander_fragment <tag> <i> <CS literal of a composed wander line>
 //! ```
 //!
+//! A fifth group appends after those -- the enemy sheet (row 5):
+//!
+//! ```text
+//! enemy_line      <i> <ln|w> <text of a literal the sheet prints directly>
+//! enemy_gap       <i> <C, where a composed line falls among those>
+//! enemy_fragment  <i> <CS literal of a composed enemy-sheet line>
+//! ```
+//!
 //! `levelup_gain` rows are sorted by field name inside each stat rather than
 //! left in the original's instruction order: this side derives them by
 //! applying [`crate::progress::grant`] and diffing the record, which cannot
@@ -89,6 +97,7 @@ use std::io::{self, Write};
 use crate::church;
 use crate::data;
 use crate::ending;
+use crate::enemy_sheet;
 use crate::game::IMM_ROWS;
 use crate::model::Fighter;
 use crate::opening;
@@ -268,6 +277,7 @@ pub fn emit(out: &mut impl Write) -> io::Result<()> {
     opening_records(out)?;
     church_records(out)?;
     wander_records(out)?;
+    enemy_records(out)?;
 
     Ok(())
 }
@@ -374,6 +384,27 @@ fn wander_records(out: &mut impl Write) -> io::Result<()> {
     writeln!(out, "wander_gap bucket4 1 C")?;
     for (i, frag) in wander::BUCKET4_FRAGMENTS.iter().enumerate() {
         writeln!(out, "wander_fragment bucket4 {i} {}", text::strip(frag))?;
+    }
+    Ok(())
+}
+
+/// The enemy sheet's fifteen literals -- `docs/re/port-gaps.md` row 5,
+/// landed in Phase 2 batch D. Same reasoning as [`wander_records`], appended
+/// after it so no record above moves.
+///
+/// The three tables are read straight through in their own order, which is
+/// the image's address order in all three cases -- `difftest.py` walks
+/// `1000:135c`..`165e` linearly, so anything else would compare a permutation.
+fn enemy_records(out: &mut impl Write) -> io::Result<()> {
+    for (i, (closes, line)) in enemy_sheet::EMITTED.iter().enumerate() {
+        let how = if *closes { "ln" } else { "w" };
+        writeln!(out, "enemy_line {i} {how} {}", text::strip(line))?;
+    }
+    for (at, events) in enemy_sheet::GAPS {
+        writeln!(out, "enemy_gap {at} {events}")?;
+    }
+    for (i, frag) in enemy_sheet::FRAGMENTS.iter().enumerate() {
+        writeln!(out, "enemy_fragment {i} {}", text::strip(frag))?;
     }
     Ok(())
 }
@@ -525,14 +556,29 @@ mod tests {
             .collect()
     }
 
+    /// Colour MARKUP is `^` followed by a digit, and that is what
+    /// [`crate::text::strip`] removes -- so that, and not every caret, is
+    /// what must not survive.
+    ///
+    /// This used to test `!line.contains('^')`, which was the same check
+    /// until the enemy sheet landed: `1000:1523` assigns a ONE-CHARACTER
+    /// shortstring holding a bare `^`, and the health line's colour digit is
+    /// appended to it at run time. Neither side of the comparison strips it
+    /// (`difftest.py`'s `strip_markup` leaves a caret with no digit after it
+    /// alone too), so the record is `enemy_fragment 6 ^` on both sides and
+    /// the old wording would have banned a faithful record. The exemption is
+    /// not a blanket one: the assertion below names that exact record, so a
+    /// second bare caret appearing anywhere else still fails the first check.
     #[test]
     fn no_colour_markup_survives_into_the_stream() {
         for line in stream() {
-            assert!(
-                !line.contains('^'),
-                "colour markup reached the trace stream: {line}"
-            );
+            let markup = line
+                .char_indices()
+                .any(|(i, c)| c == '^' && line[i + 1..].starts_with(|d: char| d.is_ascii_digit()));
+            assert!(!markup, "colour markup reached the trace stream: {line}");
         }
+        let carets: Vec<String> = stream().into_iter().filter(|l| l.contains('^')).collect();
+        assert_eq!(carets, vec!["enemy_fragment 6 ^".to_string()]);
     }
 
     /// The literal numbering each menu prints, per `docs/re/difftest.md`'s

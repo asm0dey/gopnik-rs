@@ -1003,7 +1003,7 @@ TWO_FILL_WRITELN_RE = re.compile(
 )
 
 
-def gaps_of(img, sites, start, stop, extra=()):
+def gaps_of(img, sites, start, stop, extra=(), seed=()):
     """`[(index, events), ...]` for one span, given its literal `sites`.
 
     `events` is `'B'` for a bare `WriteLn`, `'K'` for a `ReadKey` and `'C'`
@@ -1011,11 +1011,16 @@ def gaps_of(img, sites, start, stop, extra=()):
     `index - 1` and before literal `index`; `index == len(sites)` is the
     tail.  Gaps with nothing in them are skipped.
 
+    `extra` adds regex-found event kinds; `seed` adds `(offset, code)` pairs
+    a regex cannot find -- the enemy sheet's composed lines come from a
+    linear decode, not from a byte pattern, and folding them in here is what
+    keeps its `'B'`/`'K'` sweep on the same footing as every other span's.
+
     Collection is STRICTLY inside `(lo, hi)`, so an event sitting exactly on
     a literal's site or on the span's lower bound is not collected -- see
     `CHURCH_SPANS`' note on where `parting` starts.
     """
-    events = []
+    events = list(seed)
     for rx, code in ((BARE_WRITELN_RE, "B"), (READKEY_RE, "K")) + tuple(extra):
         events += [(m.start(), code) for m in rx.finditer(img)
                    if start <= m.start() < stop]
@@ -1218,6 +1223,134 @@ def wander(img):
     return lines
 
 
+#: `FUN_1000_1348`'s printing body -- `docs/re/port-gaps.md` row 5.  The
+#: bounds are aligned instruction starts: `1000:135c` is the first compare
+#: after the stack frame is built (`1000:1357` clears the injury accumulator)
+#: and `1000:165e` is the `ret`.
+ENEMY_SPAN = (0x135C, 0x165E)
+
+#: How many CS literals the span holds, all told -- seven pushed straight to
+#: `Write`/`WriteLn` and eight assembled into the two composed lines.  The
+#: scan below asserts this, so a walk that finds fewer raises instead of
+#: quietly comparing a short list.
+ENEMY_LITERALS = 15
+
+#: The far calls the enemy sheet makes to the string and text RTL, by what
+#: each does to a CS literal that was pushed just before it.  `assemble`
+#: swallows the literal into a stack local (`0f78:0ae7` assign, `0f78:0b66`
+#: append, `0f78:0b01` assign-with-maxlen); `write` / `writeln` put it on the
+#: screen (`0eed:0000` leaves the line open, `0eed:01c2` closes it).
+#:
+#: Every other call in the span -- `0f78:0c03` (char -> string) and the three
+#: 8087-emulator entries the health colour uses -- takes no string argument
+#: and so is not listed; the walk ignores them, which is why a literal cannot
+#: be attributed to one by accident.
+ENEMY_CALLS = {
+    "0xf78:0xae7": "assemble",
+    "0xf78:0xb66": "assemble",
+    "0xf78:0xb01": "assemble",
+    "0xeed:0x0": "write",
+    "0xeed:0x1c2": "writeln",
+}
+
+#: `mov di,<imm16>` -- the register every CS literal is staged in.  Written
+#: as a text match against `dis16`'s render rather than a byte pattern so the
+#: DGROUP loads (`mov di,[0x395c]`) and the `lea di,[bp-...]` destinations
+#: cannot be mistaken for it: those render with brackets.
+MOV_DI_IMM = re.compile(r"mov di,(0x[0-9a-f]+)$")
+CALL_FAR = re.compile(r"call (0x[0-9a-f]+:0x[0-9a-f]+)$")
+
+
+def enemy_walk(img):
+    """`(emitted, composed, fragments)` for `1000:135c`..`165e`.
+
+    One aligned linear decode of the whole span -- not a byte-pattern scan --
+    because the seven emitted lines push between zero and four values each
+    and no single regex covers them without enumerating the arities.
+
+    A CS literal is a `mov di,<imm16>` / `push cs` / `push di` triple; the
+    next call in `ENEMY_CALLS` consumes it.  `emitted` is
+    `[(site, closes, text), ...]` for the literals a `Write`/`WriteLn` takes,
+    `composed` the sites of the `WriteLn`s that had no literal pending (they
+    print an assembled `ss:[bp-...]` string and so carry none), and
+    `fragments` `[(site, text), ...]` for the literals the string RTL takes.
+
+    The walk must land exactly on `stop`; a decode that stepped over it would
+    mean the span's bounds are not instruction starts.
+    """
+    start, stop = ENEMY_SPAN
+    pos, pending = start, None
+    emitted, composed, fragments = [], [], []
+    while pos < stop:
+        ins = dis16.decode(img, pos)
+        m = MOV_DI_IMM.match(ins.text)
+        if m:
+            push_cs = dis16.decode(img, ins.end)
+            if push_cs.text == "push cs":
+                push_di = dis16.decode(img, push_cs.end)
+                if push_di.text == "push di":
+                    pending = (ins.off, int(m.group(1), 16))
+                    pos = push_di.end
+                    continue
+        call = CALL_FAR.match(ins.text)
+        if call:
+            what = ENEMY_CALLS.get(call.group(1))
+            if what == "assemble":
+                if pending is not None:
+                    fragments.append((pending[0], pending[1]))
+            elif what in ("write", "writeln"):
+                if pending is None:
+                    composed.append(ins.off)
+                else:
+                    emitted.append((pending[0], what == "writeln", pending[1]))
+            if what is not None:
+                pending = None
+        pos = ins.end
+    if pos != stop:
+        raise DifftestError(
+            "the walk of 1000:%04x..%04x stepped over its end, landing at "
+            "1000:%04x -- the span's bounds are not instruction starts"
+            % (start, stop, pos)
+        )
+    if pending is not None:
+        raise DifftestError(
+            "1000:%04x pushes CS 0x%04x and nothing in the span consumes it"
+            % pending
+        )
+    found = len(emitted) + len(fragments)
+    if found != ENEMY_LITERALS:
+        raise DifftestError(
+            "1000:%04x..%04x holds %d CS literals, expected %d"
+            % (start, stop, found, ENEMY_LITERALS)
+        )
+    return emitted, composed, fragments
+
+
+def enemy(img):
+    """Every enemy-sheet record (row 5), appended in this order."""
+    emitted, composed, fragments = enemy_walk(img)
+    lines = []
+    for i, (_, closes, cs) in enumerate(emitted):
+        lines.append("enemy_line %d %s %s"
+                     % (i, "ln" if closes else "w",
+                        strip_markup(shortstring(img, cs))))
+    # The composed lines carry no literal of their own, so a gap record is
+    # the only place a comparison can put them -- `(index, 'C')` in the same
+    # shape `church_gap` and `wander_gap` use.  The sweep for bare `WriteLn`s
+    # and `ReadKey`s runs over the same span in the same pass, so "`sv`
+    # blocks on nothing and prints no blank line" is a COMPARED claim: either
+    # appearing anywhere in the span would put a `'B'` or a `'K'` into a
+    # record and the port's table would no longer match.
+    start, stop = ENEMY_SPAN
+    for i, seq in gaps_of(img, [s for s, _, _ in emitted], start, stop,
+                          seed=[(s, "C") for s in composed]):
+        lines.append("enemy_gap %d %s" % (i, seq))
+    for i, (_, cs) in enumerate(fragments):
+        lines.append("enemy_fragment %d %s"
+                     % (i, strip_markup(shortstring(img, cs))))
+    return lines
+
+
 def opening(img):
     """Every opening record, appended to the stream in this order."""
     lines = []
@@ -1356,6 +1489,12 @@ def reference(img):
     wander_records = wander(img)
     lines += wander_records
     ev["wander_line"] = sum(1 for l in wander_records if l.startswith("wander_line "))
+
+    # The enemy sheet -- Phase 2 batch D, row 5 -- appended last for the same
+    # reason as everything else above.
+    enemy_records = enemy(img)
+    lines += enemy_records
+    ev["enemy_line"] = sum(1 for l in enemy_records if l.startswith("enemy_line "))
     return lines, ev
 
 
@@ -1700,6 +1839,9 @@ def main(argv=None):
           % (ev["church_line"], len(CHURCH_SPANS)))
     print("  %d wander lines found the same way, across %d spans"
           % (ev["wander_line"], len(WANDER_SPANS)))
+    print("  %d enemy-sheet lines of the span's %d CS literals, found by one "
+          "aligned walk of 1000:%04x..%04x"
+          % (ev["enemy_line"], ENEMY_LITERALS, *ENEMY_SPAN))
     print()
     for line in report:
         print(line)

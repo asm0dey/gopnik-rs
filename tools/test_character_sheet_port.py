@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Every game string `src/character_sheet.rs` SHIPS is decoded out of `orig/g.exe`.
+"""Every game string the two sheet modules SHIP is decoded out of `orig/g.exe`.
+
+The modules are `PORTS` below: `src/character_sheet.rs` (the player's sheet,
+`FUN_1000_1a03`) and `src/enemy_sheet.rs` (the opponent's, `FUN_1000_1348`).
+The counts quoted throughout this docstring are the player module's, which is
+where every claim below was measured; the enemy module is scanned by the same
+two scanners under the same rules.
 
 `tools/test_string_citations.py` compares a `CS 0x....` citation against a
 BACKTICK-quoted literal in the comment beside it. That is the right check for
@@ -56,7 +62,17 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import addr as addrmod                                              # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-PORT = ROOT / "src" / "character_sheet.rs"
+#: The sheet modules this scans, in the order the failures are reported.
+#: `src/enemy_sheet.rs` joined in Phase 2 batch D -- it is the other half of
+#: the same function pair (`sv` against `s`), it ships eleven of its own
+#: shortstrings, and it reaches the other four through
+#: `character_sheet::accuracy_block`, so leaving it out would have left the
+#: larger half of the enemy sheet's text unchecked by anything but
+#: `tools/difftest.py`.
+PORTS = [
+    ROOT / "src" / "character_sheet.rs",
+    ROOT / "src" / "enemy_sheet.rs",
+]
 
 #: A `CS 0xNNNN` citation in a comment.
 CS_CITE = re.compile(r"\bCS\s+`0x([0-9A-Fa-f]{4})`")
@@ -114,9 +130,9 @@ def code_of(line):
     return line if i < 0 else line[:i]
 
 
-def port_lines():
-    """The module's source above `#[cfg(test)]`, as a list of lines."""
-    text = PORT.read_text(encoding="utf-8")
+def port_lines(path):
+    """One module's source above `#[cfg(test)]`, as a list of lines."""
+    text = path.read_text(encoding="utf-8")
     return text[:text.index("#[cfg(test)]")].splitlines()
 
 
@@ -228,22 +244,35 @@ class CharacterSheetPortTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.img = image()
-        cls.lines = port_lines()
+        cls.sources = [(p.name, port_lines(p)) for p in PORTS]
 
     def test_every_shipped_literal_is_a_shortstring_in_the_image(self):
-        bad = scan_existence(self.img, self.lines)
-        self.assertEqual(
-            bad, [],
-            "\n".join("line %d: %r is not in orig/g.exe" % b for b in bad))
+        bad, shipped = [], 0
+        for name, lines in self.sources:
+            bad += ["%s line %d: %r is not in orig/g.exe" % (name, n, lit)
+                    for n, lit in scan_existence(self.img, lines)]
+            shipped += len(shipped_literals(lines))
+        self.assertEqual(bad, [], "\n".join(bad))
         # The scan must have done something. The floor is deliberately far
         # below the real count -- a tight number here would fail on every
         # honest edit and teach the next author to bump it, which is how a
         # count stops being evidence.
-        self.assertGreater(len(shipped_literals(self.lines)), 30)
+        self.assertGreater(shipped, 30)
+        # And every module named must contribute, so adding a file to `PORTS`
+        # and mistyping its path cannot pass as a silent zero.
+        for name, lines in self.sources:
+            self.assertGreater(len(shipped_literals(lines)), 0, name)
 
     def test_every_cs_citation_holds_the_literal_beside_it(self):
-        self.assertEqual(scan_citations(self.img, self.lines), [])
-        self.assertGreater(len(cited_pairs(self.lines)), 40)
+        bad, cited = [], 0
+        for name, lines in self.sources:
+            bad += ["%s %s" % (name, x)
+                    for x in scan_citations(self.img, lines)]
+            cited += len(cited_pairs(lines))
+        self.assertEqual(bad, [], "\n".join(bad))
+        self.assertGreater(cited, 40)
+        for name, lines in self.sources:
+            self.assertGreater(len(cited_pairs(lines)), 0, name)
 
     def test_the_existence_scan_rejects_a_one_character_typo(self):
         """`^1Бутсы(+1) ` is real; the same string with a Latin `c` is not.

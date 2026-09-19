@@ -994,6 +994,40 @@
     "expect": "is out of order"
   },
   {
+    "label": "enemy-sheet-port-literal",
+    "defends": "tools/test_character_sheet_port.py scans BOTH sheet modules, not just the player's.  Phase 2 batch D added src/enemy_sheet.rs to its PORTS list; if that list quietly stopped covering the enemy module, eleven shipped Russian strings would go back to being checked by nothing but difftest.  The perturbation is the same class the player-side case uses -- a Cyrillic `с` typed as a Latin `c` inside `^4Сломана челюсть  `, which renders identically in a diff.",
+    "artifact": "src/enemy_sheet.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "\"^4Сломана челюсть  \"",
+      "to": "\"^4Сломана челюcть  \"",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_character_sheet_port.py",
+      "CharacterSheetPortTest.test_every_shipped_literal_is_a_shortstring_in_the_image"
+    ],
+    "expect": "is not in orig/g.exe"
+  },
+  {
+    "label": "enemy-sheet-port-citation",
+    "defends": "The CS citations in src/enemy_sheet.rs are pinned to the literal beside them, the same way the player sheet's are.  0x12b7 and 0x12cb are the enemy sheet's two injury labels, 20 bytes apart, both real, and both cited correctly in the same file -- the Task 19 defect class, which only decoding the bytes tells apart.",
+    "artifact": "src/enemy_sheet.rs",
+    "mutate": {
+      "op": "text-replace",
+      "from": "// CS `0x12b7` -- two trailing spaces.",
+      "to": "// CS `0x12cb` -- two trailing spaces.",
+      "count": 1
+    },
+    "test": [
+      "python3",
+      "tools/test_character_sheet_port.py",
+      "CharacterSheetPortTest.test_every_cs_citation_holds_the_literal_beside_it"
+    ],
+    "expect": "which is not a fragment of"
+  },
+  {
     "label": "shop-arms-instruction-identity",
     "defends": "tools/test_shop_arms.py walks every {addr,text} record in data/shop_arms.json and requires orig/g.exe to decode that instruction at that address -- the identity half of the two signals docs/re/METHODOLOGY.md keeps apart.",
     "artifact": "data/shop_arms.json",

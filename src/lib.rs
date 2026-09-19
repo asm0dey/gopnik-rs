@@ -7,6 +7,7 @@ pub mod combat_opener;
 pub mod commands;
 pub mod data;
 pub mod ending;
+pub mod enemy_sheet;
 pub mod game;
 pub mod gym;
 pub mod locations;

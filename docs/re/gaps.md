@@ -2517,6 +2517,14 @@ defended by five `tools/mutations.json` cases (four over the artifact, one over 
   `1000:2124`, and read which way the branch at `1000:2129` goes — two pokes
   bracket each threshold to arbitrary precision, and the same run settles
   `rtl.md`'s two constants because it establishes the layout.
+  **The gap is two sites wide, not one.** `FUN_1000_1348`, the *enemy*
+  sheet, holds a second copy at `1000:14b8`..`1000:151d`: the same divide
+  (`1000:14d5` / `1000:1505`), the same compare (`1000:14e1` / `1000:1511`),
+  the same `'4'` → `'6'` → `'2'` walk, and the same two comparands —
+  `1000:14da mov cx,0x7f` and `1000:150a mov cx,0x80`, with `si` and `di`
+  zeroed both times. `src/enemy_sheet.rs` therefore calls
+  `character_sheet::health_digit` instead of guessing a second time, and the
+  one gdb run above settles both copies.
 * **24 of the 83 branches are still uncited**, listed exactly in
   `data/character_sheet.json`'s `branch_partition.uncited` (the test recomputes
   the split, so the list cannot drift). They are the section-header

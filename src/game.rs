@@ -70,6 +70,7 @@ use crate::combat_opener;
 use crate::commands::{parse, Command};
 use crate::data;
 use crate::ending;
+use crate::enemy_sheet;
 use crate::gym;
 use crate::locations::{Location, Places};
 use crate::model::Fighter;
@@ -2841,14 +2842,9 @@ impl Game {
         }
     }
 
-    /// `sv`. Shows the last-fought opponent's stat block. The header is the
-    /// two real fragments `^2Это ` (file `0x2B59`) and ` # уровня` (file
-    /// `0x2B60`), concatenated around the enemy's rank name exactly as
-    /// `1000:13d2`..`1000:1404` does.
-    ///
-    /// **Not reproduced:** the original appends the крутизна descriptor
-    /// built by `FUN_1000_1348` from a 256-byte-stride table at `DS:0b42`
-    /// indexed by level, and separated by ` - ` (file `0x2B55`).
+    /// `sv`. Shows the last-fought opponent's stat block --
+    /// [`crate::enemy_sheet`] builds the lines, this prints them, the same
+    /// split [`Game::show_stats`] uses for the player's sheet.
     ///
     /// Before any fight the original still has a zeroed enemy record and
     /// prints the block anyway; there is no "nothing to inspect" string in
@@ -2861,27 +2857,9 @@ impl Game {
     }
 
     fn print_enemy_block(&self, enemy: &Fighter) {
-        term::print("^2Это ");
-        term::print(&enemy.name);
-        term::println(&text::fill(" # уровня", &[enemy.level as i64]));
-        term::println(&text::fill(
-            "Сл:# Лв:# Жв:# Уд:#",
-            &[
-                enemy.strength as i64,
-                enemy.agility as i64,
-                enemy.vitality as i64,
-                enemy.luck as i64,
-            ],
-        ));
-        term::println(&text::fill(
-            "Урон #-#",
-            &[enemy.dmg_min as i64, enemy.dmg_max as i64],
-        ));
-        term::println(&text::fill(
-            "Здоровье #/#  ",
-            &[enemy.hp as i64, enemy.hpmax as i64],
-        ));
-        term::println(&text::fill("^2Броня #    ", &[enemy.armor as i64]));
+        for line in enemy_sheet::lines(enemy) {
+            term::println(&line);
+        }
     }
 
     /// `v` at the STREET prompt: the original does nothing at all, so
