@@ -65,11 +65,11 @@ compare instruction directly and reading the token bytes out of
 | `kos` | `1000:e973` | `0xBEEF` | smoke a joint |
 | `i` | `1000:ea94` | `0xBFDE` | prints the command list; **not inventory**. Earlier revisions of this row said "the 13-line command list"; that came from an oracle capture, and Task 33 decoded the handler: **seventeen** lines, one ungated plus seven gated on the discovery flags plus nine ungated -- `docs/re/club.md`, Part 2 |
 | `s` | `1000:ec82` | `0xB855` | stats |
-| `f` | `1000:ec96` | `0xC31C` | handler not traced past `jz`; corroborated as "shoot" by the adjacent refusal string at `0xC31E` |
-| `k` | `1000:ecc7` | `0xC341` | handler not traced past `jz`; corroborated as "fight" by the adjacent refusal string at `0xC343`, `^6Чё машешь копытами? Ищи мудака которого будешь пинать!` (colour code `^6`, **not** `^4`) |
+| `f` | `1000:ec96` | `0xC31C` | **traced**: `1000:ec9d cmp byte [0x394d],0` / `eca2 jz 0xecbd` gates the refusal at `0xC31E` on owning a pistol |
+| `k` | `1000:ecc7` | `0xC341` | **traced**: no gate past the `jz` at all -- one unconditional `WriteLn` of `^6Чё машешь копытами? Ищи мудака которого будешь пинать!` (`0xC343`, colour `^6`, **not** `^4`), then fall-through |
 | `name` | `1000:ecf1` | `0xC37C` | rename |
 | `version` | `1000:edab` | `0xC3B9` | prints the version banner; **not in the in-game help text** |
-| `help` | `1000:edd5` | `0xC3E9` | dispatched; printed content not traced |
+| `help` | `1000:edd5` | `0xC3E9` | **traced**: `1000:eddc call 0x5f55` is `FUN_1000_5f55`, `port-gaps.md` row 1, ported in `61f0f1c` |
 | `exit` | `1000:ede9` | `0xC3EE` | quit; **not in the help text** |
 | `e` | `1000:edfa` | `0xB43E` | quit |
 

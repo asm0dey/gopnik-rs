@@ -1551,14 +1551,31 @@ prefix in their `pstring` at `.SAV 0x100` — `^7 adg`, `^7 vor`, `^7 vor`,
 `^7 vor`, `^7 Mudila`. `docs/re/save-format.md` already records that field as
 "player name, colour-prefixed".
 
-This port stores the bare name in both paths. **Not implemented**: the prefix
-is part of the name the save writes, so adding it changes the `.SAV` bytes
-this port emits and every line that interpolates the name, and no capture in
-`data/rng_trace.json` or `data/state_trace.json` exercises a rename or a
-character creation whose name is compared. (Nothing is lost on the read side:
-`src/main.rs` never loads a save, and `tools/decode_save.py` round-trips the
-original files byte-for-byte, prefix included.) Registered here with both
-addresses rather than left as a silent difference.
+This port stores the bare name in `Fighter::name`. ~~**Not implemented**~~ --
+**that was true when written and is now half wrong, and this entry
+contradicted another one in this same file for it.** The vet/girl/joint
+survey caught it.
+
+**The disk half IS implemented.** `src/persist.rs`'s `NAME_PREFIX` is the
+`^7 `, applied in `Game::to_save` (`save.name = format!("{NAME_PREFIX}{}",
+p.name)`) and stripped again on the way back in (`strip_prefix`), so the
+bytes this port writes at `.SAV 0x100` carry the prefix exactly as the
+original's do. `tests/save_roundtrip.rs` asserts it against the shipped
+corpus by name -- `^7 adg`, `^7 vor`, `^7 Mudila`. The "Widths and clamps"
+entry above (the 255-byte-name bullet) already said so: "the original keeps
+`^7 ` in the live variable `DS:379c` and this port adds it at the format
+boundary". Two entries in one file, disagreeing.
+
+**The display half is what is not modelled**, and that is the whole of the
+remaining divergence: the original's `DS:379c` carries `^7 ` at all times, so
+every line that interpolates the name renders a colour reset and a leading
+space that this port does not. It is a divergence in WHERE the prefix lives,
+which is how `src/persist.rs`'s own doc puts it -- "rather than changing what
+every combat line renders".
+
+No capture in `data/rng_trace.json` or `data/state_trace.json` exercises a
+rename or a character creation whose name is compared, so nothing but this
+entry holds the display half.
 
 ## The vet's charged amounts — CLOSED by Task 34, and the arms were wrong
 

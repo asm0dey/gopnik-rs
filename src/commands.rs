@@ -61,10 +61,10 @@
 //! | `i` | `1000:ea94` | `0xBFDE` | prints the command list; **not inventory** -- the brief's guess is wrong. Earlier revisions said the list was thirteen lines long and cited an oracle capture for it; the handler decodes to **seventeen** lines, one ungated plus seven gated on the discovery flags plus nine ungated -- `docs/re/club.md`, Part 2, and [`Game::show_command_list`] |
 //! | `s` | `1000:ec82` | `0xB855` | stats |
 //! | `f` | `1000:ec96` | `0xC31C` | shoot, **traced** in Task 18: `1000:ec9d cmp byte [0x394d],0` / `eca2 jz 0xecbd` gates the refusal `^6Ты чё псих? мигом менты накроют!` (file `0xC31E`) on owning a pistol, and without one the verb is accepted and answered with silence |
-//! | `k` | `1000:ecc7` | `0xC341` | handler not traced past its `jz`; corroborated as "fight" the same way, via `^6Чё машешь копытами? Ищи мудака которого будешь пинать!` at `0xC343` (the colour code is `^6`, not `^4`) |
+//! | `k` | `1000:ecc7` | `0xC341` | **traced**: `1000:eccc jnz 0xece7` is the token miss and there is no further gate at all -- one unconditional `WriteLn` of `^6Чё машешь копытами? Ищи мудака которого будешь пинать!` (file `0xC343`, colour `^6`, not `^4`), then fall-through to the next compare |
 //! | `name` | `1000:ecf1` | `0xC37C` | rename |
 //! | `version` | `1000:edab` | `0xC3B9` | **not in the help text at all** -- prints the version banner from its own copy of the string at `0xC3C1`, `^4Gopnik: ^7version 1.02 june,sept 2003`. **Not what the game opens with**: that parenthetical was wrong -- the start-up screen is `FUN_1000_02c2`'s ASCII splash (`opening::splash`), and this verb's copy is read only on demand, never at start (`docs/re/port-gaps.md`'s `FUN_1000_6a0d` survey) |
-//! | `help` | `1000:edd5` | `0xC3E9` | dispatched, content not traced (see [`Command::Help`]) |
+//! | `help` | `1000:edd5` | `0xC3E9` | **traced**: `1000:eddc call 0x5f55` is `FUN_1000_5f55`, the 985-byte help body -- `docs/re/port-gaps.md` row 1, ported in `61f0f1c` as `opening::HELP_PLAIN`/`HELP_FRAGMENTS` and printed by `Game::show_help` |
 //! | `exit` | `1000:ede9` | `0xC3EE` | **not in the help text** -- a second spelling of quit |
 //! | `e` | `1000:edfa` | `0xB43E` | quit (help text: `"если захочешь выйти"`) |
 //!
@@ -188,9 +188,11 @@ pub enum Command {
     BingeDrink,
     /// `name`. Confirmed at `1000:ecf1`.
     Name,
-    /// `help`. Confirmed dispatched at `1000:edd5`; its printed content was
-    /// not traced (unlike `i`, whose content the live capture happened to
-    /// show).
+    /// `help`. Dispatched at `1000:edd5`, and its content IS traced:
+    /// `1000:eddc call 0x5f55` enters `FUN_1000_5f55`, whose 985 bytes are
+    /// `docs/re/port-gaps.md` row 1, ported in `61f0f1c`. `difftest.py`'s
+    /// `help_fragments` / `help_weight_lines` / `help_district_line` records
+    /// re-derive it from the image.
     Help,
     /// `version`. Confirmed at `1000:edab`; not in the help text at all.
     Version,
