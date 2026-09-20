@@ -11669,6 +11669,204 @@ mod tests {
         );
     }
 
+    /// Seed whose draws satisfy `spec` in order: `Some(v)` is an exact
+    /// value, `None` is "any non-zero", which is how a draw whose zero
+    /// would fire an unrelated event is neutralised.
+    fn walk_seed(spec: &[(u16, Option<u16>)]) -> u32 {
+        (0..8_000_000u32)
+            .find(|&seed| {
+                let mut r = Rng::new(seed);
+                spec.iter().all(|&(bound, want)| {
+                    let got = r.below(bound);
+                    match want {
+                        Some(v) => got == v,
+                        None => got != 0,
+                    }
+                })
+            })
+            .unwrap_or_else(|| panic!("no seed for {spec:?}"))
+    }
+
+    /// A walker with every place found and the four discovery draws
+    /// therefore harmless, class 5, no ring. `phone` decides whether
+    /// `1000:b022`/`b0ce` let draws 3 and 4 happen at all.
+    fn walker(phone: bool) -> Game {
+        let mut g = game();
+        g.has_mobile = phone;
+        g.player.class = 5;
+        g.ring_gospodi_pomilui = false;
+        for loc in [
+            Location::Vet,
+            Location::Market,
+            Location::Club,
+            Location::Gym,
+            Location::Den,
+        ] {
+            g.places.mark_found(loc);
+        }
+        g
+    }
+
+    /// The draws a [`walker`] spends AFTER the two errand draws: the phone
+    /// pair when it has one, then the four discovery rolls, the bucket, the
+    /// church and the mage. All neutralised.
+    fn walk_tail(phone: bool) -> Vec<(u16, Option<u16>)> {
+        let mut v = Vec::new();
+        if phone {
+            v.push((200, None)); // 1000:b030, the wrong-number gag
+            v.push((100, None)); // 1000:b0dc, the girl's call
+        }
+        v.extend([(10, None), (10, None), (100, None), (100, None)]);
+        v.extend([(25, None), (200, None), (100, None)]);
+        v
+    }
+
+    /// `1000:af68`'s errand and `1000:afc7`'s -- the flag is set BEFORE the
+    /// den/phone tests, so a player without a phone loses the errand
+    /// permanently and is never told.
+    ///
+    /// `cargo mutants` left both inner conjunctions alive: every case had
+    /// the den found AND a phone, where `&&` and `||` agree.
+    #[test]
+    fn the_den_errands_fire_once_and_announce_only_with_a_phone() {
+        let line1 = "^6? ты где щас? Тут помощь нужна.(Иди в притон)";
+        for (den, phone, announces) in [
+            (true, true, true),
+            (false, true, false), // the den half of the `&&`
+            (true, false, false), // the phone half
+        ] {
+            let mut g = walker(phone);
+            if !den {
+                g.places.reset_for_new_district(0);
+            }
+            let mut spec = vec![(20u16, Some(0u16)), (20, None)];
+            spec.extend(walk_tail(phone));
+            g.rng = Rng::new(walk_seed(&spec));
+            let out = term::capture::lines(|| {
+                g.wander_preamble(false, &mut no_input()).unwrap();
+            });
+            let label = format!("den {den} phone {phone}");
+            assert_eq!(
+                out.iter().any(|l| l.ends_with(line1)),
+                announces,
+                "{label}: {out:?}"
+            );
+            // 1000:af71 -- the flag is set whatever the gates say.
+            assert!(g.den_errand_1_pending, "{label}: flag not set");
+        }
+
+        // 1000:afdc -- the second errand adds `понтовость >= 100`.
+        let line2 = "^6? ты щас где? Базар есть.(Иди в притон)";
+        for (den, ponty, announces) in [
+            (true, 100i16, true),
+            (true, 99, false),   // the boundary: `>= 100`
+            (false, 100, false), // the den conjunct
+        ] {
+            let mut g = walker(true);
+            g.den_errand_1_pending = true; // skip draw 1 entirely
+            g.pontovost_street = ponty;
+            if !den {
+                g.places.reset_for_new_district(0);
+            }
+            let mut spec = vec![(20u16, Some(0u16))];
+            spec.extend(walk_tail(true));
+            g.rng = Rng::new(walk_seed(&spec));
+            let out = term::capture::lines(|| {
+                g.wander_preamble(false, &mut no_input()).unwrap();
+            });
+            let label = format!("den {den} ponty {ponty}");
+            assert_eq!(
+                out.iter().any(|l| l.ends_with(line2)),
+                announces,
+                "{label}: {out:?}"
+            );
+            assert!(g.den_errand_2_pending, "{label}: flag not set");
+        }
+    }
+
+    /// `1000:b0dc`'s draw 4 -- the girl's call, `Random(100) == 0` AND the
+    /// girl already found.
+    #[test]
+    fn the_girls_call_needs_both_a_zero_draw_and_a_girl() {
+        let line = "Телефон(Твоя пассия):^5Привет, это я. Зайдешь ко мне сегодня?";
+        for (draw, girl, prints) in [(0u16, true, true), (1, true, false), (0, false, false)] {
+            let mut g = walker(true);
+            g.den_errand_1_pending = true;
+            g.den_errand_2_pending = true;
+            if girl {
+                g.places.mark_found(Location::Girl);
+            }
+            let mut spec = vec![(200u16, None), (100u16, Some(draw))];
+            spec.extend([(10, None), (10, None), (100, None), (100, None)]);
+            spec.extend([(25, None), (200, None), (100, None)]);
+            g.rng = Rng::new(walk_seed(&spec));
+            let out = term::capture::lines(|| {
+                g.wander_preamble(false, &mut no_input()).unwrap();
+            });
+            assert_eq!(
+                out.iter().any(|l| l == line),
+                prints,
+                "draw {draw} girl {girl}: {out:?}"
+            );
+        }
+    }
+
+    /// `1000:b186`/`b1b8`/`b1ea`/`b21c` -- the four discovery rolls. Each
+    /// announces only when the place is NOT already found; `cargo mutants`
+    /// could delete one of those `!`s because no case drove a zero draw
+    /// against an already-found place.
+    #[test]
+    fn a_discovery_roll_announces_only_an_unknown_place() {
+        // (index among the four draws, bound, line)
+        let places = [
+            (
+                0usize,
+                10u16,
+                Location::Vet,
+                "^1Ты спросил у прохожего где больница.",
+            ),
+            (1, 10, Location::Market, "^1Ты нашел базар."),
+            (
+                2,
+                100,
+                Location::Club,
+                "^1Ты увидел объявление \"Типа заходи в наш понтовый клуб\".",
+            ),
+            (
+                3,
+                100,
+                Location::Gym,
+                "^1На стене реклама \"Жизнь тяжела. Если не хочешь сдохнуть качайся!\".",
+            ),
+        ];
+        for (idx, _bound, loc, line) in places {
+            for already in [false, true] {
+                let mut g = walker(false);
+                g.den_errand_1_pending = true;
+                g.den_errand_2_pending = true;
+                g.places.reset_for_new_district(0);
+                g.places.mark_found(Location::Den); // keep the den out of it
+                if already {
+                    g.places.mark_found(loc);
+                }
+                // Only the roll under test draws a zero.
+                let mut spec: Vec<(u16, Option<u16>)> = [10u16, 10, 100, 100]
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &b)| (b, if i == idx { Some(0) } else { None }))
+                    .collect();
+                spec.extend([(25, None), (200, None), (100, None)]);
+                g.rng = Rng::new(walk_seed(&spec));
+                let out = term::capture::lines(|| {
+                    g.wander_preamble(false, &mut no_input()).unwrap();
+                });
+                let label = format!("{loc:?} already {already}");
+                assert_eq!(out.iter().any(|l| l == line), !already, "{label}: {out:?}");
+                assert!(g.places.is_found(loc), "{label}: not marked");
+            }
+        }
+    }
+
     /// `Game::luck_below_random_32` -- the den's 32-bit luck compare.
     ///
     /// `cargo mutants` left `luck < random` → `<=` alive because nothing

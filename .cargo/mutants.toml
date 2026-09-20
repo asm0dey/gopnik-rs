@@ -35,4 +35,27 @@ exclude_re = [
     # the post-armour damage with `1000:4556` `xor ax,ax`.  The value stored
     # IS the bound tested, so extending the test to `<= 0` writes 0 over a 0.
     "^src/combat\\.rs:434:15: replace < with <= in resolve_blow_nth$",
+
+    # Resolved with `python3 tools/re_query.py resolve 1000:b251 -n 32 -i 10`:
+    # `b251 mov ax,[0x38ac]` / `b254 cmp ax,[0x38ae]` / `b258 jnl 0xb26e` is the
+    # ring's guard, `b25a add word [0x38ac],0x3` the grant, and
+    # `b25f mov ax,[0x38ac]` / `b262 cmp ax,[0x38ae]` / `b266 jle 0xb26e` /
+    # `b268`..`b26b` the clamp back to hpmax -- one hp (`0x38ac`) tested twice
+    # against one hpmax (`0x38ae`).  The guard and the clamp bound the SAME
+    # value, so widening the guard to `<=` adds 3 at full health and the clamp
+    # takes it straight off again: every reachable state is identical.
+    "^src/game\\.rs:3567:31: replace < with <= in Game::wander_preamble$",
+
+    # The clamp's own boundary, `b262`/`b266` above.  `hp > hpmax` widened to
+    # `>=` only differs when the two are already equal, and there `b268`..`b26b`
+    # writes hpmax over hpmax.
+    "^src/game\\.rs:3569:35: replace > with >= in Game::wander_preamble$",
+
+    # `1000:b2e3` is the Гопник arm of the class-perk dispatch and it does
+    # NOTHING -- the original jumps straight to the convergence at `1000:b34d`.
+    # The port writes it as an explicit `5 => {}` so every class in the
+    # original's chain has a visible arm.  Deleting it falls through to the
+    # `_ => {}` default, which is the same empty body, so no input can tell
+    # the two apart.
+    "^src/game\\.rs:3601:13: delete match arm 5 in Game::wander_preamble$",
 ]
