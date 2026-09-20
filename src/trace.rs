@@ -638,6 +638,14 @@ fn endings(out: &mut impl Write) -> io::Result<()> {
             writeln!(out, "ending_line {tag} {i} {}", text::strip(line))?;
         }
     }
+    // The end screen's SHAPE, which no record carried until now: the four
+    // blank-`WriteLn` runs (2 / 3 / 5 / 4), the eight assembled banner rows
+    // and the single `ReadKey` at `1000:0aac`. See
+    // [`crate::ending::END_SCREEN_GAPS`] for why the table is read off the
+    // port rather than derived from the image.
+    for (at, events) in ending::END_SCREEN_GAPS {
+        writeln!(out, "endscreen_gap {at} {events}")?;
+    }
     for (mult, line) in ending::ERRAND_AWARDS {
         writeln!(out, "errand_award {mult} {}", text::strip(line))?;
     }

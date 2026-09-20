@@ -112,6 +112,37 @@ pub const VICTORY_LINE: &str = "                                    ^2Ты по�
 /// CS `0x0715`, printed at `1000:0a63`.
 pub const ANY_KEY: &str = "                          ^6Нажми какую-нибудь кнопку";
 
+/// The shape of [`end_screen`] between its three full-width lines, as
+/// `(index, events)` over the span's emitted literals in ADDRESS order --
+/// `DEATH_LINE` (0), `VICTORY_LINE` (1), `ANY_KEY` (2). `B` is a bare
+/// `WriteLn`, `C` a line assembled on the stack, `K` a `ReadKey`.
+///
+/// **This is what the Phase 3 audit said nothing compared.** Its own words:
+/// "The 14 blank `WriteLn`s, the `ReadKey` at `0aac` ... are read off the
+/// disassembly here but are compared by no oracle", and "a regression that
+/// deleted one blank `WriteLn` from `end_screen` would pass `difftest` and
+/// every test in `tests/`". `src/ending.rs`'s own tests closed the second
+/// half; this table closes the first.
+///
+/// **Read off the port, not the image.** [`end_screen`] prints two blanks
+/// before the verdict, three after it, then the eight banner rows (each
+/// assembled from `BANNER_INDENT` + the colour digit + its row, so each is
+/// a `C`), then five blanks, [`ANY_KEY`], four blanks and the `ReadKey`.
+/// Generating this from `orig/g.exe` would make `difftest`'s comparison
+/// circular. `gaps_of`'s sweep of `1000:074b`..`0acb` returns the same
+/// three entries, and that agreement is the finding.
+pub const END_SCREEN_GAPS: &[(usize, &str)] = &[
+    // 1000:0774, 1000:0783 -- before the verdict line.
+    (0, "BB"),
+    // 1000:07cc/07db/07ea, the eight banner rows, then
+    // 1000:0a09/0a18/0a27/0a36/0a45 -- all between the verdict and ANY_KEY.
+    // Index 2 and not 1 because both verdict lines are emitted slots: the
+    // original holds them as alternatives at 1000:0793 and 1000:07ae.
+    (2, "BBBCCCCCCCCBBBBB"),
+    // 1000:0a6d/0a7c/0a8b/0a9a, then 1000:0aac's ReadKey.
+    (3, "BBBBK"),
+];
+
 /// `FUN_1000_074b` -- the end screen both endings reach.
 ///
 /// `victory` is `param_1 != 0`. It picks the verdict line (`1000:078d`) and

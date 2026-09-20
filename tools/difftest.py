@@ -667,6 +667,34 @@ def ending_lines(img):
     return out
 
 
+#: The end screen's span, the same bounds `ENDING_SPANS`' `endscreen` entry
+#: uses.  `1000:0acb` and not `0aca`: the walk lands there, on the marquee's
+#: literal pool, and `literal_walk`'s landing assertion is what says so.
+ENDSCREEN_SPAN = (0x074B, 0x0ACB)
+
+#: 3 emitted (the two verdict alternatives and `ANY_KEY`), 8 composed banner
+#: rows and 16 fragments -- one `BANNER_INDENT` assign and one row append per
+#: banner line.
+ENDSCREEN_LITERALS = 19
+
+
+def endscreen_gaps(img):
+    """`1000:074b`'s shape: the blank runs, the banner rows, the `ReadKey`.
+
+    The Phase 3 audit of this function established the 14 blank `WriteLn`s
+    and the `ReadKey` at `1000:0aac` from aligned disassembly and then said
+    in as many words that no oracle compared them -- "a regression that
+    deleted one blank `WriteLn` from `end_screen` would pass `difftest` and
+    every test in `tests/`".  The content records (`ending_line endscreen`,
+    `end_banner`, `banner_row`) never carried the structure between them.
+    """
+    emitted, composed, _ = literal_walk(img, *ENDSCREEN_SPAN, ENDSCREEN_LITERALS)
+    lo, hi = ENDSCREEN_SPAN
+    return ["endscreen_gap %d %s" % (i, seq)
+            for i, seq in gaps_of(img, [s for s, _, _ in emitted], lo, hi,
+                                  seed=[(s, "C") for s in composed])]
+
+
 def errand_awards(img):
     """`1000:57ce`'s two lines, each with the district multiplier it fills."""
     hits = literal_sites(img, DISTRICT_FILL_WRITELN_RE, 0x57CE, 0x5838)
@@ -759,6 +787,9 @@ def endings(img):
     lines = []
     for tag, i, text in ending_lines(img):
         lines.append("ending_line %s %d %s" % (tag, i, text))
+    # The end screen's SHAPE, between the three lines above and the banner
+    # rows below -- the part the Phase 3 audit found no record carried.
+    lines += endscreen_gaps(img)
     for mult, text in errand_awards(img):
         lines.append("errand_award %d %s" % (mult, text))
     indent, rows = banner(img)

@@ -651,7 +651,12 @@ Two paragraphs above, the same file lists that coverage correctly
 The prediction the paragraph made was right, though: a regression that
 deleted one blank `WriteLn` from `end_screen` did pass `difftest` and every
 test in `tests/`, which holds no end-screen case at all. **That is now closed
-rather than deferred.** `src/ending.rs`'s
+rather than deferred, on BOTH sides.** `difftest` carries three
+`endscreen_gap` records since `crate::ending::END_SCREEN_GAPS` landed, so the
+14 blanks, the eight assembled banner rows and the `1000:0aac` `ReadKey` are
+compared against the image rather than only asserted in-process: deleting one
+blank from the five-run, dropping the `ReadKey`, shortening the leading pair
+and losing a banner row were each run against the stream and each broke it. `src/ending.rs`'s
 `the_four_blank_runs_are_two_three_five_four` pins the 2 / 3 / 5 / 4 shape and
 `the_readkeys_consume_one_line_each` pins `1000:0aac`, `0d00` and `0d05`; both
 were observed failing on the real perturbation (the 5-run cut to 4 gives
