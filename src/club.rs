@@ -182,7 +182,7 @@ fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>)
     // 1000:e079..1000:e082 -- the operands are the other way round from
     // every other money gate in the image: the STAKE is in `ax` and `jle`
     // passes when it is <= money, so equality buys.
-    if stake > g.player.money {
+    if stake > i32::from(g.player.money) {
         // 1000:e258 pushes file `0xBBA4` `^6Не хватает денег - надо #.`,
         // whose `#` is 1000:e25d's read of the stake; printed by 1000:e26f.
         term::println(&text::fill(
@@ -194,7 +194,7 @@ fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>)
     // 1000:e087 pushes file `0xBABA` `Ты поставил # рублей`, `#` from
     // 1000:e08c; printed by 1000:e09e.
     term::println(&text::fill("Ты поставил # рублей", &[i64::from(stake)]));
-    g.player.money -= stake; // 1000:e0a8
+    g.player.money = g.player.money.wrapping_sub(stake as i16); // 1000:e0a8
 
     // 1000:e0ac..1000:e0b4 build the `n`; 1000:e0b7 is the draw.
     let draw = g.rng.below_at("1000:e0b7", u16::from(g.district) * 12);
@@ -211,13 +211,13 @@ fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>)
     } else {
         // 1000:e0d3/1000:e0d5/1000:e0d7 -- the doubled credit, kept beside
         // the debit above.
-        g.player.money += stake * 2;
+        g.player.money = g.player.money.wrapping_add((stake * 2) as i16);
         // 1000:e0db pushes file `0xBACF` `^2Ты выиграл # рублей ` (the
         // trailing space is the original's), `#` from 1000:e0e0 -- the
         // stake BEFORE 1000:e0f7 raises it; printed by 1000:e0f2.
         term::println(&text::fill("^2Ты выиграл # рублей ", &[i64::from(stake)]));
         g.club_stake += 2; // 1000:e0f7
-        let xp = u32::from(g.district); // 1000:e101..1000:e104
+        let xp = u16::from(g.district); // 1000:e101..1000:e104
 
         // 1000:e0fc pushes file `0xA95B` `^6Ты получаешь # качков опыта`,
         // printed by 1000:e113 -- BEFORE 1000:e11d credits the same value.
@@ -326,7 +326,7 @@ fn caught_cheating(
     term::println(&text::fill(" # уровня.", &[i64::from(enemy.level)]));
 
     // 1000:e1e9..1000:e1f4 -- `mov si,ax` / `shl` / `shl` / `add ax,si`.
-    let xp = u32::from(g.district) * 5;
+    let xp = u16::from(g.district) * 5;
     // 1000:e1e4 pushes file `0xBB3D`
     // `^6Ты получаешь # качков опыта за победу в игре`, printed by
     // 1000:e203 -- BEFORE 1000:e215 credits it.
@@ -379,7 +379,7 @@ fn dance(g: &mut Game) {
         term::println("^4Не хватает");
         return;
     }
-    g.player.money -= 15; // 1000:e2a7
+    g.player.money = g.player.money.wrapping_sub(15_i16); // 1000:e2a7
 
     // 1000:e2ac pushes file `0xBBC1` `^2Ты прокачиваешь ловкость.`, printed
     // by 1000:e2c0 -- BEFORE the store.
@@ -418,7 +418,7 @@ fn learn_tricks(g: &mut Game) {
         term::println("^4Не хватает");
         return;
     }
-    g.player.money -= 22; // 1000:e31c
+    g.player.money = g.player.money.wrapping_sub(22_i16); // 1000:e31c
 
     // 1000:e321 pushes file `0xBBDD` `^2Ты прокачиваешь удачу.`, printed by
     // 1000:e335.
@@ -457,14 +457,14 @@ mod tests {
     /// countdown clear (`20ae:3b77`), the player standing in it at
     /// `district` with `money` in the pocket and the stake at its
     /// entry value.
-    fn club(district: u8, money: i32) -> Game {
+    fn club(district: u8, money: i16) -> Game {
         let mut g = Game::new(player(), Progress::new(), 12345);
         g.district = district;
         g.player.money = money;
         g.places.mark_found(Location::Club); // 20ae:3699, gate 1000:df10
         g.location = Location::Club;
         g.club_stake = 5; // 1000:e020
-        g.progress.threshold = 100_000; // keeps 1000:e124 from levelling
+        g.progress.threshold = u16::MAX; // keeps 1000:e124 from levelling
         g
     }
 

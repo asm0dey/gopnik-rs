@@ -125,9 +125,9 @@ pub const HEALTH_GREEN_ABOVE: f64 = 0.50;
 pub struct Kit {
     /// `20ae:38ce` -- XP not yet spent on a level
     /// (`crate::progress::Progress::xp`), pushed at `1000:1ab5`.
-    pub xp_38ce: u32,
+    pub xp_38ce: u16,
     /// `20ae:38d0` -- XP needed for the next level, pushed at `1000:1ab9`.
-    pub threshold_38d0: u32,
+    pub threshold_38d0: u16,
     /// `20ae:38cd` -- the joint buff's countdown. Read three times: the
     /// Сила colour slot (`1000:1acb`), the damage line's colour
     /// (`1000:1e06`) and the `Обдолбаный` condition (`1000:20ca`). All three

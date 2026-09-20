@@ -44,10 +44,10 @@ pub const MAX_LEVEL: u16 = 40;
 pub const GAINS_PER_LEVEL: usize = 2;
 
 /// `1000:6de0`, `mov word [0x38d0],0xa` — a new character's first threshold.
-pub const THRESHOLD_BASE: u32 = 10;
+pub const THRESHOLD_BASE: u16 = 10;
 
 /// `1000:2550`, `add word [0x38d0],0xa` — how much each level adds to it.
-pub const THRESHOLD_STEP: u32 = 10;
+pub const THRESHOLD_STEP: u16 = 10;
 
 /// Per-class stat-growth weights, read out of the table at `DS:0002`
 /// (`1000:25aa`..`1000:25b6` reads `[[0x389c] * 4 + 2]` and its three
@@ -194,9 +194,9 @@ pub type GrowthEntry = [u8; GAINS_PER_LEVEL];
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Progress {
     /// `DS:38ce` / `.SAV 0x232`.
-    pub xp: u32,
+    pub xp: u16,
     /// `DS:38d0` / `.SAV 0x234`.
-    pub threshold: u32,
+    pub threshold: u16,
     /// `array[1..40] of string[2]` at `.SAV 0x236`, addressed through
     /// Borland's biased base `20ae:38cf` — the real base is `20ae:38d2` and
     /// `1000:2647`..`1000:2651` reaches element `n` as `20ae:38cf + n * 3`,
@@ -266,8 +266,8 @@ impl Default for Progress {
 /// level gained (`1000:2550`), so the requirement at level *n* is
 /// `10 + 10 * n`. The de-level penalty subtracts the same 10
 /// (`1000:4ac7`), which keeps the two in step downwards as well.
-pub fn xp_to_next(level: u16) -> u32 {
-    THRESHOLD_BASE + THRESHOLD_STEP * u32::from(level)
+pub fn xp_to_next(level: u16) -> u16 {
+    THRESHOLD_BASE + THRESHOLD_STEP * level
 }
 
 /// XP awarded for defeating `enemy`.
@@ -286,12 +286,15 @@ pub fn xp_to_next(level: u16) -> u32 {
 /// jumps past it when the fight was the rector or the endgame (`param_1` 3 or
 /// 4), and those two paths instead force a level with `xp := threshold`
 /// (`1000:508e`, `1000:513f`).
-pub fn xp_award(player_level: u16, enemy: &Fighter) -> u32 {
+pub fn xp_award(player_level: u16, enemy: &Fighter) -> u16 {
     let _ = player_level;
-    u32::from(enemy.strength)
-        + u32::from(enemy.agility)
-        + u32::from(enemy.vitality)
-        + u32::from(enemy.luck)
+    // The four stats are summed in `ax` and added to `20ae:38ce` as a word,
+    // so the sum wraps rather than widening.
+    enemy
+        .strength
+        .wrapping_add(enemy.agility)
+        .wrapping_add(enemy.vitality)
+        .wrapping_add(enemy.luck)
 }
 
 /// The weight row for `class`, or all zeros for a class outside the table.
@@ -384,18 +387,19 @@ pub fn apply_levels(
     p: &mut Progress,
     f: &mut Fighter,
     rng: &mut Rng,
-    award: u32,
+    award: u16,
     uncapped: bool,
 ) -> Vec<LevelUp> {
-    p.xp += award;
+    // 1000:debe `add [0x38ce],ax` -- a word add, so it wraps.
+    p.xp = p.xp.wrapping_add(award);
     let mut ups = Vec::new();
     if p.xp < p.threshold {
         return ups; // 1000:2536..1000:253c
     }
     let mut levels = 0u32;
     while p.xp >= p.threshold {
-        p.xp -= p.threshold;
-        p.threshold += THRESHOLD_STEP;
+        p.xp = p.xp.wrapping_sub(p.threshold);
+        p.threshold = p.threshold.wrapping_add(THRESHOLD_STEP);
         levels += 1;
     }
 

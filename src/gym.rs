@@ -190,7 +190,7 @@ fn train_strength(g: &mut Game) {
         term::println("^4Не хватает");
         return;
     }
-    g.player.money -= 20; // 1000:e657
+    g.player.money = g.player.money.wrapping_sub(20_i16); // 1000:e657
 
     // 1000:e65c pushes file `0xBD4E` `^2Ты прокачиваешь силу.`, printed by
     // 1000:e670 -- BEFORE the six stores.
@@ -237,7 +237,7 @@ fn train_stamina(g: &mut Game) {
         term::println("^4Не хватает");
         return;
     }
-    g.player.money -= 20; // 1000:e6e3
+    g.player.money = g.player.money.wrapping_sub(20_i16); // 1000:e6e3
 
     // 1000:e6e8 pushes file `0xBD66` `^2Ты прокачиваешь выносливость.`,
     // printed by 1000:e6fc.
@@ -319,7 +319,7 @@ fn train_xp(g: &mut Game) {
         term::println("^4Не хватает деньжат");
         return;
     }
-    g.player.money -= 10; // 1000:e796
+    g.player.money = g.player.money.wrapping_sub(10_i16); // 1000:e796
 
     // 1000:e79b pushes file `0xBDC8` `^2Ты тренируешься.`, printed by
     // 1000:e7af.
@@ -385,7 +385,7 @@ fn buy_tooth_guard(g: &mut Game) {
         term::println("^4А не хватает рубликов");
         return;
     }
-    g.player.money -= 30; // 1000:e823
+    g.player.money = g.player.money.wrapping_sub(30_i16); // 1000:e823
     g.tooth_guard = true; // 1000:e828
 
     // 1000:e82d pushes file `0xBE07` `^2Ты купил защиту.`, printed by
@@ -469,7 +469,7 @@ fn train_abs(g: &mut Game) {
         term::println("^4Не хватает рубликов");
         return;
     }
-    g.player.money -= 20; // 1000:e8b8
+    g.player.money = g.player.money.wrapping_sub(20_i16); // 1000:e8b8
 
     // 1000:e8bd pushes file `0xBE4A` `^2Ты прокачиваешь пресс.`, printed by
     // 1000:e8d1.
@@ -510,7 +510,7 @@ mod tests {
     /// standing in it, at `district`, with `money` in the pocket. `Game`'s
     /// `mode` is private to `crate::game`, so [`turn`] names the location
     /// explicitly the way `Game::run` does from `Mode::Shop(loc)`.
-    fn gym(district: u8, money: i32) -> Game {
+    fn gym(district: u8, money: i16) -> Game {
         let mut g = Game::new(player(), Progress::new(), 12345);
         g.district = district;
         g.player.money = money;

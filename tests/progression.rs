@@ -64,7 +64,7 @@ struct AwardCase {
     frame: usize,
     player_level: u16,
     enemy: Record,
-    expected: u32,
+    expected: u16,
 }
 
 /// The two numbers `^6Сейчас у тебя # качков опыта. До слеующей прокачки надо
@@ -73,8 +73,8 @@ struct AwardCase {
 /// guest's memory (`DS:38ce`/`DS:38d0`) for the same case.
 #[derive(Deserialize)]
 struct StatusLine {
-    xp: u32,
-    threshold: u32,
+    xp: u16,
+    threshold: u16,
 }
 
 #[derive(Deserialize)]
@@ -84,12 +84,12 @@ struct LevelUpCase {
     enemy: Record,
     player_before: Record,
     player_after: Record,
-    xp_before: u32,
-    threshold_before: u32,
+    xp_before: u16,
+    threshold_before: u16,
     level_before: u16,
-    award_printed: u32,
-    xp_after: u32,
-    threshold_after: u32,
+    award_printed: u16,
+    xp_after: u16,
+    threshold_after: u16,
     level_after: u16,
     status_line: StatusLine,
     levels_announced: usize,
@@ -107,9 +107,9 @@ struct StatEvent {
 struct Xp {
     max_level: u16,
     gains_per_level: usize,
-    threshold_base: u32,
-    threshold_step: u32,
-    thresholds: Vec<u32>,
+    threshold_base: u16,
+    threshold_step: u16,
+    thresholds: Vec<u16>,
     threshold_provenance: Vec<String>,
     award_cases: Vec<AwardCase>,
     level_up_cases: Vec<LevelUpCase>,
@@ -611,7 +611,7 @@ fn reference_saves_agree_with_the_curve() {
         let level = save.stats[5];
         let threshold = u16::from_le_bytes([blob[threshold_off], blob[threshold_off + 1]]);
         assert_eq!(
-            u32::from(threshold),
+            threshold,
             xp_to_next(level),
             "{name}: level {level} threshold"
         );

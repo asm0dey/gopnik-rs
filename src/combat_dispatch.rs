@@ -201,13 +201,13 @@ impl Backup {
     /// gopota are already on their way does not reset the countdown -- but
     /// the phone arm at `1000:4ce2` is unconditional and *does* jump it
     /// straight to 3 every time.
-    pub fn call(&mut self, den_found: bool, cred: i32, district: u8, has_mobile: bool) -> Called {
+    pub fn call(&mut self, den_found: bool, cred: i16, district: u8, has_mobile: bool) -> Called {
         if !den_found {
             // 1000:4d03 `cmp byte [0x3696],0` / `jz 0x4d25` splits the two
             // refusals: the den flag is the one that picks between them.
             return Called::NoDen;
         }
-        if i32::from(district) * 10 + 10 > cred {
+        if i32::from(district) * 10 + 10 > i32::from(cred) {
             return Called::NobodyWillBackYou;
         }
         if self.0 == 0 {
@@ -320,7 +320,7 @@ pub fn backup_round(
     district: u8,
     enemy_armor: u8,
     enemy_hp: i32,
-    cred: &mut i32,
+    cred: &mut i16,
 ) -> Option<Fought> {
     if enemy_hp <= 0 || !backup.is_up() {
         return None;
@@ -349,7 +349,8 @@ pub fn backup_round(
         backup.0 = 0;
         beaten = true;
     }
-    *cred -= district * 5;
+    // 1000:4e0a `sub [0x38cb],ax` -- a word subtract, so it wraps.
+    *cred = cred.wrapping_sub((district * 5) as i16);
     let mut gave_up = false;
     // 1000:4e79 `cmp word [0x38cb],0` / `jnle 0x4e9e`.
     if *cred <= 0 {

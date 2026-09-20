@@ -315,7 +315,7 @@ pub struct Game {
     /// `20ae:38cb` / `.SAV 0x22f` -- понтовость на улице, the street-cred
     /// counter that is **not** the level at `20ae:38a6`. Gates draw 2's
     /// message (`>= 100`) and is topped up by the church's arm 4.
-    pub pontovost_street: i32,
+    pub pontovost_street: i16,
     /// `20ae:38cd` / `.SAV 0x231` -- the joint buff's countdown. Decremented
     /// at the top of every walk (`1000:aea8`); reaching zero takes the buff
     /// back. `crate::model::Fighter::stoned` is the same event as a bool;
@@ -1440,7 +1440,7 @@ impl Game {
         term::println("^6Ты купил ей чё-то, потратив 12 рублей.");
         term::println("^2Ты расслабился, отдохнул и снова можешь творить свои гоповские дела.");
         self.player.hp = self.player.hpmax; // 1000:d788
-        self.player.money -= 12; // 1000:d78e
+        self.player.money = self.player.money.wrapping_sub(12_i16); // 1000:d78e
         self.market_ban_countdown = 0; // 1000:d793
     }
 
@@ -1454,7 +1454,7 @@ impl Game {
     /// digit itself is *not* eaten by the markup -- the colour digit sits
     /// between the `^` and the price.
     fn afford(&self, price: i32) -> &'static str {
-        if self.player.money >= price {
+        if i32::from(self.player.money) >= price {
             "0"
         } else {
             "4"
@@ -2115,7 +2115,7 @@ impl Game {
         // times 5 (`mov si,ax` / `shl ax,1` / `shl ax,1` / `add ax,si`),
         // plus [0x38cb].
         let level_in_district = i32::from(self.player.level) - (i32::from(self.district) - 1) * 10;
-        (level_in_district - 5) * 5 + self.pontovost_street >= 0x28
+        (level_in_district - 5) * 5 + i32::from(self.pontovost_street) >= 0x28
     }
 
     /// One turn at a location's own prompt. The location's keys are checked
@@ -2315,7 +2315,7 @@ impl Game {
             return;
         }
         let level_in_district = i32::from(self.player.level) - (i32::from(self.district) - 1) * 10;
-        if level_in_district * 2 + self.pontovost_street < 0x28 {
+        if level_in_district * 2 + i32::from(self.pontovost_street) < 0x28 {
             return;
         }
         // dcf6/dcfb store before dd00/dd19 print; matched here even though
@@ -2369,7 +2369,7 @@ impl Game {
         }
         // 1000:db3a then 1000:db3e -- both stores run before the print.
         self.player.beer_dl -= 1;
-        self.pontovost_street += 5;
+        self.pontovost_street = self.pontovost_street.wrapping_add(5);
         // 1000:db43, string CS 0x9ec3, printed by 1000:db57.
         term::println("^2Ты угостил пацанов пивом. Понтовость улутшилась на 5.");
     }
@@ -2415,8 +2415,8 @@ impl Game {
             return;
         }
         // 1000:db96, 1000:db9b, 1000:dba0 -- in that order.
-        self.player.money += 2;
-        self.pontovost_street -= 2;
+        self.player.money = self.player.money.wrapping_add(2_i16);
+        self.pontovost_street = self.pontovost_street.wrapping_sub(2);
         self.den_loan_credit -= 1;
         // 1000:dba4, string CS 0x9f10, printed by 1000:dbb8.
         term::println("^2Ты занял 2 рубля на пиво. Понтовость уменьшилась на 2.");
@@ -2546,7 +2546,7 @@ impl Game {
             &[i64::from(self.pontovost_street)],
         ));
         // 1000:dc8e..1000:dc9f.
-        if i32::from(self.district) * 10 + 10 <= self.pontovost_street {
+        if i32::from(self.district) * 10 + 10 <= i32::from(self.pontovost_street) {
             // 1000:dca1, CS 0x9fa5, printed by 1000:dcb5.
             term::println("^0Да если чё мы за тебя впрягаемся.");
         }
@@ -2728,12 +2728,12 @@ impl Game {
             // recomputed from [0x3692] for every one of the four terms.
             let base = u16::from(self.district) * 10;
             let cash = i32::from(base) + i32::from(self.rng.below_at("1000:de5a", base));
-            self.player.money += cash;
+            self.player.money = self.player.money.wrapping_add(cash as i16);
             let junk = base.wrapping_add(self.rng.below_at("1000:de7c", base));
             self.player.junk = self.player.junk.wrapping_add(junk as i16);
             // 1000:de93 (CS 0x908b) + 1000:de98..1000:dea2, printed by
             // 1000:deaf -- BEFORE 1000:debe credits the same amount.
-            let xp = u32::from(self.district) * 12;
+            let xp = u16::from(self.district) * 12;
             term::println(&text::fill(
                 "^6Ты получаешь # качков опыта",
                 &[i64::from(xp)],
@@ -3603,7 +3603,7 @@ impl Game {
                     // 1000:b313..1000:b31e as (district << 2) + district.
                     let amount = self.rng.below_at("1000:b321", u16::from(self.district) * 5) + 1;
                     // 1000:b326/1000:b32d: [0x3b74] := r + 1, money += it.
-                    self.player.money += i32::from(amount);
+                    self.player.money = self.player.money.wrapping_add(amount as i16);
                     term::println(&text::fill(
                         "^2Опа бабки! # рублей на пиво!",
                         &[amount as i64],
@@ -3789,9 +3789,9 @@ impl Game {
             // 1000:81ef's `cmp ax,4` -- 1000:820d..1000:821a.
             _ => {
                 term::println("^1Да увеличится, офигенно, твоя понтовость среди гопоты!");
-                let gain = i32::from(self.district) * 50 + 50;
-                self.pontovost_street += gain;
-                term::println(&text::fill("^1Получи #!", &[gain as i64]));
+                let gain = i16::from(self.district) * 50 + 50;
+                self.pontovost_street = self.pontovost_street.wrapping_add(gain);
+                term::println(&text::fill("^1Получи #!", &[i64::from(gain)]));
             }
         }
 
@@ -3868,12 +3868,12 @@ impl Game {
             return Ok(());
         }
         let price = i32::from(self.district) * 50;
-        if self.player.money < price {
+        if i32::from(self.player.money) < price {
             // 1000:7744, file 0x8DC1.
             term::println("^6Парень, все стоит бабок!");
             return Ok(());
         }
-        self.player.money -= price;
+        self.player.money = self.player.money.wrapping_sub(price as i16);
         // 1000:7621..1000:773d. The debit above is 1000:761d, and it happens
         // BEFORE the file is opened in the original too.
         if let Err(e) = self.mage_save() {
@@ -4157,7 +4157,7 @@ impl Game {
             dmg_min: strength / 2,
             dmg_max: strength,
             beer_dl: beer_dl as i16,
-            money,
+            money: money as i16,
             junk: junk as i16,
             ..Fighter::default()
         }
@@ -4548,7 +4548,7 @@ impl Game {
             return;
         }
         // 1000:ce8e / 1000:ce91 -- the whole word, one for one.
-        self.player.money += i32::from(self.player.junk);
+        self.player.money = self.player.money.wrapping_add(self.player.junk);
         // 1000:ce95 / 1000:ce97.
         self.player.junk = 0;
         // CS 0x96d0, file 0xAFA0; pushed 1000:ce9a, printed 1000:ceae.
@@ -4665,7 +4665,7 @@ impl Game {
                 // CS 0x974c, file 0xB01C; pushed 1000:cf81, printed
                 // 1000:cf97. The `#` is 1000:cf86 `mov al,[0x3e33]`.
                 self.wear_suit_abibas_38b4 = false; // 1000:cf74
-                self.player.money += refund; // 1000:cf79 / 1000:cf7c / 1000:cf7d
+                self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:cf79 / 1000:cf7c / 1000:cf7d
                 term::println(&text::fill(
                     "^2Ты продал костюм за #.",
                     &[i64::from(refund)],
@@ -4690,7 +4690,7 @@ impl Game {
                 // CS 0x9796, file 0xB066; pushed 1000:d036, printed
                 // 1000:d04c; the `#` is 1000:d03b.
                 self.wear_boots_38b5 = false; // 1000:d029
-                self.player.money += refund; // 1000:d032
+                self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d032
                 term::println(&text::fill(
                     "^2Ты продал кроссовки за #.",
                     &[i64::from(refund)],
@@ -4715,7 +4715,7 @@ impl Game {
                 // CS 0x97e1, file 0xB0B1; pushed 1000:d0eb, printed
                 // 1000:d101; the `#` is 1000:d0f0.
                 self.wear_jacket_38b6 = false; // 1000:d0de
-                self.player.money += refund; // 1000:d0e7
+                self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d0e7
                 term::println(&text::fill(
                     "^2Ты продал кожанку за #.",
                     &[i64::from(refund)],
@@ -4746,7 +4746,7 @@ impl Game {
                 // CS 0x982e, file 0xB0FE; pushed 1000:d1ae, printed
                 // 1000:d1c4; the `#` is 1000:d1b3.
                 self.weapon_kastet_38ba = false; // 1000:d1a1
-                self.player.money += refund; // 1000:d1aa
+                self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d1aa
                 term::println(&text::fill(
                     "^2Ты продал кастет за #.",
                     &[i64::from(refund)],
@@ -4772,7 +4772,7 @@ impl Game {
                 // CS 0x9879, file 0xB149; pushed 1000:d26a, printed
                 // 1000:d280; the `#` is 1000:d26f.
                 self.weapon_dubinka_394b = false; // 1000:d25d
-                self.player.money += refund; // 1000:d266
+                self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d266
                 term::println(&text::fill(
                     "^2Ты продал дубинку за #.",
                     &[i64::from(refund)],
@@ -4798,7 +4798,7 @@ impl Game {
                 // CS 0x98c6, file 0xB196; pushed 1000:d31f, printed
                 // 1000:d335; the `#` is 1000:d324.
                 self.weapon_nozhik_38c2 = false; // 1000:d312
-                self.player.money += refund; // 1000:d31b
+                self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d31b
                 term::println(&text::fill("^2Ты продал ножик за #.", &[i64::from(refund)]));
             }
         }
@@ -5030,11 +5030,11 @@ impl Game {
                 return;
             }
         }
-        if self.player.money < price {
+        if i32::from(self.player.money) < price {
             term::println(too_poor);
             return;
         }
-        self.player.money -= price;
+        self.player.money = self.player.money.wrapping_sub(price as i16);
         effect(self);
     }
 
@@ -6289,7 +6289,7 @@ impl Game {
         // at 1000:51e9. Taken from the numbers rather than from whether
         // `apply_levels` reported a level: at MAX_LEVEL it reports none while
         // the original still takes the `jge` arm and prints nothing here.
-        let short_of_the_threshold = self.progress.xp + award < self.progress.threshold;
+        let short_of_the_threshold = self.progress.xp.wrapping_add(award) < self.progress.threshold;
         progress::apply_levels(
             &mut self.progress,
             &mut self.player,
@@ -6317,7 +6317,7 @@ impl Game {
         if opponent_kind == 6 {
             let district = i32::from(self.district);
             // 1000:57d4..1000:57de `add [0x38cb],ax`, `ax = district*20`.
-            self.pontovost_street += district * 20;
+            self.pontovost_street = self.pontovost_street.wrapping_add((district * 20) as i16);
             // CS 0x3c99 (`district * 20`, pushed 1000:57e7, printed
             // 1000:57fe) and CS 0x3ce9 (`district * 10`, pushed 1000:5808,
             // printed 1000:581f).
@@ -6332,7 +6332,7 @@ impl Game {
                 &mut self.progress,
                 &mut self.player,
                 &mut self.rng,
-                (district * 10) as u32,
+                (district * 10) as u16,
                 false,
             );
         }
@@ -6621,7 +6621,7 @@ impl Game {
             return false;
         }
         term::println("^1Тебе повезло знакомые пацаны отвезли тебя в больницу а то бы ты сдох.");
-        self.pontovost_street -= 10;
+        self.pontovost_street = self.pontovost_street.wrapping_sub(10);
         // Round(hpmax / 5 * 3), computed exactly rather than through two
         // truncating divisions: `round_half(x)` rounds `x / 2` half away from
         // zero, so feeding it `6 * hpmax / 5` as a doubled numerator gives
@@ -6629,7 +6629,7 @@ impl Game {
         // fractional part 0, .2, .4, .6 or .8 -- but the rounding is written
         // the original's way rather than assumed away.)
         let bill = Self::round_half(6 * i32::from(self.player.hpmax) / 5);
-        self.player.money -= bill;
+        self.player.money = self.player.money.wrapping_sub(bill as i16);
         self.player.hp = self.player.hpmax;
         // The two limb tests are one DISJUNCTION, and the original writes it
         // as two branches into the same block at 1000:502c: 1000:501e
@@ -6637,7 +6637,7 @@ impl Game {
         // jaw, and 1000:5025 `cmp byte [0x38b1],0x1` / 1000:502a
         // `jnz 0x503b` leaves only when the leg is unbroken too.
         if self.player.broken_jaw || self.player.broken_leg {
-            self.player.money -= 7;
+            self.player.money = self.player.money.wrapping_sub(7_i16);
             self.player.broken_jaw = false;
             self.player.broken_leg = false;
         }
@@ -6646,7 +6646,7 @@ impl Game {
         // (1000:5042..1000:504e), and the test is signed and strict, so an
         // exact zero skips the block.
         if self.player.money < 0 {
-            self.pontovost_street += self.player.money;
+            self.pontovost_street = self.pontovost_street.wrapping_add(self.player.money);
             self.player.money = 0;
         }
         true
@@ -6879,7 +6879,7 @@ impl Game {
         // 1000:523e..1000:5251 -- three `mov ax,[enemy] / add [player],ax`
         // pairs. `docs/re/gaps.md` recorded this as NOT reproduced; it is now.
         self.player.beer_dl += enemy.beer_dl;
-        self.player.money += enemy.money;
+        self.player.money = self.player.money.wrapping_add(enemy.money);
         self.player.junk += enemy.junk;
         // file 0x52FE
         term::println("^1Пиво победителю!");
@@ -6887,7 +6887,10 @@ impl Game {
         // stored only while it stays at or below hpmax; above it, 1000:527a
         // stores hpmax instead.
         self.player.hp = (self.player.hp + 5).min(self.player.hpmax);
-        self.pontovost_street += i32::from(enemy.class) + 1 + i32::from(enemy.level) / 3;
+        // 1000:5291 `add [0x38cb],ax` -- a word add, so it wraps.
+        self.pontovost_street = self
+            .pontovost_street
+            .wrapping_add((enemy.class + 1 + enemy.level / 3) as i16);
         // 1000:5295..1000:52cc. `[0x3692]` is the district; the level is
         // measured within it, so three levels into a district opens the den.
         if !self.places.is_found(Location::Den)
@@ -7997,7 +8000,7 @@ mod tests {
     /// so the `district * 10` term is exercised and not just the `+ 10`.
     #[test]
     fn the_backup_cred_gate_moves_with_the_district() {
-        for (district, need) in [(1u8, 20i32), (3, 40)] {
+        for (district, need) in [(1u8, 20i16), (3, 40)] {
             for (cred, expect_call) in [(need - 1, false), (need, true)] {
                 let mut g = game_with_gopota();
                 g.district = district;
@@ -9082,7 +9085,7 @@ mod tests {
     /// `1000:bd91` is a `jle`, so 2 exactly is enough and 1 is not.
     #[test]
     fn shop_action_refuses_when_too_poor() {
-        for (money, want) in [(1i32, 1i32), (2, 0)] {
+        for (money, want) in [(1i16, 1i16), (2, 0)] {
             let mut g = game();
             g.location = Location::Market;
             g.player.hp = 19;
@@ -9141,7 +9144,7 @@ mod tests {
 
         // ... and 1000:cce8's `jle` means 150 exactly is enough while 149 is
         // not.
-        for (money, want) in [(149i32, false), (150, true)] {
+        for (money, want) in [(149i16, false), (150, true)] {
             let mut g = shop();
             g.player.money = money;
             g.shop_turn(Location::Dealers, "7", &mut no_input())
@@ -9188,7 +9191,7 @@ mod tests {
     /// A player standing at the dealers' prompt with `money` roubles.
     /// `district` is left at `Game::new`'s 1 on purpose: none of the nine
     /// arms tests it (`Game::shop_action`).
-    fn dealers(money: i32) -> Game {
+    fn dealers(money: i16) -> Game {
         let mut g = game();
         g.location = Location::Dealers;
         g.mode = Mode::Shop(Location::Dealers);
@@ -9211,7 +9214,7 @@ mod tests {
         assert_eq!(g.player.joints, 2, "the row is repeatable");
         assert_eq!(g.player.money, 10);
         // 1000:c8e8 is `jle`, so 15 exactly buys and 14 does not.
-        for (money, want) in [(14i32, 0i16), (15, 1)] {
+        for (money, want) in [(14i16, 0i16), (15, 1)] {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "1", &mut no_input())
                 .unwrap();
@@ -9235,7 +9238,7 @@ mod tests {
             .unwrap();
         assert_eq!(g.player.money, 40, "1000:c992 is a refusal, not a sale");
         // Too poor: 1000:c94c is `jle`, so 29 is short and 30 is enough.
-        for (money, want) in [(29i32, false), (30, true)] {
+        for (money, want) in [(29i16, false), (30, true)] {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "2", &mut no_input())
                 .unwrap();
@@ -9357,7 +9360,7 @@ mod tests {
             .unwrap();
         assert_eq!(g.player.money, 10, "1000:cb2e is a refusal, not a sale");
         // Too poor: 1000:cae8 is `jle`.
-        for (money, want) in [(9i32, false), (10, true)] {
+        for (money, want) in [(9i16, false), (10, true)] {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "4", &mut no_input())
                 .unwrap();
@@ -9406,7 +9409,7 @@ mod tests {
             );
         }
         // Too poor: 1000:cb80 is `jle`.
-        for (money, want) in [(24i32, false), (25, true)] {
+        for (money, want) in [(24i16, false), (25, true)] {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "5", &mut no_input())
                 .unwrap();
@@ -9463,7 +9466,7 @@ mod tests {
             );
         }
         // Too poor: 1000:cc39 is `jle`.
-        for (money, want) in [(49i32, false), (50, true)] {
+        for (money, want) in [(49i16, false), (50, true)] {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "6", &mut no_input())
                 .unwrap();
@@ -9607,7 +9610,7 @@ mod tests {
         assert_eq!(g.player.money, 1_000 - 25 - 50 - 150 - 70 - 60);
     }
 
-    fn market(money: i32) -> Game {
+    fn market(money: i16) -> Game {
         let mut g = game();
         g.location = Location::Market;
         g.mode = Mode::Shop(Location::Market);
@@ -9728,7 +9731,7 @@ mod tests {
         assert_eq!(g.player.money, 15, "1000:bf1f is a refusal, not a sale");
 
         // 1000:bed9 is a `jle`: 10 exactly buys, 9 does not.
-        for (money, want) in [(9i32, false), (10, true)] {
+        for (money, want) in [(9i16, false), (10, true)] {
             let mut g = market(money);
             g.shop_turn(Location::Market, "3", &mut no_input()).unwrap();
             assert_eq!(g.dark_glasses, want, "money {money}");
@@ -9817,7 +9820,7 @@ mod tests {
 
         // Row 5's own already-own gate 1000:c001, and its `jle` at
         // 1000:c00c: 15 exactly buys, 14 does not.
-        for (money, want) in [(14i32, false), (15, true)] {
+        for (money, want) in [(14i16, false), (15, true)] {
             let mut g = market(money);
             g.shop_turn(Location::Market, "5", &mut no_input()).unwrap();
             assert_eq!(g.wear_boots_38b5, want, "money {money}");
@@ -9857,7 +9860,7 @@ mod tests {
         assert_eq!(g.player.money, 50, "1000:c306 is a refusal, not a sale");
 
         // Row 6's already-own gate 1000:c0b8, and its `jle` at 1000:c0c3.
-        for (money, want) in [(24i32, false), (25, true)] {
+        for (money, want) in [(24i16, false), (25, true)] {
             let mut g = market(money);
             g.district = 2;
             g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
@@ -10227,7 +10230,7 @@ mod tests {
         /// The `call 0f78:114b` this arm's refund is drawn at.
         site: &'static str,
         /// The `add ax,imm` base and the `Random` span, both immediates.
-        base: i32,
+        base: i16,
         span: u16,
         confirm: &'static str,
     }
@@ -10322,7 +10325,7 @@ mod tests {
     /// `roll.base` the `add ax,imm` after it — so reading it here binds the
     /// table above to the binary instead of to a second transcription of
     /// itself.
-    fn sell_roll_immediates_from_artifact() -> Vec<(String, i32, u16)> {
+    fn sell_roll_immediates_from_artifact() -> Vec<(String, i16, u16)> {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/data/shop_arms.json");
         let bytes = std::fs::read(path).expect("read data/shop_arms.json");
         let v: serde_json::Value = serde_json::from_slice(&bytes).expect("parse");
@@ -10337,7 +10340,7 @@ mod tests {
                         .as_str()
                         .expect("roll.call.addr")
                         .to_string(),
-                    r["base"].as_i64().expect("roll.base") as i32,
+                    r["base"].as_i64().expect("roll.base") as i16,
                     r["n"].as_u64().expect("roll.n") as u16,
                 )
             })
@@ -10391,7 +10394,7 @@ mod tests {
             let delta = g.player.money - 100;
             assert_eq!(
                 delta,
-                a.base + i32::from(log[0].r),
+                a.base + (log[0].r as i16),
                 "arm {} credits base + the drawn value",
                 n + 1
             );
@@ -10509,7 +10512,7 @@ mod tests {
             let log = g.rng.take_log();
             assert_eq!(log.len(), 1, "{which} -- only arm 4 is offered");
             assert_eq!(log[0].site, "1000:d185", "{which}");
-            assert_eq!(g.player.money, 13 + i32::from(log[0].r), "{which}");
+            assert_eq!(g.player.money, 13 + (log[0].r as i16), "{which}");
             assert!(!g.weapon_kastet_38ba, "1000:d1a1, {which}");
         }
     }
@@ -10547,10 +10550,10 @@ mod tests {
         let sites: Vec<&str> = log.iter().map(|d| d.site).collect();
         let want_sites: Vec<&str> = artifact.iter().map(|(s, _, _)| s.as_str()).collect();
         assert_eq!(sites, want_sites, "six draws, in data/shop_arms.json order");
-        let expect: i32 = artifact
+        let expect: i16 = artifact
             .iter()
             .zip(&log)
-            .map(|((_, b, _), d)| b + i32::from(d.r))
+            .map(|((_, b, _), d)| *b + d.r as i16)
             .sum();
         assert_eq!(g.player.money, expect, "six credits, no rate anywhere");
         // The six lesser rungs are cleared (1000:cf74, 1000:d029,
@@ -10689,7 +10692,7 @@ mod tests {
                 .unwrap();
         });
         let log = g.rng.take_log();
-        assert_eq!(g.player.money, 8 + i32::from(log[0].r));
+        assert_eq!(g.player.money, 8 + (log[0].r as i16));
         assert!(!g.wear_suit_abibas_38b4);
     }
 
@@ -11603,10 +11606,11 @@ mod tests {
     #[test]
     fn den_reveal_gates_on_the_computed_threshold() {
         let district: i32 = 1;
-        let pontovost_street: i32 = 0;
+        let pontovost_street: i16 = 0;
         // ax = (level - (district-1)*10) * 2 + pontovost_street; solved for
         // ax == 0x28 exactly (the boundary), then one level below it.
-        let boundary_level = ((0x28 - pontovost_street) / 2 + (district - 1) * 10) as u16;
+        let boundary_level =
+            ((0x28 - i32::from(pontovost_street)) / 2 + (district - 1) * 10) as u16;
 
         let mut g = game();
         g.district = district as u8;
@@ -11754,7 +11758,7 @@ mod tests {
     /// `jbe 0xda35`. Two different bytes, so they are checked apart.
     #[test]
     fn the_den_loan_row_dims_below_two_cred_and_vanishes_without_credit() {
-        let row = |cred: i32, credit: u8| {
+        let row = |cred: i16, credit: u8| {
             let mut g = game();
             g.district = 1;
             g.pontovost_street = cred;
@@ -11857,7 +11861,7 @@ mod tests {
     /// compare would still pass there.
     #[test]
     fn the_den_menu_conjunction_lines_need_both_of_their_bytes() {
-        let lines_for = |errand2: bool, cred: i32| {
+        let lines_for = |errand2: bool, cred: i16| {
             let mut g = game();
             g.district = 1;
             g.den_errand_2_pending = errand2;
@@ -12021,7 +12025,7 @@ mod tests {
     /// first would print the other one here.
     #[test]
     fn den_r_has_two_distinct_refusals_and_checks_the_credit_first() {
-        let refusal = |credit: u8, cred: i32| {
+        let refusal = |credit: u8, cred: i16| {
             let mut g = game();
             g.den_loan_credit = credit;
             g.pontovost_street = cred;
@@ -12046,7 +12050,7 @@ mod tests {
     /// arm writes nothing at all.
     #[test]
     fn den_s_prints_the_cred_and_adds_the_second_line_at_the_threshold() {
-        let ask = |district: u8, cred: i32| {
+        let ask = |district: u8, cred: i16| {
             let mut g = game();
             g.district = district;
             g.pontovost_street = cred;
@@ -12234,7 +12238,7 @@ mod tests {
         );
         assert_eq!(
             g.player.money,
-            10 + i32::from(log[1].r),
+            10 + (log[1].r as i16),
             "1000:de6d: district*10 + Random(district*10)"
         );
         assert_eq!(
@@ -12284,7 +12288,7 @@ mod tests {
             vec![("1000:dd97", 45), ("1000:de5a", 30), ("1000:de7c", 30)]
         );
         assert!(out.contains(&"^6Ты получаешь 36 качков опыта".to_string()));
-        assert_eq!(g.player.money, 30 + i32::from(log[1].r));
+        assert_eq!(g.player.money, 30 + (log[1].r as i16));
         assert_eq!(g.player.junk, 30 + log[2].r as i16);
     }
 
@@ -12780,7 +12784,7 @@ mod tests {
         let run = |kind: u8| {
             let mut g = game();
             g.district = 3;
-            g.progress.threshold = 1_000_000;
+            g.progress.threshold = u16::MAX;
             let out = term::capture::lines(|| {
                 g.run_combat(kind, punchbag_that_dies(), &mut input(&["k"; 40]))
                     .unwrap();

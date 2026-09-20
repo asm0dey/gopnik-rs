@@ -72,7 +72,7 @@ pub struct Fighter {
     pub joints: i16,
     pub stoned: bool,
     pub beer_dl: i16,
-    pub money: i32,
+    pub money: i16,
     /// `DS:38c9` for the player, `DS:396e` for a rolled enemy -- "Хлам",
     /// the junk the dealers buy back (`1000:ce87`..`1000:ce97` moves it into
     /// the money at `DS:38c7` and zeroes it; the stat block prints it as

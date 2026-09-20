@@ -167,8 +167,8 @@ struct FinalState {
     has_mobile_38bb: u8,
     ring_38c1: u8,
     street_cred_38cb: i32,
-    xp_38ce: u32,
-    xp_threshold_38d0: u32,
+    xp_38ce: u16,
+    xp_threshold_38d0: u16,
     district_3692: u8,
     flag_market_3694: u8,
     flag_3695: u8,
@@ -283,10 +283,10 @@ fn game_for(run: &Run) -> Game {
         hpmax: u16at(0x212),
         broken_jaw: b[0x214] != 0,
         broken_leg: b[0x215] != 0,
-        armor: b[0x216],                // 20ae:38b2 is one byte
-        money: i32::from(u16at(0x22b)), // 20ae:38c7
-        beer_dl: u16at(0x227) as i16,   // 20ae:38c3
-        junk: u16at(0x22d) as i16,      // 20ae:38c9
+        armor: b[0x216],              // 20ae:38b2 is one byte
+        money: u16at(0x22b) as i16,   // 20ae:38c7, a signed Integer
+        beer_dl: u16at(0x227) as i16, // 20ae:38c3
+        junk: u16at(0x22d) as i16,    // 20ae:38c9
         // 20ae:38c5 is a signed Integer; the bit pattern is what the record
         // holds, so the read is a reinterpretation, not a conversion.
         joints: u16at(0x229) as i16, // 20ae:38c5
@@ -303,8 +303,8 @@ fn game_for(run: &Run) -> Game {
         entry[..len].copy_from_slice(&b[base + 1..base + 1 + len]);
     }
     let progress = Progress {
-        xp: u32::from(u16at(0x232)),        // 20ae:38ce
-        threshold: u32::from(u16at(0x234)), // 20ae:38d0
+        xp: u16at(0x232),        // 20ae:38ce
+        threshold: u16at(0x234), // 20ae:38d0
         growth_log,
     };
     let mut g = Game::new(player, progress, seed);
@@ -322,7 +322,7 @@ fn game_for(run: &Run) -> Game {
     g.oneshot_gift_2 = b[0x224] != 0; // 20ae:38c0
     g.ring_gospodi_pomilui = b[0x225] != 0; // 20ae:38c1
     g.weapon_nozhik_38c2 = b[0x226] != 0; // 20ae:38c2
-    g.pontovost_street = i32::from(u16at(0x22f)); // 20ae:38cb
+    g.pontovost_street = u16at(0x22f) as i16; // 20ae:38cb, a signed Integer
     g.buff_countdown = b[0x231]; // 20ae:38cd
     g.tooth_guard = b[0x2ae] != 0; // 20ae:394a
     g.weapon_dubinka_394b = b[0x2af] != 0; // 20ae:394b
@@ -499,7 +499,7 @@ fn replay(label: &str) -> Game {
             got.beer_dl, w.e_beer_396a as i16,
             "{at}: 20ae:396a loot beer"
         );
-        assert_eq!(got.money, i32::from(w.e_money_396c), "{at}: 20ae:396c");
+        assert_eq!(got.money, w.e_money_396c as i16, "{at}: 20ae:396c");
         assert_eq!(got.junk, w.e_hlam_396e as i16, "{at}: 20ae:396e Хлам");
     }
 
@@ -585,7 +585,10 @@ fn assert_final_state(label: &str, run: &Run, g: &Game) {
     assert_eq!(g.player.armor, f.unk_38b2 as u8, "{label}: 20ae:38b2");
     assert_eq!(g.has_mobile, b(f.has_mobile_38bb), "{label}: 20ae:38bb");
     assert_eq!(g.ring_gospodi_pomilui, b(f.ring_38c1), "{label}: 20ae:38c1");
-    assert_eq!(g.pontovost_street, f.street_cred_38cb, "{label}: 20ae:38cb");
+    assert_eq!(
+        g.pontovost_street, f.street_cred_38cb as i16,
+        "{label}: 20ae:38cb"
+    );
     assert_eq!(g.progress.xp, f.xp_38ce, "{label}: 20ae:38ce");
     assert_eq!(
         g.progress.threshold, f.xp_threshold_38d0,

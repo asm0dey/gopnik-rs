@@ -215,13 +215,13 @@ fn haul(g: &mut Game) {
     // 1000:c376 `inc ax`, 1000:c377 stores into 20ae:3b74.
     let take = i32::from(g.rng.below_at("1000:c371", g.player.luck.wrapping_mul(2))) + 1;
     // 1000:c37a reads it back and 1000:c37d `add [0x38c7],ax` credits it.
-    g.player.money += take;
+    g.player.money = g.player.money.wrapping_add(take as i16);
     // 1000:c381 pushes file `0xA096` `^2Опа бабки! # рублей на пиво!`, whose
     // `#` is 1000:c386's `push [0x3b74]`; printed by 1000:c396.
     term::println(&text::fill(PAYOFF, &[i64::from(take)]));
 
     // 1000:c3a0..1000:c3a7 -- `mov al,[0x3692]` / `xor ah,ah` / `shl ax,1`.
-    let xp = u32::from(g.district) * 2;
+    let xp = u16::from(g.district) * 2;
     // 1000:c39b pushes file `0xA95B` `^6Ты получаешь # качков опыта`, printed
     // by 1000:c3b4 -- BEFORE 1000:c3c0 credits the same value.
     term::println(&text::fill(XP_LINE, &[i64::from(xp)]));
@@ -300,7 +300,7 @@ mod tests {
         g.district = district;
         g.places.mark_found(Location::Market);
         g.location = Location::Market;
-        g.progress.threshold = 100_000; // keeps 1000:c3c7 from levelling
+        g.progress.threshold = u16::MAX; // keeps 1000:c3c7 from levelling
         g
     }
 
@@ -361,7 +361,7 @@ mod tests {
             text::fill(XP_LINE, &[i64::from(district) * 2]),
             "1000:c3a5 `shl ax,1` on the district"
         );
-        assert_eq!(g.progress.xp, u32::from(district) * 2, "1000:c3c0");
+        assert_eq!(g.progress.xp, u16::from(district) * 2, "1000:c3c0");
         assert_eq!(g.location, Location::Market, "1000:c3ca jumps to the loop");
         assert_eq!(g.market_ban_countdown, 0, "1000:c465 is on the other arm");
     }

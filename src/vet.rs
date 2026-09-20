@@ -202,7 +202,7 @@ fn fix_fractures(g: &mut Game) {
         term::println("^4Блин халявщик, медицина не бесплатная");
         return;
     }
-    g.player.money -= 7; // 1000:d553
+    g.player.money = g.player.money.wrapping_sub(7_i16); // 1000:d553
     g.player.broken_jaw = false; // 1000:d558
     g.player.broken_leg = false; // 1000:d55d
 
@@ -268,7 +268,7 @@ fn patch_up(g: &mut Game) {
         term::println("^4Блин халявщик, медицина не бесплатная");
         return;
     }
-    g.player.money -= 3; // 1000:d5d9
+    g.player.money = g.player.money.wrapping_sub(3_i16); // 1000:d5d9
     g.player.hp += 5; // 1000:d5de
 
     // 1000:d5e3..1000:d5ea then 1000:d5ec/1000:d5ef.
@@ -341,7 +341,7 @@ mod tests {
 
     /// A vet-ready game. `Game::new` already marks the vet found
     /// (`1000:6dc3`), so only the standing-in-it half is set here.
-    fn vet(money: i32) -> Game {
+    fn vet(money: i16) -> Game {
         let mut g = Game::new(player(), Progress::new(), 12345);
         g.player.money = money;
         assert!(g.places.is_found(LOCATION), "1000:6dc3");

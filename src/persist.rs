@@ -280,8 +280,8 @@ impl Game {
         // for `armor` below (`u16` here, one byte at `20ae:38b2`) and for
         // the five `Integer`s further down.
         save.buff_countdown = self.buff_countdown;
-        save.xp = self.progress.xp as u16;
-        save.threshold = self.progress.threshold as u16;
+        save.xp = self.progress.xp;
+        save.threshold = self.progress.threshold;
         save.growth_log = growth_log_to_record(&self.progress);
         save.items = Items {
             broken_jaw: p.broken_jaw,                      // 20ae:38b0
@@ -305,9 +305,9 @@ impl Game {
             nozh: self.weapon_nozhik_38c2,                 // 20ae:38c2
             beer_half_litres: p.beer_dl,                   // 20ae:38c3
             joints: p.joints,                              // 20ae:38c5
-            money: p.money as i16,                         // 20ae:38c7
+            money: p.money,                                // 20ae:38c7
             junk: p.junk,                                  // 20ae:38c9
-            street_cred: self.pontovost_street as i16,     // 20ae:38cb
+            street_cred: self.pontovost_street,            // 20ae:38cb
             tooth_guard: self.tooth_guard,                 // 20ae:394a
             dubinka: self.weapon_dubinka_394b,             // 20ae:394b
             tesak: self.weapon_tesak_394c,                 // 20ae:394c
@@ -366,13 +366,13 @@ impl Game {
             // 20ae:38c3 is a signed Integer (1000:db33 `jle`) and the
             // original keeps a negative one, so there is nothing to clamp.
             beer_dl: it.beer_half_litres,
-            money: i32::from(it.money),
+            money: it.money,
             // 20ae:38c9 likewise (1000:ce87 `jle`).
             junk: it.junk,
         };
         let progress = Progress {
-            xp: u32::from(save.xp),
-            threshold: u32::from(save.threshold),
+            xp: save.xp,
+            threshold: save.threshold,
             growth_log: growth_log_from_record(&save.growth_log),
         };
         let mut g = Game::new(player, progress, seed);
@@ -396,7 +396,7 @@ impl Game {
         g.oneshot_gift_1 = it.ring_pg;
         g.oneshot_gift_2 = it.mega_ring;
         g.ring_gospodi_pomilui = it.ring_gp;
-        g.pontovost_street = i32::from(it.street_cred);
+        g.pontovost_street = it.street_cred;
         g.buff_countdown = save.buff_countdown;
         g.tooth_guard = it.tooth_guard;
         g.charm_krestik_38bd = it.krestik;

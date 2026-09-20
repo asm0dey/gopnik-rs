@@ -127,8 +127,8 @@ struct FinalState {
     has_mobile_38bb: u8,
     ring_38c1: u8,
     street_cred_38cb: i32,
-    xp_38ce: u32,
-    xp_threshold_38d0: u32,
+    xp_38ce: u16,
+    xp_threshold_38d0: u16,
     district_3692: u8,
     flag_market_3694: u8,
     flag_3695: u8,
@@ -236,7 +236,7 @@ fn game_for(run: &Run) -> Game {
         broken_jaw: b[0x214] != 0,
         broken_leg: b[0x215] != 0,
         armor: b[0x216], // 20ae:38b2, the church's "защиту" byte, one byte wide
-        money: i32::from(u16at(0x22b)), // 20ae:38c7
+        money: u16at(0x22b) as i16, // 20ae:38c7, a signed Integer
         // Task 11i: the per-turn capture reads `20ae:38c3` and `20ae:38c9`,
         // which the 29-variable `final_state` never carried -- and run E's
         // first sample showed the loaded save starting with 20 half-litres of
@@ -258,8 +258,8 @@ fn game_for(run: &Run) -> Game {
         entry[..len].copy_from_slice(&b[base + 1..base + 1 + len]);
     }
     let progress = Progress {
-        xp: u32::from(u16at(0x232)),        // 20ae:38ce
-        threshold: u32::from(u16at(0x234)), // 20ae:38d0
+        xp: u16at(0x232),        // 20ae:38ce
+        threshold: u16at(0x234), // 20ae:38d0
         growth_log,
     };
     let mut g = Game::new(player, progress, seed);
@@ -273,7 +273,7 @@ fn game_for(run: &Run) -> Game {
     g.oneshot_gift_1 = b[0x223] != 0; // 20ae:38bf
     g.oneshot_gift_2 = b[0x224] != 0; // 20ae:38c0
     g.ring_gospodi_pomilui = b[0x225] != 0; // 20ae:38c1
-    g.pontovost_street = i32::from(u16at(0x22f)); // 20ae:38cb
+    g.pontovost_street = u16at(0x22f) as i16; // 20ae:38cb, a signed Integer
     g.buff_countdown = b[0x231]; // 20ae:38cd
 
     // 20ae:394d / 394e / 394f, three adjacent bytes and a word: the pistol,
@@ -473,7 +473,10 @@ fn assert_final_state(label: &str, run: &Run, g: &Game) {
     assert_eq!(g.player.armor, f.unk_38b2 as u8, "{label}: 20ae:38b2");
     assert_eq!(g.has_mobile, b(f.has_mobile_38bb), "{label}: 20ae:38bb");
     assert_eq!(g.ring_gospodi_pomilui, b(f.ring_38c1), "{label}: 20ae:38c1");
-    assert_eq!(g.pontovost_street, f.street_cred_38cb, "{label}: 20ae:38cb");
+    assert_eq!(
+        g.pontovost_street, f.street_cred_38cb as i16,
+        "{label}: 20ae:38cb"
+    );
     assert_eq!(g.progress.xp, f.xp_38ce, "{label}: 20ae:38ce");
     assert_eq!(
         g.progress.threshold, f.xp_threshold_38d0,
@@ -832,8 +835,8 @@ struct StateSample {
     has_mobile_38bb: u8,
     ring_38c1: u8,
     street_cred_38cb: i32,
-    xp_38ce: u32,
-    xp_threshold_38d0: u32,
+    xp_38ce: u16,
+    xp_threshold_38d0: u16,
     district_3692: u8,
     flag_market_3694: u8,
     flag_3695: u8,
@@ -941,7 +944,7 @@ fn assert_state_sample(label: &str, s: &StateSample, g: &Game) {
     );
     assert_eq!(
         g.pontovost_street,
-        s.street_cred_38cb,
+        s.street_cred_38cb as i16,
         "{}",
         at("20ae:38cb")
     );
@@ -999,7 +1002,7 @@ fn assert_state_sample(label: &str, s: &StateSample, g: &Game) {
     );
     assert_eq!(
         g.player.money,
-        i32::from(s.money_38c7),
+        s.money_38c7 as i16,
         "{}",
         at("20ae:38c7 (money)")
     );
