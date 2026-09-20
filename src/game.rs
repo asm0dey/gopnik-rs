@@ -11669,6 +11669,118 @@ mod tests {
         );
     }
 
+    /// `Game::enter_shop`'s two location gates and `Game::visit_girl`'s
+    /// two, each driven on both sides so the operator is what decides.
+    ///
+    /// `cargo mutants` left six alive here because every existing case sat
+    /// where the condition's operands already agreed: a club test with the
+    /// countdown at zero cannot tell `== Club` from `!= Club`, and a girl
+    /// test with plenty of money cannot tell `< 12` from `<= 12`.
+    #[test]
+    fn the_shop_entry_gates_decide_on_their_own_operands() {
+        let ban = "^6Тебе не стоит пока туда соваться";
+
+        // 1000:df1a -- the club is open only while its countdown is zero.
+        // The `loc == Club` half needs a BANNED non-club entry to pin: with
+        // `!=` the countdown would lock every other shop instead.
+        for (loc, countdown, refused) in [
+            (Location::Club, 0u8, false),
+            (Location::Club, 1, true),
+            (Location::Den, 1, false),
+        ] {
+            let mut g = game();
+            g.places.mark_found(loc);
+            g.club_ban_countdown = countdown;
+            let out = term::capture::lines(|| g.enter_shop(loc));
+            let label = format!("{loc:?} countdown {countdown}");
+            assert_eq!(out.iter().any(|l| l == ban), refused, "{label}: {out:?}");
+            assert_eq!(g.mode == Mode::Street, refused, "{label} mode");
+        }
+
+        // 1000:d701 -- the Girl is not modal: she runs and hands control
+        // back to the street. With `!= Girl` the visit would fire on every
+        // OTHER location instead, so both halves are driven.
+        let mut g = game();
+        g.places.mark_found(Location::Girl);
+        g.player.money = 50;
+        g.player.hp = 1;
+        g.rng = Rng::new(seed_drawing(&[(2, 1)]));
+        term::capture::lines(|| g.enter_shop(Location::Girl));
+        assert_eq!(g.mode, Mode::Street, "the girl is not modal");
+        assert_eq!(g.player.money, 38, "the visit costs 12");
+        assert_eq!(g.player.hp, g.player.hpmax, "the visit heals");
+
+        let mut g = game();
+        g.places.mark_found(Location::Den);
+        g.player.money = 50;
+        term::capture::lines(|| g.enter_shop(Location::Den));
+        assert_eq!(g.mode, Mode::Shop(Location::Den), "the den IS modal");
+        assert_eq!(g.player.money, 50, "the den charges nothing on entry");
+
+        // 1000:d706 -- the refusal is `money < 12`, so 12 itself pays.
+        for (money, paid) in [(11i16, false), (12, true)] {
+            let mut g = game();
+            g.player.money = money;
+            g.player.hp = 1;
+            g.rng = Rng::new(seed_drawing(&[(2, 1)]));
+            let out = term::capture::lines(|| g.visit_girl());
+            let label = format!("money {money}");
+            assert_eq!(
+                out.iter()
+                    .any(|l| l == "^6Ну непойдёшь же как придурок без ничего."),
+                !paid,
+                "{label}: {out:?}"
+            );
+            assert_eq!(
+                g.player.money,
+                if paid { money - 12 } else { money },
+                "{label}"
+            );
+        }
+
+        // 1000:d728 -- the club reveal is `Random(2) == 0 AND the club is
+        // not yet known`. A non-zero draw must not reveal (the `==`), and a
+        // club already known must not print the line (the `&&`).
+        let reveal = "^2Она вытащила тебя в клуб и теперь ты знаешь где он находиться.";
+        for (draw, known, prints) in [(0u16, false, true), (1, false, false), (0, true, false)] {
+            let mut g = game();
+            g.player.money = 50;
+            if known {
+                g.places.mark_found(Location::Club);
+            }
+            g.rng = Rng::new(seed_drawing(&[(2, draw)]));
+            let out = term::capture::lines(|| g.visit_girl());
+            let label = format!("draw {draw} known {known}");
+            assert_eq!(out.iter().any(|l| l == reveal), prints, "{label}: {out:?}");
+            assert!(
+                g.places.is_found(Location::Club) == (known || prints),
+                "{label}"
+            );
+        }
+
+        // 1000:d3dc..d3f2 -- the vet skips its menu only when the player is
+        // WHOLE: full health AND no jaw AND no leg. Each row below is false
+        // for a different conjunct, which is what separates the two `&&`s.
+        let doc = "^0Док: не волнуйся всё зарастёт как на собаке";
+        for (hp, jaw, leg, menu) in [
+            (20u16, false, false, false), // whole: 1000:d3f4 skips
+            (10, false, false, true),     // hurt only
+            (20, true, false, true),      // jaw only
+            (20, false, true, true),      // leg only
+        ] {
+            let mut g = game();
+            g.player.hp = hp;
+            g.player.broken_jaw = jaw;
+            g.player.broken_leg = leg;
+            let out = term::capture::lines(|| g.print_shop_intro(Location::Vet));
+            assert_eq!(
+                out.iter().any(|l| l == doc),
+                menu,
+                "hp {hp} jaw {jaw} leg {leg}: {out:?}"
+            );
+        }
+    }
+
     /// The six output-only methods, each asserted to actually produce
     /// output -- `banner`, `print_priced_rows`, `print_imm_rows`,
     /// `inspect_enemy`, `print_enemy_block` and `shoot`.
