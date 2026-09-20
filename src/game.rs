@@ -11669,6 +11669,82 @@ mod tests {
         );
     }
 
+    /// Three gates the second `cargo mutants` run found once the first
+    /// round of tests had shifted the line numbers: `1000:e020`'s club
+    /// stake, `print_imm_rows`' shop filter, and the mage's PRINTED price.
+    #[test]
+    fn three_gates_the_second_mutants_run_uncovered() {
+        // 1000:e020 -- the stake is reset on entering the CLUB and nowhere
+        // else. `Game::new` already starts it at 5, so the test moves it
+        // first or the assertion proves nothing.
+        for (loc, reset) in [
+            (Location::Club, true),
+            (Location::Den, false),
+            (Location::Gym, false),
+        ] {
+            let mut g = game();
+            g.places.mark_found(loc);
+            g.club_stake = 99;
+            term::capture::lines(|| g.enter_shop(loc));
+            assert_eq!(g.club_stake, if reset { 5 } else { 99 }, "{loc:?} stake");
+        }
+
+        // `print_imm_rows` filters IMM_ROWS by shop tag. With `!=` it would
+        // print every OTHER shop's rows, so each tag is compared against
+        // the rows the table itself says belong to it.
+        for tag in ["rep", "kl", "trn"] {
+            let mut g = game();
+            g.player.broken_jaw = true;
+            g.player.broken_leg = true;
+            g.player.hp = 1;
+            let out = term::capture::lines(|| g.print_imm_rows(tag));
+            let want: Vec<String> = IMM_ROWS
+                .iter()
+                .filter(|r| r.shop == tag && g.imm_row_visible(r))
+                .map(|r| g.render_imm_row(r))
+                .collect();
+            assert!(!want.is_empty(), "{tag} has no visible rows to compare");
+            assert_eq!(out, want, "{tag}");
+            // And nothing from a different shop leaked in.
+            for other in ["rep", "kl", "trn"].iter().filter(|t| **t != tag) {
+                for row in IMM_ROWS.iter().filter(|r| r.shop == *other) {
+                    assert!(
+                        !out.contains(&g.render_imm_row(row)),
+                        "{tag} printed a {other} row"
+                    );
+                }
+            }
+        }
+
+        // 1000:758d `ba 19 00` PRINTS `district * 25` while 1000:7605 and
+        // 1000:7618 (`ba 32 00`) CHECK and CHARGE `district * 50` -- a
+        // divergence inside the original that this port reproduces. The
+        // charge was already pinned; the printed number was not, so both
+        // are asserted here against the SAME district.
+        for district in [1u8, 2, 4] {
+            let mut g = game();
+            g.district = district;
+            g.player.money = 500;
+            g.save_dir = std::env::temp_dir().join(format!("gopnik-mage2-{}", std::process::id()));
+            std::fs::create_dir_all(&g.save_dir).unwrap();
+            let out = term::capture::lines(|| {
+                g.mage(&mut input(&["", "", "", "y"])).unwrap();
+            });
+            let shown = i64::from(district) * 25;
+            assert!(
+                out.iter().any(|l| l.contains(&shown.to_string())),
+                "district {district} must advertise {shown}: {out:?}"
+            );
+            // Charged double what it advertised.
+            assert_eq!(
+                500 - g.player.money,
+                i16::from(district) * 50,
+                "district {district} charge"
+            );
+            std::fs::remove_dir_all(&g.save_dir).ok();
+        }
+    }
+
     /// `1000:b5fc`..`b61b` -- the notice compare that picks the encounter's
     /// class threshold: 3 when luck LOST (`1000:b60a`), 7 when it won
     /// (`1000:b614`). The test that matters is `luck == notice`, where `<`

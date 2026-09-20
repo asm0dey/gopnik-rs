@@ -72,4 +72,12 @@ exclude_re = [
     # `0dad cmp word [0x3952],0x7` / `0db2 jle 0xdba` / `0db4 mov word
     # [0x3952],0x7`.
     "^src/game\\.rs:4077:32: replace > with >= in Game::roll_enemy$",
+
+    # `1000:dd9c`/`1000:dddf` are `xor dx,dx` on the RANDOM side and
+    # `1000:dda5`/`1000:dde8` are `cwd` on the LUCK side, so only luck can carry
+    # a negative high half: `luck_high` is -1 or 0, `random_high` is always 0.
+    # The compare below it is reached ONLY when the two differ, which leaves
+    # exactly one reachable pair, (-1, 0).  `<` and `<=` both answer true for
+    # it, so no input separates them.
+    "^src/game\\.rs:2618:30: replace < with <= in Game::luck_below_random_32$",
 ]
