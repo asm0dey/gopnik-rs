@@ -187,14 +187,14 @@ fn train_strength(g: &mut Game) {
     if g.player.money < 20 {
         // 1000:e63c pushes file `0xA71D` `^4Не хватает`, printed by
         // 1000:e650; 1000:e655 leaves.
-        term::println("^4Не хватает");
+        term::println(EMITTED[2].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(20_i16); // 1000:e657
 
     // 1000:e65c pushes file `0xBD4E` `^2Ты прокачиваешь силу.`, printed by
     // 1000:e670 -- BEFORE the six stores.
-    term::println("^2Ты прокачиваешь силу.");
+    term::println(EMITTED[3].1);
     g.player.strength += 1; // 1000:e675
     g.player.hpmax += 1; // 1000:e679
     g.player.hp += 1; // 1000:e67d
@@ -207,7 +207,7 @@ fn train_strength(g: &mut Game) {
 
     // 1000:e697 pushes file `0xACD2` `^1Сила +1 ` (the trailing space is
     // the original's), printed by 1000:e6ab.
-    term::println("^1Сила +1 ");
+    term::println(EMITTED[4].1);
 }
 
 /// `2` -- `1000:e6b0`..`1000:e728`, `качаться на тренажерах`, 20 rubles.
@@ -234,21 +234,21 @@ fn train_stamina(g: &mut Game) {
     if g.player.money < 20 {
         // 1000:e6c8 pushes file `0xA71D` `^4Не хватает`, printed by
         // 1000:e6dc; 1000:e6e1 leaves.
-        term::println("^4Не хватает");
+        term::println(EMITTED[5].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(20_i16); // 1000:e6e3
 
     // 1000:e6e8 pushes file `0xBD66` `^2Ты прокачиваешь выносливость.`,
     // printed by 1000:e6fc.
-    term::println("^2Ты прокачиваешь выносливость.");
+    term::println(EMITTED[6].1);
     g.player.vitality += 1; // 1000:e701 -- 20ae:38a2 is `+0x06`, живучесть
     g.player.hpmax += 5; // 1000:e705
     g.player.hp += 5; // 1000:e70a
 
     // 1000:e70f pushes file `0xBD86` `^1Выносливость +1 ` (trailing space
     // is the original's), printed by 1000:e723.
-    term::println("^1Выносливость +1 ");
+    term::println(EMITTED[7].1);
 }
 
 /// `3` -- `1000:e728`..`1000:e7e2`, `прокачать 10 качков опыта`, 10 rubles.
@@ -309,27 +309,27 @@ fn train_xp(g: &mut Game) {
     if i32::from(g.district) * 10 - 3 <= i32::from(g.player.level) {
         // 1000:e772 leaves. file `0xBD99` `^6Ты слишком крутой чтобы тренироваться здесь.`,
         // pushed at 1000:e759 and printed by 1000:e76d.
-        term::println("^6Ты слишком крутой чтобы тренироваться здесь.");
+        term::println(EMITTED[8].1);
         return;
     }
     // 1000:e774 / 1000:e779 -- second, so the line above wins when both fail.
     if g.player.money < 10 {
         // 1000:e77b pushes file `0xAD43` `^4Не хватает деньжат`, printed by
         // 1000:e78f; 1000:e794 leaves.
-        term::println("^4Не хватает деньжат");
+        term::println(EMITTED[9].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(10_i16); // 1000:e796
 
     // 1000:e79b pushes file `0xBDC8` `^2Ты тренируешься.`, printed by
     // 1000:e7af.
-    term::println("^2Ты тренируешься.");
+    term::println(EMITTED[10].1);
     g.progress.xp += 10; // 1000:e7b4
 
     // The `#` is 1000:e7be's own `mov ax,0xa`, pushed at 1000:e7c1 -- not
     // [0x38ce]. file `0xBDDB` `^1 +# качков опыта `, pushed at 1000:e7b9
     // and printed by 1000:e7ce.
-    term::println(&text::fill("^1 +# качков опыта ", &[10]));
+    term::println(&text::fill(EMITTED[11].1, &[10]));
     // 1000:e7d3 / 1000:e7d6 / 1000:e7da.
     if g.progress.xp < g.progress.threshold {
         return;
@@ -375,14 +375,14 @@ fn buy_tooth_guard(g: &mut Game) {
     if g.tooth_guard {
         // 1000:e848 pushes file `0xBE1A` `^6У тебя есть эта штучка.`,
         // printed by 1000:e85c.
-        term::println("^6У тебя есть эта штучка.");
+        term::println(EMITTED[14].1);
         return;
     }
     // 1000:e801 / 1000:e806.
     if g.player.money < 30 {
         // 1000:e808 pushes file `0xBDEF` `^4А не хватает рубликов`, printed
         // by 1000:e81c; 1000:e821 leaves.
-        term::println("^4А не хватает рубликов");
+        term::println(EMITTED[12].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(30_i16); // 1000:e823
@@ -390,7 +390,7 @@ fn buy_tooth_guard(g: &mut Game) {
 
     // 1000:e82d pushes file `0xBE07` `^2Ты купил защиту.`, printed by
     // 1000:e841.
-    term::println("^2Ты купил защиту.");
+    term::println(EMITTED[13].1);
 }
 
 /// `5` -- `1000:e861`..`1000:e932`, `прокачать пресс`, 20 rubles.
@@ -453,12 +453,12 @@ fn train_abs(g: &mut Game) {
     if i32::from(g.trained_armour()) >= ceiling {
         // file `0xBE6E` `^6Ты максимально прокачал пресс для своего уровня`,
         // pushed at 1000:e8f9 and printed by 1000:e90d.
-        term::println("^6Ты максимально прокачал пресс для своего уровня");
+        term::println(EMITTED[18].1);
         // 1000:e912 / 1000:e917 -- inside the ceiling branch only.
         if g.district < 4 {
             // file `0xBEA0` `^6Качай дальше в следующем районе`, pushed at
             // 1000:e919 and printed by 1000:e92d.
-            term::println("^6Качай дальше в следующем районе");
+            term::println(EMITTED[19].1);
         }
         return;
     }
@@ -466,21 +466,67 @@ fn train_abs(g: &mut Game) {
     if g.player.money < 20 {
         // 1000:e89d pushes file `0xBE34` `^4Не хватает рубликов`, printed
         // by 1000:e8b1; 1000:e8b6 leaves.
-        term::println("^4Не хватает рубликов");
+        term::println(EMITTED[15].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(20_i16); // 1000:e8b8
 
     // 1000:e8bd pushes file `0xBE4A` `^2Ты прокачиваешь пресс.`, printed by
     // 1000:e8d1.
-    term::println("^2Ты прокачиваешь пресс.");
+    term::println(EMITTED[16].1);
     // 1000:e8d6 `inc [0x38b2]`, the visible Броня, AND 1000:e8da
     // `inc [0x3e34]`, the scratch this arm's own ceiling is tested against.
     // They are one statement here because the port has one value for both.
     g.player.armor = g.player.armor.wrapping_add(1);
     // 1000:e8de pushes file `0xBE63` `^1Броня +1`, printed by 1000:e8f2.
-    term::println("^1Броня +1");
+    term::println(EMITTED[17].1);
 }
+
+/// The literal pool for the gym -- `1000:e390`..`1000:ea8f`, in the image's
+/// ADDRESS order, the order `tools/difftest.py`'s `literal_walk` reads them
+/// in. The span's last five bytes are trimmed: they push the NEXT verb's
+/// key literal, which a call past the end consumes, so a walk including
+/// them reports a literal nothing in the span takes.
+///
+/// `docs/re/port-gaps.md` recorded that the club and gym rest on their
+/// module-local unit tests, with `difftest` carrying their MENU rows and
+/// nothing else. This pool is the arm bodies' half of that comparison.
+///
+/// `(closes, text)` -- `closes` is true for a `WriteLn`, false for a
+/// `Write` the next literal continues.
+pub(crate) const EMITTED: [(bool, &str); 28] = [
+    (true, "Ты пришел в качалку напиши  ^6w^7  чтобы уйти"), // 1000:e3e7
+    (false, "^0Качалка\\"),                                  // 1000:e5e4
+    (true, "^4Не хватает"),                                  // 1000:e63c
+    (true, "^2Ты прокачиваешь силу."),                       // 1000:e65c
+    (true, "^1Сила +1 "),                                    // 1000:e697
+    (true, "^4Не хватает"),                                  // 1000:e6c8
+    (true, "^2Ты прокачиваешь выносливость."),               // 1000:e6e8
+    (true, "^1Выносливость +1 "),                            // 1000:e70f
+    (true, "^6Ты слишком крутой чтобы тренироваться здесь."), // 1000:e759
+    (true, "^4Не хватает деньжат"),                          // 1000:e77b
+    (true, "^2Ты тренируешься."),                            // 1000:e79b
+    (true, "^1 +# качков опыта "),                           // 1000:e7b9
+    (true, "^4А не хватает рубликов"),                       // 1000:e808
+    (true, "^2Ты купил защиту."),                            // 1000:e82d
+    (true, "^6У тебя есть эта штучка."),                     // 1000:e848
+    (true, "^4Не хватает рубликов"),                         // 1000:e89d
+    (true, "^2Ты прокачиваешь пресс."),                      // 1000:e8bd
+    (true, "^1Броня +1"),                                    // 1000:e8de
+    (true, "^6Ты максимально прокачал пресс для своего уровня"), // 1000:e8f9
+    (true, "^6Качай дальше в следующем районе"),             // 1000:e919
+    (true, "^6Ты пока незнаешь где в этом районе качалка"),  // 1000:e948
+    (true, "^4Ты не схавать колёса из-за сломаной челюсти."), // 1000:e984
+    (false, "^2Колёса прибавляют #з. "),                     // 1000:e9d7
+    (true, "^2Здоровья:#/#. Осталось # косяков"),            // 1000:e9fb
+    (
+        true,
+        "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косякова",
+    ), // 1000:ea1e
+    (true, "^2Сила +2."),                                    // 1000:ea3b
+    (true, "^4У тебя нет косяков"),                          // 1000:ea56
+    (true, "^6Ты неможешь схавать ещё один косяк."),         // 1000:ea71
+];
 
 #[cfg(test)]
 mod tests {

@@ -158,7 +158,7 @@ pub(crate) fn loop_top(g: &mut Game) -> bool {
     }
     // 1000:d4d1 pushes file `0xB2F5` `^0Док: вали отсюда ты здоров.`,
     // printed by 1000:d4e5.
-    term::println("^0Док: вали отсюда ты здоров.");
+    term::println(EMITTED[2].1);
     // 1000:d4ea -> 1000:d6c8 -> 1000:d6e3, the street chain.
     g.leave_shop();
     true
@@ -199,7 +199,7 @@ fn fix_fractures(g: &mut Game) {
     if g.player.money < 7 {
         // 1000:d596 pushes file `0xB36A`
         // `^4Блин халявщик, медицина не бесплатная`, printed by 1000:d5aa.
-        term::println("^4Блин халявщик, медицина не бесплатная");
+        term::println(EMITTED[6].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(7_i16); // 1000:d553
@@ -208,10 +208,10 @@ fn fix_fractures(g: &mut Game) {
 
     // 1000:d562 pushes file `0xB322`
     // `^0Ого! да тебя не иначе как грузовик откатал!`, printed by 1000:d576.
-    term::println("^0Ого! да тебя не иначе как грузовик откатал!");
+    term::println(EMITTED[4].1);
     // 1000:d57b pushes file `0xB350` `^2Твои переломы залечены.`, printed by
     // 1000:d58f.
-    term::println("^2Твои переломы залечены.");
+    term::println(EMITTED[5].1);
 }
 
 /// `h` -- `1000:d5af`..`1000:d6a3`, `тебя залатают`, 3 rubles for +5 hp.
@@ -265,7 +265,7 @@ fn patch_up(g: &mut Game) {
         // 1000:d68a pushes file `0xB36A`
         // `^4Блин халявщик, медицина не бесплатная` -- the SAME literal the
         // `r` arm refuses with, at its own push site; printed by 1000:d69e.
-        term::println("^4Блин халявщик, медицина не бесплатная");
+        term::println(EMITTED[12].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(3_i16); // 1000:d5d9
@@ -283,34 +283,69 @@ fn patch_up(g: &mut Game) {
             // 1000:d600 pushes file `0xB394`
             // `^0Щас гайки подтянем и будешь как новый!`, printed by
             // 1000:d614.
-            term::println("^0Щас гайки подтянем и будешь как новый!");
+            term::println(EMITTED[7].1);
         }
         // 1000:d61b / 1000:d61e.
         2 => {
             // 1000:d620 pushes file `0xB3BD`
             // `^0Так чё тут у нас? Ага, пара швов и всё будет в порядке.`,
             // printed by 1000:d634.
-            term::println("^0Так чё тут у нас? Ага, пара швов и всё будет в порядке.");
+            term::println(EMITTED[8].1);
         }
         // 1000:d63b -- the fall-through of both compares, i.e. a draw of 0,
         // and the only arm with two lines.
         _ => {
             // 1000:d63b pushes file `0xB3F7`
             // `^6Эй, Док а зачем тебе паяльник?`, printed by 1000:d64f.
-            term::println("^6Эй, Док а зачем тебе паяльник?");
+            term::println(EMITTED[9].1);
             // 1000:d654 pushes file `0xB418` `^0Док: Молчи животное!`,
             // printed by 1000:d668.
-            term::println("^0Док: Молчи животное!");
+            term::println(EMITTED[10].1);
         }
     }
     // 1000:d66d pushes file `0xB42F` `^2Здоровья #/#`, whose two `#` are
     // 1000:d672's hp and 1000:d676's hpmax, in that order; printed by
     // 1000:d683.
     term::println(&text::fill(
-        "^2Здоровья #/#",
+        EMITTED[11].1,
         &[i64::from(g.player.hp), i64::from(g.player.hpmax)],
     ));
 }
+
+/// The literal pool for the vet -- `1000:d3a6`..`1000:d6e8`, in the image's
+/// ADDRESS order, the order `tools/difftest.py`'s `literal_walk` reads them
+/// in. The span's last five bytes are trimmed: they push the NEXT verb's
+/// key literal, which a call past the end consumes, so a walk including
+/// them reports a literal nothing in the span takes.
+///
+/// `docs/re/port-gaps.md` recorded that the club and gym rest on their
+/// module-local unit tests, with `difftest` carrying their MENU rows and
+/// nothing else. This pool is the arm bodies' half of that comparison.
+///
+/// `(closes, text)` -- `closes` is true for a `WriteLn`, false for a
+/// `Write` the next literal continues.
+pub(crate) const EMITTED: [(bool, &str); 14] = [
+    (
+        true,
+        "Ты пришел на ремот, к ветеринару напиши  ^6w^7  чтобы уйти",
+    ), // 1000:d3ba
+    (true, "^0Док: не волнуйся всё зарастёт как на собаке"), // 1000:d3f7
+    (true, "^0Док: вали отсюда ты здоров."),                 // 1000:d4d1
+    (false, "^0Ветеренар\\"),                                // 1000:d4ed
+    (true, "^0Ого! да тебя не иначе как грузовик откатал!"), // 1000:d562
+    (true, "^2Твои переломы залечены."),                     // 1000:d57b
+    (true, "^4Блин халявщик, медицина не бесплатная"),       // 1000:d596
+    (true, "^0Щас гайки подтянем и будешь как новый!"),      // 1000:d600
+    (
+        true,
+        "^0Так чё тут у нас? Ага, пара швов и всё будет в порядке.",
+    ), // 1000:d620
+    (true, "^6Эй, Док а зачем тебе паяльник?"),              // 1000:d63b
+    (true, "^0Док: Молчи животное!"),                        // 1000:d654
+    (true, "^2Здоровья #/#"),                                // 1000:d66d
+    (true, "^4Блин халявщик, медицина не бесплатная"),       // 1000:d68a
+    (true, "^6Сначала найди где находтся эта больница"),     // 1000:d6ca
+];
 
 #[cfg(test)]
 mod tests {

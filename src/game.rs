@@ -1134,10 +1134,10 @@ impl Game {
             Mode::Street => "\\",
             Mode::Shop(Location::Market) => "^0Базар\\",
             Mode::Shop(Location::Dealers) => "^0Барыги\\",
-            Mode::Shop(Location::Vet) => "^0Ветеренар\\",
+            Mode::Shop(Location::Vet) => crate::vet::EMITTED[3].1,
             Mode::Shop(Location::Den) => den::EMITTED[13].1,
-            Mode::Shop(Location::Club) => "^0Клуб\\",
-            Mode::Shop(Location::Gym) => "^0Качалка\\",
+            Mode::Shop(Location::Club) => crate::club::EMITTED[3].1,
+            Mode::Shop(Location::Gym) => crate::gym::EMITTED[1].1,
             Mode::Shop(_) => "\\",
         };
         term::print(p);
@@ -1274,9 +1274,9 @@ impl Game {
             }
             Location::Den => den::EMITTED[30].1,
             Location::Girl => "^4У тебя пока нет девчонки.",
-            Location::Vet => "^6Сначала найди где находтся эта больница",
-            Location::Club => "^6Ты пока что неузнал где в этом районе клуб",
-            Location::Gym => "^6Ты пока незнаешь где в этом районе качалка",
+            Location::Vet => crate::vet::EMITTED[13].1,
+            Location::Club => crate::club::EMITTED[19].1,
+            Location::Gym => crate::gym::EMITTED[20].1,
             Location::Street | Location::Temple | Location::Dorm => "",
         }
     }
@@ -1355,7 +1355,7 @@ impl Game {
         if loc == Location::Club && self.club_ban_countdown > 0 {
             // 1000:df21 pushes file `0xB9BD`
             // `^6Тебе не стоит пока туда соваться`.
-            term::println("^6Тебе не стоит пока туда соваться");
+            term::println(crate::club::EMITTED[0].1);
             return;
         }
         // 1000:b95e `cmp byte [0x3b76],0x0` / 1000:b963 `jz 0xb968` -- the
@@ -1494,7 +1494,7 @@ impl Game {
                 self.print_priced_rows("bmar");
             }
             Location::Vet => {
-                term::println("Ты пришел на ремот, к ветеринару напиши  ^6w^7  чтобы уйти");
+                term::println(crate::vet::EMITTED[0].1);
                 // 1000:d3d3..1000:d3f2, the predicate spelled into `al`:
                 // `1000:d3d6 cmp ax,[0x38ae]` / `1000:d3da jl 0xd3ea`, then
                 // `1000:d3dc cmp byte [0x38b0],0x0` / `1000:d3e1 jnz 0xd3ea`,
@@ -1510,7 +1510,7 @@ impl Game {
                 {
                     return;
                 }
-                term::println("^0Док: не волнуйся всё зарастёт как на собаке");
+                term::println(crate::vet::EMITTED[1].1);
                 // 1000:d423 / 1000:d478: prefix + affordability digit + text.
                 self.print_imm_rows("rep");
             }
@@ -1522,12 +1522,12 @@ impl Game {
                 self.print_den_menu();
             }
             Location::Club => {
-                term::println("Ты пришел в клуб напиши  ^6w^7  чтобы уйти");
-                term::println(" Здесь можно сыграть в карты (^6p^7 Минимальная ставка- 5р.)");
+                term::println(crate::club::EMITTED[1].1);
+                term::println(crate::club::EMITTED[2].1);
                 self.print_imm_rows("kl");
             }
             Location::Gym => {
-                term::println("Ты пришел в качалку напиши  ^6w^7  чтобы уйти");
+                term::println(crate::gym::EMITTED[0].1);
                 self.print_imm_rows("trn");
             }
             Location::Girl | Location::Street | Location::Temple | Location::Dorm => {}
@@ -2868,39 +2868,31 @@ impl Game {
     fn show_command_list(&self) {
         // 1000:ea9e, printed by 1000:eab2. file `0xBFE0`
         // `Напиши: ^6w^7    чтобы шататься по окрестностям - искать на свою жопу приключения`
-        term::println(
-            "Напиши: ^6w^7    чтобы шататься по окрестностям - искать на свою жопу приключения",
-        );
+        term::println(COMMAND_LIST[0].1);
         // The seven gated lines, in the original's gate order. Each tuple is
         // (the flag the gate reads, the line the fall-through prints).
         for (loc, line) in [
             // 1000:eab7 / 1000:eabc; pushed 1000:eabe, printed 1000:ead2.
             // file `0xC032` `Напиши: ^6mar^7  чтобы идти на рынок`
-            (Location::Market, "Напиши: ^6mar^7  чтобы идти на рынок"),
+            (Location::Market, COMMAND_LIST[1].1),
             // 1000:ead7 / 1000:eadc; pushed 1000:eade, printed 1000:eaf2.
             // file `0xC057` `Напиши: ^6bmar^7 чтобы идти к барыгам`
-            (Location::Dealers, "Напиши: ^6bmar^7 чтобы идти к барыгам"),
+            (Location::Dealers, COMMAND_LIST[2].1),
             // 1000:eaf7 / 1000:eafc; pushed 1000:eafe, printed 1000:eb12.
             // file `0xC07D` `Напиши: ^6rep^7  чтобы идти к ветеринару`
-            (Location::Vet, "Напиши: ^6rep^7  чтобы идти к ветеринару"),
+            (Location::Vet, COMMAND_LIST[3].1),
             // 1000:eb17 / 1000:eb1c; pushed 1000:eb1e, printed 1000:eb32.
             // file `0xC0A6` `Напиши: ^6girl^7 чтобы завалиться к своей девчонке`
-            (
-                Location::Girl,
-                "Напиши: ^6girl^7 чтобы завалиться к своей девчонке",
-            ),
+            (Location::Girl, COMMAND_LIST[4].1),
             // 1000:eb37 / 1000:eb3c; pushed 1000:eb3e, printed 1000:eb52.
             // file `0xC0D9` `Напиши: ^6pr^7   чтобы идти в местный притон гопоты`
-            (
-                Location::Den,
-                "Напиши: ^6pr^7   чтобы идти в местный притон гопоты",
-            ),
+            (Location::Den, COMMAND_LIST[5].1),
             // 1000:eb57 / 1000:eb5c; pushed 1000:eb5e, printed 1000:eb72.
             // file `0xC10D` `Напиши: ^6kl^7   чтобы идти в клуб`
-            (Location::Club, "Напиши: ^6kl^7   чтобы идти в клуб"),
+            (Location::Club, COMMAND_LIST[6].1),
             // 1000:eb77 / 1000:eb7c; pushed 1000:eb7e, printed 1000:eb92.
             // file `0xC130` `Напиши: ^6trn^7  чтобы идти в качалку`
-            (Location::Gym, "Напиши: ^6trn^7  чтобы идти в качалку"),
+            (Location::Gym, COMMAND_LIST[7].1),
         ] {
             if self.places.is_found(loc) {
                 term::println(line);
@@ -2909,31 +2901,31 @@ impl Game {
         for line in [
             // 1000:eb97, printed 1000:ebab. file `0xC156`
             // `Напиши: ^6s^7    чтобы посмотреть в лужу на свою уродскую рожу`
-            "Напиши: ^6s^7    чтобы посмотреть в лужу на свою уродскую рожу",
+            COMMAND_LIST[8].1,
             // 1000:ebb0, printed 1000:ebc4. file `0xC195`
             // `Напиши: ^6sv^7   чтобы приглядеться к пинаемому мудаку`
-            "Напиши: ^6sv^7   чтобы приглядеться к пинаемому мудаку",
+            COMMAND_LIST[9].1,
             // 1000:ebc9, printed 1000:ebdd. file `0xC1CC`
             // `Напиши: ^6k^7    чтобы гасить мудака который тебе попался на дороге`
-            "Напиши: ^6k^7    чтобы гасить мудака который тебе попался на дороге",
+            COMMAND_LIST[10].1,
             // 1000:ebe2, printed 1000:ebf6. file `0xC210`
             // `Напиши: ^6v^7    чтобы позвать подкрепление`
-            "Напиши: ^6v^7    чтобы позвать подкрепление",
+            COMMAND_LIST[11].1,
             // 1000:ebfb, printed 1000:ec0f. file `0xC23C`
             // `Напиши: ^6kos^7  чтобы схавать косяк`
-            "Напиши: ^6kos^7  чтобы схавать косяк",
+            COMMAND_LIST[12].1,
             // 1000:ec14, printed 1000:ec28. file `0xC261`
             // `Напиши: ^6h^7    чтобы выпить пиво (если не охото к ветеринару)`
-            "Напиши: ^6h^7    чтобы выпить пиво (если не охото к ветеринару)",
+            COMMAND_LIST[13].1,
             // 1000:ec2d, printed 1000:ec41. file `0xC2A1`
             // `Напиши: ^6mh^7   чтобы набухаться до чёртиков`
-            "Напиши: ^6mh^7   чтобы набухаться до чёртиков",
+            COMMAND_LIST[14].1,
             // 1000:ec46, printed 1000:ec5a. file `0xC2CF`
             // `Напиши: ^6name^7 чтобы сменить погоняло`
-            "Напиши: ^6name^7 чтобы сменить погоняло",
+            COMMAND_LIST[15].1,
             // 1000:ec5f, printed 1000:ec73. file `0xC2F7`
             // `Напиши: ^6e^7    если захочешь выйти`
-            "Напиши: ^6e^7    если захочешь выйти",
+            COMMAND_LIST[16].1,
         ] {
             term::println(line);
         }
@@ -4284,7 +4276,7 @@ impl Game {
     fn smoke(&mut self, site: Joint) {
         // 1000:e97d / 1000:e982 -- the fallthrough 1000:e984 is the refusal.
         if self.player.broken_jaw {
-            term::println("^4Ты не схавать колёса из-за сломаной челюсти.");
+            term::println(crate::gym::EMITTED[21].1);
             return;
         }
         // 1000:e9a0 / 1000:e9a5 -- 1000:e9a7 jumps to 1000:ea71. The fight
@@ -4292,7 +4284,7 @@ impl Game {
         // with the sense inverted: there a ZERO countdown falls INTO the
         // smoke and a non-zero takes 1000:4b41 `jmp 0x4c0b` to the refusal.
         if self.player.stoned {
-            term::println("^6Ты неможешь схавать ещё один косяк.");
+            term::println(crate::gym::EMITTED[27].1);
             return;
         }
         // 1000:e9aa `cmp word [0x38c5],0x0` / 1000:e9af `jnle 0xe9b4` --
@@ -4301,7 +4293,7 @@ impl Game {
         // This read `== 0` while the field was `u16`, which agreed for every
         // non-negative value and could not express the rest.
         if self.player.joints <= 0 {
-            term::println("^4У тебя нет косяков");
+            term::println(crate::gym::EMITTED[26].1);
             return;
         }
         self.player.joints -= 1;
@@ -4328,10 +4320,10 @@ impl Game {
         // divergence and what would settle it.
         let shortfall = self.player.hpmax.saturating_sub(self.player.hp);
         if shortfall < 10 {
-            term::print(&text::fill("^2Колёса прибавляют #з. ", &[shortfall as i64]));
+            term::print(&text::fill(crate::gym::EMITTED[22].1, &[shortfall as i64]));
             self.player.hp = self.player.hpmax;
             term::println(&text::fill(
-                "^2Здоровья:#/#. Осталось # косяков",
+                crate::gym::EMITTED[23].1,
                 &[
                     self.player.hp as i64,
                     self.player.hpmax as i64,
@@ -4350,7 +4342,7 @@ impl Game {
                 ],
             ));
         }
-        term::println("^2Сила +2.");
+        term::println(crate::gym::EMITTED[25].1);
     }
 
     /// `h` (one 0.5-litre unit) or `mh` (drink until full or dry).
@@ -7611,12 +7603,59 @@ impl Joint {
     fn long_heal_line(self) -> &'static str {
         match self {
             // file 0xBF5E, loaded by `bf 8e a6` at 1000:ea1e.
-            Joint::Street => "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косякова",
+            Joint::Street => crate::gym::EMITTED[24].1,
             // file 0x4DF0, loaded by `bf 20 35` at 1000:4bb8.
             Joint::Fight => "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косяков",
         }
     }
 }
+
+/// The literal pool for the street command list -- `1000:ea94`..`1000:ec7d`, in the image's
+/// ADDRESS order, the order `tools/difftest.py`'s `literal_walk` reads them
+/// in. The span's last five bytes are trimmed: they push the NEXT verb's
+/// key literal, which a call past the end consumes, so a walk including
+/// them reports a literal nothing in the span takes.
+///
+/// `docs/re/port-gaps.md` recorded that the club and gym rest on their
+/// module-local unit tests, with `difftest` carrying their MENU rows and
+/// nothing else. This pool is the arm bodies' half of that comparison.
+///
+/// `(closes, text)` -- `closes` is true for a `WriteLn`, false for a
+/// `Write` the next literal continues.
+pub const COMMAND_LIST: [(bool, &str); 17] = [
+    (
+        true,
+        "Напиши: ^6w^7    чтобы шататься по окрестностям - искать на свою жопу приключения",
+    ), // 1000:ea9e
+    (true, "Напиши: ^6mar^7  чтобы идти на рынок"), // 1000:eabe
+    (true, "Напиши: ^6bmar^7 чтобы идти к барыгам"), // 1000:eade
+    (true, "Напиши: ^6rep^7  чтобы идти к ветеринару"), // 1000:eafe
+    (true, "Напиши: ^6girl^7 чтобы завалиться к своей девчонке"), // 1000:eb1e
+    (true, "Напиши: ^6pr^7   чтобы идти в местный притон гопоты"), // 1000:eb3e
+    (true, "Напиши: ^6kl^7   чтобы идти в клуб"),   // 1000:eb5e
+    (true, "Напиши: ^6trn^7  чтобы идти в качалку"), // 1000:eb7e
+    (
+        true,
+        "Напиши: ^6s^7    чтобы посмотреть в лужу на свою уродскую рожу",
+    ), // 1000:eb97
+    (
+        true,
+        "Напиши: ^6sv^7   чтобы приглядеться к пинаемому мудаку",
+    ), // 1000:ebb0
+    (
+        true,
+        "Напиши: ^6k^7    чтобы гасить мудака который тебе попался на дороге",
+    ), // 1000:ebc9
+    (true, "Напиши: ^6v^7    чтобы позвать подкрепление"), // 1000:ebe2
+    (true, "Напиши: ^6kos^7  чтобы схавать косяк"), // 1000:ebfb
+    (
+        true,
+        "Напиши: ^6h^7    чтобы выпить пиво (если не охото к ветеринару)",
+    ), // 1000:ec14
+    (true, "Напиши: ^6mh^7   чтобы набухаться до чёртиков"), // 1000:ec2d
+    (true, "Напиши: ^6name^7 чтобы сменить погоняло"), // 1000:ec46
+    (true, "Напиши: ^6e^7    если захочешь выйти"), // 1000:ec5f
+];
 
 #[cfg(test)]
 mod tests {

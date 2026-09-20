@@ -1493,6 +1493,46 @@ def mage(img):
 
 
 # ---------------------------------------------------------------------------
+# The shop arm bodies and the street command list
+# ---------------------------------------------------------------------------
+
+#: `(tag, start, stop, literal count)`.  Each stop is five bytes short of
+#: the block's end: those five push the NEXT verb's key literal, which a
+#: call past the stop consumes, and a walk including them raises rather than
+#: comparing a literal nothing in the span takes -- the same shape the den's
+#: `1000:df01` bound has.
+SHOP_SPANS = [
+    ("vet", 0xD3A6, 0xD6E8, 18),
+    ("club", 0xDF06, 0xE38B, 27),
+    ("gym", 0xE390, 0xEA8F, 38),
+    ("cmdlist", 0xEA94, 0xEC7D, 17),
+]
+
+
+def shop_arms(img):
+    """Every shop-arm and command-list record.
+
+    `docs/re/port-gaps.md` on the club and the gym: `difftest` carried
+    `priced_row` / `imm_row_site` / `menu_order` for the MENU rows only and
+    nothing for the arm bodies.  The vet was in the same position, and the
+    command list at `1000:ea94` had no record at all.
+
+    Literals and their `Write`/`WriteLn` shape only.  No gap table: these
+    spans interleave blanks with branchy arms and this port does not lay its
+    arms out in the image's address order, so a gap index would be comparing
+    two different orderings rather than two readings of one thing.
+    """
+    lines = []
+    for tag, lo, hi, want in SHOP_SPANS:
+        emitted, _, _ = literal_walk(img, lo, hi, want)
+        for i, (_, closes, cs) in enumerate(emitted):
+            lines.append("shop_line %s %d %s %s"
+                         % (tag, i, "ln" if closes else "w",
+                            strip_markup(shortstring(img, cs))))
+    return lines
+
+
+# ---------------------------------------------------------------------------
 # The player's character sheet (`FUN_1000_1a03`)
 # ---------------------------------------------------------------------------
 
@@ -1807,6 +1847,12 @@ def reference(img):
     sheet_records = sheet(img)
     lines += sheet_records
     ev["sheet_line"] = sum(1 for l in sheet_records if l.startswith("sheet_line "))
+
+    # The shop arms and the command list -- the last spans resting on
+    # module-local unit tests alone.  Appended last, as above.
+    shop_records = shop_arms(img)
+    lines += shop_records
+    ev["shop_line"] = len(shop_records)
     return lines, ev
 
 

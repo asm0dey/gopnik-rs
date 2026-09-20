@@ -185,15 +185,12 @@ fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>)
     if stake > i32::from(g.player.money) {
         // 1000:e258 pushes file `0xBBA4` `^6Не хватает денег - надо #.`,
         // whose `#` is 1000:e25d's read of the stake; printed by 1000:e26f.
-        term::println(&text::fill(
-            "^6Не хватает денег - надо #.",
-            &[i64::from(stake)],
-        ));
+        term::println(&text::fill(EMITTED[12].1, &[i64::from(stake)]));
         return Ok(());
     }
     // 1000:e087 pushes file `0xBABA` `Ты поставил # рублей`, `#` from
     // 1000:e08c; printed by 1000:e09e.
-    term::println(&text::fill("Ты поставил # рублей", &[i64::from(stake)]));
+    term::println(&text::fill(EMITTED[4].1, &[i64::from(stake)]));
     g.player.money = g.player.money.wrapping_sub(stake as i16); // 1000:e0a8
 
     // 1000:e0ac..1000:e0b4 build the `n`; 1000:e0b7 is the draw.
@@ -203,7 +200,7 @@ fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>)
     if Game::luck_below_random_32(g.player.luck, draw) {
         // 1000:e129 pushes file `0xBAE6` `^4Ты проиграл # рублей`, `#` from
         // 1000:e12e; printed by 1000:e140.
-        term::println(&text::fill("^4Ты проиграл # рублей", &[i64::from(stake)]));
+        term::println(&text::fill(EMITTED[7].1, &[i64::from(stake)]));
         // 1000:e145 -- and nothing else. The money already left at
         // 1000:e0a8; the lose path 1000:e129..1000:e14a carries zero
         // instructions that touch `20ae:38c7`.
@@ -215,16 +212,13 @@ fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>)
         // 1000:e0db pushes file `0xBACF` `^2Ты выиграл # рублей ` (the
         // trailing space is the original's), `#` from 1000:e0e0 -- the
         // stake BEFORE 1000:e0f7 raises it; printed by 1000:e0f2.
-        term::println(&text::fill("^2Ты выиграл # рублей ", &[i64::from(stake)]));
+        term::println(&text::fill(EMITTED[5].1, &[i64::from(stake)]));
         g.club_stake += 2; // 1000:e0f7
         let xp = u16::from(g.district); // 1000:e101..1000:e104
 
         // 1000:e0fc pushes file `0xA95B` `^6Ты получаешь # качков опыта`,
         // printed by 1000:e113 -- BEFORE 1000:e11d credits the same value.
-        term::println(&text::fill(
-            "^6Ты получаешь # качков опыта",
-            &[i64::from(xp)],
-        ));
+        term::println(&text::fill(EMITTED[6].1, &[i64::from(xp)]));
         // 1000:e11d `add [0x38ce],ax` is the xp credit and 1000:e124 is the
         // level-up call. **The two parameters are not the same thing**:
         // `xp` here is [`progress::apply_levels`]'s `award`, which models the
@@ -244,10 +238,7 @@ fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>)
         // 1000:e158 pushes file `0xBAFD`
         // `^6Ставки изменились. Теперь ставка - #`, `#` from 1000:e15d;
         // printed by 1000:e16f.
-        term::println(&text::fill(
-            "^6Ставки изменились. Теперь ставка - #",
-            &[i64::from(g.club_stake)],
-        ));
+        term::println(&text::fill(EMITTED[8].1, &[i64::from(g.club_stake)]));
     }
     // 1000:e174 / 1000:e179 -- `jnb`, so 17 exactly is caught.
     if g.club_stake >= 17 {
@@ -317,7 +308,7 @@ fn caught_cheating(
 
     // 1000:e189 pushes file `0xBB24` `^4Козёл! Да ты мухлевал!`, printed by
     // 1000:e19d.
-    term::println("^4Козёл! Да ты мухлевал!");
+    term::println(EMITTED[9].1);
     // 1000:e1a8 pushes file `0xA990` `^6Это `, 1000:e1b2..1000:e1ba indexes
     // the rank table, 1000:e1c5 pushes file `0xA997` ` # уровня.` with
     // 1000:e1cf's `20ae:395c` as its `#`; one WriteLn at 1000:e1df.
@@ -330,10 +321,7 @@ fn caught_cheating(
     // 1000:e1e4 pushes file `0xBB3D`
     // `^6Ты получаешь # качков опыта за победу в игре`, printed by
     // 1000:e203 -- BEFORE 1000:e215 credits it.
-    term::println(&text::fill(
-        "^6Ты получаешь # качков опыта за победу в игре",
-        &[i64::from(xp)],
-    ));
+    term::println(&text::fill(EMITTED[10].1, &[i64::from(xp)]));
     // 1000:e215 is the credit and 1000:e21c the call; `xp` is
     // `apply_levels`'s `award` (modelling the `add`) and `false` is the
     // original's `param_1 = 0` from 1000:e219 -- see `play_cards` above.
@@ -345,7 +333,7 @@ fn caught_cheating(
     // 1000:e225 pushes file `0xBB6C`
     // `^6Уноси ноги, пока не отобрали деньги другие канадидаты`, printed by
     // 1000:e239.
-    term::println("^6Уноси ноги, пока не отобрали деньги другие канадидаты");
+    term::println(EMITTED[11].1);
     g.club_ban_countdown = 5; // 1000:e23e
 
     // 1000:e243..1000:e251 -- the `w` written into 20ae:3a72.
@@ -376,19 +364,19 @@ fn dance(g: &mut Game) {
     if g.player.money < 15 {
         // 1000:e28c pushes file `0xA71D` `^4Не хватает`, printed by
         // 1000:e2a0; 1000:e2a5 leaves.
-        term::println("^4Не хватает");
+        term::println(EMITTED[13].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(15_i16); // 1000:e2a7
 
     // 1000:e2ac pushes file `0xBBC1` `^2Ты прокачиваешь ловкость.`, printed
     // by 1000:e2c0 -- BEFORE the store.
-    term::println("^2Ты прокачиваешь ловкость.");
+    term::println(EMITTED[14].1);
     g.player.agility += 1; // 1000:e2c5
 
     // 1000:e2c9 pushes file `0xACDD` `^1Ловкость +1 ` (the trailing space is
     // the original's), printed by 1000:e2dd.
-    term::println("^1Ловкость +1 ");
+    term::println(EMITTED[15].1);
 }
 
 /// `2` -- `1000:e2e2`..`1000:e357`, `разузнать приемы мухлёжников`,
@@ -415,20 +403,61 @@ fn learn_tricks(g: &mut Game) {
     if g.player.money < 22 {
         // 1000:e301 pushes file `0xA71D` `^4Не хватает`, printed by
         // 1000:e315; 1000:e31a leaves.
-        term::println("^4Не хватает");
+        term::println(EMITTED[16].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(22_i16); // 1000:e31c
 
     // 1000:e321 pushes file `0xBBDD` `^2Ты прокачиваешь удачу.`, printed by
     // 1000:e335.
-    term::println("^2Ты прокачиваешь удачу.");
+    term::println(EMITTED[17].1);
     g.player.luck += 1; // 1000:e33a
 
     // 1000:e33e pushes file `0xACFC` `^1Удача +1 ` (the trailing space is
     // the original's), printed by 1000:e352.
-    term::println("^1Удача +1 ");
+    term::println(EMITTED[18].1);
 }
+
+/// The literal pool for the club -- `1000:df06`..`1000:e38b`, in the image's
+/// ADDRESS order, the order `tools/difftest.py`'s `literal_walk` reads them
+/// in. The span's last five bytes are trimmed: they push the NEXT verb's
+/// key literal, which a call past the end consumes, so a walk including
+/// them reports a literal nothing in the span takes.
+///
+/// `docs/re/port-gaps.md` recorded that the club and gym rest on their
+/// module-local unit tests, with `difftest` carrying their MENU rows and
+/// nothing else. This pool is the arm bodies' half of that comparison.
+///
+/// `(closes, text)` -- `closes` is true for a `WriteLn`, false for a
+/// `Write` the next literal continues.
+pub(crate) const EMITTED: [(bool, &str); 20] = [
+    (true, "^6Тебе не стоит пока туда соваться"), // 1000:df21
+    (true, "Ты пришел в клуб напиши  ^6w^7  чтобы уйти"), // 1000:df3d
+    (
+        true,
+        " Здесь можно сыграть в карты (^6p^7 Минимальная ставка- 5р.)",
+    ), // 1000:df56
+    (false, "^0Клуб\\"),                          // 1000:e025
+    (true, "Ты поставил # рублей"),               // 1000:e087
+    (true, "^2Ты выиграл # рублей "),             // 1000:e0db
+    (true, "^6Ты получаешь # качков опыта"),      // 1000:e0fc
+    (true, "^4Ты проиграл # рублей"),             // 1000:e129
+    (true, "^6Ставки изменились. Теперь ставка - #"), // 1000:e158
+    (true, "^4Козёл! Да ты мухлевал!"),           // 1000:e189
+    (true, "^6Ты получаешь # качков опыта за победу в игре"), // 1000:e1e4
+    (
+        true,
+        "^6Уноси ноги, пока не отобрали деньги другие канадидаты",
+    ), // 1000:e225
+    (true, "^6Не хватает денег - надо #."),       // 1000:e258
+    (true, "^4Не хватает"),                       // 1000:e28c
+    (true, "^2Ты прокачиваешь ловкость."),        // 1000:e2ac
+    (true, "^1Ловкость +1 "),                     // 1000:e2c9
+    (true, "^4Не хватает"),                       // 1000:e301
+    (true, "^2Ты прокачиваешь удачу."),           // 1000:e321
+    (true, "^1Удача +1 "),                        // 1000:e33e
+    (true, "^6Ты пока что неузнал где в этом районе клуб"), // 1000:e36d
+];
 
 #[cfg(test)]
 mod tests {

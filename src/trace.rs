@@ -114,11 +114,13 @@ use std::io::{self, Write};
 
 use crate::character_sheet;
 use crate::church;
+use crate::club;
 use crate::data;
 use crate::den;
 use crate::ending;
 use crate::enemy_sheet;
 use crate::game::IMM_ROWS;
+use crate::gym;
 use crate::market;
 use crate::model::Fighter;
 use crate::opening;
@@ -127,6 +129,7 @@ use crate::progress::{
 };
 use crate::spoils;
 use crate::text;
+use crate::vet;
 use crate::wander;
 
 /// Reads one field of a fighter record as a signed number, so a grant's
@@ -305,6 +308,7 @@ pub fn emit(out: &mut impl Write) -> io::Result<()> {
     den_records(out)?;
     spoils_records(out)?;
     sheet_records(out)?;
+    shop_arm_records(out)?;
 
     Ok(())
 }
@@ -444,6 +448,40 @@ type MarketGroup = (
     opening::Gaps,
     &'static [&'static str],
 );
+
+/// The shop arm bodies and the street command list -- the last spans
+/// `docs/re/port-gaps.md` left resting on module-local unit tests alone.
+/// Appended after [`sheet_records`] so no record above moves.
+///
+/// Its own words on the club and the gym: "`difftest.py` carries
+/// `priced_row` / `imm_row_site` / `menu_order` records for the MENU rows
+/// only, nothing for the arm bodies, and the real port-behaviour coverage
+/// is the module-local unit tests in `src/club.rs` (14) and `src/gym.rs`
+/// (26)." The vet was in the same position, and the street command list at
+/// `1000:ea94` had nothing at all -- a `чтобы` grep over the stream
+/// returned ten records and not one of its seventeen lines.
+///
+/// Four pools, each in the module that prints it, each in the image's
+/// address order. No gap tables: these spans interleave their blanks with
+/// branchy arms, and this port's arms are not laid out in the image's
+/// address order, so a gap index would compare two different orderings.
+/// The literals and their `Write`/`WriteLn` shape are what both sides
+/// agree on.
+fn shop_arm_records(out: &mut impl Write) -> io::Result<()> {
+    let groups: [(&str, &[(bool, &str)]); 4] = [
+        ("vet", &vet::EMITTED),
+        ("club", &club::EMITTED),
+        ("gym", &gym::EMITTED),
+        ("cmdlist", &crate::game::COMMAND_LIST),
+    ];
+    for (tag, rows) in groups {
+        for (i, (closes, line)) in rows.iter().enumerate() {
+            let how = if *closes { "ln" } else { "w" };
+            writeln!(out, "shop_line {tag} {i} {how} {}", text::strip(line))?;
+        }
+    }
+    Ok(())
+}
 
 /// The player's character sheet -- `FUN_1000_1a03`
 /// (`1000:1a03`..`1000:248f`). Appended after [`spoils_records`] so no
