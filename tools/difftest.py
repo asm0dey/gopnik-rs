@@ -695,6 +695,39 @@ def endscreen_gaps(img):
                                   seed=[(s, "C") for s in composed])]
 
 
+#: `1000:0aec`..`1000:0d14` -- `FUN_1000_0aec`, the victory marquee.  The
+#: span holds NO emitted literal: every one of its eleven CS literals goes
+#: to the string RTL, and the assembled frame is the single `WriteLn` at
+#: `1000:0ce0`.
+MARQUEE_SPAN = (0x0AEC, 0x0D14)
+
+#: The eleven fragments of the `1000:0acb` pool.
+MARQUEE_LITERALS = 11
+
+
+def marquee_pool(img):
+    """The marquee's eleven fragments and its shape.
+
+    The `marquee word` record already re-derived `ТЫ СУПЕР ГОП` from these,
+    but only ASSEMBLED -- it could not tell which fragment was wrong, nor
+    notice a `^` moving from the end of one to the start of the next.  These
+    records compare them one by one, and the gap record carries the frame
+    `WriteLn` and the two `ReadKey`s at `1000:0d00`/`0d05`.
+    """
+    emitted, composed, fragments = literal_walk(img, *MARQUEE_SPAN, MARQUEE_LITERALS)
+    if emitted:
+        raise DifftestError(
+            "1000:%04x..%04x was read as fragment-only, but the walk found "
+            "%d emitted literals" % (MARQUEE_SPAN + (len(emitted),)))
+    lo, hi = MARQUEE_SPAN
+    lines = ["marquee_fragment %d %s" % (i, strip_markup(shortstring(img, cs)))
+             for i, (_, cs) in enumerate(fragments)]
+    lines += ["marquee_gap %d %s" % (i, seq)
+              for i, seq in gaps_of(img, [], lo, hi,
+                                    seed=[(s, "C") for s in composed])]
+    return lines
+
+
 def errand_awards(img):
     """`1000:57ce`'s two lines, each with the district multiplier it fills."""
     hits = literal_sites(img, DISTRICT_FILL_WRITELN_RE, 0x57CE, 0x5838)
@@ -790,6 +823,8 @@ def endings(img):
     # The end screen's SHAPE, between the three lines above and the banner
     # rows below -- the part the Phase 3 audit found no record carried.
     lines += endscreen_gaps(img)
+    # The marquee's fragment pool and shape, beside the end screen's.
+    lines += marquee_pool(img)
     for mult, text in errand_awards(img):
         lines.append("errand_award %d %s" % (mult, text))
     indent, rows = banner(img)

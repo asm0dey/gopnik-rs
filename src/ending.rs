@@ -208,20 +208,53 @@ pub const MARQUEE_PHASES: u16 = 9;
 /// overwritten before it is read.
 pub fn marquee_frame(phase: u16) -> String {
     let d = |i: u16| char::from(b'0' + ((i + phase - 1) % 8) as u8);
-    format!(
-        "^{}Т^{}Ы ^{}С^{}У^{}П^{}Е^{}Р ^{}Г^{}О^{}П",
-        d(1),
-        d(2),
-        d(3),
-        d(4),
-        d(5),
-        d(6),
-        d(7),
-        d(8),
-        d(9),
-        d(10),
-    )
+    let mut out = String::new();
+    for (i, fragment) in MARQUEE_FRAGMENTS.iter().enumerate() {
+        out.push_str(fragment);
+        // Ten digits for eleven fragments: every one but the last is
+        // followed by its rotating colour digit, which is what makes the
+        // final `П` carry none.
+        if let Ok(nth) = u16::try_from(i + 1) {
+            if nth < MARQUEE_FRAGMENTS.len() as u16 {
+                out.push(d(nth));
+            }
+        }
+    }
+    out
 }
+
+/// The eleven literals of the `1000:0acb` pool, in the image's address
+/// order -- `1000:0b9b`, `0bb9`, `0bd7`, `0bf5`, `0c13`, `0c31`, `0c4f`,
+/// `0c6d`, `0c8b`, `0ca9`, `0cc7`. Interleaved with the ten rotating digits
+/// they spell `ТЫ СУПЕР ГОП`.
+///
+/// **Held as a table so `difftest` can compare them one by one.** They used
+/// to be a single `format!` template, which meant the `marquee word` record
+/// -- the only one that touched them -- compared the assembled result and
+/// could not tell which fragment was wrong, or notice a `^` moving between
+/// two of them.
+pub const MARQUEE_FRAGMENTS: [&str; 11] = [
+    "^",   // 1000:0b9b
+    "Т^",  // 1000:0bb9
+    "Ы ^", // 1000:0bd7
+    "С^",  // 1000:0bf5
+    "У^",  // 1000:0c13
+    "П^",  // 1000:0c31
+    "Е^",  // 1000:0c4f
+    "Р ^", // 1000:0c6d
+    "Г^",  // 1000:0c8b
+    "О^",  // 1000:0ca9
+    "П",   // 1000:0cc7
+];
+
+/// What the marquee's span holds between its frames, as `(index, events)`
+/// over its emitted literals -- of which there are NONE, so everything
+/// lands at index 0. `C` is the assembled frame `WriteLn` at `1000:0ce0`,
+/// and the two `K`s are the `ReadKey`s at `1000:0d00` and `1000:0d05`.
+///
+/// Read off the port: [`marquee`] prints one composed line per frame and
+/// then reads two keys before handing over to [`end_screen`].
+pub const MARQUEE_GAPS: &[(usize, &str)] = &[(0, "CKK")];
 
 /// `FUN_1000_0aec` -- the victory marquee, then the end screen.
 ///

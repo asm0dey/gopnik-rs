@@ -720,6 +720,17 @@ fn endings(out: &mut impl Write) -> io::Result<()> {
     for (at, events) in ending::END_SCREEN_GAPS {
         writeln!(out, "endscreen_gap {at} {events}")?;
     }
+    // The marquee's own pool and shape -- `1000:0aec`..`0d14`. The `marquee
+    // word` record below compares the eleven fragments ASSEMBLED; these
+    // compare them one by one, so a `^` moving between two of them is
+    // visible. The gap record carries the frame `WriteLn` at `1000:0ce0`
+    // and the two `ReadKey`s at `1000:0d00`/`0d05`.
+    for (i, fragment) in ending::MARQUEE_FRAGMENTS.iter().enumerate() {
+        writeln!(out, "marquee_fragment {i} {}", text::strip(fragment))?;
+    }
+    for (at, events) in ending::MARQUEE_GAPS {
+        writeln!(out, "marquee_gap {at} {events}")?;
+    }
     for (mult, line) in ending::ERRAND_AWARDS {
         writeln!(out, "errand_award {mult} {}", text::strip(line))?;
     }
@@ -799,6 +810,12 @@ mod tests {
     /// key and its own colour digit at run time, so the caret is genuinely
     /// the last character of the literal -- the same case as `1000:1523`,
     /// reached by the same `0f78:0ae7` assign, and faithful on both sides.
+    ///
+    /// The marquee added ten more, and they are the clearest case of all:
+    /// the frame is eleven fragments with ten digits interleaved, so every
+    /// fragment but the last ENDS on the caret its digit completes. The
+    /// list below names each one rather than relaxing to a pattern, so an
+    /// eleventh bare caret appearing anywhere would still fail.
     #[test]
     fn no_colour_markup_survives_into_the_stream() {
         for line in stream() {
@@ -808,14 +825,26 @@ mod tests {
             assert!(!markup, "colour markup reached the trace stream: {line}");
         }
         let carets: Vec<String> = stream().into_iter().filter(|l| l.contains('^')).collect();
-        assert_eq!(
-            carets,
-            vec![
-                "enemy_fragment 6 ^".to_string(),
-                "den_fragment 0 Напиши ^".to_string(),
-                "den_fragment 2 Напиши ^".to_string(),
-            ]
-        );
+        let want = [
+            // 1000:0b9b..0ca9 -- ten of the marquee's eleven fragments end
+            // on the caret whose digit `marquee_frame` appends. The
+            // eleventh (`П`, 1000:0cc7) carries none, which is what makes
+            // the run ten digits long and not eleven.
+            "marquee_fragment 0 ^",
+            "marquee_fragment 1 Т^",
+            "marquee_fragment 2 Ы ^",
+            "marquee_fragment 3 С^",
+            "marquee_fragment 4 У^",
+            "marquee_fragment 5 П^",
+            "marquee_fragment 6 Е^",
+            "marquee_fragment 7 Р ^",
+            "marquee_fragment 8 Г^",
+            "marquee_fragment 9 О^",
+            "enemy_fragment 6 ^",
+            "den_fragment 0 Напиши ^",
+            "den_fragment 2 Напиши ^",
+        ];
+        assert_eq!(carets, want.map(str::to_string).to_vec());
     }
 
     /// The literal numbering each menu prints, per `docs/re/difftest.md`'s
