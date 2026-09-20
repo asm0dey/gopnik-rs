@@ -77,12 +77,17 @@ fn create_character(stdin: &mut impl BufRead) -> (Fighter, Progress) {
     // stay nonempty and be kept, exactly like `rename`.
     let name = name.trim_end_matches(['\n', '\r']);
     let name = if name.is_empty() {
+        // 1000:7227 -- CS 0x67e4, substituted into 20ae:379c.
         "Раз^6дол^4бай"
     } else {
         name
     };
+    // 1000:723a..1000:725d -- AFTER the substitution, 20ae:379c is rebuilt
+    // as CS 0x67f2 (`^7 `) + itself, so the default name carries the prefix
+    // too. `crate::persist::NAME_PREFIX` is that literal.
+    let name = format!("{}{name}", persist::NAME_PREFIX);
 
-    progress::new_character(name, answer as u16)
+    progress::new_character(&name, answer as u16)
 }
 
 /// Turbo Pascal's `Val` (`1f78:131b`) leaves the target untouched on a bad

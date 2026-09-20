@@ -100,7 +100,7 @@ use std::path::{Path, PathBuf};
 /// prefix and applies it here, at the format boundary, rather than changing
 /// what every combat line renders -- a divergence in where the prefix lives,
 /// not in what reaches the disk. `docs/re/gaps.md` records it.
-const NAME_PREFIX: &str = "^7 ";
+pub const NAME_PREFIX: &str = "^7 ";
 
 /// The slot keys `1000:6b5e`..`1000:6b7f` accepts, in the order it compares
 /// them. Anything else -- `'1'` included, which is the key the prompt itself
@@ -262,7 +262,9 @@ impl Game {
     pub fn to_save(&self) -> Save {
         let p = &self.player;
         let mut save = Save::blank();
-        save.name = format!("{NAME_PREFIX}{}", p.name);
+        // `20ae:379c` already holds `^7 ` + the typed name (`1000:723a` at
+        // creation, `1000:ed79` on rename), so the record is a straight copy.
+        save.name = p.name.clone();
         // The eight stat words, `20ae:389c` (class), `20ae:389e`,
         // `20ae:38a0`, `20ae:38a2`, `20ae:38a4`, `20ae:38a6` (level),
         // `20ae:38a8`, `20ae:38aa`; then `20ae:38ac`/`20ae:38ae` for hp and
@@ -337,11 +339,9 @@ impl Game {
     pub fn from_save(save: &Save, places: Places, district: u8, seed: u32) -> Game {
         let it = &save.items;
         let player = Fighter {
-            name: save
-                .name
-                .strip_prefix(NAME_PREFIX)
-                .unwrap_or(&save.name)
-                .to_string(),
+            // `1000:6dd7` reads the record's pstring straight into
+            // `20ae:379c`, prefix included -- no strip.
+            name: save.name.clone(),
             class: save.stats[0],
             strength: save.stats[1],
             agility: save.stats[2],

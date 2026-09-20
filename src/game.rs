@@ -4216,11 +4216,17 @@ impl Game {
         // whitespace-only input, which the original does not do. `lines`
         // already strips the line terminator (`BufRead::lines`), so `n` here
         // is exactly the length-byte-tested string.
-        self.player.name = if n.is_empty() {
+        let n = if n.is_empty() {
+            // 1000:ed74 -- CS 0xaad7, the same literal creation uses.
             "Раз^6дол^4бай".to_string()
         } else {
             n
         };
+        // 1000:ed79..1000:ed9c -- AFTER the substitution, `20ae:379c` is
+        // rebuilt as CS 0xaae5 (`^7 `) + itself, exactly as `1000:723a` does
+        // at creation. The prefix lives in the name, not at the save
+        // boundary; `crate::persist::NAME_PREFIX` is the literal.
+        self.player.name = format!("{}{n}", crate::persist::NAME_PREFIX);
         Ok(())
     }
 
@@ -8978,20 +8984,60 @@ mod tests {
 
     /// `1000:ed5f` / `1000:ed74`: an empty rename does not keep the old
     /// name, it installs the default -- the same substitution character
-    /// creation already makes at `1000:7220` / `1000:7227`.
+    /// creation already makes at `1000:7220` / `1000:7227`. Both then get
+    /// the `^7 ` prefix at `1000:ed79`, which is AFTER the substitution, so
+    /// the default carries it too.
     #[test]
     fn an_empty_rename_installs_the_default_name() {
         let mut g = game();
         g.player.name = "Вася".to_string();
         let mut lines = input(&[""]);
         g.rename(&mut lines).unwrap();
-        assert_eq!(g.player.name, "Раз^6дол^4бай");
+        assert_eq!(g.player.name, "^7 Раз^6дол^4бай");
 
         let mut g = game();
         g.player.name = "Вася".to_string();
         let mut lines = input(&["Петя"]);
         g.rename(&mut lines).unwrap();
-        assert_eq!(g.player.name, "Петя");
+        assert_eq!(g.player.name, "^7 Петя");
+    }
+
+    /// The point of carrying `^7 ` in the name rather than adding it at the
+    /// save boundary: `20ae:379c` holds it, so everything that renders the
+    /// name renders it. The character sheet is the visible one --
+    /// `1000:1a03` reads the same variable the save does.
+    ///
+    /// This is the half that was NOT modelled while `persist` added the
+    /// prefix on the way out and stripped it on the way in; the record
+    /// matched the original's bytes and every line on screen was missing a
+    /// colour reset and a leading space.
+    #[test]
+    fn the_name_prefix_reaches_the_character_sheet() {
+        let mut g = game();
+        g.rename(&mut input(&["Петя"])).unwrap();
+        assert_eq!(g.player.name, "^7 Петя");
+        let sheet = character_sheet::lines(&g.player, &g.player.name, &g.sheet_kit());
+        assert!(
+            sheet.iter().any(|l| l.contains("^7 Петя")),
+            "the sheet renders the stored name verbatim: {sheet:?}"
+        );
+    }
+
+    /// And it survives the record in both directions, because the prefix is
+    /// now part of the value rather than something the boundary adds:
+    /// `to_save` copies `20ae:379c` (`1000:761d`) and the load reads it
+    /// straight back (`1000:6dd7`).
+    #[test]
+    fn the_name_prefix_round_trips_through_a_save() {
+        let mut g = game();
+        g.rename(&mut input(&["Петя"])).unwrap();
+        let save = g.to_save();
+        assert_eq!(save.name, "^7 Петя", "the record carries it");
+        let back = Game::from_save(&save, g.places.clone(), g.district, 1);
+        assert_eq!(
+            back.player.name, "^7 Петя",
+            "and the load does not strip it"
+        );
     }
 
     /// `1000:ed5f` `cmp byte [0x379c],0` tests the shortstring's LENGTH
@@ -9006,7 +9052,8 @@ mod tests {
         g.player.name = "Вася".to_string();
         let mut lines = input(&["   "]);
         g.rename(&mut lines).unwrap();
-        assert_eq!(g.player.name, "   ");
+        // `1000:ed79`'s prefix still applies -- it is unconditional.
+        assert_eq!(g.player.name, "^7    ");
     }
 
     /// `mar` row 1, price 2 (`20ae:0b2e`), debited at `1000:bdb3`. The hp

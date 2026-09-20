@@ -93,9 +93,9 @@ fn save_r5_loads_the_character_the_shipped_bytes_describe() {
     assert_eq!(g.player.level, 40);
     assert_eq!(g.player.hp, 325);
     assert_eq!(g.player.hpmax, 325);
-    // The `^7 ` the original prefixes at 1000:723a is stripped at the format
-    // boundary, so the live name is what the player typed.
-    assert_eq!(g.player.name, "Mudila");
+    // `1000:6dd7` reads the record's pstring straight into `20ae:379c`,
+    // prefix included -- the live name IS what the record holds.
+    assert_eq!(g.player.name, "^7 Mudila");
 
     // The two Task 19 spans. SAVE_R5 is the ONLY shipped save whose owner
     // bought a pistol, which is what makes these three assertions
@@ -184,7 +184,10 @@ fn a_fresh_record_matches_what_the_original_starts_a_new_character_with() {
     // data/probes/saveprobe-fresh-record.json, class answer 0, empty name:
     // magic assigned at 1000:6dcd, threshold 10 at 1000:6de0, and every
     // other byte past 0x214 zero.
-    let (player, progress) = gopnik::progress::new_character("Раз^6дол^4бай", 0);
+    // `1000:723a` prefixes `20ae:379c` after the substitution, so the name
+    // a fresh character starts with already carries `^7 ` -- the probe dump
+    // below reads length 0x16, not 0x13.
+    let (player, progress) = gopnik::progress::new_character("^7 Раз^6дол^4бай", 0);
     let g = Game::new(player, progress, 1);
     let bytes = g.to_save().to_bytes().unwrap();
     assert_eq!(bytes.len(), SIZE);
@@ -234,7 +237,7 @@ fn a_fresh_record_is_byte_identical_to_the_probe_dump() {
         .collect();
     assert_eq!(want.len(), SIZE);
 
-    let (player, progress) = gopnik::progress::new_character("Раз^6дол^4бай", 0);
+    let (player, progress) = gopnik::progress::new_character("^7 Раз^6дол^4бай", 0);
     let g = Game::new(player, progress, 1);
     let got = g.to_save().to_bytes().unwrap();
     assert_eq!(
@@ -1250,22 +1253,28 @@ fn the_three_records_the_port_refuses_or_alters_are_the_documented_ones() {
     // The clamp is lossy in one direction only: the record still held them.
     assert_eq!(save.items.junk, -300);
 
-    // 3. A name of exactly 255 CP866 bytes -- the longest the format can
-    //    hold -- cannot survive `Game::to_save`, because the `^7 ` prefix
-    //    (1000:723a) is re-added on the way out. 255 + 3 = 258.
+    // 3. The name is stored WITH its `^7 ` prefix now (1000:723a writes it
+    //    into 20ae:379c), so 255 CP866 bytes is the whole value and it fits
+    //    -- where it used to fail at 258 because the boundary re-added the
+    //    prefix on the way out.
     let mut g = fresh_game();
     g.player.name = "x".repeat(255);
+    assert_eq!(g.to_save().to_bytes().unwrap().len(), SIZE);
+    // 256 is one over, and that is where the format says no.
+    g.player.name = "x".repeat(256);
     let err = g
         .to_save()
         .to_bytes()
-        .expect_err("255 + the 3-byte prefix is over the cap");
+        .expect_err("256 is over the pstring cap");
     assert!(
-        matches!(err, gopnik::save::SaveError::TooLong(258)),
+        matches!(err, gopnik::save::SaveError::TooLong(256)),
         "{err:?}"
     );
-    // 252 is the port's real ceiling for a typed name, and it works.
-    g.player.name = "x".repeat(252);
-    assert_eq!(g.to_save().to_bytes().unwrap().len(), SIZE);
+    // The ORIGINAL cannot reach either case: `1000:ed9c` and `1000:725d`
+    // call `0f78:0b01` with a 255 cap (`mov ax,0xff`), so an over-long
+    // prefixed name is TRUNCATED there rather than refused. This port does
+    // not truncate; the divergence is recorded in `docs/re/gaps.md` and
+    // needs a CP866-aware cut at the two name-entry sites to close.
 }
 
 /// Task 20's review fix (C2): `1000:7347`..`1000:7364`, inside

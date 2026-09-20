@@ -690,10 +690,13 @@ Why each is kept rather than fixed:
 * **The clamps** are the cost of `Fighter` holding `u16` where the record
   holds `Integer`. Widening those three fields is a `crate::model` change,
   and `model.rs` is shared with the combat replays.
-* **The 255-byte name** is a boundary case of the prefix divergence recorded
-  below: the original keeps `^7 ` in the live variable `DS:379c` and this port
-  adds it at the format boundary, so the port's ceiling for a typed name is
-  252 bytes rather than 255.
+* ~~**The 255-byte name** is a boundary case of the prefix divergence
+  recorded below.~~ **Changed by closing that divergence.** The port now
+  keeps `^7 ` in the name, as `DS:379c` does, so 255 CP866 bytes is the whole
+  stored value and it fits; 256 is where the format says no. The remaining
+  difference is the other way round -- the original truncates at
+  `0f78:0b01`'s 255 cap and this port refuses -- and is recorded with the
+  prefix entry below.
 
 **`Game` -> `Save` -> `Game` is not the identity above the original's widths.**
 `Game::to_save` narrows five fields the port had widened — `money` and
@@ -1591,16 +1594,32 @@ entry above (the 255-byte-name bullet) already said so: "the original keeps
 `^7 ` in the live variable `DS:379c` and this port adds it at the format
 boundary". Two entries in one file, disagreeing.
 
-**The display half is what is not modelled**, and that is the whole of the
-remaining divergence: the original's `DS:379c` carries `^7 ` at all times, so
-every line that interpolates the name renders a colour reset and a leading
-space that this port does not. It is a divergence in WHERE the prefix lives,
-which is how `src/persist.rs`'s own doc puts it -- "rather than changing what
-every combat line renders".
+**The display half is now modelled too -- CLOSED.** `Fighter::name` holds
+what `20ae:379c` holds, prefix included: `Game::rename` applies it at
+`1000:ed79` and `main.rs`'s `create_character` at `1000:723a`, both AFTER
+the empty-name substitution, so the default `Раз^6дол^4бай` carries it as
+well. `Game::to_save` copies the name straight into the record and the load
+reads it straight back -- `persist`'s add-on-write / strip-on-read pair is
+gone, because there is nothing left to add or strip.
 
-No capture in `data/rng_trace.json` or `data/state_trace.json` exercises a
-rename or a character creation whose name is compared, so nothing but this
-entry holds the display half.
+The evidence that this is the original's behaviour and not a guess is the
+probe dump: `tests/save_load.rs`'s
+`a_fresh_record_is_byte_identical_to_the_probe_dump` compares the port's
+fresh record against a dump of the ORIGINAL's, and at `.SAV 0x100` that dump
+reads length `0x16` followed by `^7 ` and the name. The port used to write
+`0x13` and no prefix there and the test passed only because the boundary
+re-added it; now both sides are the same bytes for the same reason.
+
+`the_name_prefix_reaches_the_character_sheet` is the display half stated
+directly, and `the_name_prefix_round_trips_through_a_save` the record half.
+
+**One sliver is left, and it is the opposite of the old one.** `1000:ed9c`
+and `1000:725d` call `0f78:0b01` with a 255 cap (`mov ax,0xff`), so the
+original TRUNCATES an over-long prefixed name; this port refuses it with
+`SaveError::TooLong` instead. Closing that needs a CP866-aware cut at the
+two name-entry sites -- the port's `String` is UTF-8 and the cap is counted
+in CP866 bytes, so it is not a `truncate(255)`. Unreachable without a
+250-plus-character name.
 
 ## The vet's charged amounts — CLOSED by Task 34, and the arms were wrong
 
