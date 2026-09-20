@@ -11669,6 +11669,49 @@ mod tests {
         );
     }
 
+    /// `1000:dcd3`..`dcf4`'s threshold -- `(level - (district - 1) * 10) * 2
+    /// + понтовость >= 0x28`, the den's `a` reveal.
+    ///
+    /// **The district term needs two districts to pin.** `cargo mutants`
+    /// left `- 1`→`+ 1` and `* 10`→`/ 10` alive against the existing tests,
+    /// which all sat at district 1 where `(1 - 1) * 10` and `(1 + 1) * 10`
+    /// and `(1 - 1) / 10` are not all distinguishable, and far enough above
+    /// the threshold that the arithmetic never decided the answer. Row 3
+    /// separates the `-`; row 4 separates the `*`, and needs district 3
+    /// because at district 2 the quotient and the product agree on the
+    /// verdict.
+    #[test]
+    fn the_den_reveal_threshold_counts_levels_within_the_district() {
+        // (district, level, понтовость, reveals)
+        for (district, level, ponty, want) in [
+            (1u8, 20u16, 0i16, true), // lid 20 -> 40, exactly 0x28
+            (1, 19, 0, false),        // lid 19 -> 38
+            (1, 19, 2, true),         // the понтовость term reaches it
+            (2, 20, 20, true),        // lid 10 -> 20 + 20; `+ 1` gives -10
+            (3, 30, 0, false),        // lid 10 -> 20; `/ 10` gives lid 30
+        ] {
+            let mut g = game();
+            g.district = district;
+            g.player.level = level;
+            g.pontovost_street = ponty;
+            let out = term::capture::lines(|| g.den_reveal());
+            let label = format!("district {district} level {level} ponty {ponty}");
+            assert_eq!(g.places.is_found(Location::Gym), want, "{label}");
+            assert_eq!(g.places.is_found(Location::Dealers), want, "{label}");
+            // 1000:dd00 and 1000:dd19 -- two lines, or none.
+            assert_eq!(out.len(), if want { 2 } else { 0 }, "{label}: {out:?}");
+        }
+
+        // 1000:dcbf / 1000:dcc6 -- both already found is the early return,
+        // whatever the arithmetic says.
+        let mut g = game();
+        g.player.level = 40;
+        g.places.mark_found(Location::Dealers);
+        g.places.mark_found(Location::Gym);
+        let out = term::capture::lines(|| g.den_reveal());
+        assert!(out.is_empty(), "both set must be silent: {out:?}");
+    }
+
     // The both-already-set skip (`1000:dcbf` clear + `1000:dcc6` taken) has
     // no assertable game-STATE effect once both flags are already found --
     // `mark_found` on an already-found slot is a no-op either way. Its only
