@@ -167,7 +167,20 @@ addresses of one prompt").
 `1000:d802` and `1000:dd48` — so `a` is typed at the `^0Притон\` prompt, not at
 the top level. `[0x38cb]` is a street-cred counter distinct from the level
 (`1000:5291` grows it per kill, `1000:db9b` spends it, `1000:dc79` prints it).
-See `docs/re/wander.md`. Still not implemented here.
+See `docs/re/wander.md`.
+
+~~Still not implemented here.~~ **Stale, and ambiguous about which half it
+meant.** Split:
+
+* **The `a` reveal IS implemented.** `1000:dcf6`/`dcfb`'s two stores are
+  `src/game.rs`'s `self.places.mark_found(Location::Dealers);
+  self.places.mark_found(Location::Gym);`, with the two print lines after
+  them, landed with `port-gaps.md` row 25 (`1ae22f6`).
+* **`[0x38cb]` is `Game::pontovost_street`**, written at 57 sites in
+  `src/game.rs` -- `1000:db9b`'s spend and `1000:dc79`'s print among them.
+  Whether `1000:5291`'s per-kill growth specifically is ported is a question
+  about `FUN_1000_3d11`, which is being flow-surveyed separately; this entry
+  no longer claims either way rather than guessing.
 
 ### Wander preamble (`1000:aea1`..`1000:b3b9`) — CLOSED by Task 11c
 

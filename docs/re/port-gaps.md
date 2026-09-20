@@ -273,11 +273,48 @@ Three have run:
    being called "the `ReadLn`" and one of them is the case-fold
    (`a6113f0`, anatomy in `docs/re/command-dispatch.md`).
 
-**Where `entry` stands.** Of its 17,143 B, surveyed: slice 1 (2,142), den
-(1,796), club (1,162), gym (1,507), shop (3,816), market (2,932) = 13,355 B,
-78%. Unsurveyed: the wander buckets (`1000:b3b7`..`b94a`, 1,427 B, covered by
-`tests/wander_sequence.rs`'s frozen captures rather than by a flow diff), vet
-(839), girl (235), joint (289) and the small verbs (956).
+8. **vet + girl + joint + small verbs** (2,319 B, 51 branches). Clean
+   51/51. Product was four documents: `f`, `k` and `help` were all marked
+   "not traced past `jz`" and all three are traced, and `docs/re/gaps.md`
+   contradicted itself on the `^7 ` name prefix -- one entry calling it "not
+   implemented" while another said the port adds it at the format boundary,
+   which `persist::NAME_PREFIX` and `tests/save_roundtrip.rs` confirm it
+   does (`54fb36f`).
+9. **wander buckets** (`1000:b3b7`..`b94a`, 1,427 B, 37 branches), the last
+   block of `entry`. Clean 37/37. Taken despite heavy capture coverage
+   because this exact range had already hidden a real bug from the oracle
+   once -- bucket 4's four draws were unspent and no capture stoned the
+   player on a bucket-4 turn. Re-derived: all five `Random` sites now match,
+   and **none of the five has ever fired in a live trace**.
+   `difftest.py`'s wander spans are text-only and its gap scanner never
+   checks for a `Random` at all, so those draws rest on the disassembly
+   match plus module-local tests of the port's RNG against itself.
+
+**`entry` is 100% flow-diffed** -- all 17,143 B across nine surveys.
+
+**Where the GAME stands.** `entry` done; 13 functions and 17,698 B never
+flow-diffed, 46% of the 38,264 B of game code:
+
+```
+python3 -c "import json;fns={f['name']:f['size'] for f in json.load(open('data/functions.json')) if f['entry'].startswith('1000:')};print(sum(fns.values()))"
+# 38264
+```
+
+`3d11` (6,971) · `1a03` (2,700) · `7c67` (1,612) · `0d14` (1,196) · `5f55`
+(1,000) · `2526` (929) · `1348` (791) · `29c4` (666) · `7538` (580) · `0aec`
+(552) · `02c2` (508) · `11c2` (178) · `0acc` (15).
+
+**And a note on how to work them, because the rate dropped.** 2026-09-19
+landed 10 port commits and 4,591 `src/` insertions; 2026-09-20 landed 3 and
+292. The difference is not effort: the first day WORKED THIS LIST, which
+Phase 1 had already built, so each commit was read-a-row / write-the-Rust.
+Once the last row was struck, every port needed a deep flow survey to find
+its gap first -- and six of nine came back clean. That is paying discovery
+cost per port instead of amortising it, which is the interleaving
+`CLAUDE.md` warns about ("Verification parallelises; gating does not").
+The remaining 13 functions get a LIST-BUILDING pass first -- gap rows only,
+no per-branch tables, no doc archaeology -- and then the rows get worked in
+bulk.
 
 **The scoreboard, because three clean results in a row invite the wrong
 conclusion.** Seven surveys: 3 found a real unported block, 4 came back
