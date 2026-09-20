@@ -261,12 +261,31 @@ Three have run:
    product is that the weakest-parts bullet itself was **wrong about the
    den** and has been narrowed -- see `## Method and confidence`.
 
-`entry` is 17,143 B and slice 1 is 12% of it. The remaining slices are not
-being taken in address order: the target is whichever body the surveys
-themselves rate weakest. After the den, that is **shop, club and gym** --
-`1000:df06`..`1000:e390` (club, 1,162 B, 20 branches) and
-`1000:e390`..`1000:e973` (gym, 1,507 B, 38 branches) are the two sized so
-far.
+5. **club + gym** in one dispatch (`1000:df06`..`e973`, 2,669 B, 58
+   branches). Club clean 20/20; gym 38/38 only after **porting the
+   trained-armour recompute** (`1000:e3a4`..`e3e2`, `4540de5`), whose six
+   branches were the only ones in the range with no Rust test of any kind.
+6. **shop / dealers** (`bmar`, `1000:c4be`..`d3a6`, 3,816 B, 82 branches).
+   80/82; the missing two were **row 9's extra menu gates**
+   (`1000:c824`, `1000:c82b`), ported in `74c4ab7`.
+7. **market** (`mar`, `1000:b94a`..`c4be`, 2,932 B, 61 branches). Clean
+   61/61. Its finding was a citation: three different instructions were all
+   being called "the `ReadLn`" and one of them is the case-fold
+   (`a6113f0`, anatomy in `docs/re/command-dispatch.md`).
+
+**Where `entry` stands.** Of its 17,143 B, surveyed: slice 1 (2,142), den
+(1,796), club (1,162), gym (1,507), shop (3,816), market (2,932) = 13,355 B,
+78%. Unsurveyed: the wander buckets (`1000:b3b7`..`b94a`, 1,427 B, covered by
+`tests/wander_sequence.rs`'s frozen captures rather than by a flow diff), vet
+(839), girl (235), joint (289) and the small verbs (956).
+
+**The scoreboard, because three clean results in a row invite the wrong
+conclusion.** Seven surveys: 3 found a real unported block, 4 came back
+clean, and 6 turned up a stale or wrong document -- a claim of absence the
+code refuted, a colour code no oracle compares, a blocker a later task had
+removed, a table generated and read by nothing, and three instructions
+sharing one name. The port's remaining risk is concentrated in the map, not
+in `src/`. That is a statement about seven samples, not a law.
 
 **Three of the four surveys came back clean.** That is worth stating plainly
 rather than reading as a coverage figure: the one that did not
