@@ -1239,8 +1239,12 @@ fn the_three_records_the_port_refuses_or_alters_are_the_documented_ones() {
         "a record the original would load starts a new character here"
     );
 
-    // 2. A negative Integer in one of the three fields `Fighter` holds as
-    //    u16. The port clamps to 0 rather than refusing.
+    // 2. A negative Integer in the three fields `Fighter` used to hold as
+    //    `u16` and now holds as `i16`, the record's own width. It used to
+    //    clamp all three to 0 on load; `20ae:38c5`, `20ae:38c3` and
+    //    `20ae:38c9` are signed Integers (`1000:e9aa`, `1000:db33` and
+    //    `1000:ce87` are all signed compares) and the original keeps the
+    //    negative word, so there is nothing left to clamp.
     let mut save = Save::parse(&orig("SAVE_R3.SAV")).unwrap();
     save.items.joints = -5;
     save.items.beer_half_litres = -1;
@@ -1248,10 +1252,20 @@ fn the_three_records_the_port_refuses_or_alters_are_the_documented_ones() {
     let g = Game::from_save(&save, Places::from_bytes(&[0u8; 7]), 3, 1);
     assert_eq!(
         (g.player.joints, g.player.beer_dl, g.player.junk),
-        (0, 0, 0)
+        (-5, -1, -300),
+        "the load carries the record's own values"
     );
-    // The clamp is lossy in one direction only: the record still held them.
-    assert_eq!(save.items.junk, -300);
+    // And the round trip is now the identity for these three, where the
+    // clamp made it lossy.
+    let back = g.to_save();
+    assert_eq!(
+        (
+            back.items.joints,
+            back.items.beer_half_litres,
+            back.items.junk
+        ),
+        (-5, -1, -300)
+    );
 
     // 3. The name is stored WITH its `^7 ` prefix now (1000:723a writes it
     //    into 20ae:379c), so 255 CP866 bytes is the whole value and it fits

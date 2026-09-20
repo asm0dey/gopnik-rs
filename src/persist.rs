@@ -303,10 +303,10 @@ impl Game {
             mega_ring: self.oneshot_gift_2,                // 20ae:38c0
             ring_gp: self.ring_gospodi_pomilui,            // 20ae:38c1
             nozh: self.weapon_nozhik_38c2,                 // 20ae:38c2
-            beer_half_litres: p.beer_dl as i16,            // 20ae:38c3
-            joints: p.joints as i16,                       // 20ae:38c5
+            beer_half_litres: p.beer_dl,                   // 20ae:38c3
+            joints: p.joints,                              // 20ae:38c5
             money: p.money as i16,                         // 20ae:38c7
-            junk: p.junk as i16,                           // 20ae:38c9
+            junk: p.junk,                                  // 20ae:38c9
             street_cred: self.pontovost_street as i16,     // 20ae:38cb
             tooth_guard: self.tooth_guard,                 // 20ae:394a
             dubinka: self.weapon_dubinka_394b,             // 20ae:394b
@@ -355,14 +355,20 @@ impl Game {
             armor: u16::from(it.armour),
             broken_jaw: it.broken_jaw,
             broken_leg: it.broken_leg,
-            joints: it.joints.max(0) as u16,
+            // 20ae:38c5 is a signed Integer and the original keeps a
+            // negative one (`1000:e9aa` / `1000:23b4` are both signed
+            // compares), so there is nothing to clamp.
+            joints: it.joints,
             // `crate::model::Fighter::stoned` and `Game::buff_countdown`
             // are two models of one variable (`docs/re/gaps.md`); the
             // countdown is the one the original keeps, so it decides.
             stoned: save.buff_countdown != 0,
-            beer_dl: it.beer_half_litres.max(0) as u16,
+            // 20ae:38c3 is a signed Integer (1000:db33 `jle`) and the
+            // original keeps a negative one, so there is nothing to clamp.
+            beer_dl: it.beer_half_litres,
             money: i32::from(it.money),
-            junk: it.junk.max(0) as u16,
+            // 20ae:38c9 likewise (1000:ce87 `jle`).
+            junk: it.junk,
         };
         let progress = Progress {
             xp: u32::from(save.xp),

@@ -285,9 +285,11 @@ fn game_for(run: &Run) -> Game {
         broken_leg: b[0x215] != 0,
         armor: u16::from(b[0x216]),
         money: i32::from(u16at(0x22b)), // 20ae:38c7
-        beer_dl: u16at(0x227),          // 20ae:38c3
-        junk: u16at(0x22d),             // 20ae:38c9
-        joints: u16at(0x229),           // 20ae:38c5
+        beer_dl: u16at(0x227) as i16,   // 20ae:38c3
+        junk: u16at(0x22d) as i16,      // 20ae:38c9
+        // 20ae:38c5 is a signed Integer; the bit pattern is what the record
+        // holds, so the read is a reinterpretation, not a conversion.
+        joints: u16at(0x229) as i16, // 20ae:38c5
         ..Fighter::default()
     };
     // `array[1..40] of string[2]` at `.SAV 0x236` (`20ae:38d2`, reached
@@ -489,9 +491,15 @@ fn replay(label: &str) -> Game {
         assert_eq!(got.broken_jaw, w.e_broken_jaw_3966 != 0, "{at}: 20ae:3966");
         assert_eq!(got.broken_leg, w.e_broken_leg_3967 != 0, "{at}: 20ae:3967");
         assert_eq!(got.armor, w.e_armor_3968, "{at}: 20ae:3968");
-        assert_eq!(got.beer_dl, w.e_beer_396a, "{at}: 20ae:396a loot beer");
+        // `20ae:396a` and `20ae:396e` are signed Integers in the record
+        // (`combat_trace.json` calls both width 2); the capture stores the
+        // bit pattern, so this reinterprets rather than converts.
+        assert_eq!(
+            got.beer_dl, w.e_beer_396a as i16,
+            "{at}: 20ae:396a loot beer"
+        );
         assert_eq!(got.money, i32::from(w.e_money_396c), "{at}: 20ae:396c");
-        assert_eq!(got.junk, w.e_hlam_396e, "{at}: 20ae:396e Хлам");
+        assert_eq!(got.junk, w.e_hlam_396e as i16, "{at}: 20ae:396e Хлам");
     }
 
     // The per-round channel: one entry per 1000:441d stop, both fighters'
@@ -615,13 +623,16 @@ fn assert_final_state(label: &str, run: &Run, g: &Game) {
     // The purse. `1000:523e`..`1000:5251` is what fills it on a win, and this
     // port did not reproduce that block until Task 13 -- `docs/re/gaps.md`
     // recorded it as the reason `Fighter::junk` stayed 0.
-    assert_eq!(g.player.beer_dl, f.beer_38c3, "{label}: 20ae:38c3 beer");
+    assert_eq!(
+        g.player.beer_dl, f.beer_38c3 as i16,
+        "{label}: 20ae:38c3 beer"
+    );
     assert_eq!(
         u16::try_from(g.player.money).expect("money fits a word"),
         f.money_38c7,
         "{label}: 20ae:38c7 money"
     );
-    assert_eq!(g.player.junk, f.hlam_38c9, "{label}: 20ae:38c9 Хлам");
+    assert_eq!(g.player.junk, f.hlam_38c9 as i16, "{label}: 20ae:38c9 Хлам");
     assert_eq!(
         g.rng.state(),
         f.randseed_367e,

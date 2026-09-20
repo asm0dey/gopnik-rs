@@ -2362,7 +2362,7 @@ impl Game {
     /// original's `word`; the cast reproduces the signedness rather than
     /// silently reading it as `== 0`.
     fn den_beer(&mut self) {
-        if (self.player.beer_dl as i16) <= 0 {
+        if self.player.beer_dl <= 0 {
             // 1000:db5e, string CS 0x9efb, printed by 1000:db72.
             term::println("^6А нет у тебя пива.");
             return;
@@ -2730,7 +2730,7 @@ impl Game {
             let cash = i32::from(base) + i32::from(self.rng.below_at("1000:de5a", base));
             self.player.money += cash;
             let junk = base.wrapping_add(self.rng.below_at("1000:de7c", base));
-            self.player.junk = self.player.junk.wrapping_add(junk);
+            self.player.junk = self.player.junk.wrapping_add(junk as i16);
             // 1000:de93 (CS 0x908b) + 1000:de98..1000:dea2, printed by
             // 1000:deaf -- BEFORE 1000:debe credits the same amount.
             let xp = u32::from(self.district) * 12;
@@ -4156,9 +4156,9 @@ impl Game {
             armor: armor as u16,
             dmg_min: strength / 2,
             dmg_max: strength,
-            beer_dl: beer_dl as u16,
+            beer_dl: beer_dl as i16,
             money,
-            junk: junk as u16,
+            junk: junk as i16,
             ..Fighter::default()
         }
     }
@@ -4285,8 +4285,12 @@ impl Game {
             term::println("^6Ты неможешь схавать ещё один косяк.");
             return;
         }
-        // 1000:e9aa / 1000:e9af -- 1000:e9b1 jumps to 1000:ea56.
-        if self.player.joints == 0 {
+        // 1000:e9aa `cmp word [0x38c5],0x0` / 1000:e9af `jnle 0xe9b4` --
+        // a SIGNED compare, so the smoke body runs only while the count is
+        // strictly positive and 1000:e9b1 jumps to 1000:ea56 otherwise.
+        // This read `== 0` while the field was `u16`, which agreed for every
+        // non-negative value and could not express the rest.
+        if self.player.joints <= 0 {
             term::println("^4У тебя нет косяков");
             return;
         }
@@ -4538,7 +4542,7 @@ impl Game {
         // word is read SIGNED. `Fighter::junk` is a `u16` over the same 16
         // bits, so this cast is what keeps a 0x8000..0xffff word refusing
         // here exactly as the original does.
-        if (self.player.junk as i16) <= 0 {
+        if self.player.junk <= 0 {
             // CS 0x96f2, file 0xAFC2; pushed 1000:ceb5, printed 1000:cec9.
             term::println("^4Тебе нечего спихнуть.");
             return;
@@ -6907,7 +6911,8 @@ impl Game {
         // halves, UNSIGNED. Then 1000:541e `cmp ax,0x2` / 1000:5421
         // `jnz 0x5449` -- only a Нарк carries one.
         if i32::from(self.player.luck) >= i32::from(roll) && enemy.class == 2 {
-            self.player.joints += self.rng.below_at("1000:5427", 3);
+            // 1000:5427 `add [0x38c5],ax` -- a word add of the draw.
+            self.player.joints += self.rng.below_at("1000:5427", 3) as i16;
             term::println("^1А у нарка был косячок"); // file 0x540B
         }
         // 1000:5449..1000:57cc -- the class-keyed item table.
@@ -9202,7 +9207,7 @@ mod tests {
         assert_eq!(g.player.joints, 2, "the row is repeatable");
         assert_eq!(g.player.money, 10);
         // 1000:c8e8 is `jle`, so 15 exactly buys and 14 does not.
-        for (money, want) in [(14i32, 0u16), (15, 1)] {
+        for (money, want) in [(14i32, 0i16), (15, 1)] {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "1", &mut no_input())
                 .unwrap();
@@ -10187,19 +10192,21 @@ mod tests {
 
     /// `1000:ce87` is `83 3e c9 38 00` and `1000:ce8c` is a `jle`, so the
     /// word is read SIGNED: a Хлам word with the top bit set refuses too.
-    /// Without the `as i16` in `Game::sell_junk` this sells 32768 roubles'
-    /// worth.
+    /// `Fighter::junk` is now `i16`, the record's own width, so that word IS
+    /// `i16::MIN` rather than a `u16` needing an `as i16` at the gate --
+    /// which is what `Game::sell_junk` used to carry. A `u16` field with the
+    /// cast dropped would have sold 32768 roubles' worth.
     #[test]
     fn dealers_x_refuses_a_junk_word_whose_top_bit_is_set() {
         let mut g = dealers(7);
-        g.player.junk = 0x8000;
+        g.player.junk = i16::MIN;
         let out = term::capture::lines(|| {
             g.shop_turn(Location::Dealers, "x", &mut no_input())
                 .unwrap();
         });
         assert_eq!(out, vec!["^4Тебе нечего спихнуть."]);
         assert_eq!(g.player.money, 7, "1000:ce8c takes the refusal");
-        assert_eq!(g.player.junk, 0x8000);
+        assert_eq!(g.player.junk, i16::MIN);
     }
 
     /// One `wes` arm's expectations, so the six can be driven from a table
@@ -12228,7 +12235,7 @@ mod tests {
         );
         assert_eq!(
             g.player.junk,
-            10 + log[2].r,
+            10 + log[2].r as i16,
             "1000:de8f: the same shape for хлам"
         );
         // 1000:debe credits district*12 = 12; 1000:dec5's FUN_1000_2526(0)
@@ -12274,7 +12281,7 @@ mod tests {
         );
         assert!(out.contains(&"^6Ты получаешь 36 качков опыта".to_string()));
         assert_eq!(g.player.money, 30 + i32::from(log[1].r));
-        assert_eq!(g.player.junk, 30 + log[2].r);
+        assert_eq!(g.player.junk, 30 + log[2].r as i16);
     }
 
     /// `d`'s "slipped away" path: luck loses `1000:dda8`'s compare and wins

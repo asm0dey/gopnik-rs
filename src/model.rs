@@ -69,9 +69,9 @@ pub struct Fighter {
     pub broken_leg: bool,
     // Inventory/status fields. Not used by combat, but declared here so
     // the struct is defined exactly once; Task 11's handlers rely on them.
-    pub joints: u16,
+    pub joints: i16,
     pub stoned: bool,
-    pub beer_dl: u16,
+    pub beer_dl: i16,
     pub money: i32,
     /// `DS:38c9` for the player, `DS:396e` for a rolled enemy -- "Хлам",
     /// the junk the dealers buy back (`1000:ce87`..`1000:ce97` moves it into
@@ -79,5 +79,5 @@ pub struct Fighter {
     /// `Хлам #` at `1000:246a`). A rolled opponent carries some, and
     /// `1000:524c` (`mov ax,[0x396e]` / `add [0x38c9],ax`) hands it to the
     /// winner.
-    pub junk: u16,
+    pub junk: i16,
 }

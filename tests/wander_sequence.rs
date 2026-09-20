@@ -243,8 +243,8 @@ fn game_for(run: &Run) -> Game {
         // beer and 65 Хлам while this reconstruction started it at zero. Same
         // record arithmetic as the money above (`.SAV off = 0x200 + (addr -
         // 0x389c)`), on addresses `docs/re/gaps.md:283` already names.
-        beer_dl: u16at(0x227), // 20ae:38c3
-        junk: u16at(0x22d),    // 20ae:38c9
+        beer_dl: u16at(0x227) as i16, // 20ae:38c3, a signed Integer
+        junk: u16at(0x22d) as i16,    // 20ae:38c9, likewise
         ..Fighter::default()
     };
     // `array[1..40] of string[2]` at `.SAV 0x236` (`20ae:38d2`, reached
