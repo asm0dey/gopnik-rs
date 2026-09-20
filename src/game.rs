@@ -12503,6 +12503,242 @@ mod tests {
         assert!(!g.den_menu_reveal_hint(), "both flags suppress the hint");
     }
 
+    /// Seed whose next draws are exactly `(bound, value)` in order. `Rng`
+    /// has no setter by design (`src/rng.rs`), so a test that wants a given
+    /// arm searches for a seed that produces it.
+    fn seed_drawing(draws: &[(u16, u16)]) -> u32 {
+        (0..2_000_000u32)
+            .find(|&seed| {
+                let mut r = Rng::new(seed);
+                draws.iter().all(|&(bound, want)| r.below(bound) == want)
+            })
+            .unwrap_or_else(|| panic!("no seed drawing {draws:?}"))
+    }
+
+    /// `(kastet, nozhik, dubinka, tesak)` -- the four weapon flags the
+    /// spoils tables read, in the order the arms test them.
+    type Owned = (bool, bool, bool, bool);
+
+    /// One row of a weapon-spoils table: the arm's draw, the starting
+    /// weapon set, and the damage both halves must move by.
+    type SpoilRow = (u16, Owned, i64);
+
+    fn arm_player(g: &mut Game, owned: Owned) {
+        g.weapon_kastet_38ba = owned.0;
+        g.weapon_nozhik_38c2 = owned.1;
+        g.weapon_dubinka_394b = owned.2;
+        g.weapon_tesak_394c = owned.3;
+    }
+
+    /// The weapon-spoils damage table, every arm against every relevant
+    /// starting weapon set -- `1000:552c`..`1000:560b` (`spoil_club`) and
+    /// `1000:567d`..`1000:57cc` (`spoil_blade`).
+    ///
+    /// **`cargo mutants` is what said this was missing**: ~39 MISSED across
+    /// the `spoil_*` / `grant_oneshot_gift` / `claim_spoils` cluster, the
+    /// same structural cause as the church's ~65 -- `difftest.py`'s 363
+    /// records compare text and read no field, so the damage arithmetic ran
+    /// unchecked.
+    ///
+    /// Each expected delta is the original's own immediate, read off the
+    /// cited store: `1000:5574`/`55da` (+2), `1000:55e6` (+4),
+    /// `1000:56cf` (+4), `1000:56e0` (+2), `1000:56ff` (+6),
+    /// `1000:577c` (+7), `1000:5794` (+5), `1000:57a5` (+3),
+    /// `1000:57c4` (+9) -- summed per arm by the conditions above them,
+    /// which are chained `if`s, not a `match`, so one arm can add several.
+    ///
+    /// Two rows look wrong and are not: a ножик found by a дубинка owner
+    /// adds 6 (`56cf`'s 4 plus `56e0`'s 2), and a тесак found by a дубинка
+    /// owner adds 12 (`577c`'s 7 plus `5794`'s 5). Both are what the chains
+    /// compute; the port transliterates them rather than rationalising.
+    #[test]
+    fn the_weapon_spoils_table_adds_exactly_these_damages() {
+        // (arm draw, starting (kastet, nozhik, dubinka, tesak), delta)
+        let club: [SpoilRow; 9] = [
+            // 1000:5530 draw 0 -- the кастет, "урон+2".
+            (0, (false, false, false, false), 2),
+            (0, (true, false, false, false), 0), // already owned: 1000:553a
+            (0, (false, true, false, false), 0), // 1000:555f, better weapon
+            (0, (false, false, true, false), 0), // 1000:5566
+            (0, (false, false, false, true), 0), // 1000:556d
+            // 1000:5530 draw 1 -- the дубинка, "урон+4".
+            (1, (false, false, false, false), 4), // 1000:55e6
+            (1, (true, false, false, false), 2),  // 1000:55da
+            (1, (false, true, false, false), 0),  // 1000:55c5
+            (1, (false, false, false, true), 0),  // 1000:55cc
+        ];
+        for (draw, owned, want) in club {
+            let mut g = game();
+            arm_player(&mut g, owned);
+            g.rng = Rng::new(seed_drawing(&[(2, draw)]));
+            let (lo, hi) = (g.player.dmg_min, g.player.dmg_max);
+            term::capture::lines(|| g.spoil_club());
+            assert_eq!(
+                (
+                    i64::from(g.player.dmg_min) - i64::from(lo),
+                    i64::from(g.player.dmg_max) - i64::from(hi),
+                ),
+                (want, want),
+                "club draw {draw} owning {owned:?}"
+            );
+        }
+
+        let blade: [SpoilRow; 10] = [
+            // 1000:5681 draw 0 -- the ножик, "урон+6".
+            (0, (false, false, false, false), 6), // 56ff
+            (0, (true, false, false, false), 4),  // 56cf
+            (0, (false, false, true, false), 6),  // 56cf + 56e0
+            (0, (true, false, true, false), 2),   // 56e0 only
+            (0, (false, false, false, true), 0),  // 5709's message only
+            (0, (false, true, false, false), 0),  // already owned
+            // 1000:5681 draw 1 -- the тесак, "урон+9".
+            (1, (false, false, false, false), 9), // 57c4
+            (1, (true, false, false, false), 7),  // 577c
+            (1, (false, true, false, false), 10), // 577c + 57a5
+            (1, (false, false, true, false), 12), // 577c + 5794
+        ];
+        for (draw, owned, want) in blade {
+            let mut g = game();
+            arm_player(&mut g, owned);
+            g.rng = Rng::new(seed_drawing(&[(2, draw)]));
+            let (lo, hi) = (g.player.dmg_min, g.player.dmg_max);
+            term::capture::lines(|| g.spoil_blade());
+            assert_eq!(
+                (
+                    i64::from(g.player.dmg_min) - i64::from(lo),
+                    i64::from(g.player.dmg_max) - i64::from(hi),
+                ),
+                (want, want),
+                "blade draw {draw} owning {owned:?}"
+            );
+        }
+
+        // Both tables set their flag on the granting pass and refuse the
+        // second -- 1000:5541, 1000:55a7, 1000:5698, 1000:573e.
+        for (draw, flag) in [(0u16, "kastet"), (1, "dubinka")] {
+            let mut g = game();
+            g.rng = Rng::new(seed_drawing(&[(2, draw), (2, draw)]));
+            term::capture::lines(|| g.spoil_club());
+            let set = if flag == "kastet" {
+                g.weapon_kastet_38ba
+            } else {
+                g.weapon_dubinka_394b
+            };
+            assert!(set, "{flag} flag not set");
+            let (lo, hi) = (g.player.dmg_min, g.player.dmg_max);
+            term::capture::lines(|| g.spoil_club());
+            assert_eq!(
+                (g.player.dmg_min, g.player.dmg_max),
+                (lo, hi),
+                "{flag} twice"
+            );
+        }
+    }
+
+    /// `spoil_charm` (`1000:547e`..`5512`) and `spoil_glasses`
+    /// (`1000:5613`..`5672`) -- luck, and the two flags that carry no stat.
+    #[test]
+    fn the_charm_spoils_grant_luck_once_each() {
+        // 1000:5493 `add [0x38a4],2` and 1000:54c4 `inc [0x38a4]`.
+        for (draw, want) in [(0u16, 2i64), (1, 1), (2, 0)] {
+            let mut g = game();
+            g.rng = Rng::new(seed_drawing(&[(3, draw), (3, draw)]));
+            let luck = g.player.luck;
+            term::capture::lines(|| g.spoil_charm());
+            assert_eq!(
+                i64::from(g.player.luck) - i64::from(luck),
+                want,
+                "charm draw {draw}"
+            );
+            // The 1000:548c / 54bd / 54ed gates: a second find grants nothing.
+            term::capture::lines(|| g.spoil_charm());
+            assert_eq!(
+                i64::from(g.player.luck) - i64::from(luck),
+                want,
+                "charm draw {draw} granted twice"
+            );
+        }
+
+        // 1000:5621 and 1000:564d -- flags only, no stat moves at all.
+        for draw in [0u16, 1] {
+            let mut g = game();
+            g.rng = Rng::new(seed_drawing(&[(2, draw)]));
+            let before = (g.player.luck, g.player.dmg_min, g.player.dmg_max);
+            term::capture::lines(|| g.spoil_glasses());
+            assert_eq!(
+                (g.player.luck, g.player.dmg_min, g.player.dmg_max),
+                before,
+                "glasses draw {draw} moved a stat"
+            );
+            assert!(
+                if draw == 0 {
+                    g.dark_glasses
+                } else {
+                    g.has_mobile
+                },
+                "glasses draw {draw} set no flag"
+            );
+        }
+    }
+
+    /// `1000:52e1`..`1000:53f2` -- the post-kill one-shot gift chain, the
+    /// second grant site for the same three rings `Game::church`'s arm 2
+    /// hands out (`docs/re/progression.md`: the 56 bytes at `1000:8101` and
+    /// `1000:532f` compare equal).
+    ///
+    /// `dmg_min` starts at 3, not the fixture's 1: ring 1 leaves it at 4 and
+    /// ring 2's `+= 2` at `1000:53a5` would read the same as `*= 2` from 2.
+    #[test]
+    fn the_post_kill_gift_chain_grants_each_ring_once_in_order() {
+        let mut g = game();
+        g.player.dmg_min = 3;
+        let before = [
+            i64::from(g.player.hp),
+            i64::from(g.player.hpmax),
+            i64::from(g.player.strength),
+            i64::from(g.player.agility),
+            i64::from(g.player.vitality),
+            i64::from(g.player.luck),
+            i64::from(g.player.dmg_min),
+            i64::from(g.player.dmg_max),
+        ];
+        // `player()` starts at strength 5, so ring 1's `+= 1` lands on 6 and
+        // 1000:534d's parity test fires; ring 2's `+= 2` is unconditional.
+        let want: [[i64; 8]; 3] = [
+            [6, 6, 1, 1, 1, 1, 1, 1],
+            [30, 30, 5, 5, 5, 5, 3, 5],
+            [30, 30, 5, 5, 5, 5, 3, 5],
+        ];
+        for (round, want) in want.iter().enumerate() {
+            let out = term::capture::lines(|| g.grant_oneshot_gift());
+            // The header at 1000:52e1 is gated on its own three-way OR,
+            // separate from the if/else chain below it, so it still prints
+            // on the round that hands out the last ring.
+            assert!(
+                out.contains(&"^1Оба на! Колечко! Вот свезло, так свезло!".to_string()),
+                "round {round} printed no header: {out:?}"
+            );
+            let got = [
+                i64::from(g.player.hp) - before[0],
+                i64::from(g.player.hpmax) - before[1],
+                i64::from(g.player.strength) - before[2],
+                i64::from(g.player.agility) - before[3],
+                i64::from(g.player.vitality) - before[4],
+                i64::from(g.player.luck) - before[5],
+                i64::from(g.player.dmg_min) - before[6],
+                i64::from(g.player.dmg_max) - before[7],
+            ];
+            assert_eq!(&got, want, "gift round {round}");
+        }
+        assert!(g.oneshot_gift_1 && g.oneshot_gift_2 && g.ring_gospodi_pomilui);
+
+        // With all three set the OR is false and the whole call is silent --
+        // the one state that tells the header's gate apart from a constant.
+        // Without this line, rewriting the first `!` out of that OR survives.
+        let out = term::capture::lines(|| g.grant_oneshot_gift());
+        assert!(out.is_empty(), "a fourth visit printed: {out:?}");
+    }
+
     /// Every stat the church's draw-15 table moves, arm by arm --
     /// `1000:7f63`'s `Random(5)` and, inside its `1` arm, `1000:7fff`'s
     /// `Random(4)`.
