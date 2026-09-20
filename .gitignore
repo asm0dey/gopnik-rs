@@ -33,3 +33,7 @@ __pycache__/
 !/.claude/settings.json
 /.agents/
 /.mcp.json
+
+# blog-writer working artifacts
+_blog-skill/
+blog-research-*.md

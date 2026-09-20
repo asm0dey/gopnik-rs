@@ -2,6 +2,10 @@
 
 A Rust reimplementation of a 2003 Borland Pascal DOS game (`g.exe`).
 
+[**WRITEUP.md**](WRITEUP.md) is the long-form story of how the binary was
+reverse engineered and ported: the failed string scan, the DOSBox-X oracle, the
+Turbo Pascal runtime match, and the mistakes that changed the method.
+
 ## Reference Corpus
 
 The `orig/` directory contains the original game binary and save files, sourced from the 2003 release. These files are read-only reference data used by all analysis and porting tasks. They must never be modified.
