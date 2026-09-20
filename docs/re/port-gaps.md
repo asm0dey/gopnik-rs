@@ -300,9 +300,25 @@ python3 -c "import json;fns={f['name']:f['size'] for f in json.load(open('data/f
 # 38264
 ```
 
-`3d11` (6,971) · `1a03` (2,700) · `7c67` (1,612) · `0d14` (1,196) · `5f55`
-(1,000) · `2526` (929) · `1348` (791) · `29c4` (666) · `7538` (580) · `0aec`
-(552) · `02c2` (508) · `11c2` (178) · `0acc` (15).
+~~`3d11` (6,971)~~ · `1a03` (2,700) · `7c67` (1,612) · `0d14` (1,196) ·
+`5f55` (1,000) · `2526` (929) · `1348` (791) · `29c4` (666) · `7538` (580) ·
+`0aec` (552) · `02c2` (508) · `11c2` (178) · `0acc` (15).
+
+**`FUN_1000_3d11` is struck: list-building pass, zero gap rows.** 6,971 B,
+the largest function after `entry`. All 27 `Random` sites are spent by
+`src/` (`combat.rs` `4497`/`46ba`/`4571`/`4794`, `combat_dispatch.rs`
+`4db7`/`4e16`/`4ef5`/`4f18`, `game.rs`'s `crowd` and the friend-recruitment
+rolls) and all 16 `ReadKey` sites sit inside already-ported opener and
+ending blocks. It had been ported incrementally across ten modules without
+anyone recognising it as one function-sized unit -- which is exactly why it
+read as "never flow-diffed" while having nothing outstanding.
+
+**That result is weaker evidence than the nine `entry` surveys and should
+not be quoted as if it were the same.** It was a LIST-BUILDING pass -- read
+the decompilation, grep `src/` for each block's counterpart -- not a
+per-branch flow diff from aligned disassembly. It is strong enough to decide
+there is no bulk porting work in `3d11`, which is what it was run to decide,
+and not strong enough to claim the function is verified.
 
 **And a note on how to work them, because the rate dropped.** 2026-09-19
 landed 10 port commits and 4,591 `src/` insertions; 2026-09-20 landed 3 and
