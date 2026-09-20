@@ -2123,8 +2123,10 @@ impl Game {
     /// its own `ReadLn DS:3a72` that never reaches `entry`'s `DS:3972`
     /// dispatch chain at all -- this is why the vet's `h` (heal a jaw) and
     /// the street's `h` (drink a beer, `1000:e966`) can share a letter.
-    /// `w`/`run` leaves, which every location's intro text names as the way
-    /// out. Anything else is ignored and the prompt repeats.
+    /// `w` leaves -- and ONLY `w`: every location's exit compare is against
+    /// the one-byte CS `0x848e` (`1000:ded7` is the den's), so `run` is not
+    /// an exit here the way it is on the street. Anything else is ignored and
+    /// the prompt repeats.
     ///
     /// ## The den's seven keys
     ///
@@ -2244,7 +2246,16 @@ impl Game {
                 // shared by nine push sites image-wide, so it is every
                 // location's exit key rather than the den's own, which is
                 // why this stays one shared arm.
-                if matches!(parse(line), Command::Walk) {
+                //
+                // It is `key == "w"` and NOT `parse(line)`: CS 0x848e is the
+                // one-byte shortstring `01 77`, so `run` MISSES it and falls
+                // to the back edge. `run` is a STREET synonym only -- the
+                // street has two compares (1000:ae86's `w`, 1000:ae97's
+                // `run`) and `commands::parse` folds both into
+                // `Command::Walk` for that dispatch. Routing a shop exit
+                // through `parse` let `run` leave every shop, which the
+                // original ignores in silence.
+                if key == "w" {
                     self.location = Location::Street;
                     self.mode = Mode::Street;
                 }
@@ -2358,8 +2369,8 @@ impl Game {
     /// plan that preceded that task).
     ///
     /// `1000:db38` is `jle`, a SIGNED compare against zero, so a negative
-    /// count would refuse too. `beer_dl` is a `u16` here, matching the
-    /// original's `word`; the cast reproduces the signedness rather than
+    /// count would refuse too. `beer_dl` is an `i16` (`src/model.rs`),
+    /// matching the original's `word`; the cast reproduces the signedness rather than
     /// silently reading it as `== 0`.
     fn den_beer(&mut self) {
         if self.player.beer_dl <= 0 {
@@ -12414,6 +12425,111 @@ mod tests {
         g.shop_turn(Location::Den, "w", &mut no_input()).unwrap();
         assert_eq!(g.mode, Mode::Street);
         assert_eq!(g.location, Location::Street);
+    }
+
+    /// `1000:d82f`/`d859`/`d879`/`d899` -- the four district suffixes of
+    /// `print_den_intro`, and `1000:d83f`'s `Random(6) + 3` inside the first.
+    /// Nothing else in the repo compares them: `data/strings.json` and
+    /// `data/den_arms.json` both check the ARTIFACT against `orig/g.exe` and
+    /// neither reads `src/`, `data/rng_trace.json` has no `1000:d83f` entry,
+    /// and no `data/difftest_scripts/*.txt` enters the den. The draw is the
+    /// den's only one outside the `d` arm and fires on every district-1
+    /// entry, so moving or dropping it shifts every later value in the
+    /// session.
+    #[test]
+    fn the_den_intro_names_the_district_and_draws_only_in_the_first() {
+        const PREFIX: &str = "Ты пришел в притон - ";
+        for (district, want) in [
+            (2u8, "^0общагу ВКИ"),
+            (3, "^0гоповский притон"),
+            (4, "^0притон отморозков"),
+        ] {
+            let mut g = game();
+            g.district = district;
+            g.rng.start_log();
+            let out = term::capture::lines(|| g.print_den_intro());
+            assert_eq!(out, vec![format!("{PREFIX}{want}")], "district {district}");
+            assert!(g.rng.take_log().is_empty(), "district {district} drew");
+        }
+
+        // District 1 is the only arm with a draw: `1000:d83f`, bound 6, and
+        // the `+ 3` puts the dorm number in 3..=8.
+        let mut g = game();
+        g.district = 1;
+        g.rng.start_log();
+        let out = term::capture::lines(|| g.print_den_intro());
+        let log = g.rng.take_log();
+        assert_eq!(log.len(), 1);
+        assert_eq!((log[0].site, log[0].n), ("1000:d83f", 6));
+        let n: i64 = out[0]
+            .rsplit('№')
+            .next()
+            .and_then(|t| t.parse().ok())
+            .unwrap_or_else(|| panic!("no dorm number in {:?}", out[0]));
+        assert!((3..=8).contains(&n), "dorm {n} outside 3..=8");
+        assert_eq!(out, vec![format!("{PREFIX}^0общагу №{n}")]);
+
+        // `1000:d899` falls through: district 5 writes the prefix through
+        // `0eed:0000` (`Write`) and no `WriteLn` follows, so there is no
+        // suffix AND no newline.
+        let mut g = game();
+        g.district = 5;
+        g.rng.start_log();
+        let out = term::capture::lines(|| g.print_den_intro());
+        assert_eq!(out, vec![PREFIX.to_string()]);
+        assert!(g.rng.take_log().is_empty(), "district 5 drew");
+    }
+
+    /// `1000:d914`/`d91b` -- the reveal hint's early return, and its
+    /// byte-identical twin at `1000:da73`/`da7a`. Both flags found means no
+    /// hint, whatever the arithmetic says. Every other den-menu test builds
+    /// from `game()`, which has only the vet and market found
+    /// (`new_game_starts_on_the_street_with_only_the_vet_and_market`), so
+    /// until this test the early return was never taken TRUE: deleting it, or
+    /// flipping the `&&` to `||`, left the whole suite green.
+    #[test]
+    fn the_den_reveal_hint_is_suppressed_once_both_places_are_found() {
+        // Arithmetic that comfortably clears the 0x28 gate on its own:
+        // (20 - 0)*... at district 1 is (20-5)*5 + 100 = 175.
+        let mut g = game();
+        g.district = 1;
+        g.player.level = 20;
+        g.pontovost_street = 100;
+        assert!(g.den_menu_reveal_hint(), "the gate itself must pass");
+
+        g.places.mark_found(Location::Dealers);
+        assert!(g.den_menu_reveal_hint(), "one flag is not enough");
+        g.places.mark_found(Location::Gym);
+        assert!(!g.den_menu_reveal_hint(), "both flags suppress the hint");
+    }
+
+    /// `run` is NOT a shop exit. `1000:ded7` compares the buffer against CS
+    /// `0x848e`, the one-byte shortstring `01 77` (`w`), and nothing else --
+    /// a `run` misses it and takes the back edge at `1000:dee1`'s fall-through
+    /// to the prompt, silently. The street is the only dispatch with a second
+    /// synonym (`1000:ae86`'s `w` AND `1000:ae97`'s `run`), which is why
+    /// `commands::parse` folds the two, and why `shop_turn` must not use it.
+    ///
+    /// Every location goes through the same shared arm, so this holds for the
+    /// vet, club, gym, market and dealers too; the vet's extra `e` exit
+    /// (`1000:d6be`) is its own arm above and is unaffected.
+    #[test]
+    fn run_is_a_street_synonym_and_does_not_leave_a_shop() {
+        for loc in [
+            Location::Den,
+            Location::Club,
+            Location::Gym,
+            Location::Market,
+        ] {
+            let mut g = game();
+            g.places.mark_found(loc);
+            g.location = loc;
+            g.mode = Mode::Shop(loc);
+            let out = term::capture::lines(|| g.shop_turn(loc, "run", &mut no_input()).unwrap());
+            assert!(out.is_empty(), "{loc:?} printed on `run`: {out:?}");
+            assert_eq!(g.mode, Mode::Shop(loc), "`run` left {loc:?}");
+            assert_eq!(g.location, loc, "`run` left {loc:?}");
+        }
     }
 
     /// `1000:ae13`/`1000:ae1f` via [`Game::enter_district_5`] -- reaching

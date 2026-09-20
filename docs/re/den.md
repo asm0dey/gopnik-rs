@@ -76,8 +76,14 @@ whitespace-insensitive. `0eed:0216` walks indices 1..len and, for each byte
 between `cmp byte [es:di],0x41` and `cmp byte [es:di],0x5a`, does
 `add ax,0x20` and stores it back. It compares against nothing else — in
 particular against no `0x20` — so it cannot strip a space.
-`Game::shop_turn` trims; `docs/re/gaps.md`'s trimmed-prompt entry already owns
-that divergence and the den joins its population.
+`Game::shop_turn` does not trim either -- it is `line.to_lowercase()` and
+nothing else (`grep -n 'fn shop_turn' -A 8 src/game.rs`), and `Game::run`
+hands it `BufRead::lines()` output unchanged. **This paragraph used to say
+`shop_turn` trims and that the den joined `docs/re/gaps.md`'s trimmed-prompt
+population.** That entry is titled "The trimmed `y` prompts — CLOSED, the port
+no longer trims" (`docs/re/gaps.md:1211`), so this file was asserting the
+opposite of the file it cited. The port matches the case-fold-only read; there
+is no divergence here to own.
 
 The prompt itself is `^0Притон\` (CS `0x9eb7`), written with `1000:daf6
 call 0xeed:0x0` — `Write`, no newline — which is why the typed line continues
@@ -664,10 +670,12 @@ the shape it had when the map was written.
      168 instructions, only exit `1000:3e8a jmp 0x3fa7`. It spends **no**
      `Random` draw, so this residue cannot desynchronise the stream. What
      those 168 instructions do was not decoded.
-7. **The den does not trim its input.** See "The input read" above.
-   **UNCHANGED:** `Game::shop_turn` still trims, and the den joins
-   `docs/re/gaps.md`'s trimmed-prompt population rather than getting a
-   location-specific exception.
+7. **The den does not trim its input, and neither does the port.** See "The
+   input read" above. **CORRECTED:** this item used to read "`Game::shop_turn`
+   still trims". It does not -- `line.to_lowercase()` is the whole
+   transformation -- and `docs/re/gaps.md`'s trimmed-prompt entry has been
+   CLOSED since the port stopped trimming, so there was no population to
+   join.
 8. **An unrecognised key is silent, and the menu prints once.** Both shapes
    are already right in the port: `Game::enter_shop` prints the intro and then
    sets `Mode::Shop(loc)`, and the per-line `Game::shop_turn` ignores anything
