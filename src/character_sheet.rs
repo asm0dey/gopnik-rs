@@ -286,7 +286,7 @@ fn header(o: &mut Out, p: &Fighter, name: &str, kit: &Kit) {
     if p.level <= 0x27 {
         o.writeln(&text::fill(
             // CS `0x1688`.
-            "^6Сейчас у тебя # опыта, А для прокачки надо #",
+            EMITTED[0].1,
             &[i64::from(kit.xp_38ce), i64::from(kit.threshold_38d0)],
         ));
     }
@@ -351,27 +351,27 @@ fn charms(o: &mut Out, kit: &Kit) {
     // cmp byte [0x38be],0x0` / `jz 0x1c38` -- the whole block, including its
     // closing newline at `1000:1c29`, is skipped when neither is set.
     if kit.krestik_38bd || kit.ring_gs_38be {
-        o.write("Феньки: "); // CS `0x16d9`
+        o.write(EMITTED[1].1); // CS `0x16d9`
         if kit.krestik_38bd {
-            o.write("^1Крестик(Удача +2) "); // CS `0x16e2`
+            o.write(EMITTED[2].1); // CS `0x16e2`
         }
         if kit.ring_gs_38be {
-            o.write("^1Кольцо \"Гс\"(Удача +1) "); // CS `0x16f7`
+            o.write(EMITTED[3].1); // CS `0x16f7`
         }
         o.newline();
     }
     // `1000:1c38`/`1c3f`/`1c46`, whose all-clear arm is the
     // `1000:1c4d jmp 0x1cd8` over the section and its `1000:1cc9` newline.
     if kit.ring_pg_38bf || kit.mega_ring_38c0 || kit.ring_gp_38c1 {
-        o.write("Мощные феньки: "); // CS `0x1710`
+        o.write(EMITTED[4].1); // CS `0x1710`
         if kit.ring_pg_38bf {
-            o.write("^1Кольцо \"Пг\"(Всё +1) "); // CS `0x1720`
+            o.write(EMITTED[5].1); // CS `0x1720`
         }
         if kit.mega_ring_38c0 {
-            o.write("^1Мега Кольцо(Всё +4) "); // CS `0x1737`
+            o.write(EMITTED[6].1); // CS `0x1737`
         }
         if kit.ring_gp_38c1 {
-            o.write("^1Кольцо \"Гп\"(Самолечение) "); // CS `0x174e`
+            o.write(EMITTED[7].1); // CS `0x174e`
         }
         o.newline();
     }
@@ -380,13 +380,13 @@ fn charms(o: &mut Out, kit: &Kit) {
 /// `1000:1cd8`..`1000:1d33` -- the three items that get a whole line each.
 fn worn_singletons(o: &mut Out, kit: &Kit) {
     if kit.mobile_38bb {
-        o.writeln("^1У тебя есть мобильник"); // CS `0x176a`
+        o.writeln(EMITTED[8].1); // CS `0x176a`
     }
     if kit.dark_glasses_38b3 {
-        o.writeln("^1У тебя есть тёмные очки"); // CS `0x1782`
+        o.writeln(EMITTED[9].1); // CS `0x1782`
     }
     if kit.prison_tattoo_38bc {
-        o.writeln("^1На тебе зоновская наколка"); // CS `0x179c`
+        o.writeln(EMITTED[10].1); // CS `0x179c`
     }
 }
 
@@ -400,25 +400,25 @@ fn pistol_block(o: &mut Out, kit: &Kit) {
     }
     // The blank separator, `1000:1d42`..`1000:1d4c`.
     o.newline();
-    o.write("^1У тебя есть пистолет"); // CS `0x17b8`
+    o.write(EMITTED[11].1); // CS `0x17b8`
 
     // `1000:1d6a cmp byte [0x394e],0x0` / `1000:1d6f jz 0x1d8a`.
     if kit.pistol.silencer {
-        o.write("^1 с гушителем"); // CS `0x17cf`, the game's own typo
+        o.write(EMITTED[12].1); // CS `0x17cf`, the game's own typo
     }
     let n = kit.pistol.cartridges;
     // `1000:1d8a cmp word [0x394f],0x0` / `jle 0x1dab`. A signed word.
     if n > 0 {
-        o.writeln(&text::fill("^1! патронов - #", &[i64::from(n)])); // CS `0x17de`
+        o.writeln(&text::fill(EMITTED[13].1, &[i64::from(n)])); // CS `0x17de`
     }
     // `1000:1dab cmp word [0x394f],0x2` / `jnle 0x1dd2`, then
     // `1000:1db2 cmp word [0x394f],0x0` / `jle 0x1dd2`: 1 or 2 rounds left.
     if (1..=2).contains(&n) {
-        o.writeln("^6 А птронов-то мало "); // CS `0x17ef`
+        o.writeln(EMITTED[14].1); // CS `0x17ef`
     }
     // `1000:1dd2 cmp word [0x394f],0x0` / `jnle 0x1df2`.
     if n <= 0 {
-        o.writeln("^1.^4 Правда без патронов"); // CS `0x1805`
+        o.writeln(EMITTED[15].1); // CS `0x1805`
     }
     o.newline(); // `1000:1df2`..`1000:1dfc`
 }
@@ -447,41 +447,41 @@ fn damage_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     // the good one, as two arms sharing the lesser item's flag.
     // `1000:1e81`/`1e88` and `1000:1ea8`/`1eaf`.
     if kit.boots_38b5 && !kit.boots_pontovye_38b8 {
-        o.write("^1Бутсы(+1) "); // CS `0x182e`
+        o.write(EMITTED[16].1); // CS `0x182e`
     }
     if kit.boots_38b5 && kit.boots_pontovye_38b8 {
-        o.write("^4Бутсы "); // CS `0x183b`
+        o.write(EMITTED[17].1); // CS `0x183b`
     }
     if kit.boots_pontovye_38b8 {
-        o.write("^1Понтовые бутсы(Урон+2) "); // CS `0x1844`
+        o.write(EMITTED[18].1); // CS `0x1844`
     }
     // The three blades supersede the кастет, `1000:1eef`..`1000:1f09`; the
     // dim arm is `1000:1f24`..`1000:1f3e`.
     let over_kastet = kit.nozh_38c2 || kit.dubinka_394b || kit.tesak_394c;
     if kit.kastet_38ba && !over_kastet {
-        o.write("^1Кастет(+2) "); // CS `0x185e`
+        o.write(EMITTED[19].1); // CS `0x185e`
     }
     if kit.kastet_38ba && over_kastet {
-        o.write("^4Кастет "); // CS `0x186c`
+        o.write(EMITTED[20].1); // CS `0x186c`
     }
     // `1000:1f59`/`1f60`/`1f67` and `1000:1f87`/`1f8e`/`1f95`.
     let over_dubinka = kit.nozh_38c2 || kit.tesak_394c;
     if kit.dubinka_394b && !over_dubinka {
-        o.write("^1Дубинка(+4)  "); // CS `0x1876`
+        o.write(EMITTED[21].1); // CS `0x1876`
     }
     if kit.dubinka_394b && over_dubinka {
-        o.write("^4Дубинка "); // CS `0x1886`
+        o.write(EMITTED[22].1); // CS `0x1886`
     }
     // `1000:1fb5`/`1fbc` and `1000:1fdc`/`1fe3`.
     if kit.nozh_38c2 && !kit.tesak_394c {
-        o.write("^1Нож(+6) "); // CS `0x1891`
+        o.write(EMITTED[23].1); // CS `0x1891`
     }
     if kit.nozh_38c2 && kit.tesak_394c {
-        o.write("^4Нож "); // CS `0x189c`
+        o.write(EMITTED[24].1); // CS `0x189c`
     }
     // `1000:2003` -- nothing supersedes the тесак.
     if kit.tesak_394c {
-        o.write("^1Тесак(Урон+9) "); // CS `0x18a3`
+        o.write(EMITTED[25].1); // CS `0x18a3`
     }
     o.newline(); // `1000:2023`..`1000:202d`
 }
@@ -497,20 +497,20 @@ fn health_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     let mut cond = String::new();
     // `1000:2037 cmp byte [0x38b0],0x1` / `jnz 0x2068` -- equality, not `> 0`.
     if p.broken_jaw {
-        cond.push_str("^4Сломана челюсть  "); // CS `0x18b4`
+        cond.push_str(CONDITIONS[0]); // CS `0x18b4`
     }
     // `1000:2068 cmp byte [0x394a],0x1` / `1000:206d jnz 0x2099`.
     if kit.tooth_guard_394a {
-        cond.push_str("^1Зубная защита  "); // CS `0x18c8`
+        cond.push_str(CONDITIONS[1]); // CS `0x18c8`
     }
     // `1000:2099 cmp byte [0x38b1],0x1` / `1000:209e jnz 0x20ca` -- the same
     // equality shape as the jaw, not the `> 0` the item flags use.
     if p.broken_leg {
-        cond.push_str("^4Сломана нога  "); // CS `0x18da`
+        cond.push_str(CONDITIONS[2]); // CS `0x18da`
     }
     // `1000:20ca cmp byte [0x38cd],0x0` / `jbe 0x20fb` -- unsigned.
     if kit.buff_countdown_38cd > 0 {
-        cond.push_str("^6Обдолбаный  "); // CS `0x18eb`
+        cond.push_str(CONDITIONS[3]); // CS `0x18eb`
     }
     o.writeln(&text::fill(
         // `1000:2166` opens the string with the one-character CS literal at
@@ -565,13 +565,13 @@ pub(crate) fn health_digit(hp: u16, hpmax: u16) -> char {
 /// compare them against these same constants, which pins them harder than a
 /// comment would.
 // CS `0x1909`.
-pub(crate) const ACCURACY_FLAT: &str = "Точность #%";
+pub(crate) const ACCURACY_FLAT: &str = EMITTED[26].1;
 // CS `0x1915` -- trailing space, and a `Write`, so the line stays open.
-pub(crate) const ACCURACY_CAPPED: &str = "Точность 90% ";
+pub(crate) const ACCURACY_CAPPED: &str = EMITTED[27].1;
 // CS `0x1923` -- three leading spaces.
-pub(crate) const ACCURACY_SECOND: &str = "   Второй удар #%";
+pub(crate) const ACCURACY_SECOND: &str = EMITTED[28].1;
 // CS `0x1935` -- two spaces after the comma.
-pub(crate) const ACCURACY_MANY: &str = "- # ударов,  Точность # удара #%";
+pub(crate) const ACCURACY_MANY: &str = EMITTED[29].1;
 
 /// `1000:21b0`..`1000:2276` -- the accuracy block, from Ловкость alone.
 ///
@@ -649,28 +649,28 @@ fn armour_block(o: &mut Out, p: &Fighter, kit: &Kit) {
     }
     // CS `0x1956`, four trailing spaces. `1000:228a` loads the byte and
     // zero-extends it.
-    o.write(&text::fill("^2Броня #    ", &[i64::from(p.armor)]));
+    o.write(&text::fill(EMITTED[30].1, &[i64::from(p.armor)]));
     if kit.suit_abibas_38b4 {
         if kit.suit_adidas_38b7 {
-            o.write("^4Abibas "); // CS `0x1964`
-            o.write("^1Костюм Adidas(+2) "); // CS `0x196e`
+            o.write(EMITTED[31].1); // CS `0x1964`
+            o.write(EMITTED[32].1); // CS `0x196e`
         } else {
-            o.write("^1Костюм Abibas(+1) "); // CS `0x1983`
+            o.write(EMITTED[33].1); // CS `0x1983`
         }
     }
     if kit.suit_adidas_38b7 && !kit.suit_abibas_38b4 {
-        o.write("^1Костюм Adidas(+2) "); // CS `0x196e`
+        o.write(EMITTED[34].1); // CS `0x196e`
     }
     if kit.jacket_38b6 {
         if kit.jacket_krutaya_38b9 {
-            o.write("^4Кожанка "); // CS `0x1998`
-            o.write("^1Крутая кожанка(+4) "); // CS `0x19a3`
+            o.write(EMITTED[35].1); // CS `0x1998`
+            o.write(EMITTED[36].1); // CS `0x19a3`
         } else {
-            o.write("^1Кожанка(+2) "); // CS `0x19b9`
+            o.write(EMITTED[37].1); // CS `0x19b9`
         }
     }
     if kit.jacket_krutaya_38b9 && !kit.jacket_38b6 {
-        o.write("^1Крутая кожанка(+4) "); // CS `0x19a3`
+        o.write(EMITTED[38].1); // CS `0x19a3`
     }
     o.newline(); // `1000:23a5`..`1000:23af`
 }
@@ -679,7 +679,7 @@ fn armour_block(o: &mut Out, p: &Fighter, kit: &Kit) {
 fn purse(o: &mut Out, p: &Fighter) {
     // `1000:23b4 cmp word [0x38c5],0x0` / `jle 0x23d5`.
     if p.joints > 0 {
-        o.writeln(&text::fill("Косяки #", &[i64::from(p.joints)])); // CS `0x19c8`
+        o.writeln(&text::fill(EMITTED[39].1, &[i64::from(p.joints)])); // CS `0x19c8`
     }
     // `1000:23d5` / `jle 0x2415`. Пиво is stored in HALF-litres:
     // `1000:23e5`/`23e8` is `idiv 2` and `1000:23f4`..`1000:2403` is
@@ -695,26 +695,111 @@ fn purse(o: &mut Out, p: &Fighter) {
     // range). It is the only survivor of the 107.
     if p.beer_dl > 0 {
         o.writeln(&text::fill(
-            "Пиво #.#л.", // CS `0x19d1`
+            EMITTED[40].1, // CS `0x19d1`
             &[
                 i64::from(p.beer_dl / 2),
                 (i64::from(p.beer_dl % 2) * 5) % 10,
             ],
         ));
     } else {
-        o.writeln("^4Пива нет"); // CS `0x19dc`
+        o.writeln(EMITTED[41].1); // CS `0x19dc`
     }
     // `1000:242e` / `jle 0x2451`.
     if p.money > 0 {
-        o.writeln(&text::fill("Бабки #", &[i64::from(p.money)])); // CS `0x19e7`
+        o.writeln(&text::fill(EMITTED[42].1, &[i64::from(p.money)])); // CS `0x19e7`
     } else {
-        o.writeln("^4Нету бабок"); // CS `0x19ef`
+        o.writeln(EMITTED[43].1); // CS `0x19ef`
     }
     // `1000:246a` / `jle 0x248b`.
     if p.junk > 0 {
-        o.writeln(&text::fill("Хлам #", &[i64::from(p.junk)])); // CS `0x19fc`
+        o.writeln(&text::fill(EMITTED[44].1, &[i64::from(p.junk)])); // CS `0x19fc`
     }
 }
+
+/// The four injury conditions -- `1000:204f`..`1000:20e2`, appended to the
+/// health line by the string RTL rather than printed on their own.
+///
+/// These four are the only fragments in the span with a port counterpart.
+/// The other thirteen (`Ты `, ` # уровня - `, `Сл:^`, `Урон #-#    `, the
+/// bare carets, …) are assembled by this port with ONE `format!` where the
+/// original used several `0f78:0b66` appends, so there is no port-side
+/// literal to compare them against. A table holding them would be a second
+/// copy of the image, not a comparison, so none is written -- the
+/// difference in assembly is real and recorded here rather than papered
+/// over.
+pub(crate) const CONDITIONS: [&str; 4] = [
+    "^4Сломана челюсть  ", // 1000:204f
+    "^1Зубная защита  ",   // 1000:2080
+    "^4Сломана нога  ",    // 1000:20b1
+    "^6Обдолбаный  ",      // 1000:20e2
+];
+
+/// The sheet's literal pool -- `1000:1a03`..`1000:248f`, in the image's
+/// ADDRESS order, which is the order `tools/difftest.py`'s `literal_walk`
+/// reads them in.
+///
+/// `docs/re/port-gaps.md` had this function at 2700 bytes with **no static
+/// record of any kind**. The only comparison against `orig/g.exe` was
+/// `data/difftest_scripts/stats_class0..3`, which need `--oracle` and a
+/// dosbox-x install and so never run in the default gate. Until this pool
+/// every line below was an inline literal whose only witness was a comment
+/// beside it.
+///
+/// Two texts appear TWICE, at four addresses: `Костюм Adidas(+2) `
+/// (`1000:22c8`, `1000:230a`) and `Крутая кожанка(+4) ` (`1000:234a`,
+/// `1000:238c`). That is the original's own shape -- the armour block tests
+/// each item on two paths and each path pushes its own copy -- so the pool
+/// holds four entries and the two source sites map to them in order.
+///
+/// `(closes, text)` -- `closes` is true for a `WriteLn`, false for a
+/// `Write` the next literal continues.
+pub(crate) const EMITTED: [(bool, &str); 45] = [
+    (true, "^6Сейчас у тебя # опыта, А для прокачки надо #"), // 1000:1ab0
+    (false, "Феньки: "),                                      // 1000:1bd0
+    (false, "^1Крестик(Удача +2) "),                          // 1000:1bf0
+    (false, "^1Кольцо \"Гс\"(Удача +1) "),                    // 1000:1c10
+    (false, "Мощные феньки: "),                               // 1000:1c50
+    (false, "^1Кольцо \"Пг\"(Всё +1) "),                      // 1000:1c70
+    (false, "^1Мега Кольцо(Всё +4) "),                        // 1000:1c90
+    (false, "^1Кольцо \"Гп\"(Самолечение) "),                 // 1000:1cb0
+    (true, "^1У тебя есть мобильник"),                        // 1000:1cdf
+    (true, "^1У тебя есть тёмные очки"),                      // 1000:1cff
+    (true, "^1На тебе зоновская наколка"),                    // 1000:1d1f
+    (false, "^1У тебя есть пистолет"),                        // 1000:1d51
+    (false, "^1 с гушителем"),                                // 1000:1d71
+    (true, "^1! патронов - #"),                               // 1000:1d91
+    (true, "^6 А птронов-то мало "),                          // 1000:1db9
+    (true, "^1.^4 Правда без патронов"),                      // 1000:1dd9
+    (false, "^1Бутсы(+1) "),                                  // 1000:1e8f
+    (false, "^4Бутсы "),                                      // 1000:1eb6
+    (false, "^1Понтовые бутсы(Урон+2) "),                     // 1000:1ed6
+    (false, "^1Кастет(+2) "),                                 // 1000:1f0b
+    (false, "^4Кастет "),                                     // 1000:1f40
+    (false, "^1Дубинка(+4)  "),                               // 1000:1f6e
+    (false, "^4Дубинка "),                                    // 1000:1f9c
+    (false, "^1Нож(+6) "),                                    // 1000:1fc3
+    (false, "^4Нож "),                                        // 1000:1fea
+    (false, "^1Тесак(Урон+9) "),                              // 1000:200a
+    (true, "Точность #%"),                                    // 1000:21be
+    (false, "Точность 90% "),                                 // 1000:21e7
+    (true, "   Второй удар #%"),                              // 1000:222a
+    (true, "- # ударов,  Точность # удара #%"),               // 1000:2254
+    (false, "^2Броня #    "),                                 // 1000:2285
+    (false, "^4Abibas "),                                     // 1000:22af
+    (false, "^1Костюм Adidas(+2) "),                          // 1000:22c8
+    (false, "^1Костюм Abibas(+1) "),                          // 1000:22e3
+    (false, "^1Костюм Adidas(+2) "),                          // 1000:230a
+    (false, "^4Кожанка "),                                    // 1000:2331
+    (false, "^1Крутая кожанка(+4) "),                         // 1000:234a
+    (false, "^1Кожанка(+2) "),                                // 1000:2365
+    (false, "^1Крутая кожанка(+4) "),                         // 1000:238c
+    (true, "Косяки #"),                                       // 1000:23bb
+    (true, "Пиво #.#л."),                                     // 1000:23dc
+    (true, "^4Пива нет"),                                     // 1000:2415
+    (true, "Бабки #"),                                        // 1000:2435
+    (true, "^4Нету бабок"),                                   // 1000:2451
+    (true, "Хлам #"),                                         // 1000:2471
+];
 
 #[cfg(test)]
 mod tests {

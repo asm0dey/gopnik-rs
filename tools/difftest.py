@@ -1493,6 +1493,55 @@ def mage(img):
 
 
 # ---------------------------------------------------------------------------
+# The player's character sheet (`FUN_1000_1a03`)
+# ---------------------------------------------------------------------------
+
+#: `1000:1a03`..`1000:248f` -- the whole function, 2700 bytes, which is its
+#: recorded `size` in `data/functions.json`.  `literal_walk`'s landing
+#: assertion is what says both bounds are instruction starts.
+SHEET_SPAN = (0x1A03, 0x248F)
+
+#: 45 emitted, 5 composed and 17 fragments.
+SHEET_LITERALS = 62
+
+#: The four injury conditions, the only fragments with a port counterpart:
+#: `1000:204f`..`1000:20e2`, appended to the health line.  The other
+#: thirteen are assembled by the port with one `format!` where the original
+#: used a run of `0f78:0b66` appends, so they have nothing to compare
+#: against and are deliberately not recorded.
+SHEET_CONDITION_RANGE = (0x204F, 0x20E2)
+
+
+def sheet(img):
+    """Every character-sheet record.
+
+    The largest span this project had no static record for: 2700 bytes whose
+    only comparison against `orig/g.exe` was the four `stats_class*` oracle
+    scripts, which need `--oracle` and dosbox-x and so never ran in the
+    default gate.
+
+    No gap table, and that is a decision rather than an omission -- see
+    `crate::character_sheet::CONDITIONS`.  The port assembles several of
+    these lines with one `format!` where the original used several appends,
+    so the two sides' gap POSITIONS legitimately differ and a record
+    comparing them would fail on a difference that is not a defect.
+    """
+    emitted, _, fragments = literal_walk(img, *SHEET_SPAN, SHEET_LITERALS)
+    lines = ["sheet_line %d %s %s"
+             % (i, "ln" if closes else "w", strip_markup(shortstring(img, cs)))
+             for i, (_, closes, cs) in enumerate(emitted)]
+    lo, hi = SHEET_CONDITION_RANGE
+    conds = [cs for s, cs in fragments if lo <= s <= hi]
+    if len(conds) != 4:
+        raise DifftestError(
+            "1000:%04x..%04x holds %d fragments, expected the 4 injury "
+            "conditions" % (lo, hi, len(conds)))
+    lines += ["sheet_cond %d %s" % (i, strip_markup(shortstring(img, cs)))
+              for i, cs in enumerate(conds)]
+    return lines
+
+
+# ---------------------------------------------------------------------------
 # The victory block (`1000:523e`..`1000:57ce`)
 # ---------------------------------------------------------------------------
 
@@ -1752,6 +1801,12 @@ def reference(img):
     spoils_records = spoils(img)
     lines += spoils_records
     ev["spoils_line"] = len(spoils_records)
+
+    # The character sheet -- the largest span with no record at all --
+    # appended last for the same reason as everything else above.
+    sheet_records = sheet(img)
+    lines += sheet_records
+    ev["sheet_line"] = sum(1 for l in sheet_records if l.startswith("sheet_line "))
     return lines, ev
 
 

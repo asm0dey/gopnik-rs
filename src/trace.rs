@@ -112,6 +112,7 @@
 
 use std::io::{self, Write};
 
+use crate::character_sheet;
 use crate::church;
 use crate::data;
 use crate::den;
@@ -303,6 +304,7 @@ pub fn emit(out: &mut impl Write) -> io::Result<()> {
     mage_records(out)?;
     den_records(out)?;
     spoils_records(out)?;
+    sheet_records(out)?;
 
     Ok(())
 }
@@ -442,6 +444,40 @@ type MarketGroup = (
     opening::Gaps,
     &'static [&'static str],
 );
+
+/// The player's character sheet -- `FUN_1000_1a03`
+/// (`1000:1a03`..`1000:248f`). Appended after [`spoils_records`] so no
+/// record above moves.
+///
+/// 2700 bytes that carried **no static record of any kind** until now. The
+/// only comparison against `orig/g.exe` was
+/// `data/difftest_scripts/stats_class0..3`, which need `--oracle` and a
+/// dosbox-x install, so the default gate compared nothing here at all --
+/// the largest such span left after the den and the victory block.
+///
+/// Two record kinds and deliberately not a third:
+///
+/// * `sheet_line` -- the 45 literals the span hands to `Write`/`WriteLn`,
+///   which [`crate::character_sheet::EMITTED`] holds and the renderer
+///   prints from;
+/// * `sheet_cond` -- the four injury conditions appended to the health
+///   line, the only fragments in the span with a port counterpart;
+/// * **no `sheet_gap`**. The span's blanks and composed lines exist, but
+///   this port assembles several of its lines with one `format!` where the
+///   original used a run of `0f78:0b66` appends, so the gap positions do
+///   not line up between the two and a table would be asserting the port's
+///   shape against the image's, which are legitimately different. Recorded
+///   in [`crate::character_sheet::CONDITIONS`] rather than forced.
+fn sheet_records(out: &mut impl Write) -> io::Result<()> {
+    for (i, (closes, line)) in character_sheet::EMITTED.iter().enumerate() {
+        let how = if *closes { "ln" } else { "w" };
+        writeln!(out, "sheet_line {i} {how} {}", text::strip(line))?;
+    }
+    for (i, cond) in character_sheet::CONDITIONS.iter().enumerate() {
+        writeln!(out, "sheet_cond {i} {}", text::strip(cond))?;
+    }
+    Ok(())
+}
 
 /// The victory block -- `1000:523e`..`1000:57ce`, everything
 /// `FUN_1000_3d11` prints after the XP award. Appended after
