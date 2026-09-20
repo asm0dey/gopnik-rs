@@ -12503,6 +12503,290 @@ mod tests {
         assert!(!g.den_menu_reveal_hint(), "both flags suppress the hint");
     }
 
+    /// A `Game` configured so `wander_preamble` spends a KNOWN draw
+    /// sequence: both errand flags already pending (their `&&` short-
+    /// circuits before the draw), no phone (so `1000:b022`/`b0ce` jump past
+    /// draws 3 and 4), class 5 (Гопник, `1000:b2e3`, no perk draws) and no
+    /// ring (no draw 9). What remains is the four discovery draws, the
+    /// bucket, the church and the mage.
+    fn quiet_walker() -> Game {
+        let mut g = game();
+        g.den_errand_1_pending = true;
+        g.den_errand_2_pending = true;
+        g.has_mobile = false;
+        g.ring_gospodi_pomilui = false;
+        g.player.class = 5;
+        for loc in [
+            Location::Vet,
+            Location::Market,
+            Location::Club,
+            Location::Gym,
+        ] {
+            g.places.mark_found(loc);
+        }
+        g
+    }
+
+    /// Seed for [`quiet_walker`]: no discovery draw hits its zero, the
+    /// bucket draw is `bucket` when asked, and neither the church
+    /// (`1000:b39e`) nor the mage (`1000:b3ae`) fires.
+    fn quiet_walk_seed(bucket: Option<u16>) -> u32 {
+        (0..5_000_000u32)
+            .find(|&seed| {
+                let mut r = Rng::new(seed);
+                // 1000:b186, b1b8, b1ea, b21c.
+                if [10u16, 10, 100, 100].iter().any(|&b| r.below(b) == 0) {
+                    return false;
+                }
+                let roll = r.below(25); // 1000:b353
+                if bucket.is_some_and(|w| roll != w) {
+                    return false;
+                }
+                r.below(200) != 0 && r.below(100) != 0
+            })
+            .unwrap_or_else(|| panic!("no quiet seed for bucket {bucket:?}"))
+    }
+
+    /// The preamble's three per-walk counters -- `1000:af04` (the den's
+    /// loan credit), `1000:af1d` (the dealers' delivery counter) and
+    /// `1000:b16c`/`b177` (the two ban cooldowns).
+    ///
+    /// **`cargo mutants` named this cluster**: ~40 MISSED inside
+    /// `wander_preamble`, the third and last of the big ones, and the same
+    /// cause as the church's and the spoils' -- `difftest.py` compares text
+    /// and reads no field.
+    #[test]
+    fn the_walk_preamble_counters_tick_once_each() {
+        // 1000:af04 `jnl 0xaf1d` -- top up only while BELOW district * 10.
+        for (district, credit, want) in [(1u8, 0u8, 1u8), (1, 9, 10), (1, 10, 10), (3, 10, 11)] {
+            let mut g = quiet_walker();
+            g.district = district;
+            g.den_loan_credit = credit;
+            g.rng = Rng::new(quiet_walk_seed(None));
+            term::capture::lines(|| {
+                g.wander_preamble(false, &mut no_input()).unwrap();
+            });
+            assert_eq!(
+                g.den_loan_credit, want,
+                "district {district} credit {credit}"
+            );
+        }
+
+        // 1000:af1d/af24/af2b -- three gates, then the increment; the call
+        // at 1000:af3d fires only on the turn it becomes exactly 25, and
+        // only with a phone.
+        let phone_line =
+            "Телефон:^6Алё, ты где? Приходи, мы вещицу для тебя раздобыли.(Иди к барыгам)";
+        for (found, pistol, phone, start, want, prints) in [
+            (true, true, true, 0u8, 1u8, false),
+            (true, true, true, 24, 25, true),
+            // The phone gates only the MESSAGE; the counter still moves.
+            (true, true, false, 24, 25, false),
+            (true, true, true, 25, 25, false), // 1000:af2b, the < 25 gate
+            (false, true, true, 0, 0, false),  // 1000:af1d, dealers unknown
+            (true, false, true, 0, 0, false),  // 1000:af24, no pistol
+        ] {
+            let mut g = quiet_walker();
+            if found {
+                g.places.mark_found(Location::Dealers);
+            }
+            g.pistol.owned = pistol;
+            g.has_mobile = phone;
+            g.dealer_delivery_counter = start;
+            g.rng = Rng::new(quiet_walk_seed(None));
+            let out = term::capture::lines(|| {
+                g.wander_preamble(false, &mut no_input()).unwrap();
+            });
+            let label = format!("found {found} pistol {pistol} phone {phone} start {start}");
+            assert_eq!(g.dealer_delivery_counter, want, "{label}");
+            assert_eq!(
+                out.iter().any(|l| l == phone_line),
+                prints,
+                "{label}: {out:?}"
+            );
+        }
+
+        // 1000:b11e / 1000:b145 read the countdown BEFORE 1000:b16c /
+        // 1000:b177 decrement it, so the message lands on the last turn and
+        // that same turn takes it to zero. Both need the den AND a phone.
+        let market_line =
+            "Телефон:^2Это ты там на базаре шухер наводил? Ну короче там менты свалили.";
+        let club_line = "Телефон:^2Ты че там, в клуб-та пойдёшь. Уже утряслось всё.";
+        for (start, den, phone, want, prints) in [
+            (1u8, true, true, 0u8, true),
+            (2, true, true, 1, false),
+            (1, false, true, 0, false), // no den: silent, still ticks
+            (1, true, false, 0, false), // no phone: 1000:b0ce jumps past both
+            (0, true, true, 0, false),  // each `jz` guards its own byte
+        ] {
+            let mut g = quiet_walker();
+            if den {
+                g.places.mark_found(Location::Den);
+            }
+            g.has_mobile = phone;
+            g.market_ban_countdown = start;
+            g.club_ban_countdown = start;
+            g.rng = Rng::new(quiet_walk_seed(None));
+            let out = term::capture::lines(|| {
+                g.wander_preamble(false, &mut no_input()).unwrap();
+            });
+            let label = format!("start {start} den {den} phone {phone}");
+            assert_eq!(g.market_ban_countdown, want, "market {label}");
+            assert_eq!(g.club_ban_countdown, want, "club {label}");
+            assert_eq!(
+                out.iter().any(|l| l == market_line),
+                prints,
+                "market {label}"
+            );
+            assert_eq!(out.iter().any(|l| l == club_line), prints, "club {label}");
+        }
+    }
+
+    /// `1000:b353`'s bucket chain -- `Random(25)`, `1000:b358` stores
+    /// `r + 1`, and `1000:b35c`..`b393` tests the highest boundary first.
+    /// The boundaries are 10, 5 and 2 ON THE STORED VALUE, so they fall at
+    /// draws 9, 4 and 1.
+    #[test]
+    fn the_walk_preamble_bucket_boundaries_are_2_5_and_10() {
+        for (draw, want) in [
+            (0u16, 1u8), // roll 1
+            (1, 2),      // roll 2 -- the first boundary
+            (3, 2),      // roll 4
+            (4, 3),      // roll 5
+            (8, 3),      // roll 9
+            (9, 4),      // roll 10
+            (24, 4),     // roll 25, the top
+        ] {
+            let mut g = quiet_walker();
+            g.rng = Rng::new(quiet_walk_seed(Some(draw)));
+            let mut bucket = 0;
+            term::capture::lines(|| {
+                bucket = g.wander_preamble(false, &mut no_input()).unwrap();
+            });
+            assert_eq!(bucket, want, "draw {draw} (roll {})", draw + 1);
+        }
+    }
+
+    /// `1000:b24a`'s ring block and `1000:b2cc`'s class-perk dispatch --
+    /// the preamble's two healing paths and the Вор's theft.
+    ///
+    /// The ring adds a draw (9, `1000:b272`) and class 6 adds two (10 and
+    /// 11, `1000:b2fa`/`b321`), so each case names its own draw sequence
+    /// after the four discovery rolls.
+    ///
+    /// **Two mutants of `1000:b251`'s block survive this test and are
+    /// EQUIVALENT, not uncovered.** Rewriting its `hp < hpmax` to `<=` adds
+    /// 3 at full health and the clamp below puts it straight back;
+    /// rewriting the clamp's `hp > hpmax` to `>=` only differs when the two
+    /// are already equal, where the assignment is a no-op. Neither changes
+    /// any observable state, so no assertion can kill them and none is
+    /// written pretending to.
+    #[test]
+    fn the_walk_preamble_ring_and_class_perks_move_hp() {
+        /// Seed for a [`quiet_walker`] whose post-discovery draws are
+        /// `mid`, then a bucket, then a quiet church and mage.
+        fn seed_after_discovery(mid: &[(u16, u16)]) -> u32 {
+            (0..5_000_000u32)
+                .find(|&seed| {
+                    let mut r = Rng::new(seed);
+                    if [10u16, 10, 100, 100].iter().any(|&b| r.below(b) == 0) {
+                        return false;
+                    }
+                    if !mid.iter().all(|&(bound, want)| r.below(bound) == want) {
+                        return false;
+                    }
+                    r.below(25);
+                    r.below(200) != 0 && r.below(100) != 0
+                })
+                .unwrap_or_else(|| panic!("no seed for {mid:?}"))
+        }
+
+        // 1000:b251..1000:b26b -- +3, clamped to hpmax, and only when
+        // already below it. Draw 9 is non-zero here so no fracture clears.
+        for (hp, hpmax, want) in [(10u16, 20u16, 13u16), (18, 20, 20), (20, 20, 20)] {
+            let mut g = quiet_walker();
+            g.ring_gospodi_pomilui = true;
+            g.player.hp = hp;
+            g.player.hpmax = hpmax;
+            g.rng = Rng::new(seed_after_discovery(&[(20, 1)]));
+            term::capture::lines(|| {
+                g.wander_preamble(false, &mut no_input()).unwrap();
+            });
+            assert_eq!(g.player.hp, want, "ring hp {hp}/{hpmax}");
+        }
+
+        // Draw 9 == 0: at most ONE fracture clears, jaw first. The leg
+        // block at 1000:b289 is reached only with the jaw intact
+        // (1000:b280 `jnz 0xb2a7`).
+        for (jaw, leg, want_jaw, want_leg) in [
+            (true, true, false, true),   // jaw only, leg survives the turn
+            (false, true, false, false), // leg clears when the jaw is intact
+            (true, false, false, false),
+        ] {
+            let mut g = quiet_walker();
+            g.ring_gospodi_pomilui = true;
+            g.player.hp = g.player.hpmax; // no +3, isolate the fracture path
+            g.player.broken_jaw = jaw;
+            g.player.broken_leg = leg;
+            g.rng = Rng::new(seed_after_discovery(&[(20, 0)]));
+            term::capture::lines(|| {
+                g.wander_preamble(false, &mut no_input()).unwrap();
+            });
+            assert_eq!(
+                (g.player.broken_jaw, g.player.broken_leg),
+                (want_jaw, want_leg),
+                "fractures jaw {jaw} leg {leg}"
+            );
+        }
+
+        // 1000:b2cf -- class 4 (Отморозок) heals one scratch a walk, and
+        // only below hpmax. Classes 5 and anything unlisted heal nothing.
+        for (class, hp, want) in [(4u16, 10u16, 11u16), (4, 20, 20), (5, 10, 10), (1, 10, 10)] {
+            let mut g = quiet_walker();
+            g.player.class = class;
+            g.player.hp = hp;
+            g.rng = Rng::new(quiet_walk_seed(None));
+            term::capture::lines(|| {
+                g.wander_preamble(false, &mut no_input()).unwrap();
+            });
+            assert_eq!(g.player.hp, want, "class {class} hp {hp}");
+        }
+
+        // 1000:b2ea -- the Вор. Draw 10 is `Random(district * 20)` and the
+        // theft succeeds on `luck >= r`; draw 11 is `Random(district * 5)`
+        // and the take is `r + 1` (1000:b326).
+        // The `luck == r` row is the one that tells 1000:b305's `>=` from a
+        // `>`: every other row is decided by the inequality's strict part.
+        for (luck, r10, r11, gain) in [
+            (5u16, 0u16, 2u16, 3i16),
+            (5, 0, 0, 1),
+            (0, 19, 0, 0),
+            (0, 0, 0, 1),
+        ] {
+            let mut g = quiet_walker();
+            g.player.class = 6;
+            g.district = 1;
+            g.player.luck = luck;
+            let mid: &[(u16, u16)] = if gain == 0 {
+                &[(20, r10)]
+            } else {
+                &[(20, r10), (5, r11)]
+            };
+            g.rng = Rng::new(seed_after_discovery(mid));
+            let money = g.player.money;
+            let out = term::capture::lines(|| {
+                g.wander_preamble(false, &mut no_input()).unwrap();
+            });
+            assert_eq!(g.player.money - money, gain, "thief luck {luck} r {r10}");
+            assert_eq!(
+                out.iter()
+                    .any(|l| l == &format!("^2Опа бабки! {gain} рублей на пиво!")),
+                gain != 0,
+                "thief line: {out:?}"
+            );
+        }
+    }
+
     /// Seed whose next draws are exactly `(bound, value)` in order. `Rng`
     /// has no setter by design (`src/rng.rs`), so a test that wants a given
     /// arm searches for a seed that produces it.
