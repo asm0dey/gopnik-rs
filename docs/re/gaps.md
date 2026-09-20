@@ -1915,8 +1915,11 @@ through two revisions; it now models it and points at this entry.
 `repeat ... until KeyPressed` loop: `1000:0b62 call 0xf16:0x2a8` is
 `Delay(5000)`, `1000:0b67 call 0xf16:0x1cc` is `ClrScr`, and
 `1000:0cf4 call 0xf16:0x308` is `KeyPressed`. The phase counter wraps at
-`1000:0ce5 cmp byte [bp-0xc],0x8` / `jnb 0xcf0`, so the animation is nine
-passes long, and the digit that colours each letter is
+`1000:0ce5 cmp byte [bp-0xc],0x8` / `jnb 0xcf0`, so the phase **cycle** is
+nine frames long -- not the animation, which runs `until KeyPressed` behind
+`Delay(5000)` and so has a lower bound of one pass and no upper bound. Nine
+is this port's frame count, never the original's. The digit that colours each
+letter is
 `(i + e - 1) mod 8 + 48` (`1000:0b36`..`1000:0b5c`).
 
 **This port draws exactly one full phase cycle and stops.** It reads whole

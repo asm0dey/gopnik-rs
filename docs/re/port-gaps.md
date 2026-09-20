@@ -628,12 +628,37 @@ the row-assembly ORDER, which no record covered.
 
 **What this survey did NOT establish.** The 14 blank `WriteLn`s, the `ReadKey`
 at `0aac`, both `ClrScr`s, both `TextColor`s and the `Halt` are read off the
-disassembly here but are compared by no oracle: of the 78 call sites, the 12
-that feed a `difftest` record are the 11 `0eed:01c2` prints plus the first
-`rtl_str_assign`. A regression that deleted one blank `WriteLn` from
-`end_screen` would pass `difftest` and every test in `tests/`, which holds no
-end-screen case at all. Left as a deferred-minor: the structure is now read,
-and the row it belonged to is closed.
+disassembly here but are compared by no oracle. **The enumeration this
+paragraph used to give for that was wrong, and wrong in the way this file
+warns about elsewhere: it reached the right total by the wrong route.** It
+said "of the 78 call sites, the 12 that feed a `difftest` record are the 11
+`0eed:01c2` prints plus the first `rtl_str_assign`". `difftest.py`'s
+`PLAIN_WRITELN_RE` requires `mov di,imm16` / `push cs` / `push di`
+immediately before the `call 0eed:01c2`, which the eight banner rows do not
+have -- each is preceded by a `call 0f78:0b66`. Re-derived from the regexes
+themselves, the twelve are **3** `0eed:01c2` prints (`1000:07a7`, `07c2`,
+`0a63`), **1** `rtl_str_assign` (only `assign[0]`'s literal is consumed by
+`banner()`) and **8** `rtl_str_append`. Recompute with:
+
+```
+python3 tools/difftest.py --dump | grep -c endscreen        # 3, not 11
+```
+
+Two paragraphs above, the same file lists that coverage correctly
+(`ending_line endscreen 0..2`, `end_banner indent`, both colour digits,
+`banner_row 0..7`); this paragraph contradicted it.
+
+The prediction the paragraph made was right, though: a regression that
+deleted one blank `WriteLn` from `end_screen` did pass `difftest` and every
+test in `tests/`, which holds no end-screen case at all. **That is now closed
+rather than deferred.** `src/ending.rs`'s
+`the_four_blank_runs_are_two_three_five_four` pins the 2 / 3 / 5 / 4 shape and
+`the_readkeys_consume_one_line_each` pins `1000:0aac`, `0d00` and `0d05`; both
+were observed failing on the real perturbation (the 5-run cut to 4 gives
+`left: [2, 3, 4, 4]`; the deleted `ReadKey` reds run 0) before being restored.
+The two `ClrScr`s, the two `TextColor`s, the `Delay` and the `Halt` stay
+uncompared -- the port drops them on purpose, so there is no port behaviour
+to pin.
 
 The next Phase 2 work is whatever a fresh gap survey finds outside this
 list, per `docs/re/gaps.md`.

@@ -135,8 +135,11 @@ pub fn end_screen(victory: bool, lines: &mut dyn Iterator<Item = std::io::Result
     for _ in 0..3 {
         term::println("");
     }
-    // 1000:0765 `mov ah,0x34` / 1000:076b `mov ah,0x32` -- '4' on death,
-    // '2' on victory.
+    // 1000:0765 `mov byte [bp-0x1],0x34` / 1000:076b `mov byte [bp-0x1],0x32`
+    // (`c6 46 ff 34` / `c6 46 ff 32`) -- '4' on death, '2' on victory. It is a
+    // store to a stack local, not to `ah`: `mov ah,0x34` would encode `b4 34`,
+    // two bytes, and would put the second site at a different offset.
+    // `difftest.py`'s `DEATH_COLOUR_SITE` compares the same three bytes.
     let digit = if victory { '2' } else { '4' };
     for row in BANNER {
         term::println(&format!("{BANNER_INDENT}{digit}{row}"));
@@ -271,6 +274,49 @@ mod tests {
             for (got, want) in rows.iter().zip(BANNER) {
                 assert!(got.ends_with(want), "{got}");
             }
+        }
+    }
+
+    /// The four blank-`WriteLn` runs of `FUN_1000_074b` are 2 / 3 / 5 / 4 --
+    /// `1000:0774`/`0783`, `07cc`/`07db`/`07ea`, `0a09`/`0a18`/`0a27`/`0a36`/
+    /// `0a45`, and `0a6d`/`0a7c`/`0a8b`/`0a9a`, fourteen `call 0f78:05dd` in
+    /// all. Nothing else in this repo compares them: `difftest` carries three
+    /// `endscreen` records, `end_banner` indent and both colours, and
+    /// `banner_row 0..7`, none of which is a blank line, and `tests/` holds no
+    /// end-screen case. Until this test a port that dropped one blank `WriteLn`
+    /// passed every check in the repo.
+    #[test]
+    fn the_four_blank_runs_are_two_three_five_four() {
+        for victory in [false, true] {
+            let out = term::capture::lines(|| end_screen(victory, &mut no_lines()));
+            let runs: Vec<usize> = out
+                .split(|line| !line.is_empty())
+                .map(<[String]>::len)
+                .filter(|n| *n > 0)
+                .collect();
+            assert_eq!(runs, vec![2, 3, 5, 4], "victory = {victory}");
+        }
+    }
+
+    /// `1000:0aac` is the end screen's only `ReadKey`, and `1000:0d00` /
+    /// `1000:0d05` are the marquee's two before it calls the end screen --
+    /// three consumed lines on the victory path, one on the death path. Like
+    /// the blank runs, no oracle compares them.
+    #[test]
+    fn the_readkeys_consume_one_line_each() {
+        for (run, want) in [(0usize, 1usize), (1, 3)] {
+            let mut lines: std::vec::IntoIter<std::io::Result<String>> = (0..4)
+                .map(|i| Ok(i.to_string()))
+                .collect::<Vec<_>>()
+                .into_iter();
+            term::capture::lines(|| {
+                if run == 0 {
+                    end_screen(false, &mut lines);
+                } else {
+                    marquee(&mut lines);
+                }
+            });
+            assert_eq!(4 - lines.count(), want, "run {run}");
         }
     }
 
