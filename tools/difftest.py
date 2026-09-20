@@ -1461,6 +1461,56 @@ def mage(img):
     return lines
 
 
+# ---------------------------------------------------------------------------
+# The den (`docs/re/port-gaps.md`: "What the den does lack is an oracle")
+# ---------------------------------------------------------------------------
+
+#: `1000:d802`..`1000:df01` -- the den's whole body.  The stop is NOT the
+#: den's last instruction: `1000:df01` pushes the next verb's key literal,
+#: which `1000:df06 call 0f78:0bd8` consumes, so a walk that reached past
+#: `df01` reports a literal nothing in the span takes.  Both bounds are
+#: aligned instruction starts, which `literal_walk`'s own landing assertion
+#: is what establishes rather than this comment.
+DEN_SPAN = (0xD802, 0xDF01)
+
+#: Every CS literal in the span: 31 the `Write`/`WriteLn` pair takes, 6 the
+#: string RTL takes, and 3 `WriteLn`s that carry none because they print a
+#: stack local.  Asserted so a short walk raises instead of quietly comparing
+#: a short list.
+DEN_LITERALS = 37
+
+
+def den(img):
+    """Every den record, appended in this order.
+
+    The span this project singled out as having no oracle at all -- 44
+    branches, 1796 bytes, and not one record scoped to its range.
+    `data/den_arms.json` checked the den's strings against `orig/g.exe`, but
+    its own header says "Nothing here reads `src/`": it compared the image
+    against itself.  These records are the half that was missing, and the
+    port's side is `crate::den`'s tables, which `src/game.rs` prints FROM --
+    so a literal that drifted in the port cannot drift past this comparison.
+    """
+    emitted, composed, fragments = literal_walk(img, *DEN_SPAN, DEN_LITERALS)
+    lines = []
+    for i, (_, closes, cs) in enumerate(emitted):
+        lines.append("den_line %d %s %s"
+                     % (i, "ln" if closes else "w",
+                        strip_markup(shortstring(img, cs))))
+    # The same sweep every other span's gap table uses.  The den holds no
+    # `call 0f16:031a` at all -- the audit of `1000:d802`..`df06` found none,
+    # and this is what turns that into a COMPARED claim: one anywhere in the
+    # span would put a `'K'` into a record and the port's table would have to
+    # gain it too.
+    lo, hi = DEN_SPAN
+    for i, seq in gaps_of(img, [s for s, _, _ in emitted], lo, hi,
+                          seed=[(s, "C") for s in composed]):
+        lines.append("den_gap %d %s" % (i, seq))
+    for i, (_, cs) in enumerate(fragments):
+        lines.append("den_fragment %d %s" % (i, strip_markup(shortstring(img, cs))))
+    return lines
+
+
 def opening(img):
     """Every opening record, appended to the stream in this order."""
     lines = []
@@ -1617,6 +1667,12 @@ def reference(img):
     mage_records = mage(img)
     lines += mage_records
     ev["mage_line"] = sum(1 for l in mage_records if l.startswith("mage_line "))
+
+    # The den -- the one span `docs/re/port-gaps.md` named as having no
+    # oracle -- appended last for the same reason as everything else above.
+    den_records = den(img)
+    lines += den_records
+    ev["den_line"] = sum(1 for l in den_records if l.startswith("den_line "))
     return lines, ev
 
 

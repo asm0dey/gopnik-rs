@@ -114,6 +114,7 @@ use std::io::{self, Write};
 
 use crate::church;
 use crate::data;
+use crate::den;
 use crate::ending;
 use crate::enemy_sheet;
 use crate::game::IMM_ROWS;
@@ -299,6 +300,7 @@ pub fn emit(out: &mut impl Write) -> io::Result<()> {
     enemy_records(out)?;
     market_records(out)?;
     mage_records(out)?;
+    den_records(out)?;
 
     Ok(())
 }
@@ -438,6 +440,34 @@ type MarketGroup = (
     opening::Gaps,
     &'static [&'static str],
 );
+
+/// The den's literal pool -- `1000:d802`..`1000:df01`, the span
+/// `docs/re/port-gaps.md` singled out as having **no** oracle at all: 44
+/// branches and not one `difftest` record scoped to its range. Appended
+/// after [`mage_records`] so no record above moves.
+///
+/// The three record kinds are the same three every wide span uses, and the
+/// tables are [`crate::den`]'s, which `src/game.rs` itself prints from --
+/// the point of routing the printers through the table rather than keeping
+/// a second copy beside them. A literal that drifted in `game.rs` could not
+/// drift here without the compiler saying so.
+///
+/// `data/den_arms.json` already checked the den's strings against
+/// `orig/g.exe`, but its own header says "Nothing here reads `src/`", so it
+/// compared the image against itself. This is the half that was missing.
+fn den_records(out: &mut impl Write) -> io::Result<()> {
+    for (i, (closes, line)) in den::EMITTED.iter().enumerate() {
+        let how = if *closes { "ln" } else { "w" };
+        writeln!(out, "den_line {i} {how} {}", text::strip(line))?;
+    }
+    for (at, events) in den::GAPS {
+        writeln!(out, "den_gap {at} {events}")?;
+    }
+    for (i, frag) in den::FRAGMENTS.iter().enumerate() {
+        writeln!(out, "den_fragment {i} {}", text::strip(frag))?;
+    }
+    Ok(())
+}
 
 /// The market's pickpocket and the ban's refusal -- `docs/re/port-gaps.md`
 /// rows 9 and 25, landed in Phase 2 batch E. Same reasoning as
@@ -659,8 +689,14 @@ mod tests {
     /// (`difftest.py`'s `strip_markup` leaves a caret with no digit after it
     /// alone too), so the record is `enemy_fragment 6 ^` on both sides and
     /// the old wording would have banned a faithful record. The exemption is
-    /// not a blanket one: the assertion below names that exact record, so a
-    /// second bare caret appearing anywhere else still fails the first check.
+    /// not a blanket one: the assertion below names those exact records, so a
+    /// bare caret appearing anywhere else still fails the first check.
+    ///
+    /// The den added two more of the same shape. `1000:d99d` and `1000:d9f9`
+    /// each assign `Напиши ^` and `1000:d9bb`/`1000:da17` append the row's
+    /// key and its own colour digit at run time, so the caret is genuinely
+    /// the last character of the literal -- the same case as `1000:1523`,
+    /// reached by the same `0f78:0ae7` assign, and faithful on both sides.
     #[test]
     fn no_colour_markup_survives_into_the_stream() {
         for line in stream() {
@@ -670,7 +706,14 @@ mod tests {
             assert!(!markup, "colour markup reached the trace stream: {line}");
         }
         let carets: Vec<String> = stream().into_iter().filter(|l| l.contains('^')).collect();
-        assert_eq!(carets, vec!["enemy_fragment 6 ^".to_string()]);
+        assert_eq!(
+            carets,
+            vec![
+                "enemy_fragment 6 ^".to_string(),
+                "den_fragment 0 Напиши ^".to_string(),
+                "den_fragment 2 Напиши ^".to_string(),
+            ]
+        );
     }
 
     /// The literal numbering each menu prints, per `docs/re/difftest.md`'s

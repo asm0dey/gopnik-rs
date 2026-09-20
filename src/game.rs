@@ -69,6 +69,7 @@ use crate::combat_dispatch::{self, Backup, Called, Shot, Status};
 use crate::combat_opener;
 use crate::commands::{parse, Command};
 use crate::data;
+use crate::den;
 use crate::ending;
 use crate::enemy_sheet;
 use crate::gym;
@@ -1133,7 +1134,7 @@ impl Game {
             Mode::Shop(Location::Market) => "^0Базар\\",
             Mode::Shop(Location::Dealers) => "^0Барыги\\",
             Mode::Shop(Location::Vet) => "^0Ветеренар\\",
-            Mode::Shop(Location::Den) => "^0Притон\\",
+            Mode::Shop(Location::Den) => den::EMITTED[13].1,
             Mode::Shop(Location::Club) => "^0Клуб\\",
             Mode::Shop(Location::Gym) => "^0Качалка\\",
             Mode::Shop(_) => "\\",
@@ -1270,7 +1271,7 @@ impl Game {
             Location::Dealers => {
                 "^6Туда любого дебила с улицы непропустят - сначала докажи, что ты не засранец - отпинай побольше ублюдков"
             }
-            Location::Den => "^4Тебя мудака такого туда не пустят - поднимай понтовость",
+            Location::Den => den::EMITTED[30].1,
             Location::Girl => "^4У тебя пока нет девчонки.",
             Location::Vet => "^6Сначала найди где находтся эта больница",
             Location::Club => "^6Ты пока что неузнал где в этом районе клуб",
@@ -1931,15 +1932,15 @@ impl Game {
     /// [`Game::print_den_menu`], ported by Task 28; this method is menu
     /// lines 0..4 of `data/den_arms.json`'s seventeen and nothing else.
     fn print_den_intro(&mut self) {
-        term::print("Ты пришел в притон - ");
+        term::print(den::EMITTED[0].1);
         match self.district {
             1 => {
                 let n = self.rng.below_at("1000:d83f", 6) + 3;
-                term::println(&text::fill("^0общагу №#", &[n as i64]));
+                term::println(&text::fill(den::EMITTED[1].1, &[n as i64]));
             }
-            2 => term::println("^0общагу ВКИ"),
-            3 => term::println("^0гоповский притон"),
-            4 => term::println("^0притон отморозков"),
+            2 => term::println(den::EMITTED[2].1),
+            3 => term::println(den::EMITTED[3].1),
+            4 => term::println(den::EMITTED[4].1),
             // No `else`: `1000:d82f`, `1000:d859`, `1000:d879` and
             // `1000:d899` are four independent `cmp byte [0x3692],N`
             // blocks, the last of which falls through to `1000:d8b9`. A
@@ -2013,22 +2014,22 @@ impl Game {
         term::println("");
         // 1000:d8c8, string CS 0x9d46 pushed at 1000:d8cf.
         if self.den_errand_1_pending {
-            term::println("^6На одного пацана наехал какой-то урод");
+            term::println(den::EMITTED[5].1);
         }
         // 1000:d8e8 and 1000:d8ef -- a conjunction: either miss lands on the
         // same 1000:d90f. `jl` is signed. String CS 0x9d6e at 1000:d8f6.
         if self.den_errand_2_pending && self.pontovost_street >= 0x64 {
-            term::println("^6Ты пацан нормальный. Есть дело.");
+            term::println(den::EMITTED[6].1);
         }
         // 1000:d90f..1000:d941, threshold block #1. String CS 0x9d90 at
         // 1000:d943, printed by 1000:d957.
         if self.den_menu_reveal_hint() {
-            term::println("^6Пацаны хотят тебе кое-чё сказать");
+            term::println(den::EMITTED[7].1);
         }
         // 1000:d961 -- the second bare `WriteLn`.
         term::println("");
         // 1000:d96b, string CS 0x9db3, printed by 1000:d97f.
-        term::println("Напиши ^6w^7 чтобы уйти");
+        term::println(den::EMITTED[8].1);
         // Row 11: prefix CS 0x9dcb (1000:d99d) + the colour digit + suffix
         // CS 0x9dd4 (1000:d9bb), one `WriteLn` at 1000:d9d4. The line ALWAYS
         // prints; only its colour depends on the beer count.
@@ -2055,21 +2056,21 @@ impl Game {
         }
         // 1000:da35, string CS 0x9e10 at 1000:da3c, printed by 1000:da50.
         if self.den_errand_1_pending {
-            term::println("Напиши ^6hp^7 чтобы отпинать мудака который наезжал на пацана");
+            term::println(den::EMITTED[9].1);
         }
         // 1000:da55, string CS 0x9e4e, printed by 1000:da69. Unconditional.
-        term::println("Напиши ^6s^7  чтобы узнать отношение");
+        term::println(den::EMITTED[10].1);
         // 1000:da6e..1000:daa0, threshold block #2 -- BYTE-IDENTICAL to
         // block #1 and NOT the block the `a` arm uses. String CS 0x9e73 at
         // 1000:daa2, printed by 1000:dab6.
         if self.den_menu_reveal_hint() {
-            term::println("Напиши ^6a^7  чтобы спросить чё-то");
+            term::println(den::EMITTED[11].1);
         }
         // 1000:dabb (signed `jl`) and 1000:dac2 -- both misses land on the
         // prompt push 1000:dae2. String CS 0x9e96 at 1000:dac9, printed by
         // 1000:dadd.
         if self.pontovost_street >= 0x64 && self.den_errand_2_pending {
-            term::println("Напиши ^6d^7 чтобы пойти на дело");
+            term::println(den::EMITTED[12].1);
         }
     }
 
@@ -2334,8 +2335,8 @@ impl Game {
         // difference -- this is a port, not just a functional match.
         self.places.mark_found(Location::Dealers);
         self.places.mark_found(Location::Gym);
-        term::println("^0Тут у нас есть пара мест куда тебе стоит сходить");
-        term::println("^2Ты узнал где находится качалка и где находятся барыги");
+        term::println(den::EMITTED[21].1);
+        term::println(den::EMITTED[22].1);
     }
 
     /// `p` at the den prompt -- `1000:db22`..`1000:db77`, treat the lads to
@@ -2375,14 +2376,14 @@ impl Game {
     fn den_beer(&mut self) {
         if self.player.beer_dl <= 0 {
             // 1000:db5e, string CS 0x9efb, printed by 1000:db72.
-            term::println("^6А нет у тебя пива.");
+            term::println(den::EMITTED[15].1);
             return;
         }
         // 1000:db3a then 1000:db3e -- both stores run before the print.
         self.player.beer_dl -= 1;
         self.pontovost_street = self.pontovost_street.wrapping_add(5);
         // 1000:db43, string CS 0x9ec3, printed by 1000:db57.
-        term::println("^2Ты угостил пацанов пивом. Понтовость улутшилась на 5.");
+        term::println(den::EMITTED[14].1);
     }
 
     /// `r` at the den prompt -- `1000:db77`..`1000:dbf3`, borrow two
@@ -2417,12 +2418,12 @@ impl Game {
     fn den_borrow(&mut self) {
         if self.den_loan_credit == 0 {
             // 1000:dbda, string CS 0x9f66, printed by 1000:dbee.
-            term::println("^6Ты уже всю мелочь выгреб!");
+            term::println(den::EMITTED[18].1);
             return;
         }
         if self.pontovost_street <= 0 {
             // 1000:dbbf, string CS 0x9f49, printed by 1000:dbd3.
-            term::println("^6Ты не можешь занять денег.");
+            term::println(den::EMITTED[17].1);
             return;
         }
         // 1000:db96, 1000:db9b, 1000:dba0 -- in that order.
@@ -2430,7 +2431,7 @@ impl Game {
         self.pontovost_street = self.pontovost_street.wrapping_sub(2);
         self.den_loan_credit -= 1;
         // 1000:dba4, string CS 0x9f10, printed by 1000:dbb8.
-        term::println("^2Ты занял 2 рубля на пиво. Понтовость уменьшилась на 2.");
+        term::println(den::EMITTED[16].1);
     }
 
     /// `hp` at the den prompt -- `1000:dbf3`..`1000:dc63`, beat up the lout
@@ -2553,13 +2554,13 @@ impl Game {
     fn den_regard(&self) {
         // 1000:dc74 (CS 0x9f87) + 1000:dc79, printed by 1000:dc89.
         term::println(&text::fill(
-            "^4Твоя понтовость сейчас = #.",
+            den::EMITTED[19].1,
             &[i64::from(self.pontovost_street)],
         ));
         // 1000:dc8e..1000:dc9f.
         if i32::from(self.district) * 10 + 10 <= i32::from(self.pontovost_street) {
             // 1000:dca1, CS 0x9fa5, printed by 1000:dcb5.
-            term::println("^0Да если чё мы за тебя впрягаемся.");
+            term::println(den::EMITTED[20].1);
         }
     }
 
@@ -2709,14 +2710,14 @@ impl Game {
         }
         // 1000:dd5a (CS 0xa038, printed at 1000:dd6e) and 1000:dd73
         // (CS 0xa04a, printed at 1000:dd87).
-        term::println("^0Давай быстрее..");
-        term::println("^2Ты пришел воровать деньги");
+        term::println(den::EMITTED[23].1);
+        term::println(den::EMITTED[24].1);
         // 1000:dd8c..1000:dd94 build the `n`: [0x3692] * 15.
         let n15 = u16::from(self.district) * 15;
         let roll = self.rng.below_at("1000:dd97", n15);
         if Self::luck_below_random_32(self.player.luck, roll) {
             // 1000:ddb6, CS 0xa066, printed at 1000:ddca.
-            term::println("^4Шухер менты!");
+            term::println(den::EMITTED[25].1);
             // 1000:ddcf..1000:ddd7 rebuild the SAME `n` from scratch.
             let roll2 = self
                 .rng
@@ -2727,13 +2728,13 @@ impl Game {
                 let cop = self.roll_enemy(2);
                 // 1000:ddf9/1000:ddfc -- param_1 = 5, see the doc above.
                 self.run_combat(5, cop, lines)?;
-                term::println("^6Пора валить!"); // 1000:ddff, CS 0xa075
+                term::println(den::EMITTED[26].1); // 1000:ddff, CS 0xa075
             } else {
-                term::println("^2Ты смылся от ментов."); // 1000:de1a, CS 0xa084
+                term::println(den::EMITTED[27].1); // 1000:de1a, CS 0xa084
             }
         } else {
             // 1000:de36, CS 0xa09b, printed at 1000:de4a.
-            term::println("^2Ты наваровал денег");
+            term::println(den::EMITTED[28].1);
             // 1000:de4f..1000:de6d and 1000:de71..1000:de8f: each of money
             // and хлам gains district*10 + Random(district*10), the base
             // recomputed from [0x3692] for every one of the four terms.
@@ -2745,10 +2746,7 @@ impl Game {
             // 1000:de93 (CS 0x908b) + 1000:de98..1000:dea2, printed by
             // 1000:deaf -- BEFORE 1000:debe credits the same amount.
             let xp = u16::from(self.district) * 12;
-            term::println(&text::fill(
-                "^6Ты получаешь # качков опыта",
-                &[i64::from(xp)],
-            ));
+            term::println(&text::fill(den::EMITTED[29].1, &[i64::from(xp)]));
             // 1000:deb4..1000:debe then 1000:dec2/1000:dec5.
             progress::apply_levels(
                 &mut self.progress,
