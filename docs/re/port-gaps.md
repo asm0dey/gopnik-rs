@@ -292,7 +292,7 @@ Three have run:
 
 **`entry` is 100% flow-diffed** -- all 17,143 B across nine surveys.
 
-**Where the GAME stands.** `entry` done; 13 functions and 17,698 B never
+**Where the GAME stands -- and what "no gaps" does and does not mean.** `entry` done; 13 functions and 17,698 B never
 flow-diffed, 46% of the 38,264 B of game code:
 
 ```
@@ -300,10 +300,30 @@ python3 -c "import json;fns={f['name']:f['size'] for f in json.load(open('data/f
 # 38264
 ```
 
-~~`3d11` (6,971)~~ · ~~`1a03` (2,700)~~ · `7c67` (1,612) ·
-~~`0d14` (1,196)~~ · `5f55` (1,000) · `2526` (929) · `1348` (791) ·
-~~`29c4` (666)~~ · `7538` (580) · `0aec` (552) · `02c2` (508) · `11c2` (178) ·
-`0acc` (15).
+**All thirteen struck. Every one of the 38,264 bytes of game code has now
+had at least a list-building pass, and the pass found zero gap rows.**
+
+The last nine (`7c67` 1,612 · `5f55` 1,000 · `2526` 929 · `1348` 791 ·
+`7538` 580 · `0aec` 552 · `02c2` 508 · `11c2` 178 · `0acc` 15 = 6,165 B)
+came back clean, with four things checked from aligned disassembly rather
+than from Ghidra's C:
+
+* **The mage's unexamined 444 bytes.** `FUN_1000_7538` is 580 B and
+  `difftest.py` only walks `7538`..`75c7`, so the rest had never been looked
+  at by anything. It is the paid-save path -- debit `[0x38c7]`, write
+  `save_r0.sav`, write the seven flags to `places.sav`, print the
+  confirmation -- and it is ported, as `Game::mage` plus
+  `persist::mage_save`. The narrow difftest span is a test-coverage note,
+  not a missing port.
+* **The marquee's loop bound.** `1000:0cf4 call 0f16:0308` (`KeyPressed`) /
+  `or al,al` / `jnz 0xd00` / **`jmp 0xb2a`** -- the original really is an
+  unbounded poll, and `src/ending.rs`'s nine frames really are the recorded
+  port decision rather than a miscount.
+* **The boss immediates** at `1000:11c2` re-derive `data/enemies.json`'s two
+  rows exactly, derived fields included (666/666 and 1000/1000 hp).
+* **The splash tail.** `1000:04b7` is `ClrScr` / `pop bp` / `ret` at
+  `1000:04bd`; `04be` onward decodes as the next literal's bytes, not
+  reachable code. Nothing lives past the span.
 
 **`1a03`, `0d14` and `29c4` struck too -- the three functions with no
 `difftest.py` span of any kind, 4,562 B, zero gap rows.** `1a03`'s ~83
