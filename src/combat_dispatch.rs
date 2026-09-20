@@ -318,7 +318,7 @@ pub fn backup_round(
     rng: &mut Rng,
     backup: &mut Backup,
     district: u8,
-    enemy_armor: u16,
+    enemy_armor: u8,
     enemy_hp: i32,
     cred: &mut i32,
 ) -> Option<Fought> {
@@ -538,7 +538,7 @@ mod tests {
         };
         // 0..=8 covers all three remainders twice over; `div` truncates, so
         // armour 2 costs nothing and armour 3 costs one.
-        for armor in 0u16..=8 {
+        for armor in 0u8..=8 {
             let mut rng = Rng::new(11);
             let mut b = backup_at(3);
             let mut cred = 500;

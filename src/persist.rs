@@ -286,7 +286,7 @@ impl Game {
         save.items = Items {
             broken_jaw: p.broken_jaw,                      // 20ae:38b0
             broken_leg: p.broken_leg,                      // 20ae:38b1
-            armour: p.armor as u8,                         // 20ae:38b2
+            armour: p.armor,                               // 20ae:38b2
             dark_glasses: self.dark_glasses,               // 20ae:38b3
             suit_abibas: self.wear_suit_abibas_38b4,       // 20ae:38b4
             boots: self.wear_boots_38b5,                   // 20ae:38b5
@@ -352,7 +352,7 @@ impl Game {
             dmg_max: save.stats[7],
             hp: save.hp,
             hpmax: save.hpmax,
-            armor: u16::from(it.armour),
+            armor: it.armour,
             broken_jaw: it.broken_jaw,
             broken_leg: it.broken_leg,
             // 20ae:38c5 is a signed Integer and the original keeps a

@@ -11,7 +11,7 @@ struct FighterSpec {
     agility: u16,
     vitality: u16,
     luck: u16,
-    armor: u16,
+    armor: u8, // `20ae:3968` is one byte; combat_trace.json says `"width": 1`
     dmg_min: u16,
     dmg_max: u16,
     hp: u16,

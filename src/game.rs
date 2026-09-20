@@ -1881,7 +1881,7 @@ impl Game {
     /// recomputes from it on the next read.
     pub(crate) fn trained_armour(&self) -> u8 {
         // 1000:e3a4 `mov al,[0x38b2]` -- the low byte only.
-        let mut abs = self.player.armor as u8;
+        let mut abs = self.player.armor;
         if self.wear_suit_abibas_38b4 && !self.wear_suit_adidas_38b7 {
             abs = abs.wrapping_sub(1); // 1000:e3b8
         }
@@ -3784,7 +3784,7 @@ impl Game {
             // captures still spell that column `unk_38b2`).
             3 => {
                 term::println("^1Накладываю на тебя защиту!");
-                self.player.armor += 1;
+                self.player.armor = self.player.armor.wrapping_add(1);
             }
             // 1000:81ef's `cmp ax,4` -- 1000:820d..1000:821a.
             _ => {
@@ -4153,7 +4153,7 @@ impl Game {
             agility,
             vitality,
             luck,
-            armor: armor as u16,
+            armor: armor as u8,
             dmg_min: strength / 2,
             dmg_max: strength,
             beer_dl: beer_dl as i16,
@@ -5573,7 +5573,7 @@ impl Game {
                                                                             // instruction. Read outside this arm by the kick's
                                                                             // damage reduction at 1000:4769 and the gym's
                                                                             // recompute at 1000:e3a4.
-                        g.player.armor += 1;
+                        g.player.armor = g.player.armor.wrapping_add(1);
                     },
                 );
                 true
@@ -5638,7 +5638,9 @@ impl Game {
                         g.wear_jacket_38b6 = true; // 1000:c0e0
                                                    // Debit 1000:c0ea.
                         term::println("^2Ну весь на понтах."); // CS 0x8fde `^2Ну весь на понтах.`, 1000:c0ee
-                        g.player.armor += 2; // 1000:c107 add byte [0x38b2],0x2
+                                                               // 1000:c107 `add byte [0x38b2],0x2` -- a byte add, so it
+                                                               // wraps at 255 rather than widening.
+                        g.player.armor = g.player.armor.wrapping_add(2);
                     },
                 );
                 true
@@ -5683,7 +5685,8 @@ impl Game {
                                                            // at 1000:c1b5 `jmp short 0xc1bc`. Either way the
                                                            // player ends on +2 of suit armour, whichever order
                                                            // the two rows were bought in.
-                        g.player.armor += if has_abibas { 1 } else { 2 };
+                        g.player.armor =
+                            g.player.armor.wrapping_add(if has_abibas { 1 } else { 2 });
                     },
                 );
                 true
@@ -5752,7 +5755,8 @@ impl Game {
                                                                        // `add byte [0x38b2],0x2` with the lesser jacket
                                                                        // owned, 1000:c2ff `add byte [0x38b2],0x4` without,
                                                                        // rejoining at 1000:c2fd `jmp short 0xc304`.
-                        g.player.armor += if has_jacket { 2 } else { 4 };
+                        g.player.armor =
+                            g.player.armor.wrapping_add(if has_jacket { 2 } else { 4 });
                     },
                 );
                 true
@@ -8199,7 +8203,7 @@ mod tests {
     /// exactly as much as a naked one from the same seed.
     #[test]
     fn the_pistol_ignores_the_enemy_armour() {
-        let hit = |armor: u16| {
+        let hit = |armor: u8| {
             let mut g = game();
             g.rng = Rng::new(4);
             g.player.agility = 50; // beats every Random(0x32)
@@ -11396,7 +11400,7 @@ mod tests {
 
     /// Which [`IMM_ROWS`] rows [`Game::imm_row_visible`] lets through, for a
     /// given district / level / armour.
-    fn visible(district: u8, level: u16, armor: u16) -> Vec<(&'static str, &'static str)> {
+    fn visible(district: u8, level: u16, armor: u8) -> Vec<(&'static str, &'static str)> {
         let mut g = game();
         g.district = district;
         g.player.level = level;

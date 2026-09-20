@@ -477,7 +477,7 @@ fn train_abs(g: &mut Game) {
     // 1000:e8d6 `inc [0x38b2]`, the visible Броня, AND 1000:e8da
     // `inc [0x3e34]`, the scratch this arm's own ceiling is tested against.
     // They are one statement here because the port has one value for both.
-    g.player.armor += 1;
+    g.player.armor = g.player.armor.wrapping_add(1);
     // 1000:e8de pushes file `0xBE63` `^1Броня +1`, printed by 1000:e8f2.
     term::println("^1Броня +1");
 }

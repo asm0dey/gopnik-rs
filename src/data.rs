@@ -81,7 +81,7 @@ pub struct EnemyStats {
     pub dmg_max: u16,
     pub hp: u16,
     pub hpmax: u16,
-    pub armor: u16,
+    pub armor: u8,
 }
 
 /// One enemy kind.

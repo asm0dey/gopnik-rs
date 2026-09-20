@@ -426,7 +426,9 @@ pub fn resolve_blow_nth(
     // blow lighter than the armour wrap to 65482 and, at 1000:4560
     // `sub [0x3962],ax`, heal the defender. That one is killed by
     // `armour_heavier_than_the_blow_floors_the_damage_at_zero`.
-    damage = damage.wrapping_sub((defender.armor & 0x00ff) as i16);
+    // `20ae:38b2` is one byte, and `Fighter::armor` is that byte now --
+    // the `& 0x00ff` this carried was recovering it from a wider field.
+    damage = damage.wrapping_sub(i16::from(defender.armor));
     // 1000:454f / 1000:4554 `jnl 0x455c`, mirrored at 1000:4772 /
     // 1000:4777 `jnl 0x477f`.
     if damage < 0 {

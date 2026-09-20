@@ -283,7 +283,7 @@ fn game_for(run: &Run) -> Game {
         hpmax: u16at(0x212),
         broken_jaw: b[0x214] != 0,
         broken_leg: b[0x215] != 0,
-        armor: u16::from(b[0x216]),
+        armor: b[0x216],                // 20ae:38b2 is one byte
         money: i32::from(u16at(0x22b)), // 20ae:38c7
         beer_dl: u16at(0x227) as i16,   // 20ae:38c3
         junk: u16at(0x22d) as i16,      // 20ae:38c9
@@ -490,7 +490,8 @@ fn replay(label: &str) -> Game {
         assert_eq!(got.hpmax, w.e_hpmax_3964, "{at}: 20ae:3964");
         assert_eq!(got.broken_jaw, w.e_broken_jaw_3966 != 0, "{at}: 20ae:3966");
         assert_eq!(got.broken_leg, w.e_broken_leg_3967 != 0, "{at}: 20ae:3967");
-        assert_eq!(got.armor, w.e_armor_3968, "{at}: 20ae:3968");
+        // `combat_trace.json` records 20ae:3968 as `"width": 1`.
+        assert_eq!(got.armor, w.e_armor_3968 as u8, "{at}: 20ae:3968");
         // `20ae:396a` and `20ae:396e` are signed Integers in the record
         // (`combat_trace.json` calls both width 2); the capture stores the
         // bit pattern, so this reinterprets rather than converts.
@@ -581,7 +582,7 @@ fn assert_final_state(label: &str, run: &Run, g: &Game) {
         b(f.broken_leg_38b1),
         "{label}: 20ae:38b1"
     );
-    assert_eq!(g.player.armor, f.unk_38b2, "{label}: 20ae:38b2");
+    assert_eq!(g.player.armor, f.unk_38b2 as u8, "{label}: 20ae:38b2");
     assert_eq!(g.has_mobile, b(f.has_mobile_38bb), "{label}: 20ae:38bb");
     assert_eq!(g.ring_gospodi_pomilui, b(f.ring_38c1), "{label}: 20ae:38c1");
     assert_eq!(g.pontovost_street, f.street_cred_38cb, "{label}: 20ae:38cb");

@@ -235,7 +235,7 @@ fn game_for(run: &Run) -> Game {
         hpmax: u16at(0x212),
         broken_jaw: b[0x214] != 0,
         broken_leg: b[0x215] != 0,
-        armor: u16::from(b[0x216]), // 20ae:38b2, the church's "защиту" byte
+        armor: b[0x216], // 20ae:38b2, the church's "защиту" byte, one byte wide
         money: i32::from(u16at(0x22b)), // 20ae:38c7
         // Task 11i: the per-turn capture reads `20ae:38c3` and `20ae:38c9`,
         // which the 29-variable `final_state` never carried -- and run E's
@@ -470,7 +470,7 @@ fn assert_final_state(label: &str, run: &Run, g: &Game) {
         "{label}: 20ae:38b1"
     );
     // 20ae:38b2 is the armour byte -- see docs/re/gaps.md, "Opened by Task 11b".
-    assert_eq!(g.player.armor, f.unk_38b2, "{label}: 20ae:38b2");
+    assert_eq!(g.player.armor, f.unk_38b2 as u8, "{label}: 20ae:38b2");
     assert_eq!(g.has_mobile, b(f.has_mobile_38bb), "{label}: 20ae:38bb");
     assert_eq!(g.ring_gospodi_pomilui, b(f.ring_38c1), "{label}: 20ae:38c1");
     assert_eq!(g.pontovost_street, f.street_cred_38cb, "{label}: 20ae:38cb");
@@ -931,7 +931,7 @@ fn assert_state_sample(label: &str, s: &StateSample, g: &Game) {
         "{}",
         at("20ae:38b1")
     );
-    assert_eq!(g.player.armor, s.unk_38b2, "{}", at("20ae:38b2"));
+    assert_eq!(g.player.armor, s.unk_38b2 as u8, "{}", at("20ae:38b2"));
     assert_eq!(g.has_mobile, b(s.has_mobile_38bb), "{}", at("20ae:38bb"));
     assert_eq!(
         g.ring_gospodi_pomilui,

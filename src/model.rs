@@ -62,7 +62,7 @@ pub struct Fighter {
     pub agility: u16,
     pub vitality: u16,
     pub luck: u16,
-    pub armor: u16,
+    pub armor: u8,
     pub dmg_min: u16,
     pub dmg_max: u16,
     pub broken_jaw: bool,
