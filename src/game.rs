@@ -12503,6 +12503,154 @@ mod tests {
         assert!(!g.den_menu_reveal_hint(), "both flags suppress the hint");
     }
 
+    /// Every stat the church's draw-15 table moves, arm by arm --
+    /// `1000:7f63`'s `Random(5)` and, inside its `1` arm, `1000:7fff`'s
+    /// `Random(4)`.
+    ///
+    /// **This is the test that was missing, and `cargo mutants` is what said
+    /// so.** A run over the tree returned ~65 MISSED mutants inside
+    /// `Game::church` alone, nearly all of them `+=` rewritten to `-=` or
+    /// `*=` on the award lines. They survived because this port's oracles
+    /// compare TEXT -- `difftest.py`'s 363 records read no field at all --
+    /// and every church test drove the sermon prose, never the awards. The
+    /// whole reward table was code that nothing checked.
+    ///
+    /// The deltas are the addresses' own: `1000:8022`..`8043` (strength),
+    /// `1000:8067` (agility), `1000:808b`..`8094` (vitality),
+    /// `1000:80b9` (luck), `1000:8101`..`8134` and `1000:815c`..`8184`
+    /// (the two rings), `1000:81e9` (armour), `1000:820d`..`821a`
+    /// (понтовость).
+    ///
+    /// **Both strength parities are driven**, because `1000:8033`'s
+    /// `is_multiple_of(2)` reads the ALREADY-incremented strength: starting
+    /// even leaves it odd and `dmg_min` still, starting odd leaves it even
+    /// and `dmg_min` moves. A single-parity table would leave that branch
+    /// undefended the same way the awards were.
+    #[test]
+    fn the_church_award_table_moves_exactly_these_stats() {
+        /// Seed whose next draws are `arm` at `Random(5)` and, when asked,
+        /// `sub` at `Random(4)`. `Rng` has no setter by design, so a test
+        /// that wants a given arm searches for a seed that produces it.
+        fn seed_for(arm: u16, sub: Option<u16>) -> u32 {
+            (0..1_000_000u32)
+                .find(|&seed| {
+                    let mut r = Rng::new(seed);
+                    r.below(5) == arm && sub.is_none_or(|w| r.below(4) == w)
+                })
+                .unwrap_or_else(|| panic!("no seed for arm {arm} sub {sub:?}"))
+        }
+
+        /// The fields `1000:7f63`'s table can touch, in `src/model.rs` order.
+        fn snapshot(g: &Game) -> [i64; 8] {
+            let p = &g.player;
+            [
+                p.hp.into(),
+                p.hpmax.into(),
+                p.strength.into(),
+                p.agility.into(),
+                p.vitality.into(),
+                p.luck.into(),
+                p.dmg_min.into(),
+                p.dmg_max.into(),
+            ]
+        }
+
+        fn deltas(g: &Game, before: [i64; 8]) -> Vec<i64> {
+            snapshot(g)
+                .iter()
+                .zip(before)
+                .map(|(after, b)| after - b)
+                .collect()
+        }
+
+        // (arm, sub, starting strength, [hp, hpmax, str, agi, vit, luck,
+        //  dmg_min, dmg_max])
+        let table: [(u16, Option<u16>, u16, [i64; 8]); 8] = [
+            // 1000:8022 -- strength. Even start -> odd after, no dmg_min.
+            (1, Some(0), 10, [1, 1, 1, 0, 0, 0, 0, 1]),
+            // Odd start -> even after, so 1000:8043's dmg_min fires.
+            (1, Some(0), 11, [1, 1, 1, 0, 0, 0, 1, 1]),
+            (1, Some(1), 10, [0, 0, 0, 1, 0, 0, 0, 0]),
+            (1, Some(2), 10, [5, 5, 0, 0, 1, 0, 0, 0]),
+            (1, Some(3), 10, [0, 0, 0, 0, 0, 1, 0, 0]),
+            // 1000:8101 -- the first ring, same parity rule as above.
+            (2, None, 10, [6, 6, 1, 1, 1, 1, 0, 1]),
+            (2, None, 11, [6, 6, 1, 1, 1, 1, 1, 1]),
+            // 1000:81e9 -- armour only, no fighter stat.
+            (3, None, 10, [0, 0, 0, 0, 0, 0, 0, 0]),
+        ];
+
+        for (arm, sub, strength, want) in table {
+            let mut g = game();
+            g.player.strength = strength;
+            g.rng = Rng::new(seed_for(arm, sub));
+            let before = snapshot(&g);
+            let armour_before = g.player.armor;
+            let ponty_before = g.pontovost_street;
+            term::capture::lines(|| g.church(&mut no_input()));
+            assert_eq!(
+                deltas(&g, before),
+                want.to_vec(),
+                "arm {arm} sub {sub:?} strength {strength}"
+            );
+            // 1000:81e9 `inc byte [0x38b2]` is the armour arm's and nothing
+            // else in the table touches armour.
+            assert_eq!(
+                g.player.armor - armour_before,
+                u8::from(arm == 3),
+                "arm {arm} moved armour"
+            );
+            assert_eq!(
+                g.pontovost_street, ponty_before,
+                "only arm 4 moves понтовость"
+            );
+        }
+
+        // 1000:81ef's arm: `district * 50 + 50`, and it prints the amount.
+        for district in [1u8, 3, 5] {
+            let mut g = game();
+            g.district = district;
+            g.rng = Rng::new(seed_for(4, None));
+            let before = snapshot(&g);
+            let ponty_before = g.pontovost_street;
+            let out = term::capture::lines(|| g.church(&mut no_input()));
+            let gain = i16::from(district) * 50 + 50;
+            assert_eq!(
+                g.pontovost_street - ponty_before,
+                gain,
+                "district {district}"
+            );
+            assert_eq!(snapshot(&g), before, "arm 4 moves no fighter stat");
+            assert!(
+                out.iter().any(|l| l == &format!("^1Получи {gain}!")),
+                "arm 4 prints its amount: {out:?}"
+            );
+        }
+
+        // Arm 2's three gifts fire in order, one per visit, and the third is
+        // text-only (1000:818b's gate, 1000:81c4). `player()` starts at
+        // strength 5, so ring 1 lands it on 6 (dmg_min +1) and ring 2's
+        // unconditional `+= 2` at 1000:817d follows.
+        let mut g = game();
+        // `dmg_min` starts at 3, not the fixture's 1, on purpose: ring 1
+        // leaves it at 2 from the default, and `2 += 2` and `2 *= 2` are
+        // both 4 -- the mutant would survive on an arithmetic accident of
+        // the fixture rather than on a gap in the assertion. From 3 the two
+        // give 6 and 8.
+        g.player.dmg_min = 3;
+        let before = snapshot(&g);
+        for round in 0..3 {
+            g.rng = Rng::new(seed_for(2, None));
+            term::capture::lines(|| g.church(&mut no_input()));
+            let want = match round {
+                0 => vec![6, 6, 1, 1, 1, 1, 1, 1],
+                _ => vec![30, 30, 5, 5, 5, 5, 3, 5],
+            };
+            assert_eq!(deltas(&g, before), want, "gift round {round}");
+        }
+        assert!(g.oneshot_gift_1 && g.oneshot_gift_2 && g.ring_gospodi_pomilui);
+    }
+
     /// `run` is NOT a shop exit. `1000:ded7` compares the buffer against CS
     /// `0x848e`, the one-byte shortstring `01 77` (`w`), and nothing else --
     /// a `run` misses it and takes the back edge at `1000:dee1`'s fall-through
