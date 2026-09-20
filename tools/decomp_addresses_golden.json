@@ -349,11 +349,6 @@
     ],
     "unreadable": [],
     "verified": [
-      "docs/re/gaps.md `:363` -> src/persist.rs:363 `beer_dl: it.beer_half_litres.max(0) as u16`",
-      "docs/re/gaps.md `:365` -> src/persist.rs:365 `junk: it.junk.max(0) as u16`",
-      "docs/re/gaps.md `src/persist.rs:358` -> src/persist.rs:358 `joints: it.joints.max(0) as u16`",
-      "docs/re/gaps.md `src/save.rs:255` -> src/save.rs:255 `beer_half_litres`",
-      "docs/re/gaps.md `src/save.rs:262` -> src/save.rs:262 `junk`",
       "docs/re/gaps.md `src/save.rs:318` -> src/save.rs:318 `[u16; 8]`"
     ]
   }

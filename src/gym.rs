@@ -182,8 +182,8 @@ pub(crate) fn run_key(g: &mut Game, key: &str) {
 /// decides as `or ax,ax` / `jnz` does. Nothing one-shot is consumed, so the
 /// arm repeats.
 fn train_strength(g: &mut Game) {
-    // 1000:e635 / 1000:e63a -- a signed word compare in the original; money
-    // is an i32 here, which is the standing width divergence, not a new one.
+    // 1000:e635 / 1000:e63a -- a signed word compare, and `Fighter::money`
+    // is an `i16` now, so this is the same compare on the same width.
     if g.player.money < 20 {
         // 1000:e63c pushes file `0xA71D` `^4Не хватает`, printed by
         // 1000:e650; 1000:e655 leaves.

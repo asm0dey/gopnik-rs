@@ -371,8 +371,8 @@ fn caught_cheating(
 /// `1000:e2c5` is an increment, so string and effect agree; that is checked,
 /// not assumed. Nothing one-shot is consumed, so the arm repeats.
 fn dance(g: &mut Game) {
-    // 1000:e285 / 1000:e28a -- a signed word compare in the original; money
-    // is an i32 here, which is the standing width divergence.
+    // 1000:e285 / 1000:e28a -- a signed word compare, and `Fighter::money`
+    // is an `i16` now, so this is the same compare on the same width.
     if g.player.money < 15 {
         // 1000:e28c pushes file `0xA71D` `^4Не хватает`, printed by
         // 1000:e2a0; 1000:e2a5 leaves.

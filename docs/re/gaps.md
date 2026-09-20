@@ -2810,27 +2810,22 @@ decided rather than established.
   | `1000:1aa9` `833ea63827` `cmp word [0x38a6],0x27` | `1000:1aae` `7f1b` **JG** | level | `0x20a` | `p.level <= 0x27`, `u16` |
 
   `0x7e`/`0x7f` are the SIGNED pair (`jle`/`jg`); the unsigned pair is
-  `0x76`/`0x77`. The port's fields are `u16`
-  (`git grep -n 'pub joints\|pub beer_dl\|pub junk\|pub level' src/model.rs`),
-  so on its face a word holding `>= 0x8000` reads as negative to the original
-  and as a large positive to the port. But `.SAV` itself stores косяки, пиво
-  and хлам as `i16` (`src/save.rs:255` `beer_half_litres`, `src/save.rs:262`
-  `junk`, and the sibling `joints` field alongside them), and the load path
-  clamps each through `.max(0) as u16` before it ever reaches `Fighter`
-  (`src/persist.rs:358` `joints: it.joints.max(0) as u16`, `:363`
-  `beer_dl: it.beer_half_litres.max(0) as u16`, `:365`
-  `junk: it.junk.max(0) as u16`). Those five line numbers are
-  stale-by-construction, exactly as `docs/re/METHODOLOGY.md` says; four of them
-  had already drifted when Task 31 checked them, and three of the five had
-  drifted again by Task 37 — which found them with a test rather than by eye
-  (`tools/test_decomp_addresses.py`, `TestSrcCitations`). The command that recomputes
-  all of them is
-  `grep -n 'pub beer_half_litres\|pub junk\|max(0) as u16' src/save.rs src/persist.rs`.
-  A `.SAV` word `>= 0x8000` in any of those
-  three reads negative as `i16`, clamps to `0`, and the port's `> 0` check is
-  then false — the **same** arm the original's signed `JLE` takes on a
-  negative value. Those three are **closed by the load path**, not merely
-  unreachable from play.
+  `0x76`/`0x77`.
+
+  **Closed by narrowing, and the paragraph that used to live here is gone
+  with the code it described.** `Fighter`'s косяки, пиво and хлам were `u16`,
+  which is why a word holding `>= 0x8000` read as negative to the original
+  and as a large positive here; the load path papered over it by clamping
+  each through `.max(0) as u16` before it reached `Fighter`. Those three
+  fields are `i16` now -- the width `src/save.rs` always declared and the
+  record always held -- so the clamps are deleted and a negative word stays
+  negative, which is what the original does. The port takes the same arm for
+  the same reason rather than for a different one that happened to agree.
+
+  Recompute the fields with
+  `git grep -n 'pub joints\|pub beer_dl\|pub junk\|pub level' src/model.rs`.
+
+  `level` is the one that did NOT move, and it is still the divergence.
 
   `level` is different: it comes from `save.stats[5]` and `stats` is
   `[u16; 8]` (`src/save.rs:318`), read straight into `Fighter::level` with no
@@ -2841,10 +2836,16 @@ decided rather than established.
   entries above this one (out-of-range class or level, `hpmax == 0`, a `#` in
   the name). **Unreachable from play** — nothing in the port or the original
   raises `level` past a few hundred. What would settle whether it matters is a
-  `.SAV` written with `0x8000` in the level word, run under both. `money`
-  needs no entry: it is `i32` in `src/model.rs` and the original's money gate
-  (`1000:242e` / `1000:2433` `7e1c` JLE) is signed too, so the two already
-  agree in sign.
+  `.SAV` written with `0x8000` in the level word, run under both.
+
+  ~~`money` needs no entry: it is `i32` in `src/model.rs` and the original's
+  money gate is signed too, so the two already agree in sign.~~ **That
+  argument was about SIGN and was being used to settle WIDTH.** Agreeing that
+  both are signed says nothing about what happens at 32767, and two source
+  files (`src/club.rs`, `src/gym.rs`) meanwhile called money's width "the
+  standing width divergence, not a new one" while this entry declined to
+  register it. `Fighter::money` is `i16` now, so all three agree and there is
+  nothing left to register.
 
 ---
 

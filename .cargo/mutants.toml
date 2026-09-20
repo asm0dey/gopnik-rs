@@ -34,5 +34,5 @@ exclude_re = [
     # `1000:454f` `cmp word [bp-0x10c],0x0` / `1000:4554` `jnl 0x455c` floors
     # the post-armour damage with `1000:4556` `xor ax,ax`.  The value stored
     # IS the bound tested, so extending the test to `<= 0` writes 0 over a 0.
-    "^src/combat\\.rs:432:15: replace < with <= in resolve_blow_nth$",
+    "^src/combat\\.rs:434:15: replace < with <= in resolve_blow_nth$",
 ]
