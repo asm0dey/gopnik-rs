@@ -11669,6 +11669,152 @@ mod tests {
         );
     }
 
+    /// `Game::luck_below_random_32` -- the den's 32-bit luck compare.
+    ///
+    /// `cargo mutants` left `luck < random` → `<=` alive because nothing
+    /// called it with the two EQUAL, the only input the two operators
+    /// disagree on.
+    #[test]
+    fn luck_below_random_is_strict_at_equality() {
+        for (luck, random, want) in [
+            (5u16, 5u16, false), // equal: `<=` would say true
+            (4, 5, true),
+            (5, 4, false),
+            (0, 0, false),
+            (0, 1, true),
+            // Only the luck side can be negative (1000:dda5's `cwd` against
+            // 1000:dd9c's `xor dx,dx`), so a high-bit luck is BELOW any
+            // random, however large the unsigned value looks.
+            (0x8000, 1, true),
+            (0x8000, 0, true),
+        ] {
+            assert_eq!(
+                Game::luck_below_random_32(luck, random),
+                want,
+                "luck {luck} random {random}"
+            );
+        }
+    }
+
+    /// `Game::mage`'s price -- `district * 50` (`1000:7601`) and the
+    /// refusal at `1000:7744`, which is `money < price`, so exactly the
+    /// price BUYS.
+    ///
+    /// District 1 cannot pin the multiply (`1 * 50` and `1 + 50` are 50 and
+    /// 51, but both refuse at money 40 and both pass at money 60 unless the
+    /// row sits between them), so the rows below use district 2, where the
+    /// product is 100 and the sum is 52.
+    #[test]
+    fn the_mage_charges_fifty_a_district_and_exactly_the_price_buys() {
+        let broke = "^6Парень, все стоит бабок!";
+        let dir = std::env::temp_dir().join(format!("gopnik-mage-{}", std::process::id()));
+        for (district, money, refuses) in [
+            (2u8, 99i16, true),
+            (2, 100, false), // exactly the price buys -- pins `<` vs `<=`
+            (2, 52, true),   // `+ 50` would have let this one through
+            (2, 3, true),    // `/ 50` would have too
+            (1, 49, true),
+            (1, 50, false),
+        ] {
+            let mut g = game();
+            g.district = district;
+            g.player.money = money;
+            g.save_dir = dir.clone();
+            std::fs::create_dir_all(&dir).unwrap();
+            let out = term::capture::lines(|| {
+                g.mage(&mut input(&["", "", "", "y"])).unwrap();
+            });
+            let label = format!("district {district} money {money}");
+            assert_eq!(out.iter().any(|l| l == broke), refuses, "{label}: {out:?}");
+            let price = i16::from(district) * 50;
+            assert_eq!(
+                g.player.money,
+                if refuses { money } else { money - price },
+                "{label}"
+            );
+        }
+        std::fs::remove_dir_all(&dir).ok();
+
+        // 1000:775f -- anything but `y` declines before the price is even
+        // computed, so a pauper sees the decline and not the refusal.
+        let mut g = game();
+        g.player.money = 0;
+        let out = term::capture::lines(|| {
+            g.mage(&mut input(&["", "", "", "n"])).unwrap();
+        });
+        assert!(
+            out.iter()
+                .any(|l| l == "^6Нехотите как хотите - мое дело предложить"),
+            "{out:?}"
+        );
+        assert!(!out.iter().any(|l| l == broke), "declined, not refused");
+    }
+
+    /// `Game::round_half` -- Pascal's `Round` on a halved integer, the
+    /// half-away-from-zero rule the original's `Round(x/2)` produces.
+    ///
+    /// A pure function with no state and no draw, and `cargo mutants` still
+    /// had four live mutants in it, because nothing called it with an ODD
+    /// argument: at even `twice` the `+ 1` is absorbed by the truncating
+    /// divide and every rewrite of it agrees.
+    #[test]
+    fn round_half_rounds_halves_away_from_zero() {
+        // (twice, want) -- `twice` is 2x, so 1 is 0.5 and 3 is 1.5.
+        for (twice, want) in [
+            (0i32, 0i32),
+            (1, 1), // Round(0.5) = 1, the case that pins `+ 1`
+            (2, 1),
+            (3, 2), // Round(1.5) = 2
+            (4, 2),
+            (5, 3),
+            (-1, -1),
+            (-2, -1),
+            (-3, -2),
+            (-4, -2),
+        ] {
+            assert_eq!(Game::round_half(twice), want, "round_half({twice})");
+        }
+    }
+
+    /// `1000:b8bd`'s draw bound -- `district * 10 + 1`, the fill value of
+    /// wander bucket 4's stoned branch.
+    ///
+    /// The bound is asserted off the RNG log rather than from the printed
+    /// line, because the draw's `n` is the thing the mutants change.
+    /// **District 1 cannot pin it**: `1 * 10 + 1` and `1 + 10 + 1` differ by
+    /// one but `1 * 10` and `1 + 10` are both 10 — so a district-1 row
+    /// leaves `* 10`→`+ 10` alive. District 3 separates all four.
+    #[test]
+    fn the_stoned_wander_fill_is_drawn_from_district_times_ten_plus_one() {
+        for (district, want) in [(1u8, 11u16), (3, 31), (5, 51)] {
+            let mut g = game();
+            g.district = district;
+            g.player.stoned = true;
+            // 1000:b841 anything, 1000:b871 must be 0 to reach the fill,
+            // 1000:b891 the rank.
+            g.rng = Rng::new(seed_drawing(&[(7, 1), (7, 0), (7, 2)]));
+            g.rng.start_log();
+            term::capture::lines(|| {
+                g.wander_flavor(&mut input(&["x"])).unwrap();
+            });
+            let log = g.rng.take_log();
+            let fill = log
+                .iter()
+                .find(|d| d.site == "1000:b8bd")
+                .unwrap_or_else(|| panic!("district {district} never reached the fill draw"));
+            assert_eq!(fill.n, want, "district {district}");
+        }
+
+        // Not stoned: 1000:b82f's gate returns before any draw at all.
+        let mut g = game();
+        g.player.stoned = false;
+        g.rng.start_log();
+        term::capture::lines(|| {
+            g.wander_flavor(&mut input(&["x"])).unwrap();
+        });
+        assert!(g.rng.take_log().is_empty(), "sober must spend no draw");
+    }
+
     /// `Game::enter_shop`'s two location gates and `Game::visit_girl`'s
     /// two, each driven on both sides so the operator is what decides.
     ///
