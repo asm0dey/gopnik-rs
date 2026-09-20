@@ -300,9 +300,24 @@ python3 -c "import json;fns={f['name']:f['size'] for f in json.load(open('data/f
 # 38264
 ```
 
-~~`3d11` (6,971)~~ · `1a03` (2,700) · `7c67` (1,612) · `0d14` (1,196) ·
-`5f55` (1,000) · `2526` (929) · `1348` (791) · `29c4` (666) · `7538` (580) ·
-`0aec` (552) · `02c2` (508) · `11c2` (178) · `0acc` (15).
+~~`3d11` (6,971)~~ · ~~`1a03` (2,700)~~ · `7c67` (1,612) ·
+~~`0d14` (1,196)~~ · `5f55` (1,000) · `2526` (929) · `1348` (791) ·
+~~`29c4` (666)~~ · `7538` (580) · `0aec` (552) · `02c2` (508) · `11c2` (178) ·
+`0acc` (15).
+
+**`1a03`, `0d14` and `29c4` struck too -- the three functions with no
+`difftest.py` span of any kind, 4,562 B, zero gap rows.** `1a03`'s ~83
+branches (header, four stat digits, both charm sections, the three worn
+singletons, the pistol block, the damage line's seven weapon arms, the health
+line's four conditions, accuracy, armour, purse) all match
+`src/character_sheet.rs`. `0d14`'s **14** `Random` draws are all spent by
+`Game::roll_enemy` in the same order with the same `n` -- `1000:0d26`,
+`0d70`, `0d91`, `0dcc`, `0ddd`, `0df0`, `0e04`, `0efd`, `102e`, `109c`,
+`10c4`, `113c`, `1162`, `1197` -- which was the highest-severity thing
+available in the batch, since a missing draw in the wander's opponent
+generator corrupts every combat after it with no visible symptom. `29c4`'s
+`h`/`mh` dispatch, broken-jaw refusal, spend-loop and healing split all
+match, with `db9fd24`'s divergence still the only one.
 
 **`FUN_1000_3d11` is struck: list-building pass, zero gap rows.** 6,971 B,
 the largest function after `entry`. All 27 `Random` sites are spent by
@@ -313,12 +328,19 @@ ending blocks. It had been ported incrementally across ten modules without
 anyone recognising it as one function-sized unit -- which is exactly why it
 read as "never flow-diffed" while having nothing outstanding.
 
-**That result is weaker evidence than the nine `entry` surveys and should
-not be quoted as if it were the same.** It was a LIST-BUILDING pass -- read
-the decompilation, grep `src/` for each block's counterpart -- not a
-per-branch flow diff from aligned disassembly. It is strong enough to decide
-there is no bulk porting work in `3d11`, which is what it was run to decide,
-and not strong enough to claim the function is verified.
+**These results are weaker evidence than the nine `entry` surveys and must
+not be quoted as if they were the same.** A LIST-BUILDING pass reads the
+decompilation and greps `src/` for each block's counterpart; it is not a
+per-branch flow diff from aligned disassembly. The `1a03`/`0d14`/`29c4` pass
+went further and says so plainly in its own report: it dropped to
+`tools/re_query.py resolve` **zero times**, "since the decomp matched `src/`
+on every branch checked". Ghidra's C being wrong is the standing assumption
+in `CLAUDE.md`, so a pass that never leaves it inherits that risk whole.
+
+What these passes settle is "is there bulk porting work here" -- no -- which
+is what they were run to settle. What they do not settle is whether the
+functions are correct. Those are different questions and this file keeps its
+own habit of conflating them out of the record.
 
 **And a note on how to work them, because the rate dropped.** 2026-09-19
 landed 10 port commits and 4,591 `src/` insertions; 2026-09-20 landed 3 and
