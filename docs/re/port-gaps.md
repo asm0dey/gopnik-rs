@@ -146,11 +146,18 @@ ported and audited before Phase 1. Every game function is accounted for.
   counterparted with **0** having none, and gym is 38 of 38 with **6** that
   had none -- all six the trained-armour recompute at `1000:e3a4`..`e3e2`,
   which was a registered open divergence rather than an unknown, and which
-  that survey's dispatch closed. Their oracle position matches the den's:
+  that survey's dispatch closed. ~~Their oracle position matches the den's:
   `difftest.py` carries `priced_row` / `imm_row_site` / `menu_order` records
   for the MENU rows only, nothing for the arm bodies, and the real
   port-behaviour coverage is the module-local unit tests in `src/club.rs`
-  (14) and `src/gym.rs` (26).
+  (14) and `src/gym.rs` (26).~~ **No longer true, and the den's half is gone
+  too.** `difftest` carries `shop_line` records for the vet
+  (`1000:d3a6`..`d6e8`), the club (`df06`..`e38b`), the gym
+  (`e390`..`ea8f`) and the street command list (`ea94`..`ec7d`) -- 79
+  literals with their `Write`/`WriteLn` shape, each pool held in the module
+  that prints it -- and `den_line` / `den_gap` / `den_fragment` for the den.
+  The command list had no record of ANY kind before that: a `чтобы` grep
+  over the stream returned ten records and not one of its seventeen lines.
 
   What the den does lack is an **oracle**: no `tools/difftest.py` record is
   scoped to its range (the only `--dump` lines matching "притон" are
