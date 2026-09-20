@@ -11669,6 +11669,91 @@ mod tests {
         );
     }
 
+    /// `Game::shop_turn`'s vet tail -- `1000:d6c5 jmp 0xd4ba` returns to the
+    /// LOOP TOP, not to the prompt, so a whole player is ejected by
+    /// `crate::vet::loop_top` after the turn. **Unless the turn was the
+    /// exit**: an exit taken at `1000:d6a8` or `1000:d6b9` reaches
+    /// `1000:d6c8` without passing `1000:d4ba`.
+    ///
+    /// That second half is what the `self.location == Vet` conjunct models,
+    /// and `cargo mutants` could rewrite the `&&` to `||` because no test
+    /// exercised a whole player LEAVING -- only whole players staying.
+    #[test]
+    fn the_vet_loop_top_runs_after_a_turn_but_not_after_the_exit() {
+        let eject = "^0Док: вали отсюда ты здоров.";
+        for (key, exits) in [("zzz", false), ("w", true), ("e", true)] {
+            let mut g = game();
+            // Whole: 1000:d4ba's three tests all pass, so loop_top ejects.
+            g.player.hp = g.player.hpmax;
+            g.player.broken_jaw = false;
+            g.player.broken_leg = false;
+            g.places.mark_found(Location::Vet);
+            g.location = Location::Vet;
+            g.mode = Mode::Shop(Location::Vet);
+            let out = term::capture::lines(|| {
+                g.shop_turn(Location::Vet, key, &mut no_input()).unwrap();
+            });
+            assert_eq!(out.iter().any(|l| l == eject), !exits, "`{key}`: {out:?}");
+            assert_eq!(
+                g.location,
+                Location::Street,
+                "`{key}` must end on the street"
+            );
+        }
+
+        // A HURT player stays: 1000:d4ba's first test fails, loop_top
+        // returns without printing, and the vet keeps the prompt.
+        let mut g = game();
+        g.player.hp = 1;
+        g.places.mark_found(Location::Vet);
+        g.location = Location::Vet;
+        g.mode = Mode::Shop(Location::Vet);
+        let out = term::capture::lines(|| {
+            g.shop_turn(Location::Vet, "zzz", &mut no_input()).unwrap();
+        });
+        assert!(!out.iter().any(|l| l == eject), "hurt must not be ejected");
+        assert_eq!(g.location, Location::Vet, "hurt stays at the vet");
+    }
+
+    /// `1000:7dc7`/`7f5b`'s stage counter and `1000:8247`'s parting line.
+    ///
+    /// The counter saturates at 2 and the parting is indexed by
+    /// `church_visits >= 2` read AFTER the raise, so the FIRST visit is the
+    /// only one that prints `PARTING[0]`. `cargo mutants` left three alive
+    /// here -- the `<= 1` guard, the `+= 1`, and the `>= 2` -- because no
+    /// test ever called the church twice and looked at which parting came
+    /// out.
+    #[test]
+    fn the_church_stage_saturates_and_picks_the_parting_line() {
+        // Arm 3 of 1000:7f63 is the armour blessing: one draw, no sub-draw,
+        // no level-up, so the visit is as short as the church gets.
+        let seed = (0..1_000_000u32)
+            .find(|&s| Rng::new(s).below(5) == 3)
+            .expect("a seed drawing arm 3");
+
+        let mut g = game();
+        // (visit, church_visits after, parting index)
+        for (visit, after, parting) in [(1u8, 1u8, 0usize), (2, 2, 1), (3, 2, 1), (4, 2, 1)] {
+            g.rng = Rng::new(seed);
+            let out = term::capture::lines(|| g.church(&mut no_input()));
+            assert_eq!(g.church_visits, after, "visit {visit} counter");
+            assert!(
+                out.iter().any(|l| l == church::PARTING[parting]),
+                "visit {visit} wanted PARTING[{parting}]: {out:?}"
+            );
+            // Exactly one of the two ever prints.
+            assert!(
+                !out.iter().any(|l| l == church::PARTING[1 - parting]),
+                "visit {visit} printed both partings: {out:?}"
+            );
+            // 1000:828c's bare WriteLn then PARTING[2], on every visit.
+            assert!(
+                out.iter().any(|l| l == church::PARTING[2]),
+                "visit {visit} lost the tail: {out:?}"
+            );
+        }
+    }
+
     /// Seed whose draws satisfy `spec` in order: `Some(v)` is an exact
     /// value, `None` is "any non-zero", which is how a draw whose zero
     /// would fire an unrelated event is neutralised.
