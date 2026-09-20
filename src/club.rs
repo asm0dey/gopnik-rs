@@ -729,16 +729,15 @@ mod tests {
     }
 
     /// The club's own `ReadLn` at `1000:e060` does not trim (`0eed:0216`
-    /// lowercases ASCII `A`..`Z` and compares against no `0x20`), while
-    /// `Game::shop_turn` trims -- the standing trimmed-prompt divergence in
-    /// `docs/re/gaps.md`, whose population the club now joins. Pinned so it
-    /// is measured rather than remembered: ` 1` is a MISS in the original
-    /// and a hit here.
+    /// lowercases ASCII `A`..`Z` and compares against no `0x20`), and
+    /// `Game::shop_turn` no longer does either. ` 1` is a MISS, here as
+    /// there: `rtl_str_compare` compares shortstrings whose length byte is
+    /// part of the value.
     #[test]
-    fn the_club_prompt_accepts_untrimmed_input_the_original_refuses() {
+    fn the_club_prompt_refuses_untrimmed_input_like_the_original() {
         let mut g = club(1, 15);
-        assert!(!turn(&mut g, " 1").is_empty(), "trimmed here, a miss there");
-        assert_eq!(g.player.money, 0);
+        assert!(turn(&mut g, " 1").is_empty(), "a miss here and there");
+        assert_eq!(g.player.money, 15, "and nothing was spent");
     }
 
     /// And it is case-insensitive in both, because `0eed:0216` lowercases.

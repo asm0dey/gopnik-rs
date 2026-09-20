@@ -498,18 +498,35 @@ class TrimInventoryTest(unittest.TestCase):
             % (sorted(self.table_rows()), want))
 
     def test_the_recomputation_is_not_vacuous(self):
-        """A guard that found nothing would pass both tests above silently."""
-        self.assertGreater(len(self.calls), 5)
+        """A guard that found nothing would pass both tests above silently.
+
+        This used to assert `len(self.calls) > 5` plus the presence of
+        `sell_offer` and `shop_turn`, because at the time twelve call sites
+        trimmed and those two were the ones the guard had been written for.
+        Closing the divergence removed ten of the twelve, so a threshold on
+        the COUNT now encodes the bug it was written to protect against.
+
+        The anti-vacuity property does not need a count. It needs the scan
+        to find, by name, sites that are known to be there -- so it is the
+        two that remain, both of which are deliberate and neither of which
+        is a `0f78:0bd8` compare: `Val()` on a typed number, and a child
+        process's output. If either disappears, this fails and asks.
+        """
         self.assertGreater(len(self.prose), 0)
+        found = [fn for _, _, fn in self.calls]
         self.assertIn(
-            "sell_offer", [fn for _, _, fn in self.calls],
-            "the Task 30 call site this guard was written for is gone; if "
-            "that is deliberate, drop its row from docs/re/gaps.md too")
+            "read_number", found,
+            "`main.rs`'s `read_number` no longer trims. That is NOT part of "
+            "the closed trimmed-prompt divergence -- it is `Val()` on the "
+            "class answer, a number rather than a token. If it was changed "
+            "deliberately, drop its row from docs/re/gaps.md too")
         self.assertIn(
-            "shop_turn", [fn for _, _, fn in self.calls],
-            "the submenu-key trim is attributed to no `shop_turn` -- the "
-            "usual cause is TRIM_FN failing on its declaration, which "
-            "silently reassigns the hit to whatever `fn` came before it")
+            "stty", found,
+            "`crate::term::stty` no longer trims. It normalises a CHILD "
+            "PROCESS's output, not the player's input, and is unrelated to "
+            "the prompt divergence; the usual cause is TRIM_FN failing on a "
+            "declaration, which silently reassigns the hit to whatever `fn` "
+            "came before it")
 
 
 if __name__ == "__main__":

@@ -1205,7 +1205,7 @@ accepts", above (§`557`); the detail lives here because that section is
 scoped to save-load refusals specifically and this divergence is not one —
 it belongs to the main loop's shape.
 
-## The trimmed `y` prompts — the port accepts input the original refuses
+## The trimmed `y` prompts — CLOSED, the port no longer trims
 
 *Cited from `src/commands.rs`'s `parse` and `src/game.rs`'s
 `district_advance`, `walk`, `mage`, `wander_girl`, `shop_turn` and
@@ -1274,29 +1274,41 @@ port-side inventory is a **command**, not a pasted listing:
 $ grep -rn '\.trim()' src/*.rs | grep -v 'trim_end_matches\|trim_start_matches'
 ```
 
-**Eighteen hits: twelve call sites and six lines of prose about them.** Run
+**Five hits: two call sites and three lines of prose about them.** Run
 it and the counts are what to check, not the line numbers.
 
 | where | what it normalises |
 |---|---|
-| `crate::commands::parse` | the street verb table |
-| `main.rs`'s `read_number` | `Val()` on the class answer — a number, not a token |
-| `Game::run` | the street verb line again, to tell `run` from `w` — the wander preamble's own `1000:aee4` re-compare, which `parse` cannot make since it folds both into one `Command::Walk` |
-| `Game::district_advance` | the district autosave's `y` |
-| `Game::shop_turn` | the location submenu key — the dealers', the den's, the gym's (Task 32) and, since Task 34, the club's (`1000:e060`) and the vet's (`1000:d528`) |
-| `Game::walk_verb` | the encounter accept's `y` |
-| `Game::mage` | the mage's `y` |
-| `Game::wander_girl` | wander bucket 2's `y` |
-| `Game::sell_offer` | the six `wes` sell offers' `y` (`1000:cf6d` and its five twins) |
-| `Game::run_combat` | combat's `run` (`1000:48e1`) |
-| `Game::run_combat` | combat's `e` (`1000:4c56`) |
-| `crate::term::stty` | `stty -g`'s saved terminal settings, before they are handed back to `stty` — not a typed token at all, and the only row here that normalises a CHILD PROCESS's output rather than the player's input |
+| `main.rs`'s `read_number` | `Val()` on the class answer — a number, not a token, and not one of the `0f78:0bd8` compares this entry is about |
+| `crate::term::stty` | `stty -g`'s saved terminal settings, before they are handed back to `stty` — a CHILD PROCESS's output, not the player's input |
 
-The six prose hits are the autosave comment that points at this section,
-`Game::sell_offer`'s own comment saying the same, one in
-`Game::den_menu_reveal_hint` about `Game::shop_turn`'s key trim, and three in
-`Game::rename`'s neighbourhood saying it must **not** trim — the next
-paragraph is what those are about.
+**CLOSED.** The ten player-input sites that used to be listed here --
+`commands::parse`, `Game::run`, `district_advance`, `shop_turn`,
+`walk_verb`, `mage`, `wander_girl`, `sell_offer` and `run_combat` twice --
+no longer trim. They take the line as `BufRead::lines` hands it over, which
+strips `\n` and `\r\n` and nothing else, exactly as the original's `ReadLn`
+does. `0eed:0216` still folds case, so `H` hits and ` H` misses, here as
+there.
+
+The reason this entry gave for staying open was that fixing one site "would
+make this port self-inconsistent for no gain" -- an argument for fixing all
+of them, which is what happened. The four tests that pinned the divergence
+are inverted rather than deleted, so the new behaviour is measured the way
+the old was: `is_case_insensitive_but_does_not_trim`,
+`the_club_prompt_refuses_untrimmed_input_like_the_original`,
+`the_gym_prompt_refuses_untrimmed_input_like_the_original`, and
+`the_vet_prompt_is_case_insensitive_but_does_not_trim`.
+
+`Game::rename` still must NOT trim, and still does not -- `1000:ed5f` tests
+the length byte, so a line of only spaces is a nonempty name and is kept.
+That was always the odd one out and it is now the same rule as everything
+else.
+
+The three prose hits are all in `Game::rename`'s neighbourhood, saying it
+must **not** trim — the next paragraph is what those are about. The other
+three were the autosave's, `Game::sell_offer`'s and
+`Game::den_menu_reveal_hint`'s comments describing the divergence as live;
+they now describe it as closed and no longer name the call.
 
 **This listing has now gone stale four times, and the fourth is why it is now
 GUARDED rather than merely recomputable.** Task 30 added the tenth call site

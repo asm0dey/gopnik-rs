@@ -239,7 +239,7 @@ pub enum Command {
 /// `1000:ae72`, before any comparison -- this reproduces its effect without
 /// having decompiled that routine's internals).
 pub fn parse(input: &str) -> Command {
-    let v = input.trim().to_lowercase();
+    let v = input.to_lowercase();
     match v.as_str() {
         "w" | "run" => Command::Walk,
         "mar" => Command::Market,
@@ -328,10 +328,19 @@ mod tests {
         assert_eq!(parse("wes"), Command::SellItems);
     }
 
+    /// `0eed:0216` lowercases ASCII `A`..`Z` and strips nothing, so the fold
+    /// is case only. `rtl_str_compare` (`0f78:0bd8`) compares Pascal
+    /// shortstrings whose LENGTH BYTE is part of the value, so `" bmar"`
+    /// (length 5) can never equal `bmar` (length 4).
     #[test]
-    fn is_case_insensitive_and_trims() {
-        assert_eq!(parse("  BMAR "), Command::Dealers);
+    fn is_case_insensitive_but_does_not_trim() {
+        assert_eq!(parse("BMAR"), Command::Dealers);
         assert_eq!(parse("Trn"), Command::Gym);
+        // The original refuses both of these, and so does this now. The
+        // fold is case-only, so `Unknown` carries the lowercased line with
+        // its spaces intact.
+        assert_eq!(parse("  BMAR "), Command::Unknown("  bmar ".to_string()));
+        assert_eq!(parse(" trn"), Command::Unknown(" trn".to_string()));
     }
 
     #[test]

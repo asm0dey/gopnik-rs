@@ -909,7 +909,7 @@ impl Game {
                         // so the raw line is matched here instead, the same
                         // way `Game::run_combat`'s own `run` compare is.
                         // See `crate::wander`'s module doc.
-                        self.walk_verb(line.trim().eq_ignore_ascii_case("run"), &mut lines)?;
+                        self.walk_verb(line.eq_ignore_ascii_case("run"), &mut lines)?;
                     } else {
                         self.dispatch(cmd, &mut lines)?;
                     }
@@ -1064,11 +1064,12 @@ impl Game {
         let answer = line?;
         // 1000:ac45's case-fold, then 1000:ac54's compare against `y`.
         //
-        // `.trim()` is a PORT ADDITION and a real (if tiny) divergence:
-        // 1000:ac45 case-folds the whole DS:3a72 buffer and 1000:ac54 hands
-        // it straight to `0f78:0bd8` `rtl_str_compare`, which compares the
-        // shortstring's length byte too -- so `" y"` is length 2 against
-        // length 1 and the original refuses it, while this port saves. The
+        // No trim, matching the original: 1000:ac45 case-folds the whole
+        // DS:3a72 buffer and 1000:ac54 hands it straight to `0f78:0bd8`
+        // `rtl_str_compare`, which compares the shortstring's length byte
+        // too -- so `" y"` is length 2 against length 1 and BOTH refuse it.
+        // This used to trim and save where the original refused; closed
+        // with the rest of that population, `docs/re/gaps.md`. The
         // port's line source (`BufRead::lines`) has already stripped the
         // terminator the original's `ReadLn` also strips, so the trim only
         // affects genuine leading/trailing spaces. Kept for consistency with
@@ -1076,7 +1077,7 @@ impl Game {
         // `crate::commands::parse` rather than introduced here; the whole
         // nine-site class is recorded in `docs/re/gaps.md`, "The trimmed `y`
         // prompts", instead of nine separate comments.
-        if answer.trim().eq_ignore_ascii_case("y") {
+        if answer.eq_ignore_ascii_case("y") {
             // 1000:ac5e..1000:ac73 `Str([0x3692])` -- the district AFTER the
             // increment above, which is why the shipped corpus is
             // `SAVE_R2`..`SAVE_R5` and has no `SAVE_R1`. Both gates bound it
@@ -2149,9 +2150,8 @@ impl Game {
     /// **The den's `ReadLn` does not trim.** `1000:db1d call 0eed:0216`
     /// only lowercases ASCII `A`..`Z` -- it compares against no `0x20` --
     /// so ` p` is a miss in the original and a hit here. That is the
-    /// existing trimmed-prompt divergence in `docs/re/gaps.md`, which the
-    /// den now joins; the `.trim()` below is deliberately left alone rather
-    /// than special-cased for one location.
+    /// former trimmed-prompt divergence in `docs/re/gaps.md`, now CLOSED:
+    /// the key below is taken as read, so ` p` is a miss here too.
     ///
     /// ## The gym's five keys
     ///
@@ -2171,7 +2171,7 @@ impl Game {
         line: &str,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
     ) -> io::Result<()> {
-        let key = line.trim().to_lowercase();
+        let key = line.to_lowercase();
         match (loc, key.as_str()) {
             // The vet's two keys -- `1000:d532`..`1000:d6a3`, ported by
             // [`crate::vet`]. Neither sits behind a gate that skips its own
@@ -3242,7 +3242,7 @@ impl Game {
             return Ok(());
         };
         let answer = line?;
-        if answer.trim().eq_ignore_ascii_case("y") {
+        if answer.eq_ignore_ascii_case("y") {
             self.run_combat(0, enemy, lines)?;
         } else if !aggressive {
             // 1000:b696 -- the quiet arm has no decline roll at all: a
@@ -3862,7 +3862,7 @@ impl Game {
             return Ok(());
         };
         let answer = line?;
-        if !answer.trim().eq_ignore_ascii_case("y") {
+        if !answer.eq_ignore_ascii_case("y") {
             // 1000:775f, file 0x8DDC.
             term::println("^6Нехотите как хотите - мое дело предложить");
             return Ok(());
@@ -3931,7 +3931,7 @@ impl Game {
             return Ok(());
         };
         let answer = line?;
-        if !answer.trim().eq_ignore_ascii_case("y") {
+        if !answer.eq_ignore_ascii_case("y") {
             return Ok(());
         }
         if self.rng.below_at("1000:b54e", 2) == 0 {
@@ -4590,11 +4590,11 @@ impl Game {
         // The roll, AFTER the read and BEFORE the compare.
         let refund = i32::from(base + rng.below_at(roll_site, span));
         // 1000:cf4f `call 0eed:0216` folds only `A`..`Z`, so `Y` sells;
-        // `eq_ignore_ascii_case` is that same ASCII-only fold. The `.trim()`
-        // is the port addition `docs/re/gaps.md`'s trimmed-prompt entry
-        // already owns -- the original hands the raw buffer to
-        // `0f78:0bd8`, which compares the shortstring's length byte too.
-        Ok(Some((answer.trim().eq_ignore_ascii_case("y"), refund)))
+        // `eq_ignore_ascii_case` is that same ASCII-only fold, and the line
+        // is taken as read -- the original hands the raw buffer to
+        // `0f78:0bd8`, which compares the shortstring's length byte too, so
+        // `" y"` misses in both.
+        Ok(Some((answer.eq_ignore_ascii_case("y"), refund)))
     }
 
     /// `wes` at the dealers -- `1000:cece`..`1000:d383`, six sequential
@@ -6047,7 +6047,7 @@ impl Game {
             // `Command::Walk`). 1000:48e1 is the `call 0f78:0bd8` and
             // 1000:48e6 `jz 0x48eb` the branch it sets ZF for; the miss is
             // 1000:48e8 `jmp 0x4afb`.
-            if line.trim().eq_ignore_ascii_case("run") {
+            if line.eq_ignore_ascii_case("run") {
                 fled = self.flee();
             }
 
@@ -6091,7 +6091,7 @@ impl Game {
             // any other unmatched line.
             // 1000:4c5b `jnz 0x4c64` is the miss; the hit falls through to
             // 1000:4c5d.
-            if line.trim().eq_ignore_ascii_case("e") {
+            if line.eq_ignore_ascii_case("e") {
                 self.last_enemy = Some(enemy);
                 self.running = false;
                 return Ok(());

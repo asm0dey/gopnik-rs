@@ -972,15 +972,13 @@ mod tests {
     }
 
     /// The gym's own `ReadLn` does not trim (`1000:e61f call 0eed:0216` only
-    /// lowercases), while `Game::shop_turn` trims -- the standing
-    /// trimmed-prompt divergence in `docs/re/gaps.md`, whose population the
-    /// gym now joins. Pinned so the divergence is measured rather than
-    /// remembered: ` 1` is a MISS in the original and a hit here.
+    /// lowercases), and `Game::shop_turn` no longer does either. ` 1` is a
+    /// MISS, here as there.
     #[test]
-    fn the_gym_prompt_accepts_untrimmed_input_the_original_refuses() {
+    fn the_gym_prompt_refuses_untrimmed_input_like_the_original() {
         let mut g = gym(1, 20);
-        assert!(!turn(&mut g, " 1").is_empty(), "trimmed here, a miss there");
-        assert_eq!(g.player.money, 0);
+        assert!(turn(&mut g, " 1").is_empty(), "a miss here and there");
+        assert_eq!(g.player.money, 20, "and nothing was spent");
     }
 
     /// And it is case-insensitive in both, because `0eed:0216` lowercases

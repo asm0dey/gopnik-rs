@@ -619,13 +619,17 @@ mod tests {
     }
 
     /// The vet's own `ReadLn` at `1000:d528` lowercases and does not trim,
-    /// while `Game::shop_turn` trims -- the standing trimmed-prompt
-    /// divergence in `docs/re/gaps.md`, whose population the vet joins.
+    /// and `Game::shop_turn` no longer does either -- but the fold IS case,
+    /// so `H` hits and ` H` misses.
     #[test]
-    fn the_vet_prompt_is_case_insensitive_and_accepts_untrimmed_input() {
+    fn the_vet_prompt_is_case_insensitive_but_does_not_trim() {
         let mut g = vet(3);
         g.player.hp = 4;
-        assert!(!turn(&mut g, " H").is_empty(), "trimmed here, a miss there");
+        assert!(!turn(&mut g, "H").is_empty(), "0eed:0216 lowercases");
         assert_eq!(g.player.hp, 9);
+        let mut g = vet(3);
+        g.player.hp = 4;
+        assert!(turn(&mut g, " H").is_empty(), "a miss here and there");
+        assert_eq!(g.player.hp, 4, "and nothing was healed");
     }
 }
