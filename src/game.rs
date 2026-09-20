@@ -12461,11 +12461,12 @@ mod tests {
         let log = g.rng.take_log();
         assert_eq!(log.len(), 1);
         assert_eq!((log[0].site, log[0].n), ("1000:d83f", 6));
-        let n: i64 = out[0]
-            .rsplit('№')
-            .next()
-            .and_then(|t| t.parse().ok())
-            .unwrap_or_else(|| panic!("no dorm number in {:?}", out[0]));
+        // The dorm number is the DRAW plus 3, and it is compared against
+        // the draw the log recorded -- not re-parsed out of the line and
+        // compared to itself, which is a check that cannot fail and is what
+        // this assertion used to be. `cargo mutants` found it: rewriting
+        // 1000:d83f's `+ 3` to `* 3` survived the circular version.
+        let n = i64::from(log[0].r) + 3;
         assert!((3..=8).contains(&n), "dorm {n} outside 3..=8");
         assert_eq!(out, vec![format!("{PREFIX}^0общагу №{n}")]);
 
@@ -12491,6 +12492,28 @@ mod tests {
     fn the_den_reveal_hint_is_suppressed_once_both_places_are_found() {
         // Arithmetic that comfortably clears the 0x28 gate on its own:
         // (20 - 0)*... at district 1 is (20-5)*5 + 100 = 175.
+        // 1000:d91d..1000:d93a is `(level - (district-1)*10 - 5) * 5 +
+        // pontovost >= 0x28`. The rows below straddle that 40 exactly, so
+        // the `-`, the `*` and the threshold each change the answer -- a
+        // row that clears the gate by a wide margin leaves all three alive.
+        for (level, district, ponty, want) in [
+            (13u16, 1u8, 0i16, true), // (13-5)*5 + 0 = 40, the boundary
+            (12, 1, 0, false),        // 35
+            (12, 1, 5, true),         // 40 again, from the other term
+            (23, 2, 0, true),         // the district subtraction: (13-5)*5
+            (22, 2, 0, false),
+        ] {
+            let mut g = game();
+            g.district = district;
+            g.player.level = level;
+            g.pontovost_street = ponty;
+            assert_eq!(
+                g.den_menu_reveal_hint(),
+                want,
+                "level {level} district {district} ponty {ponty}"
+            );
+        }
+
         let mut g = game();
         g.district = 1;
         g.player.level = 20;
