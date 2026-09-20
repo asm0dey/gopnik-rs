@@ -19,6 +19,7 @@ pub mod persist;
 pub mod progress;
 pub mod rng;
 pub mod save;
+pub mod spoils;
 pub mod term;
 pub mod text;
 pub mod trace;

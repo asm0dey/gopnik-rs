@@ -79,6 +79,7 @@ use crate::model::Fighter;
 use crate::opening;
 use crate::progress::{self, Progress};
 use crate::rng::Rng;
+use crate::spoils;
 use crate::term;
 use crate::text;
 use crate::vet;
@@ -6891,7 +6892,7 @@ impl Game {
         self.player.money = self.player.money.wrapping_add(enemy.money);
         self.player.junk += enemy.junk;
         // file 0x52FE
-        term::println("^1Пиво победителю!");
+        term::println(spoils::EMITTED[0].1);
         // 1000:5274 `cmp ax,[0x38ae]` / 1000:5278 `jle 0x5280` -- the +5 is
         // stored only while it stays at or below hpmax; above it, 1000:527a
         // stores hpmax instead.
@@ -6906,9 +6907,7 @@ impl Game {
             && i32::from(self.player.level) - (i32::from(self.district) - 1) * 10 >= 3
         {
             self.places.mark_found(Location::Den);
-            term::println(
-                "^1Поновость улутшилась на столько, что тебе можно заходить в местный притон!",
-            );
+            term::println(spoils::EMITTED[1].1);
         }
         // 1000:52da `or ax,ax` / 1000:52dc `jbe 0x52e1` -- only a 0 out of
         // Random(30) reaches the gift chain; anything else takes 1000:52de
@@ -6929,7 +6928,7 @@ impl Game {
         if i32::from(self.player.luck) >= i32::from(roll) && enemy.class == 2 {
             // 1000:5427 `add [0x38c5],ax` -- a word add of the draw.
             self.player.joints += self.rng.below_at("1000:5427", 3) as i16;
-            term::println("^1А у нарка был косячок"); // file 0x540B
+            term::println(spoils::EMITTED[7].1); // file 0x540B
         }
         // 1000:5449..1000:57cc -- the class-keyed item table.
         let roll = self
@@ -6981,7 +6980,7 @@ impl Game {
     /// `1000:52ed` one of three compares; it is the second `je`.)
     fn grant_oneshot_gift(&mut self) {
         if !self.oneshot_gift_1 || !self.oneshot_gift_2 || !self.ring_gospodi_pomilui {
-            term::println("^1Оба на! Колечко! Вот свезло, так свезло!");
+            term::println(spoils::EMITTED[2].1);
         }
         // The three-way chain below is a separate set of tests on the same
         // three flags, and it is an if/else: 1000:530f `cmp byte [0x38bf],0x0`
@@ -6989,7 +6988,7 @@ impl Game {
         // 1000:536f `jnz 0x53b9`, 1000:53b9 `cmp byte [0x38c1],0x0` /
         // 1000:53be `jnz 0x53f7`.
         if !self.oneshot_gift_1 {
-            term::println("^1Кольцо \"Помоги Господи\"");
+            term::println(spoils::EMITTED[3].1);
             self.player.strength += 1;
             self.player.agility += 1;
             self.player.vitality += 1;
@@ -7002,7 +7001,7 @@ impl Game {
             }
             self.oneshot_gift_1 = true;
         } else if !self.oneshot_gift_2 {
-            term::println("^1\"Мега Кольцо\"!");
+            term::println(spoils::EMITTED[4].1);
             self.player.strength += 4;
             self.player.agility += 4;
             self.player.vitality += 4;
@@ -7013,8 +7012,8 @@ impl Game {
             self.player.dmg_min += 2;
             self.oneshot_gift_2 = true;
         } else if !self.ring_gospodi_pomilui {
-            term::println("^1Ваще полезное кольцо \"Господи помилуй\"");
-            term::println("^1Восст. жизни - 3, 5% - самозарост переломов");
+            term::println(spoils::EMITTED[5].1);
+            term::println(spoils::EMITTED[6].1);
             self.ring_gospodi_pomilui = true;
         }
     }
@@ -7027,7 +7026,7 @@ impl Game {
                 // 1000:548c gate, 1000:5493 `add [0x38a4],2`, 1000:54b1 flag.
                 if !self.charm_krestik_38bd {
                     self.player.luck += 2;
-                    term::println("^1Ты нашёл крестик: удача +2");
+                    term::println(spoils::EMITTED[8].1);
                     self.charm_krestik_38bd = true;
                 }
             }
@@ -7036,7 +7035,7 @@ impl Game {
                 // 1000:54bd gate, 1000:54c4 `inc [0x38a4]`, 1000:54e1 flag.
                 if !self.charm_ring_38be {
                     self.player.luck += 1;
-                    term::println("^1Ты нашёл кольцо \"Господи спаси\": удача +1");
+                    term::println(spoils::EMITTED[9].1);
                     self.charm_ring_38be = true;
                 }
             }
@@ -7046,7 +7045,7 @@ impl Game {
             _ => {
                 // 1000:54ed gate, 1000:550d flag. No stat change.
                 if !self.has_mobile {
-                    term::println("^1Ты нашёл мобилу");
+                    term::println(spoils::EMITTED[10].1);
                     self.has_mobile = true;
                 }
             }
@@ -7068,14 +7067,14 @@ impl Game {
                     return;
                 }
                 self.weapon_kastet_38ba = true; // 1000:5541
-                term::println("^1Ты надыбал кастет(урон+2)");
+                term::println(spoils::EMITTED[11].1);
                 // 1000:555f/1000:5566/1000:556d -- ножик, дубинка, тесак.
                 if !self.weapon_nozhik_38c2 && !self.weapon_dubinka_394b && !self.weapon_tesak_394c
                 {
                     self.player.dmg_min += 2; // 1000:5574
                     self.player.dmg_max += 2;
                 } else {
-                    term::println("^6Но у тебя есть более мощное оружие");
+                    term::println(spoils::EMITTED[12].1);
                 }
             }
             // 1000:559b `cmp ax,0x1` / 1000:559e `jnz 0x560b` -- the last
@@ -7086,10 +7085,10 @@ impl Game {
                     return;
                 }
                 self.weapon_dubinka_394b = true; // 1000:55a7
-                term::println("^1Ты отобрал у врага дубинку(урон+4)");
+                term::println(spoils::EMITTED[13].1);
                 // 1000:55c5/1000:55cc -- ножик, тесак.
                 if self.weapon_nozhik_38c2 || self.weapon_tesak_394c {
-                    term::println("^6Но у тебя есть более мощное оружие");
+                    term::println(spoils::EMITTED[14].1);
                 } else if self.weapon_kastet_38ba {
                     self.player.dmg_min += 2; // 1000:55da
                     self.player.dmg_max += 2;
@@ -7109,7 +7108,7 @@ impl Game {
                 // 1000:5621 gate, 1000:5628 flag. No stat change.
                 if !self.dark_glasses {
                     self.dark_glasses = true;
-                    term::println("^1Ты нашёл тёмные очки.");
+                    term::println(spoils::EMITTED[15].1);
                 }
             }
             // 1000:5648 `cmp ax,0x1` / 1000:564b `jnz 0x5672` -- the same
@@ -7117,7 +7116,7 @@ impl Game {
             _ => {
                 // 1000:564d gate, 1000:566d flag.
                 if !self.has_mobile {
-                    term::println("^1Ты нашёл мобилу");
+                    term::println(spoils::EMITTED[16].1);
                     self.has_mobile = true;
                 }
             }
@@ -7138,7 +7137,7 @@ impl Game {
                     return;
                 }
                 self.weapon_nozhik_38c2 = true; // 1000:5698
-                term::println("^1Ты нашел ножик(урон+6).");
+                term::println(spoils::EMITTED[17].1);
                 // 1000:56bc..1000:56cd: al := (394b == 0); `cmp al,[0x38ba]`.
                 if !self.weapon_dubinka_394b == self.weapon_kastet_38ba {
                     self.player.dmg_min += 4; // 1000:56cf
@@ -7159,7 +7158,7 @@ impl Game {
                 }
                 // 1000:5709 `cmp byte [0x394c],0x0` / 1000:570e `jz 0x5729`
                 if self.weapon_tesak_394c {
-                    term::println("^6Но утебя есть тесак который круче."); // file 0x5516
+                    term::println(spoils::EMITTED[18].1); // file 0x5516
                 }
             }
             // 1000:572c `cmp ax,0x1` / 1000:572f `jz 0x5734`. The `_` arm is
@@ -7170,7 +7169,7 @@ impl Game {
                     return;
                 }
                 self.weapon_tesak_394c = true; // 1000:573e
-                term::println("^1Ты нашел тесак(урон+9)!!! - ужасное оружие.");
+                term::println(spoils::EMITTED[19].1);
                 // 1000:5762..1000:577a: al := (394b == 0 && 38c2 == 0). Its
                 // two halves are 1000:5762 `cmp byte [0x394b],0x0` /
                 // 1000:5767 `jnz 0x5770` and 1000:5769

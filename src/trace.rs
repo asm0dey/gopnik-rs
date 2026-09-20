@@ -124,6 +124,7 @@ use crate::opening;
 use crate::progress::{
     self, Stat, CLASS_WEIGHTS, GAINS_PER_LEVEL, MAX_LEVEL, THRESHOLD_BASE, THRESHOLD_STEP,
 };
+use crate::spoils;
 use crate::text;
 use crate::wander;
 
@@ -301,6 +302,7 @@ pub fn emit(out: &mut impl Write) -> io::Result<()> {
     market_records(out)?;
     mage_records(out)?;
     den_records(out)?;
+    spoils_records(out)?;
 
     Ok(())
 }
@@ -440,6 +442,24 @@ type MarketGroup = (
     opening::Gaps,
     &'static [&'static str],
 );
+
+/// The victory block -- `1000:523e`..`1000:57ce`, everything
+/// `FUN_1000_3d11` prints after the XP award. Appended after
+/// [`den_records`] so no record above moves.
+///
+/// The span is unusual in carrying NOTHING but plain `WriteLn` literals:
+/// no composed line, no fragment, no blank line and no `ReadKey`. There is
+/// therefore no `spoils_gap` record, and its absence is the comparison --
+/// `difftest.py`'s `gaps_of` sweep of the same span returns an empty table,
+/// so a `ReadKey` appearing anywhere in the victory block would break the
+/// stream rather than pass unnoticed.
+fn spoils_records(out: &mut impl Write) -> io::Result<()> {
+    for (i, (closes, line)) in spoils::EMITTED.iter().enumerate() {
+        let how = if *closes { "ln" } else { "w" };
+        writeln!(out, "spoils_line {i} {how} {}", text::strip(line))?;
+    }
+    Ok(())
+}
 
 /// The den's literal pool -- `1000:d802`..`1000:df01`, the span
 /// `docs/re/port-gaps.md` singled out as having **no** oracle at all: 44

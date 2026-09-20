@@ -1462,6 +1462,48 @@ def mage(img):
 
 
 # ---------------------------------------------------------------------------
+# The victory block (`1000:523e`..`1000:57ce`)
+# ---------------------------------------------------------------------------
+
+#: Everything `FUN_1000_3d11` prints after the XP award: the spoils
+#: transfer, the post-kill rings, and the class-keyed item table.  The stop
+#: is `1000:57ce` and not `57cc`: the walk lands on `57ce`, which is the
+#: errand-reward block's own entry, and `literal_walk`'s landing assertion
+#: is what establishes that rather than this comment.
+SPOILS_SPAN = (0x523E, 0x57CE)
+
+#: All 20 are plain `WriteLn` literals -- no composed line and no fragment.
+SPOILS_LITERALS = 20
+
+
+def spoils(img):
+    """Every victory-block record.
+
+    `docs/re/gaps.md` records the transfer at `1000:523e`..`1000:5251` as
+    established from flow, and `Game::claim_spoils` reproduces it, but no
+    record compared the block's STRINGS against the image -- a grep for
+    `победител` in the stream returned nothing.  The port's side is
+    `crate::spoils`, which `src/game.rs` prints from.
+
+    The gap sweep is run and asserted EMPTY rather than skipped: the span
+    holds no blank `WriteLn` and no `ReadKey`, and letting `gaps_of` say so
+    is what makes that a compared claim instead of a read one.
+    """
+    emitted, composed, fragments = literal_walk(img, *SPOILS_SPAN, SPOILS_LITERALS)
+    lo, hi = SPOILS_SPAN
+    gaps = list(gaps_of(img, [s for s, _, _ in emitted], lo, hi,
+                        seed=[(s, "C") for s in composed]))
+    if composed or fragments or gaps:
+        raise DifftestError(
+            "1000:%04x..%04x was read as plain-literal-only, but the walk found "
+            "%d composed, %d fragments and gaps %r"
+            % (lo, hi, len(composed), len(fragments), gaps))
+    return ["spoils_line %d %s %s"
+            % (i, "ln" if closes else "w", strip_markup(shortstring(img, cs)))
+            for i, (_, closes, cs) in enumerate(emitted)]
+
+
+# ---------------------------------------------------------------------------
 # The den (`docs/re/port-gaps.md`: "What the den does lack is an oracle")
 # ---------------------------------------------------------------------------
 
@@ -1673,6 +1715,12 @@ def reference(img):
     den_records = den(img)
     lines += den_records
     ev["den_line"] = sum(1 for l in den_records if l.startswith("den_line "))
+
+    # The victory block -- the other span this project had no record for --
+    # appended last for the same reason as everything else above.
+    spoils_records = spoils(img)
+    lines += spoils_records
+    ev["spoils_line"] = len(spoils_records)
     return lines, ev
 
 
