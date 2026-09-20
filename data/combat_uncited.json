@@ -940,7 +940,7 @@
    "src": {
     "module": "src/game.rs",
     "function": "Game::run_combat",
-    "expr": "if line.trim().eq_ignore_ascii_case(\"run\") { fled = self.flee() }"
+    "expr": "if line.eq_ignore_ascii_case(\"run\") { fled = self.flee() }"
    }
   },
   {
@@ -1100,7 +1100,7 @@
    "src": {
     "module": "src/game.rs",
     "function": "Game::run_combat",
-    "expr": "if line.trim().eq_ignore_ascii_case(\"e\") { self.running = false; return Ok(()) }"
+    "expr": "if line.eq_ignore_ascii_case(\"e\") { self.running = false; return Ok(()) }"
    }
   },
   {
@@ -1939,7 +1939,7 @@
     "1000:4c5b"
    ],
    "original": "`rtl_str_compare` against the CS tokens `run` and `e`, after the case fold at `1000:4431`",
-   "here": "`line.trim().eq_ignore_ascii_case(..)` on the raw line, not `crate::commands::parse`",
+   "here": "`line.eq_ignore_ascii_case(..)` on the raw line, not `crate::commands::parse`",
    "why_it_is_the_same_decision": "`parse` folds `w` with `run` and `exit` with `e` because `entry` dispatches both spellings; the fight prompt compares only the short one, so matching the literal is what reproduces the original and using `parse` would not. `Game::run_combat`'s doc comment argues this at both sites."
   }
  ],

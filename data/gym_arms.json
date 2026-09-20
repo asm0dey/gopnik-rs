@@ -745,7 +745,7 @@
    "addr": "1000:e607",
    "text": "mov ax,0xff"
   },
-  "note": "Identical in shape to the den's (`data/den_arms.json`): `0f78:06c6` is `Read(Text,String)`, `0f78:059d` the `ReadLn` skip-to-end-of-line, `0f78:0291` the `{$I+}` check, and `0eed:0216` lowercases ASCII A..Z in place and does NOT trim. The prompt is written with `0eed:0000` (`Write`, no newline). So gym keys are case-insensitive and whitespace-SENSITIVE, and `Game::shop_turn`'s `line.trim()` is the same divergence `docs/re/gaps.md`'s trimmed-prompt entry already owns.",
+  "note": "Identical in shape to the den's (`data/den_arms.json`): `0f78:06c6` is `Read(Text,String)`, `0f78:059d` the `ReadLn` skip-to-end-of-line, `0f78:0291` the `{$I+}` check, and `0eed:0216` lowercases ASCII A..Z in place and does NOT trim. The prompt is written with `0eed:0000` (`Write`, no newline). So gym keys are case-insensitive and whitespace-SENSITIVE, and `Game::shop_turn` no longer trims either -- the divergence `docs/re/gaps.md`'s trimmed-prompt entry owned is CLOSED, so ` 1` is a miss in both.",
   "same_buffer_as": "the den's seven keys, the dealers' `x`/`wes` and the vet's `h`/`r`"
  },
  "loop": {

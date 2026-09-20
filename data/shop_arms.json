@@ -3748,7 +3748,7 @@
       },
       {
         "n": 7,
-        "what": "DONE by Task 30, as `answer.trim().eq_ignore_ascii_case(\"y\")`. The answer is compared against `y` after `0eed:0216` lower-cases it, so `Y` sells and anything else declines. The original does not trim; `docs/re/gaps.md`'s trimmed-prompt entry already owns that divergence and these six reads join its population.",
+        "what": "DONE by Task 30, as `answer.eq_ignore_ascii_case(\"y\")` (the `.trim()` it originally carried was removed when the trimmed-prompt divergence was closed). The answer is compared against `y` after `0eed:0216` lower-cases it, so `Y` sells and anything else declines. The original does not trim; `docs/re/gaps.md`'s trimmed-prompt entry already owns that divergence and these six reads join its population.",
         "blocked": false
       },
       {
