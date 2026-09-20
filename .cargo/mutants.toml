@@ -58,4 +58,18 @@ exclude_re = [
     # `_ => {}` default, which is the same empty body, so no input can tell
     # the two apart.
     "^src/game\\.rs:3601:13: delete match arm 5 in Game::wander_preamble$",
+
+    # Resolved with `python3 tools/re_query.py resolve 1000:0d91 -n 48 -i 16`,
+    # from the `call 0f78:114b` at `0d91` so the walk starts aligned:
+    # `0d9a cmp word [0x3952],0x9` / `0d9f jle 0xda7` / `0da1 mov word
+    # [0x3952],0x9`.  The bound TESTED is the value STORED, so widening the
+    # test to `>=` writes 9 over a 9.  Same argument as `resolve_blow_nth`
+    # above -- a clamp whose constant appears on both sides cannot observe the
+    # difference between `>` and `>=`.
+    "^src/game\\.rs:4074:16: replace > with >= in Game::roll_enemy$",
+
+    # The `param_1 == 1` clamp, four instructions later and the same shape:
+    # `0dad cmp word [0x3952],0x7` / `0db2 jle 0xdba` / `0db4 mov word
+    # [0x3952],0x7`.
+    "^src/game\\.rs:4077:32: replace > with >= in Game::roll_enemy$",
 ]

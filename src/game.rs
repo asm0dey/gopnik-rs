@@ -11669,6 +11669,79 @@ mod tests {
         );
     }
 
+    /// `1000:b5fc`..`b61b` -- the notice compare that picks the encounter's
+    /// class threshold: 3 when luck LOST (`1000:b60a`), 7 when it won
+    /// (`1000:b614`). The test that matters is `luck == notice`, where `<`
+    /// and `<=` disagree, and nothing had ever produced it: `notice` is a
+    /// draw, so the equality has to be constructed.
+    ///
+    /// It is constructed by replay. Luck is read only AFTER `1000:b5f1`
+    /// and influences no draw before it (the one luck-driven draw in the
+    /// walk is the Вор's, and this walker is class 5), so the same seed
+    /// yields the same `notice` whatever luck is set to. Pass one reads it
+    /// off the RNG log; passes two and three replay with luck placed either
+    /// side of it, and the seed is only accepted when those two DISAGREE --
+    /// which is what proves the rolled class lies in 3..=6, the band where
+    /// the two thresholds differ at all.
+    #[test]
+    fn a_notice_roll_equal_to_luck_is_not_a_loss() {
+        let aggressive = "ищущий кого отпинать";
+
+        /// One walk at `seed` with `luck`, returning the encounter line and
+        /// the `1000:b5f1` draw if the walk reached one.
+        fn walk(seed: u32, luck: u16) -> Option<(String, u16)> {
+            let mut g = game();
+            g.player.class = 5;
+            g.player.luck = luck;
+            g.rng = Rng::new(seed);
+            g.rng.start_log();
+            let out = term::capture::lines(|| {
+                g.walk_verb(false, &mut input(&["n", "n", "n", "n"]))
+                    .unwrap();
+            });
+            let notice = g.rng.take_log().iter().find(|d| d.site == "1000:b5f1")?.r;
+            let line = out.iter().find(|l| l.contains(" уровня"))?.clone();
+            Some((line, notice))
+        }
+
+        let found = (0..4_000u32).find_map(|seed| {
+            let (_, notice) = walk(seed, 0)?;
+            // The band check: below and above must disagree, or the class
+            // is outside 3..=6 and the equality case proves nothing.
+            let below = walk(seed, notice.checked_sub(1)?)?.0;
+            let above = walk(seed, notice + 1)?.0;
+            let (lo, hi) = (below.contains(aggressive), above.contains(aggressive));
+            if lo && !hi {
+                Some((seed, notice))
+            } else {
+                None
+            }
+        });
+        let (seed, notice) = found.expect(
+            "no seed in 0..4000 produced an encounter whose class sits in 3..=6, \
+             so the equality case below would prove nothing",
+        );
+
+        // luck < notice loses and takes the class-3 threshold.
+        assert!(
+            walk(seed, notice - 1).unwrap().0.contains(aggressive),
+            "seed {seed}: luck {} vs notice {notice}",
+            notice - 1
+        );
+        // luck == notice is NOT a loss -- 1000:b60a is `jnc`, so the equal
+        // case takes the class-7 threshold with the winners.
+        assert!(
+            !walk(seed, notice).unwrap().0.contains(aggressive),
+            "seed {seed}: luck == notice == {notice} must not be a loss"
+        );
+        // And above it, likewise.
+        assert!(
+            !walk(seed, notice + 1).unwrap().0.contains(aggressive),
+            "seed {seed}: luck {} vs notice {notice}",
+            notice + 1
+        );
+    }
+
     /// `Game::shop_turn`'s vet tail -- `1000:d6c5 jmp 0xd4ba` returns to the
     /// LOOP TOP, not to the prompt, so a whole player is ejected by
     /// `crate::vet::loop_top` after the turn. **Unless the turn was the
