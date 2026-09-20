@@ -158,7 +158,10 @@ dcf6  [0x3695] := 1                ; Dealers
 dcfb  [0x369a] := 1                ; Gym
 ```
 
-`DS:3a72` is the same submenu input buffer `mar` reads into (`1000:bd21`).
+`DS:3a72` is the same submenu input buffer `mar` reads into (`1000:bd26`
+pushes it; `1000:bd21` is the setup instruction before it and pushes
+`DS:3ecc`, not the buffer -- see `docs/re/command-dispatch.md`, "The four
+addresses of one prompt").
 **Closed by Task 11b**: the read that leaves the token there is the den's own
 `ReadLn` at `1000:db00`..`1000:db09` — the only `0f78:06c6` call between
 `1000:d802` and `1000:dd48` — so `a` is typed at the `^0Притон\` prompt, not at

@@ -238,6 +238,45 @@ handler ends by *writing* its own prompt string and then `ReadLn`-ing into
 `0xA691`) with `0eed:0000` (`Write`, no newline) and `1000:bd21`..`1000:bd2f`
 is the `ReadLn`.
 
+### The four addresses of one prompt, because three of them get called "the ReadLn"
+
+The market survey found `1000:bd21` cited as "the `ReadLn`" in six places, and
+it is not a call at all. The full anatomy, from an aligned sweep:
+
+```
+python3 tools/re_query.py resolve 1000:bd08 -n 90 -i 30
+# 1000:bd08  mov di,0x8dc1              the prompt literal, CS 0x8dc1
+# 1000:bd1c  call 0xeed:0x0             Write, no newline  -- prints the prompt
+# 1000:bd21  mov di,0x3ecc              ReadLn ARGUMENT SETUP, not a call
+# 1000:bd2f  call 0xf78:0x6c6  \
+# 1000:bd34  call 0xf78:0x59d   >       the Pascal ReadLn, RTL worker triple
+# 1000:bd39  call 0xf78:0x291  /
+# 1000:bd43  call 0xeed:0x216           the game's CASE-FOLD over the buffer
+```
+
+Three different instructions carry the name in the repo:
+
+* **`1000:bd21`** -- what `src/game.rs` and `docs/re/gaps.md` cite. It is the
+  first instruction of the read's argument setup, so it is a fair anchor for
+  the BLOCK and a wrong one for the call. Left as the block anchor where the
+  prose means the block; corrected where the prose says "call".
+* **`1000:bd2f`..`bd39`** -- the actual `ReadLn`. `0f78:06c6` / `0f78:059d` /
+  `0f78:0291` is the same worker triple `docs/re/rtl.md` records for every
+  read in the image.
+* **`1000:bd43`** -- `call 0eed:0216`, which `data/shop_arms.json`'s
+  `mar.input_read.readln` names as the `ReadLn`. **That label is wrong.**
+  `0eed:0216` is the game's own case-fold, as `src/commands.rs`'s own doc
+  says ("case-fold is `FUN_1eed_0216`, called on the input right after
+  `ReadLn`") and `docs/re/rtl.md:477` records (`not_runtime`, a game
+  function, 117 bytes). It runs AFTER the read, over the buffer the read
+  filled.
+
+`data/shop_arms.json` is a frozen artifact and is not edited to correct this;
+the mislabel is recorded here instead. A reader taking its `readln` address
+at face value would cite the case-fold as the read -- the same shape as the
+`DS:0b42` "rank" table mislabel `docs/re/port-gaps.md` records, where a wrong
+name on a right address propagated into every task that read it.
+
 | location | prompt string | file off |
 |---|---|---|
 | `mar` | `^0Базар\` | `0xA691` |

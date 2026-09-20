@@ -40,7 +40,7 @@
 //!   string and then `ReadLn`-ing into `DS:3a72` -- the same second input
 //!   variable combat uses, not the top-level `DS:3972`. The prompt strings
 //!   are real and distinct per location: `^0Базар\` (file `0xA691`, written
-//!   at `1000:bd08`, `ReadLn` at `1000:bd21`), `^0Барыги\` (`0xAC4B`),
+//!   at `1000:bd08`, `ReadLn` at `1000:bd2f`), `^0Барыги\` (`0xAC4B`),
 //!   `^0Ветеренар\` (`0xB313`), `^0Притон\` (`0xB787`), `^0Клуб\` (`0xBAB2`),
 //!   `^0Качалка\` (`0xBD43`). `girl` has no prompt string and no `ReadLn`:
 //!   it is **not** modal, and [`Game::visit_girl`] runs it to completion in
