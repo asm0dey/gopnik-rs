@@ -11669,6 +11669,96 @@ mod tests {
         );
     }
 
+    /// The six output-only methods, each asserted to actually produce
+    /// output -- `banner`, `print_priced_rows`, `print_imm_rows`,
+    /// `inspect_enemy`, `print_enemy_block` and `shoot`.
+    ///
+    /// **`cargo mutants` replaced each of their whole bodies with `()` and
+    /// every test stayed green.** The shop's entire price list could vanish
+    /// and nothing noticed. The reason is a seam: `difftest.py`'s
+    /// `priced_row` / `imm_row_site` / `menu_order` records compare the row
+    /// DATA against `orig/g.exe`, and the module tests exercise the arms
+    /// those rows dispatch to, but nothing asserted the port ever calls the
+    /// printer. This test closes that seam only -- it deliberately does not
+    /// restate row text, which the oracle already owns.
+    #[test]
+    fn the_output_only_methods_print_something() {
+        // 1000:edb2's third copy of the version string, the `version` verb.
+        let g = game();
+        assert_eq!(
+            term::capture::lines(|| g.banner()),
+            vec!["^4Gopnik: ^7version 1.02 june,sept 2003".to_string()]
+        );
+
+        // The two priced menus. Every line the printer emits must carry the
+        // numbered prefix its row index selects, and the count must equal
+        // the rows `listed_rows` admits -- the tie to the data rather than a
+        // copy of it.
+        for tag in ["mar", "bmar"] {
+            let g = game();
+            let want: Vec<usize> = g
+                .listed_rows(tag)
+                .iter()
+                .filter_map(|r| r.key.parse::<usize>().ok())
+                .filter(|n| (1..=9).contains(n))
+                .collect();
+            assert!(!want.is_empty(), "{tag} lists no numbered rows");
+            let out = term::capture::lines(|| g.print_priced_rows(tag));
+            assert_eq!(out.len(), want.len(), "{tag}: {out:?}");
+            for (line, idx) in out.iter().zip(&want) {
+                assert!(
+                    line.starts_with(Game::ROW_PREFIXES[idx - 1]),
+                    "{tag} row {idx}: {line}"
+                );
+            }
+        }
+
+        // The three immediate menus. `trn` needs no gate; `rep` and `kl`
+        // are driven through a Game that satisfies theirs.
+        for tag in ["rep", "kl", "trn"] {
+            let mut g = game();
+            g.player.broken_jaw = true;
+            g.player.broken_leg = true;
+            g.player.hp = 1;
+            let out = term::capture::lines(|| g.print_imm_rows(tag));
+            assert!(!out.is_empty(), "{tag} printed nothing");
+            for line in &out {
+                assert!(!line.is_empty(), "{tag} printed a blank row");
+            }
+        }
+
+        // `sv` -- the sheet with an enemy, and silence without one, which
+        // is the port's recorded choice (no "nothing to inspect" string
+        // exists in the image).
+        let mut g = game();
+        assert!(
+            term::capture::lines(|| g.inspect_enemy()).is_empty(),
+            "no last enemy must print nothing"
+        );
+        let enemy = player();
+        let block = term::capture::lines(|| g.print_enemy_block(&enemy));
+        assert_eq!(block, enemy_sheet::lines(&enemy), "the block IS the sheet");
+        assert!(!block.is_empty());
+        g.last_enemy = Some(enemy);
+        assert_eq!(
+            term::capture::lines(|| g.inspect_enemy()),
+            block,
+            "with an enemy, `sv` prints the same block"
+        );
+
+        // `sh` -- gated on the pistol, and silent without it.
+        let mut g = game();
+        assert!(
+            term::capture::lines(|| g.shoot()).is_empty(),
+            "no pistol must print nothing"
+        );
+        g.pistol.owned = true;
+        assert_eq!(
+            term::capture::lines(|| g.shoot()),
+            vec!["^6Ты чё псих? мигом менты накроют!".to_string()]
+        );
+    }
+
     /// `1000:dcd3`..`dcf4`'s threshold -- `(level - (district - 1) * 10) * 2
     /// + понтовость >= 0x28`, the den's `a` reveal.
     ///
