@@ -201,45 +201,31 @@ pub struct Fought {
     pub gave_up: bool,
 }
 
-/// `[1000:4d93, 1000:4e9e)` -- the gopota's own attack.
+/// The gopota's own attack.
 ///
-/// **This block is not part of the `v` arm.** It sits between the `v` arm and
-/// the `f` compare on the dispatcher's straight line, so it runs on **every**
-/// prompt once the two gates open: `1000:4d93 cmp word [0x3962],0` / `jnle
-/// 0x4d9d` (the enemy must still be up) and `1000:4d9d cmp word [0x3c80],3` /
-/// `jnl 0x4da7` ([`Backup::is_up`]). `enemy_hp` is passed as an `i32` for the
-/// same reason `Game::combat_round` keeps one: `Fighter::hp` saturates at 0
-/// and the original's word does not.
+/// This block runs on every prompt once the enemy is still up and the
+/// backup is active ([`Backup::is_up`]).
 ///
 /// ```text
-/// dmg := district*3 + Random(district*4)   ; 1000:4db7 / 1000:4dbe..4dc9
-/// dmg := dmg - enemy.armour div 3          ; 1000:4dcf..4dda, [0x3968]
-/// if dmg < 0 then dmg := 0                 ; 1000:4dde / 1000:4de5
-/// enemy.hp := enemy.hp - dmg               ; 1000:4def
+/// dmg := district*3 + Random(district*4)
+/// dmg := dmg - enemy.armour div 3
+/// if dmg < 0 then dmg := 0
+/// enemy.hp := enemy.hp - dmg
 /// ```
 ///
-/// **Draws:** exactly two whenever the block is entered -- `1000:4db7`
-/// `Random(district * 4)` and `1000:4e16` `Random(2)` -- and none when either
-/// gate is shut. Both are unconditional inside the block, so the count does
-/// not depend on the roll.
+/// Draws exactly two dice rolls whenever the block runs, and none when
+/// either gate is shut.
 ///
-/// `cred` is `20ae:38cb`, debited `district * 5` at `1000:4e68`..`1000:4e75`
-/// every round the block runs.
+/// `cred` is debited `district * 5` every round the block runs.
 ///
-/// **`1000:4e2a` is not ported.** `^2Подошли пацаны.` (CS `0x36ab`) is
-/// unreachable: the block is entered only with the counter at 3 or more,
-/// `1000:4e1f` raises it to 4 or more, and `1000:4e23 cmp word [0x3c80],3` /
-/// `jnz 0x4e43` can then never be equal. A scan of every branch target in
-/// `FUN_1000_3d11` finds no jump into `[1000:4e12, 1000:4e43)`, so
-/// fall-through from `1000:4e0d` is the only way in
-/// (`docs/re/combat-dispatch.md`). The literal is in the image and never
-/// printed.
+/// The line `^2Подошли пацаны.` can never actually print: by the time
+/// this state is reached the counter has already been pushed past the
+/// value the check requires.
 ///
-/// A second consequence of there being two increment sites, and this one IS
-/// reachable: `1000:4c7c` can raise the counter from 6 to 7 on a `k` and
-/// `1000:4e1f` can raise it to 8 in the same prompt, while `1000:4e43` tests
-/// for **exactly** 7. Above 7 only the cred exhaustion can end the backup, so
-/// the reset is deliberately `== 7` here and not `>= 7`.
+/// The counter can also jump straight from 6 to 8 in the same prompt
+/// through two separate increments, while the backup-ending check tests
+/// for exactly 7 -- deliberately `== 7`, not `>= 7`, since above 7 only
+/// running out of cred can end the backup.
 pub fn backup_round(
     rng: &mut Rng,
     backup: &mut Backup,

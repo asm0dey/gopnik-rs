@@ -202,35 +202,28 @@ pub struct Game {
     pub weapon_tesak: bool,
     /// костюм Abibas (`mar` row 4).
     pub wear_suit_abibas: bool,
-    /// `20ae:38b5` / `.SAV 0x219` -- Бутсы (`1000:c029`, `1000:1e81`).
+    /// Бутсы.
     pub wear_boots: bool,
-    /// `20ae:38b6` / `.SAV 0x21a` -- Кожанка, `mar` row 6 (`1000:c0e0`,
-    /// `1000:2323`).
+    /// Кожанка, `mar` row 6.
     pub wear_jacket: bool,
-    /// `20ae:38b7` / `.SAV 0x21b` -- костюм Adidas, `mar` row 7
-    /// (`1000:c183`, `1000:22fc`).
+    /// костюм Adidas, `mar` row 7.
     pub wear_suit_adidas: bool,
-    /// `20ae:38b8` / `.SAV 0x21c` -- Понтовые бутсы (`1000:c222`,
-    /// `1000:1ecf`).
+    /// Понтовые бутсы.
     pub wear_boots_pontovye: bool,
-    /// `20ae:38b9` / `.SAV 0x21d` -- Крутая кожанка, `mar` row 9
-    /// (`1000:c2ca`, `1000:237e`).
+    /// Крутая кожанка, `mar` row 9.
     pub wear_jacket_krutaya: bool,
     /// Where [`Game::mage_save`](crate::persist) and any other writer put
     /// their files.
     ///
-    /// The original writes into the process's current directory -- every
-    /// filename it builds is either bare (`save_r0.sav`, `places.sav`) or
-    /// prefixed with `GetDir(0)` plus a backslash (`1000:6a2d`..`1000:6a55`),
-    /// which is the same directory. `"."` is therefore the faithful default.
-    /// It is a field rather than a `current_dir()` call so a test can point a
-    /// save at a scratch directory instead of dropping `save_r0.sav` into the
-    /// working tree, which is what `cargo test` would otherwise do the first
-    /// time a test answers `y` to the mage.
+    /// Save files are named `save_r0.sav`..`save_rN.sav` and
+    /// `places.sav`, all written to the current directory by default.
+    /// It is a field rather than a `current_dir()` call so a test can
+    /// point a save at a scratch directory instead of dropping
+    /// `save_r0.sav` into the working tree, which is what `cargo test`
+    /// would otherwise do the first time a test answers `y` to the mage.
     pub save_dir: std::path::PathBuf,
-    /// `20ae:3951` / `.SAV 0x2b5` -- the church's sermon stage, 0..2. Read
-    /// at `1000:7c76`/`1000:7ceb`/`1000:7dcb` to pick which sermon runs and
-    /// at `1000:8247` to pick the parting line.
+    /// The church's sermon stage, 0..2. Picks which sermon runs, and
+    /// picks the parting line.
     pub church_visits: u8,
     mode: Mode,
     /// The most recently fought opponent, shown by `Command::Inspect` (`sv`).
@@ -241,55 +234,21 @@ pub struct Game {
 impl Game {
     /// Start a brand-new character.
     ///
-    /// **Established from flow.** The original's new-character block is three
-    /// consecutive stores at `1000:6dbe`:
+    /// A brand-new character already starts in district 1 with the vet
+    /// and the market discovered.
     ///
-    /// ```text
-    /// 6dbe  c6 06 92 36 01   mov byte [0x3692],1   ; district := 1
-    /// 6dc3  c6 06 98 36 01   mov byte [0x3698],1   ; Vet    discovered
-    /// 6dc8  c6 06 94 36 01   mov byte [0x3694],1   ; Market discovered
-    /// ```
+    /// This runs one of three ways: silently, when no save files exist
+    /// yet; after the player answers `1` ("начать сначала") at the
+    /// save-slot prompt `^0Нажми цифру с какого района начать. 1-начать
+    /// сначала`, when save files are present; or when loading an
+    /// existing save fails, which prints `^6Чё-то глюкануло - нaверно
+    /// нет такого сейва, Default:1` and falls through into a fresh
+    /// character.
     ///
-    /// `0x3698` and `0x3694` are two of the seven contiguous discovery flags
-    /// at `20ae:3694..369a` (see [`Game::enter_shop`]), so **a brand-new
-    /// character already has the vet and the market**. An earlier revision of
-    /// this comment cited only the load-failure string and stopped one
-    /// instruction short of `6dc3`, which left both locations permanently
-    /// unreachable in this port.
-    ///
-    /// Three paths reach `1000:6dbe`, and all three write all three bytes:
-    ///
-    /// * `1000:6b3a` -- `1000:6b33` `cmp byte [0x3d04],0` / `ja 0x6b3d`
-    ///   falls through when the `save_r?.sav` scan (`1000:6a62` zeroes the
-    ///   counter, `1000:6a8a` `FindFirst`, `1000:6ab9` `inc byte [0x3d04]`)
-    ///   found no save file. **This is the path a fresh run with no `.SAV`
-    ///   files in the working directory takes**, and it prints nothing.
-    /// * `1000:6b81` -- the save-slot prompt `^0Нажми цифру с какого района
-    ///   начать. 1-начать сначала` (file `0x7C69`, written at `1000:6b51`)
-    ///   read a key into `[0x3d31]` that is none of `'0'`,`'2'`..`'5'`
-    ///   (`1000:6b5e`..`1000:6b7f`) -- i.e. the player pressed `1`,
-    ///   "начать сначала". This is the path when the shipped `SAVE_R?.SAV`
-    ///   files are present.
-    /// * `1000:6bdd` -- the slot file's `Reset` (`1000:6bcf`, record size
-    ///   `0x2b6`) left `IOResult` non-zero (`1000:6bd4` calls it,
-    ///   `1000:6bdb` `jz 0x6be0` is the success arm); jumps to `1000:6da5`,
-    ///   which writes
-    ///   `^6Чё-то глюкануло - нaверно нет такого сейва, Default:1`
-    ///   (file `0x7D21`) and falls straight through into `1000:6dbe`.
-    ///
-    /// That string is therefore evidence for *this block existing*, not for
-    /// which path a new game takes; `district := 1` and both flags are
-    /// common to all three. This port models the first path.
-    ///
-    /// Note that the `places.sav` load path (`1000:6c5a`, see
-    /// [`crate::locations::TRACKED`]) never reaches `1000:6dbe`: its own
-    /// failure block at `1000:6d3b` *clears* the flags and leaves via
-    /// `1000:6da0` `jmp 0x7262`.
-    ///
-    /// The three stores cost no `Random` draw, so wiring them does not
-    /// perturb the RNG sequence.
+    /// Loading `places.sav` is a separate path: if that load fails, it
+    /// clears the discovery flags instead of setting them, and does not
+    /// go through this setup.
     pub fn new(player: Fighter, progress: Progress, seed: u32) -> Game {
-        // 1000:6dc3 then 1000:6dc8, in that order.
         let mut places = Places::from_bytes(&[0u8; 7]);
         places.mark_found(Location::Vet);
         places.mark_found(Location::Market);
@@ -342,92 +301,36 @@ impl Game {
         g
     }
 
-    /// `1000:7347`..`1000:73e5`, all of it inside `FUN_1000_6a0d`: the
-    /// district-5 rector-showdown arm, then the class bonus, then the den's
-    /// opening loan credit.
+    /// The district-5 rector-showdown arm, then the class bonus, then the
+    /// den's opening loan credit. Runs on every entry into the game, new
+    /// character or loaded save.
     ///
-    /// **Established from flow.** `docs/re/wander.md` ("What reaches
-    /// `1000:73bb`") shows both exits of the character-setup procedure
-    /// converge on `1000:7262`, and `1000:7369`'s `jnz 0x73bb` skips only the
-    /// district-1 intro text, never anything after it -- so this whole
-    /// function runs on **every** entry into the game, new character or
-    /// loaded save. Re-derived here (`1000:7240`..`1000:7369` re-disassembled
-    /// for Task 20's review fix; `1000:73bb`..`1000:73e5` from the original
-    /// port):
+    /// If the district is already 5 at entry -- which a loaded save can
+    /// be, even before a single turn is played -- this arms the rector
+    /// showdown and prints `^1Пора наконец отомстить ректору...`,
+    /// exactly once. That line is a separate copy of the one
+    /// [`Game::enter_district_5`] prints when the district first becomes
+    /// 5 during play: the game repeats itself with two copies of a
+    /// similar message rather than one, and only one of the two ever
+    /// fires per game -- this one only when district is already 5 at
+    /// entry, the other only when it becomes 5 mid-game.
     ///
-    /// ```text
-    /// 7262  a0 92 36        mov al,[0x3692]   ; DISTRICT, not class
-    /// 7265  3c 01           cmp al,1 / jnz 0x729e   ; -> district-1 intro,
-    ///       ... (district 2, 3, 4 arms, each `jnz` to the next `cmp` --
-    ///       none of them touches `al`) ...
-    /// 7347  3c 05           cmp al,5 / jnz 0x7369   ; DISTRICT 5
-    /// 734b  WriteLn file 0x81F5   ; ^1Пора наконец отомстить ректору...
-    /// 7364  c6 06 83 3c 01  mov byte [0x3c83],1   ; rector_showdown
-    /// 7369  80 3e 92 36 01  cmp byte [0x3692],1    ; district == 1?
-    /// 73bb  a1 9c 38        mov ax,[0x389c]        ; CLASS, [0x389c]
-    /// 73be  3d 05 00        cmp ax,5          ; Гопник
-    /// 73c3  c6 06 96 36 01  mov byte [0x3696],1   ; Den
-    /// 73ca  3d 03 00        cmp ax,3          ; Подтсан
-    /// 73cf  c6 06 97 36 01  mov byte [0x3697],1   ; Girl
-    /// 73d4  c6 06 99 36 01  mov byte [0x3699],1   ; Club
-    /// 73db  3d 06 00        cmp ax,6          ; Вор
-    /// 73e0  c6 06 95 36 01  mov byte [0x3695],1   ; Dealers
-    /// 73e5  c6 06 35 3e 05  mov byte [0x3e35],5   ; den loan credit
-    /// ```
+    /// The class bonus is mutually exclusive by class:
     ///
-    /// **`1000:7347`..`1000:7364` reads `[0x3692]`, the DISTRICT, not
-    /// `[0x389c]`, the class** -- a review fix for Task 20, which first
-    /// shipped this arm mislabelled as "class-5 character creation" and, on
-    /// that wrong reading, invented a "set twice for a Гопник" story that
-    /// does not exist: nothing about class selects this arm at all. What it
-    /// really is: whenever `FUN_1000_6a0d` runs with district already at 5
-    /// -- which for a **loaded save** can be true on the very first entry,
-    /// before a single turn is played -- it arms `rector_showdown` and
-    /// prints the line, exactly once (the arm falls straight through to
-    /// `1000:7369`, never looping). The line half now lives in
-    /// [`Game::announce_district`]; see the note at the end of this doc.
-    /// This is the "settling address" for the
-    /// loaded-save divergence `docs/re/gaps.md`'s "The district-advance
-    /// autosave — wired (Task 21)" records: not a main-loop rewrite,
-    /// because `apply_class_bonus` is already the port's home for
-    /// everything else `FUN_1000_6a0d` re-applies on load
-    /// (`src/persist.rs`'s `from_save` calls it for exactly that reason),
-    /// and `self.district` is available here the same way `self.player.class`
-    /// already is.
+    /// * Гопник -- Den discovered
+    /// * Подтсан -- Girl and Club discovered
+    /// * Вор -- Dealers discovered
+    /// * Отморозок gets no flag here; its bonus is +1 HP per walk.
     ///
-    /// `1000:734b`'s line is a SEPARATE copy of the same text
-    /// [`Game::enter_district_5`] prints from `1000:adc3` (different file
-    /// offset, `0x81F5` vs `0x9CF2`, same 35 bytes) -- the original repeats
-    /// itself, this port reproduces both sites rather than reusing one
-    /// string constant for two different original addresses. The two never
-    /// fire for the same game: `1000:734b`'s (now printed by
-    /// [`Game::announce_district`]) only at entry when district is
-    /// ALREADY 5 (so [`Game::district_advance`], gated on `district < 5` at
-    /// `1000:ab88`, cannot also have fired for that game),
-    /// and [`Game::enter_district_5`] only at the turn district first
-    /// BECOMES 5 during play (so this arm, which only runs once at entry,
-    /// already ran before that point and found district `< 5`).
+    /// Regardless of class, the den's opening loan credit is set to 5.
     ///
-    /// The three class arms are mutually exclusive (`1000:73c8` and
-    /// `1000:73d9` jump straight to `1000:73e5`), and `1000:73e5` is
-    /// unconditional. Class 4 (Отморозок) gets no flag here -- its bonus is
-    /// the +1 HP per walk at `1000:b2d4`.
-    ///
-    /// **The TEXT of `1000:7262`..`1000:73bb` is [`Game::announce_district`],
-    /// not this function, and the reason is that this function runs twice.**
-    /// `Game::new` calls it with the struct literal's `district: 1`, and
-    /// `crate::persist::from_save` calls it again once the loaded district is
-    /// installed -- which is right for idempotent stores (a flag set twice is
-    /// set) and wrong for a `WriteLn`. The original's `FUN_1000_6a0d` walks
-    /// `1000:7262`..`73e5` exactly once, so the announcement is printed once,
-    /// by `main.rs`, after whichever path produced the `Game`.
-    ///
-    /// `1000:734b`'s own line moved out with the rest for the same reason.
-    /// It used to sit here and print exactly once by luck -- district 5
-    /// cannot be true on the `Game::new` pass -- which is not a property to
-    /// keep relying on now that districts 1..4 have lines too.
+    /// This function's flag-setting runs twice -- once for a new game,
+    /// once when loading a save -- which is fine for these idempotent
+    /// writes but would double-print a message, so the district-5
+    /// announcement text itself lives in [`Game::announce_district`],
+    /// printed once by the caller after the `Game` is produced, not
+    /// here.
     pub(crate) fn apply_class_bonus(&mut self) {
-        // 1000:7364 -- the store half of the district-5 arm.
         if self.district == 5 {
             self.rector_showdown = true;
         }
@@ -443,24 +346,16 @@ impl Game {
         self.den_loan_credit = 5;
     }
 
-    /// `1000:7262`..`1000:73bb` -- everything the entry pass PRINTS, as
-    /// distinct from what [`Game::apply_class_bonus`] stores
-    /// (`docs/re/port-gaps.md` row 10).
+    /// Everything the entry pass prints, as distinct from what
+    /// [`Game::apply_class_bonus`] stores.
     ///
-    /// ```text
-    /// 7262  mov al,[0x3692]        ; the DISTRICT
-    /// 7265  cmp al,1 / jnz 0x729e  ; two lines, then 2, 3 and 4 the same
-    /// 7347  cmp al,5 / jnz 0x7369  ; one line (the store is 1000:7364)
-    /// 7369  cmp byte [0x3692],1    ; three more lines, district 1 only
-    /// ```
-    ///
-    /// Called once per process, from `main.rs`, whichever way the `Game` was
-    /// produced -- the original reaches `1000:7262` from both the load tail
-    /// and the new-character tail and from nowhere else.
+    /// Called once per process, from `main.rs`, whichever way the
+    /// `Game` was produced -- reached from both a new character and a
+    /// loaded save.
     ///
     /// Districts 2, 3 and 4 print the same wording
-    /// [`Game::district_advance`] prints on promotion, from a different copy
-    /// of each string; see `crate::opening`'s module doc.
+    /// [`Game::district_advance`] prints on promotion, from a different
+    /// copy of each string; see `crate::opening`'s module doc.
     pub fn announce_district(&self) {
         if let Some(pair) = opening::START_ARRIVAL
             .chunks_exact(2)
@@ -470,8 +365,6 @@ impl Game {
                 term::println(line);
             }
         }
-        // 1000:734b, CS 0x6925 -- a separate copy of the string
-        // `Game::enter_district_5` prints from CS 0x9CF2.
         if self.district == 5 {
             term::println("^1Пора наконец отомстить ректору...");
         }
@@ -482,73 +375,33 @@ impl Game {
         }
     }
 
-    /// [`Game::banner`] is never printed at start-up -- neither by `main.rs`
-    /// nor by this method. The original prints no version text there either:
-    /// `1000:6dcd`'s copy of that string goes silently into `DS:369c`, the
-    /// save record's `magic` slot, and the only on-screen copy is the
-    /// `version` verb's own literal, read on demand
-    /// (`docs/re/port-gaps.md`'s `FUN_1000_6a0d` survey; `src/commands.rs`'s
-    /// `version` row). `main.rs`'s start-up screen is `FUN_1000_02c2`'s
-    /// ASCII splash (`opening::splash`); only `Command::Version` calls
-    /// [`Game::banner`].
+    /// [`Game::banner`] is never printed at start-up -- neither by
+    /// `main.rs` nor by this method. The only on-screen copy of the
+    /// version text is the `version` command's own literal, read on
+    /// demand; `main.rs`'s start-up screen is an ASCII splash
+    /// ([`opening::splash`]) instead.
     ///
     /// **The loop starts with [`Game::district_advance`], not with the
-    /// prompt.** That is `1000:ab75` in the original, and it is upstream of
-    /// the street prompt within one turn: `1000:ae3c` writes the bare `\`
-    /// (file `0x9BF1`) and `1000:ae55`..`1000:ae63` is the top-level `ReadLn`
-    /// into `DS:3972`, both after the whole `ab75`..`ae18` region. The back
-    /// edge that closes the turn is `1000:ee01 e9 71 bd` `jmp 0xab75`, so
-    /// the advance is the FIRST thing every turn does; `1000:ab72
-    /// e8 98 be` `call 0x6a0d` is a three-byte near call whose next
-    /// instruction is `1000:ab75` itself, so the very first pass is reached
-    /// by fall-through out of character setup -- which is where `main.rs`
-    /// hands control to this method.
+    /// prompt.** It is the first thing every turn does, upstream of the
+    /// street prompt.
     ///
-    /// **Only `Mode::Street` turns pass through it**, established from flow:
-    /// each shop handler writes its own prompt and `ReadLn`s into `DS:3a72`
-    /// inside its own loop (`1000:bd08`/`1000:bd21` for `mar`,
-    /// `docs/re/command-dispatch.md`, "Shop modality"), and never reaches
-    /// `1000:ee01`. `Mode::Shop` is this port's line-at-a-time stand-in for
-    /// that inner loop, so running the advance on those iterations would
+    /// **Only `Mode::Street` turns pass through it.** Each shop handler
+    /// has its own prompt and its own loop and never reaches this point.
+    /// `Mode::Shop` is this port's line-at-a-time stand-in for that
+    /// inner loop, so running the advance on those iterations would
     /// promote the player on turns the original does not.
     ///
-    /// **That gate is established from flow and is currently unobservable,
-    /// which is stated rather than covered by a test that could not fail.**
-    /// [`Game::district_advance`] returns without reading or printing unless
-    /// a promotion is due, so removing the gate would only differ while the
-    /// player is inside a shop AND `level >= district * 10` AND
-    /// `district < 5`. This port cannot reach that state, and the reason is
-    /// that **the level only rises on STREET turns**. Exactly one function
-    /// increments it -- `progress::apply_levels`, whose `f.level += 1` is
-    /// the file's only such statement and is not under a `#[cfg(test)]`
-    /// (`src/progress.rs` has none: `grep -c '#\[cfg(test)\]'
-    /// src/progress.rs` prints `0`). `progress::demote` is the only other
-    /// writer of the field in `src/progress.rs` and it decrements.
-    /// `apply_levels` has three
-    /// callers -- `grep -n 'progress::apply_levels(' src/game.rs | grep -v
-    /// '///'` (the `grep -v` drops this very comment, which the plain
-    /// command matches: a citation that quotes its own search string is a
-    /// fourth hit) -- of which the last is below this file's own
-    /// `#[cfg(test)]`, leaving two:
+    /// The level only rises on Street turns, through exactly two paths:
+    /// [`Game::run_combat`]'s post-fight award (entered from
+    /// [`Game::walk`]), and [`Game::church`]'s zero arm, which forces a
+    /// level by setting xp to the threshold. The church itself is
+    /// reached from the wander preamble by a `Random(200)` roll landing
+    /// on zero, and the level-forcing outcome is one of five the church
+    /// then rolls for.
     ///
-    /// * [`Game::run_combat`]'s post-fight award, entered from
-    ///   [`Game::walk`], which is `Command::Walk` and so a Street turn;
-    /// * [`Game::church`]'s zero arm (`1000:7f68`, selected by draw 15's
-    ///   `Random(5)` at `1000:7f63`), which sets `xp := threshold`
-    ///   (`1000:7fe4`/`1000:7fe7`) and forces a level. The church is reached
-    ///   from the wander preamble's draw 13 -- `Random(200)` at
-    ///   `1000:b39e`, calling `1000:b3a7` on a zero -- which is also inside
-    ///   [`Game::walk`], hence also a Street turn.
-    ///
-    /// An earlier revision of this paragraph said "the level only rises in
-    /// combat", which the church arm refutes; the conclusion is unchanged
-    /// because both callers sit on a Street turn. So the advance that
-    /// collects the new level runs at the top of the very next iteration,
-    /// clearing all seven discovery flags on the way
-    /// (`Places::reset_for_new_district`), and no shop is enterable
-    /// afterwards either. It becomes reachable the moment the class-
-    /// conditional spare at `1000:abc9` (class 5 keeps the Den) is
-    /// implemented; `docs/re/gaps.md` records that as open.
+    /// A promotion clears all seven discovery flags on the way
+    /// ([`Places::reset_for_new_district`]), so no shop is enterable
+    /// again until rediscovered.
     pub fn run(&mut self) -> io::Result<()> {
         let stdin = io::stdin();
         let mut lines = stdin.lock().lines();
@@ -558,12 +411,8 @@ impl Game {
                 if !self.running {
                     break;
                 }
-                // 1000:ae18 -- the endgame arm, on the straight line between
-                // the district block and the street prompt at 1000:ae3f. It
-                // is NOT inside `district_advance`'s `district == 5` arm:
-                // 1000:ab8f jumps straight here once the district is already
-                // 5, so it runs on EVERY turn the flag is set, not only on
-                // the promotion turn.
+                // The endgame arm runs on every turn once the district is 5,
+                // not only on the turn it's reached.
                 self.rector_endgame(&mut lines)?;
                 if !self.running {
                     break;
@@ -578,16 +427,11 @@ impl Game {
                 Mode::Street => {
                     let cmd = parse(&line);
                     if cmd == Command::Walk {
-                        // 1000:aee4 -- the shared wander preamble re-reads
-                        // the just-typed line and compares it against `run`
-                        // a SECOND time, regardless of which of the two
-                        // dispatch compares (`1000:ae86`'s `w`,
-                        // `1000:ae97`'s `run`) reached it. `dispatch`'s own
-                        // `Command::Walk` arm cannot see this -- `parse`
-                        // already folded both spellings into one variant --
-                        // so the raw line is matched here instead, the same
-                        // way `Game::run_combat`'s own `run` compare is.
-                        // See `crate::wander`'s module doc.
+                        // Typing `run` (vs `w`) is checked again here, since
+                        // `parse` already folded both into the same
+                        // `Command::Walk` variant; the raw comparison is what
+                        // `walk_verb` uses to tell them apart. See
+                        // `crate::wander`'s module doc.
                         self.walk_verb(line.eq_ignore_ascii_case("run"), &mut lines)?;
                     } else {
                         self.dispatch(cmd, &mut lines)?;
@@ -599,186 +443,66 @@ impl Game {
         Ok(())
     }
 
-    /// `1000:ab75`..`1000:ad12` -- the district-advance preamble, and the
-    /// autosave prompt hanging off it. Runs at the top of every street turn
-    /// (see [`Game::run`] for why that placement is the original's).
+    /// The district-advance preamble, and the autosave prompt hanging
+    /// off it. Runs at the top of every street turn.
     ///
-    /// **Established from flow**, re-disassembled for this task with
-    /// `python3 tools/re_query.py resolve 1000:ab75 -n 420 -i 200`:
+    /// Promotion happens once level reaches `district * 10` and the
+    /// district is still under 5: the district advances by one, every
+    /// discovery flag resets, the market and club ban countdowns reset
+    /// to zero, and two lines print:
     ///
-    /// ```text
-    /// ab75  a0 92 36 / 30 e4 / ba 0a 00 / f7 e2   ax := district * 10
-    /// ab7f  3b 06 a6 38 / 7e 03   cmp ax,[0x38a6] / jle 0xab88   ; level
-    /// ab85  e9 90 02              jmp 0xae18   -- gate 1 failed
-    /// ab88  80 3e 92 36 05 / 72 03  cmp byte [0x3692],5 / jb 0xab92
-    /// ab8f  e9 86 02              jmp 0xae18   -- gate 2 failed
-    /// ab92  fe 06 92 36           inc [0x3692]
-    /// ab96..abc9                  the discovery-flag resets
-    /// abce  c6 06 76 3b 00        [0x3b76] := 0   ; market ban countdown
-    /// abd3  c6 06 77 3b 00        [0x3b77] := 0   ; club ban countdown
-    /// abec  WriteLn cs:0x82b3     ; file 0x9B83 = decimal 39811
-    /// ac05  WriteLn cs:0x82fd     ; file 0x9BCD = decimal 39885
-    /// ac1e  Write   cs:0x8321     ; file 0x9BF1, the bare `\` -- no newline
-    /// ac31  ReadLn  -> DS:3a72    ; 0f78:06c6 / 0f78:059d / 0f78:0291
-    /// ac45  call 0eed:0216        ; the case-fold
-    /// ac54  0f78:0bd8 vs cs:0x8323 ; file 0x9BF3 = the single character `y`
-    /// ac59  74 03 / e9 b4 00      jz 0xac5e, else jmp 0xad12
-    /// ac73  Str([0x3692]) -> DS:3b7c, width 0
-    /// ac88  DS:3d32 (the directory) -> tmp, then `save_r`, the digit, `.sav`
-    /// acab  0f78:072e  Assign
-    /// acb9  0f78:0772  Rewrite(f, 0x2b6)   ; 694
-    /// acc8  0f78:0825  BlockWrite from DS:369c
-    /// acd5  0f78:07ea  Close
-    /// ad0d  WriteLn `^1Сохранено в save_r` (cs:0x8331, file 0x9C01 = 39937)
-    ///       then the digit,
-    ///       then the suffix `.sav` at cs:0x832c (file 0x9BFC = 39932)
-    /// ```
-    ///
-    /// The two announcement lines, taken verbatim from `data/strings.json`'s
-    /// `text` field rather than retyped:
-    ///
-    /// `^1Ты доказал, что ты самый крутой в этом районе - отправляйся в следующий`
-    /// -- file 0x9B83, decimal 39811.
+    /// `^1Ты доказал, что ты самый крутой в этом районе - отправляйся в
+    /// следующий`
     /// `^0Хочешь сохранить свои достижения?`
-    /// -- file 0x9BCD, decimal 39885.
     ///
-    /// **The block cannot loop, so at most ONE district is gained per
-    /// turn.** Every branch inside `ab75`..`ad12` is forward -- `ab83`,
-    /// `ab85`, `ab8d`, `ab8f`, `aba5`, `abb6`, `abc7`, `ac59`, `ac5b` -- and
-    /// the only branch instruction in the whole image whose target is
-    /// `0xab75` is `1000:ee01`, at the very END of the turn. A raw byte scan
-    /// for every `jmp`/`Jcc`/`call`/`loop` encoding of that target returns
-    /// **two** hits; the other, `1000:ab00` `72 73`, is the `rs` of
-    /// `^4Gopnik: ^7version 1.02 june,` inside the CS literal pool
-    /// (`0x82b3`..`0xab59`, the gap between `FUN_1000_7c67` and `entry` in
-    /// `data/functions.json`), and it passes the 64-way alignment sweep
-    /// 63/64 -- the exact `1000:d83b` failure `docs/re/METHODOLOGY.md`
-    /// warns about, reproduced here on a different address.
+    /// Then a bare `\` prompt asks to save. On `y` (case-insensitive),
+    /// the character is written to `save_r<digit>.sav` and
+    /// `^1Сохранено в save_r<digit>.sav` prints.
     ///
-    /// **This is where the port used to diverge.** The promotion lived in
-    /// [`Game::run_combat`]'s post-fight block as a `while` loop, which
-    /// promoted a level-40 district-1 character four districts inside one
-    /// fight; the original needs four turns, and awards the first of them on
-    /// the turn AFTER the fight that raised the level -- the level moves
-    /// inside `FUN_1000_3d11` (`1000:51ed`..`1000:5238`, reached from the
-    /// wander at `1000:aea1`), which is downstream of `ab75` in the same
-    /// turn. `1000:ab92` is the only in-play write to `[0x3692]`: the other
-    /// three direct stores (`1000:6bf9`, `1000:6d9d`, `1000:6dbe`) are all
-    /// inside `FUN_1000_6a0d`, the one-time setup, and the one remaining
-    /// writer, `0f78:134c bf 92 36 mov di,0x3692` + `rep stosw`, is the
-    /// runtime's startup BSS zero-fill of `20ae:3692`..`20ae:4118`
-    /// (`python3 tools/re_query.py xrefs-to 20ae:3692` -- 97 accepted
-    /// references, 0 discarded; `docs/re/gaps.md` carries the full decode.
-    /// An earlier revision said "exactly four write" and missed the
-    /// pointer-form fifth). `FUN_1000_3d11` contains no write -- but it does
-    /// contain twelve `a0 92 36 mov al,[0x3692]` READS, so the claim is
-    /// "no write", never "no reference"; a later revision widened it to the
-    /// latter and `docs/re/gaps.md` lists all twelve.
-    ///
-    /// **Two port decisions, neither a property of the original.**
-    ///
-    /// * A failed write is reported and the turn continues, the same shape
-    ///   [`Game::mage`] already uses and for the same reason: nothing between
-    ///   `1000:acb9` and `1000:acd5` tests `IOResult`, so the original has no
-    ///   failure message here at all, and swallowing a host I/O error
-    ///   silently would be worse than one line the original never prints.
-    /// * EOF on the prompt ends the run rather than being read as "not `y`".
-    ///   The original blocks in `ReadLn`; a line-based port has no such
-    ///   state, and every other `lines.next()` in this file treats `None`
-    ///   the same way.
-    ///
-    /// **What is still NOT reproduced here**, and why it is not this
-    /// method's job:
-    ///
-    /// * `1000:ad12`'s district-keyed announcement arms (`cmp al,2` and the
-    ///   chain after it) are unported text.
-    /// * The chapter-5 arm's two forced fights, `1000:ae2d`
-    ///   `FUN_1000_3d11(3)` and `1000:ae39` `FUN_1000_3d11(4)`. Those, and
-    ///   only those: the arm's own prints and its `1000:addc` `ReadKey`
-    ///   (`1000:adc3`..`1000:ae13`) run exactly ONCE in the original too,
-    ///   because `1000:ab8d`'s `jb` fails at district 5 and `1000:ab8f`
-    ///   jumps straight to `1000:ae18`, so `1000:ad12`..`1000:adbf` are
-    ///   unreachable on a non-promotion turn. What repeats every turn is
-    ///   `1000:ae18`'s arm -- the idempotent Den grant at `1000:ae1f` plus
-    ///   those four calls. [`Game::enter_district_5`] reproduces everything
-    ///   except the calls; their `param_1` handling is what
-    ///   [`Game::run_combat`] does not model. An earlier revision of this
-    ///   bullet said `1000:adbf`'s `cmp al,5` made the whole arm repeat;
-    ///   that was wrong, and `docs/re/gaps.md` carries the branch-target
-    ///   scans that settle it.
-    ///
-    /// `pub` for the same reason [`Game::walk`] and [`Game::mage`] are: it is
-    /// the only way a test can reach this arm. [`Game::run`] reads from
-    /// `io::stdin()` directly, so nothing in-process can drive the hook
-    /// through its real call site.
+    /// At most one district is gained per turn, even if the level
+    /// clears more than one threshold at once -- promotion is checked
+    /// once per turn, not looped.
     pub fn district_advance(
         &mut self,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
     ) -> io::Result<()> {
-        // 1000:ab7f -- `district * 10 <= level`. The original's `jle` is the
-        // signed form and `20ae:38a6` is a Pascal Integer; `player.level` is
-        // never negative here, so the unsigned compare agrees.
         if u16::from(self.district) * 10 > self.player.level {
             return Ok(());
         }
-        // 1000:ab88 -- `district < 5`, unsigned (`72` / `jb`).
         if self.district >= 5 {
             return Ok(());
         }
         self.district += 1; // 1000:ab92
-                            // 1000:ab96..1000:abc9 -- `self.player.class` is `[20ae:389c]`, the
-                            // word the three skips at `1000:aba0`/`abb1`/`abc2` compare.
         self.places.reset_for_new_district(self.player.class);
         self.market_ban_countdown = 0; // 1000:abce
         self.club_ban_countdown = 0; // 1000:abd3
         term::println("^1Ты доказал, что ты самый крутой в этом районе - отправляйся в следующий");
         term::println("^0Хочешь сохранить свои достижения?");
-        // 1000:ac1e is `0eed:0000`, the no-newline Write -- the same call and
-        // the same string (`cs:0x8321`) the street prompt at 1000:ae3c uses.
         term::print("\\");
         let Some(line) = term::read_line(lines) else {
             self.running = false;
             return Ok(());
         };
         let answer = line?;
-        // 1000:ac45's case-fold, then 1000:ac54's compare against `y`.
-        //
-        // No trim, matching the original: 1000:ac45 case-folds the whole
-        // DS:3a72 buffer and 1000:ac54 hands it straight to `0f78:0bd8`
-        // `rtl_str_compare`, which compares the shortstring's length byte
-        // too -- so `" y"` is length 2 against length 1 and BOTH refuse it.
-        // This used to trim and save where the original refused; closed
-        // with the rest of that population, `docs/re/gaps.md`. The
-        // port's line source (`BufRead::lines`) has already stripped the
-        // terminator the original's `ReadLn` also strips, so the trim only
-        // affects genuine leading/trailing spaces. Kept for consistency with
-        // the identical idiom in [`Game::mage`] and in
-        // `crate::commands::parse` rather than introduced here; the whole
-        // nine-site class is recorded in `docs/re/gaps.md`, "The trimmed `y`
-        // prompts", instead of nine separate comments.
+        // The confirmation compare is case-insensitive but not trimmed: a
+        // leading or trailing space (e.g. " y") is rejected. Kept for
+        // consistency with the identical prompt in `Game::mage` and in
+        // `crate::commands::parse`.
         if answer.eq_ignore_ascii_case("y") {
-            // 1000:ac5e..1000:ac73 `Str([0x3692])` -- the district AFTER the
-            // increment above, which is why the shipped corpus is
-            // `SAVE_R2`..`SAVE_R5` and has no `SAVE_R1`. Both gates bound it
-            // to 2..=5, so it is always one digit.
+            // The save filename uses the district after the increment, so
+            // shipped saves run `SAVE_R2`..`SAVE_R5` with no `SAVE_R1` --
+            // district is always bound to 2..=5 here.
             let digit = char::from(b'0' + self.district);
             let name = crate::persist::slot_filename(digit);
             let dir = self.save_dir.clone();
-            // 1000:acb9/1000:acc8 write the 694-byte RECORD and nothing else:
-            // the only `Rewrite` in `ab75`..`ad12` is at `acb9`, the only
-            // `BlockWrite` at `acc8`, and `1000:acd5 Close` follows it
-            // directly. The mage's `places.sav` pass (1000:766f..1000:7724)
-            // has no counterpart here.
             match self.write_save_as(&dir, &name) {
                 Ok(_) => term::println(&format!("^1Сохранено в save_r{digit}.sav")),
                 Err(e) => term::println(&format!("^6{e}")),
             }
         }
-        // 1000:ad12..1000:adbf -- the arrival announcement for the district
-        // just promoted into (`docs/re/port-gaps.md` row 15). Reached from
-        // 1000:ac5b whichever way the `y` compare above went, and the chain
-        // only has arms for 2, 3 and 4 (1000:ad15, ad4e, ad87). A SEPARATE
-        // string copy from `apply_class_bonus`'s districts 2/3/4 -- see
+        // The arrival announcement for the district just promoted into.
+        // Only districts 2, 3 and 4 have one here; it's a separate copy of
+        // the districts 2/3/4 text also printed at game entry -- see
         // `crate::opening`'s module doc.
         if let Some(pair) = opening::ADVANCE_ARRIVAL
             .chunks_exact(2)
@@ -788,24 +512,14 @@ impl Game {
                 term::println(line);
             }
         }
-        // 1000:adbf, reached from 1000:ad12's compare chain via
-        // 1000:ad89's `jnz 0xadbf` -- NOT by fall-through, which
-        // 1000:adbd `eb 59 jmp short 0xae18` blocks. It is taken whichever
-        // way the `y` compare above went, because 1000:ac5b jumps into
-        // 1000:ad12 as well. (An earlier revision of this comment said
-        // "fall-through"; the doc on `enter_district_5` below and
-        // `docs/re/gaps.md` both had it right, so this file contradicted
-        // itself.)
         if self.district == 5 {
             self.enter_district_5(lines);
         }
         Ok(())
     }
 
-    /// The street prompt is confirmed at file `0x9BF1`: a one-byte Pascal
-    /// shortstring `"\"`. Each location writes its own prompt instead --
-    /// see the module doc for the six offsets and the `1000:bd08`/`1000:bd21`
-    /// write-then-`ReadLn` pair that proves the pattern.
+    /// The street prompt is a single backslash (`\`). Each location
+    /// writes its own prompt instead of reusing this one.
     fn prompt(&self) {
         let p = match &self.mode {
             Mode::Street => "\\",
@@ -820,9 +534,6 @@ impl Game {
         term::print(p);
     }
 
-    /// `rep` typed at the street prompt, for `crate::vet`'s entry test:
-    /// the same `Game::enter_shop(Location::Vet)` `Command::Vet` reaches at
-    /// `1000:d3a6`, exposed because `dispatch` is private to this module.
     #[cfg(test)]
     pub(crate) fn enter_vet_for_test(&mut self) {
         self.enter_shop(Location::Vet);
@@ -865,8 +576,6 @@ impl Game {
                 self.running = false;
             }
             Command::Stats => self.show_stats(),
-            // file 0xC343, printed immediately after `k`'s own compare at
-            // 1000:ecc7. `^6`, not `^4`.
             Command::Fight => {
                 term::println("^6Чё машешь копытами? Ищи мудака которого будешь пинать!")
             }
@@ -874,75 +583,41 @@ impl Game {
             Command::Inspect => self.inspect_enemy(),
             Command::Backup => self.call_backup(),
             Command::Walk => self.walk(lines)?,
-            // file 0xB58A -- the inner "^6w^7" markup is part of the string.
             Command::LegacyFight => {
                 term::println("^6Пережитки прошлого жми ^6w^7 чтобы искать врагов");
             }
             Command::Market => self.enter_shop(Location::Market),
             Command::Dealers => self.enter_shop(Location::Dealers),
-            // `1000:d3a6` is the compare and `1000:d3ab jz 0xd3b0` its hit.
             Command::Vet => self.enter_shop(Location::Vet),
             Command::Girl => self.enter_shop(Location::Girl),
             Command::Den => self.enter_shop(Location::Den),
-            // `1000:df06` is the compare and `1000:df0b jz 0xdf10` its hit.
             Command::Club => self.enter_shop(Location::Club),
-            // `trn`'s own compare is `1000:e390`, on the STREET buffer
-            // `20ae:3972`; `1000:e395 jz 0xe39a` is the hit and reaches the
-            // discovery gate at `1000:e39a`, while `1000:e397` misses into
-            // the shared tail at `1000:e961`.
             Command::Gym => self.enter_shop(Location::Gym),
-            // `1000:ea94` is the compare and `1000:ea99 jz 0xea9e` its hit.
             Command::CommandList => self.show_command_list(),
             Command::Help => self.show_help(),
             Command::Version => self.banner(),
             Command::Name => self.rename(lines)?,
-            // `kos`'s own compare is `1000:e973` on the street buffer
-            // `20ae:3972`; `1000:e978 jz 0xe97d` is the hit and `1000:e97a`
-            // misses to the next verb's setup at `1000:ea8a`. It is a
-            // one-shot STREET verb, not a submenu: `1000:e97d`..`1000:ea8a`
-            // holds no prompt literal, no `0eed:0000`-then-`ReadLn` pair and
-            // no back edge, and every path in it ends at `1000:ea8a`.
+            // `kos` is a one-shot street verb, not a submenu -- it runs once
+            // and returns straight to the street prompt.
             Command::Joint => self.smoke(Joint::Street),
             Command::Drink => self.beer(Beer::One),
             Command::BingeDrink => self.beer(Beer::Binge),
-            // `x` and `wes` are DEALERS sub-verbs, not street verbs, so the
-            // street prompt takes the same silent `1000:ee01 jmp 0xab75` an
-            // unmatched line takes. Neither is in
-            // `data/command_dispatch.json`'s confirmed chain, and the only
-            // `mov di,0x96ce` / `mov di,0x970a` in the image are
-            // `1000:ce7b` and `1000:ced3`, both inside the `bmar` handler
-            // (byte scan of `bf ce 96` and `bf 0a 97` over `orig/g.exe`, one
-            // hit each, at file `0xE74B` and `0xE7A3` -- a byte scan, so it
-            // covers only the `mov di,imm16` encoding). An earlier revision
-            // called `Game::sell_junk` here, which made the refusal line --
-            // and, once the arm was real, the sale itself -- reachable from
-            // the street, where the original has no such verb.
-            // `Game::shop_turn` is the only route to those two arms.
+            // `x` and `wes` are DEALERS sub-verbs, not street verbs, so
+            // typing them at the street prompt is silently ignored, the
+            // same as any unmatched line -- the original has no such
+            // street-level verb. `Game::shop_turn` is the only route to
+            // those two.
             Command::SellJunk | Command::SellItems => {}
-            // An unmatched line writes nothing at all: the last compare in
-            // the chain (`exit`/`e`, 1000:edfa) falls through to
-            // `jmp 0xab75` at 1000:ee01, straight back to the top of the
-            // loop, with no output in between. The `^4? <input>` line an
-            // earlier revision printed here was composed, not a real string.
+            // An unmatched line at the street prompt produces no output at
+            // all.
             Command::Unknown(_) => {}
         }
         Ok(())
     }
 
-    /// The "you have not found this place yet" refusal, one verbatim string
-    /// per location. Every one was read off its own gate branch: the token
-    /// compare jumps to `cmp byte [<flag>],1`, and the not-equal arm jumps
-    /// to a block that writes exactly one string.
-    ///
-    /// | verb | gate | flag | refusal jumps to | string |
-    /// |---|---|---|---|---|
-    /// | `mar` | `1000:b954` | `20ae:3694` | `1000:c49b` | file `0xA9F8` |
-    /// | `bmar` | `1000:c4c8` | `20ae:3695` | `1000:d383` | file `0xB1CC` |
-    /// | `pr` | `1000:d80c` | `20ae:3696` | `1000:dee3` | file `0xB980` |
-    /// | `girl` | `1000:d6f7` | `20ae:3697` | `1000:d7b5` | file `0xB568` |
-    /// | `rep` | `1000:d3b0` | `20ae:3698` | `1000:d6ca` | file `0xB440` |
-    /// | `kl` | `1000:df10` | `20ae:3699` | `1000:e36d` | file `0xBBF6` |
-    /// | `trn` | `1000:e39a` | `20ae:369a` | `1000:e948` | file `0xBEC2` |
+    /// The "you have not found this place yet" refusal, one verbatim
+    /// string per location: `mar`, `bmar`, `pr`, `girl`, `rep`, `kl`,
+    /// `trn`.
     fn undiscovered_line(loc: Location) -> &'static str {
         match loc {
             Location::Market => "^6Ты незнаешь, пока ешё, где находтся базар",
@@ -958,99 +633,42 @@ impl Game {
         }
     }
 
-    /// `mar`/`bmar`/`rep`/`girl`/`pr`/`kl`/`trn`, gated by [`Places::is_found`]
-    /// exactly as the original gates on its seven contiguous discovery flags
-    /// `20ae:3694`..`20ae:369a` (see [`Game::undiscovered_line`]).
+    /// `mar`/`bmar`/`rep`/`girl`/`pr`/`kl`/`trn`, gated by
+    /// [`Places::is_found`], mirroring the seven discovery flags (see
+    /// [`Game::undiscovered_line`]).
     ///
-    /// A refused entry only prints. It does **not** discover the place: the
-    /// original's flags are set elsewhere, never by a failed entry.
+    /// A refused entry only prints. It does **not** discover the place
+    /// -- the flags are set elsewhere, never by a failed entry.
     ///
-    /// A scan of `orig/g.exe` for `c6 06 [94-9a] 36 imm8` finds 31 stores to
-    /// these seven bytes: 14 clears and **17** set-to-1. **Twelve of the
-    /// seventeen are implemented in this port and five are not**, which is
-    /// the split `docs/re/gaps.md`'s 17-row inventory records. Of the twelve,
-    /// the four listed next predate Task 11c; the other eight are named in
-    /// the Task 11c paragraph below. All twelve are established from flow and
-    /// all were re-derived from `orig/g.exe`. (An earlier revision of this
-    /// comment said "Four of the seventeen … implemented here" and then "Five
-    /// … remain unimplemented", which adds to nine, not seventeen: it counted
-    /// only this list and forgot the eight it goes on to describe.)
+    /// The market and the vet are open from turn one. Visiting the girl
+    /// sets the club's discovery flag; the girl's own flag is set by one
+    /// of the wander outcomes -- so `w` -> girl -> club is a real,
+    /// reachable chain.
     ///
-    /// * `1000:6dc3` `c6 06 98 36 01` and `1000:6dc8` `c6 06 94 36 01` --
-    ///   the **vet's** and the **market's** flags, written by the
-    ///   new-character block at `1000:6dbe` ([`Game::new`]).
-    /// * `1000:d751` `c6 06 99 36 01` -- `mov byte [0x3699],1`, the
-    ///   **club's** flag, set by `girl` ([`Game::visit_girl`]).
-    /// * `1000:b570` `c6 06 97 36 01` -- `mov byte [0x3697],1`, the
-    ///   **girl's** flag, set by the wander path's bucket 2
-    ///   ([`Game::wander_girl`]). `1000:b575` is the `eb 19` `jmp` that
-    ///   follows the store, not the store; and `0x3697` is the girl's flag,
-    ///   not the den's -- the den is `0x3696` (gate `1000:d80c`), the girl
-    ///   `0x3697` (gate `1000:d6f7`). An earlier revision of this comment
-    ///   got both wrong.
-    ///
-    /// So the market and the vet are open from turn one, and `w` -> girl ->
-    /// club is a real, reachable chain.
-    ///
-    /// **All seven flags are reachable in this port** as of Task 11c, which
-    /// implemented the other **eight** of the twelve: the wander preamble's
-    /// four discovery rolls (`1000:b196`, `1000:b1c8`, `1000:b1fa`,
-    /// `1000:b22c` -- [`Game::wander_preamble`]) and the four `[0x389c]`
-    /// progression reveals (`1000:73c3`, `1000:73cf`, `1000:73d4`,
-    /// `1000:73e0` -- [`Game::apply_class_bonus`]). Den comes
-    /// from the class-5 bonus (`1000:73c3`), Dealers from the class-6 bonus
-    /// (`1000:73e0`), and Gym from draw 8 (`1000:b21c` `Random(100)`, store
-    /// at `1000:b22c`) — a 1-in-100 roll per walk, so *rare*, not
-    /// unreachable. A revision of this comment written before Task 11c said
-    /// "Dealers, Den and Gym stay unreachable"; that is now false on all
-    /// three counts and contradicted `docs/re/gaps.md`'s own inventory.
-    ///
-    /// **All seventeen are now implemented, as of Task 20.** The de-level
-    /// penalty (`1000:4aa5` -- [`Game::flee_penalty`]) and the post-kill
-    /// block (`1000:52b3` -- [`Game::claim_spoils`]) were *already* ported
-    /// before Task 20 -- an earlier revision of this comment (and of
-    /// `docs/re/gaps.md`'s own inventory) claimed both were still missing,
-    /// which was wrong; the code was checked against that claim and the
-    /// code is what stands. Task 20 closed the two rows that genuinely were
-    /// open: the `a` token's two stores (`1000:dcf6`/`1000:dcfb` --
-    /// [`Game::den_reveal`]) and the chapter-5 endgame arm's flag store and
-    /// Den grant (`1000:ae1f` -- [`Game::enter_district_5`], which does NOT
-    /// port that arm's two forced fights -- see its own doc comment). 17 + 0
-    /// = 17. The complete 17-row inventory, with a trigger and an evidence
-    /// tier per row, is in `docs/re/gaps.md`, "Discovery flags: the
-    /// complete store inventory".
+    /// Den comes from a class-5 bonus, Dealers from a class-6 bonus, and
+    /// Gym from a 1-in-100 roll per walk -- rare, not unreachable.
     fn enter_shop(&mut self, loc: Location) {
         if !self.places.is_found(loc) {
             term::println(Self::undiscovered_line(loc));
             return;
         }
-        // 1000:df1a `cmp byte [0x3b77],0x0` / 1000:df1f `jbe 0xdf3d`. On an
-        // unsigned byte against zero `jbe` is `== 0`, so the club is open
-        // only while the countdown is zero; a non-zero countdown falls
-        // THROUGH to 1000:df21, prints its refusal at 1000:df35 and leaves
-        // at 1000:df3a.
+        // The club is open only while its ban countdown is zero; a
+        // non-zero countdown prints the refusal and ends the visit.
         if loc == Location::Club && self.club_ban_countdown > 0 {
-            // 1000:df21 pushes file `0xB9BD`
-            // `^6Тебе не стоит пока туда соваться`.
+            // The refusal: `^6Тебе не стоит пока туда соваться`.
             term::println(crate::club::EMITTED[0].1);
             return;
         }
-        // 1000:b95e `cmp byte [0x3b76],0x0` / 1000:b963 `jz 0xb968` -- the
-        // same condition with the opposite branch polarity: the market is
-        // open only while the countdown is zero, and a non-zero one takes
-        // 1000:b965 `jmp 0xc480` to the refusal. It runs AFTER the discovery
-        // gate at 1000:b954, whose own miss jumps to 1000:c49b instead, so
-        // an undiscovered market prints its own line and never this one.
-        // `docs/re/port-gaps.md` row 25, landed with row 9 -- setting the
-        // countdown without this gate would be worse than neither.
+        // Same rule for the market: open only while its ban countdown is
+        // zero, checked after the discovery gate -- so an undiscovered
+        // market prints its own refusal, never this one.
         if loc == Location::Market && self.market_ban_countdown > 0 {
-            // 1000:c480 pushes file `0xA9C4`, printed at 1000:c494.
             term::println(market::BANNED);
             return;
         }
         self.location = loc;
         if loc == Location::Girl {
-            // Not modal: no prompt string, no ReadLn (1000:d701..1000:d798).
+            // Not modal -- no prompt, no follow-up input.
             self.visit_girl();
             self.location = Location::Street;
             return;
@@ -1058,54 +676,33 @@ impl Game {
         self.mode = Mode::Shop(loc);
         self.print_shop_intro(loc);
         if loc == Location::Vet {
-            // 1000:d3f4 (the healthy-skip past the menu) and the menu's own
-            // fall-through both land on 1000:d4ba, so the loop top runs
-            // once on entry before the first prompt.
+            // Entering the vet runs the loop's top once before the first
+            // prompt is shown.
             vet::loop_top(self);
         }
         if loc == Location::Club {
-            // 1000:e020 -- AFTER the two menu rows and OUTSIDE the loop
-            // whose top is 1000:e025. See [`Game::club_stake`].
             self.club_stake = 5;
         }
     }
 
     /// End the current visit without the player typing the exit key.
     ///
-    /// The original has no such operation: it writes the exit token into
-    /// the location's own input buffer and lets the buffer's own `w`
-    /// compare fire. `1000:e251` (`0f78:0b01`, the club's caught-cheating
-    /// block) is the one site that does it inside a range this port has
-    /// implemented, and `1000:d35a` (the dealers' sell tail) is the other
-    /// -- that one writes a token the exit compare can never match, which
-    /// is why `Game::sell_items` does NOT call this.
+    /// Used when the club catches the player cheating, ejecting them
+    /// from the location.
     pub(crate) fn leave_shop(&mut self) {
         self.location = Location::Street;
         self.mode = Mode::Street;
     }
 
-    /// `girl`, `1000:d701`..`1000:d798`, in order:
+    /// Visiting the girl, in order:
     ///
-    /// * `1000:d701` -- needs 12 rubles (`cmp word [0x38c7],0xc`); otherwise
-    ///   file `0xB53D` and nothing else happens.
-    /// * `1000:d70b` -- file `0xB46F`.
-    /// * `1000:d728` -- `Random(2)` (`1000:d724` is the `mov ax,2`,
-    ///   `1000:d727` the `push`); on `0` (`1000:d72d` `or ax,ax` /
-    ///   `1000:d72f` `jnz 0xd756`), and only if the club is still
-    ///   undiscovered (`1000:d731` `cmp byte [0x3699],0`), prints file
-    ///   `0xB48C` (`1000:d738` `mov di,0x9bbc`) and sets
-    ///   the club's discovery flag at `1000:d751`. This is one of the two
-    ///   discovery paths in the game.
-    /// * `1000:d756`/`1000:d76f` -- files `0xB4CD`, `0xB4F6`.
-    /// * `1000:d788`..`1000:d793` -- `hp := hpmax`, `money -= 12`, and
-    ///   `1000:d793` `c6 06 76 3b 00` clears the market ban countdown
-    ///   `20ae:3b76`. All three are modelled; the clear landed with
-    ///   `docs/re/port-gaps.md` row 25, in the batch that gave the countdown
-    ///   its setter ([`crate::market`]'s `1000:c465`) and its gate
-    ///   ([`Game::enter_shop`]'s `1000:b95e`). Until then it would have been
-    ///   a no-op, which is why two earlier revisions of this line said "not
-    ///   modelled here". **All three stores sit past the refusal at
-    ///   `1000:d706`**, so a visit the player cannot pay for clears nothing.
+    /// * Costs 12 rubles; too poor and nothing else happens beyond the
+    ///   refusal.
+    /// * A coin flip (`Random(2)`), only while the club is still
+    ///   undiscovered, sets the club's discovery flag -- one of the two
+    ///   ways the club can be found.
+    /// * On success: heals to full HP, deducts the 12 rubles, and clears
+    ///   the market ban countdown.
     fn visit_girl(&mut self) {
         if self.player.money < 12 {
             term::println("^6Ну непойдёшь же как придурок без ничего.");
@@ -1126,12 +723,10 @@ impl Game {
     /// The colour digit the original appends to a price row's prefix.
     ///
     /// Every priced menu row is built as `<prefix ending in "^">` +
-    /// `'0'`/`'4'` + `<row text>`, so the two halves only form a valid `^N`
-    /// code once joined: `'0'` when the row is affordable, `'4'` when it is
-    /// not (`1000:b9b3`..`1000:b9c5` for `mar` row 1, and the same shape at
-    /// `1000:d410` and `1000:d465` for the vet's two services). The price
-    /// digit itself is *not* eaten by the markup -- the colour digit sits
-    /// between the `^` and the price.
+    /// `'0'`/`'4'` + `<row text>`, so the two halves only form a valid
+    /// `^N` code once joined: `'0'` when the row is affordable, `'4'`
+    /// when it is not. The price digit itself is *not* eaten by the
+    /// markup -- the colour digit sits between the `^` and the price.
     fn afford(&self, price: i32) -> &'static str {
         if i32::from(self.player.money) >= price {
             "0"
@@ -1142,20 +737,14 @@ impl Game {
 
     /// Everything a location writes before its own prompt.
     ///
-    /// `mar` (`1000:b968`..`1000:bd08`) and `bmar` (`1000:c4d2`..) print
-    /// three flavour lines then their priced rows; each row is
-    /// `^6N^7 - ^` (files `0xA4A2`, `0xA4C4`, `0xA4E1`, `0xA51B`, `0xA565`,
-    /// `0xA599`, `0xA5E9`, `0xA633`, `0xA660` -- `bmar` reuses the same nine
-    /// prefixes, confirmed at `1000:c53a` pushing `mar` row 1's prefix
-    /// `cs:0x8bd2`) + the affordability digit + the row's own text, which is
-    /// `crate::data::shops`' `text` with `#` filled from `displayed_price`.
-    /// District gating of a *printed* row is the same `district > N` test the
-    /// row's `gate` records (`1000:bb80`, `1000:bc42`, `1000:bca5`).
+    /// `mar` and `bmar` each print three flavour lines then their priced
+    /// rows; each row is `^6N^7 - ^` + the affordability digit + the
+    /// row's own text, with `#` filled from the displayed price. `bmar`
+    /// reuses the same nine row prefixes as `mar`. A row's district gate
+    /// is the same `district > N` test used to list it.
     ///
-    /// `rep`, `kl` and `trn` price their rows with an instruction immediate
-    /// rather than a byte out of the `20ae:0b2e` array, so they are not in
-    /// `data/shops.json`; Task 12 traced all nine of them and they are in
-    /// [`IMM_ROWS`]. See `docs/re/difftest.md`.
+    /// `rep`, `kl` and `trn` price their rows from a value baked
+    /// directly into the code rather than from the shared price table.
     fn print_shop_intro(&mut self, loc: Location) {
         match loc {
             Location::Market => {
@@ -1172,15 +761,9 @@ impl Game {
             }
             Location::Vet => {
                 term::println(crate::vet::EMITTED[0].1);
-                // 1000:d3d3..1000:d3f2, the predicate spelled into `al`:
-                // `1000:d3d6 cmp ax,[0x38ae]` / `1000:d3da jl 0xd3ea`, then
-                // `1000:d3dc cmp byte [0x38b0],0x0` / `1000:d3e1 jnz 0xd3ea`,
-                // then `1000:d3e3 cmp byte [0x38b1],0x0` /
-                // `1000:d3e8 jz 0xd3ee`, and `1000:d3f2 jz 0xd3f7` prints the
-                // menu on `al == 0`. Healthy takes `1000:d3f4 jmp 0xd4ba`,
-                // which lands ON the loop top -- so this early return is the
-                // menu skip and NOT the eject; the eject is
-                // `crate::vet::loop_top`, which `Game::enter_shop` runs next.
+                // A healthy player skips the vet's menu entirely on entry;
+                // this is the menu skip, not the eject (the eject is a
+                // different path).
                 if self.player.hp >= self.player.hpmax
                     && !self.player.broken_jaw
                     && !self.player.broken_leg
@@ -1188,13 +771,9 @@ impl Game {
                     return;
                 }
                 term::println(crate::vet::EMITTED[1].1);
-                // 1000:d423 / 1000:d478: prefix + affordability digit + text.
                 self.print_imm_rows("rep");
             }
             Location::Den => {
-                // 1000:d816..1000:d8b9 then 1000:d8b9..1000:dae2 -- one
-                // straight-line run with no branch between them; the split
-                // into two methods is the port's, not the original's.
                 self.print_den_intro();
                 self.print_den_menu();
             }
@@ -1211,8 +790,7 @@ impl Game {
         }
     }
 
-    /// The nine "^6N^7 - ^" prefixes (N = the row's digit), file `0xA4A2`
-    /// upward.
+    /// The nine "^6N^7 - ^" prefixes (N = the row's digit).
     const ROW_PREFIXES: [&'static str; 9] = [
         "^61^7 - ^",
         "^62^7 - ^",
@@ -1225,17 +803,11 @@ impl Game {
         "^69^7 - ^",
     ];
 
-    /// Which of `tag`'s rows the menu LISTS, in image order -- the district
+    /// Which of `tag`'s rows the menu lists, in order -- the district
     /// filter and nothing else.
     ///
-    /// Split out so the filter has exactly one implementation. It is the
-    /// **menu** half of the district's two uses: at `bmar` these five gates
-    /// (`1000:c68d`, `1000:c6f1`, `1000:c755`, `1000:c7ba`, `1000:c81d`) are
-    /// the only ones there are, and [`Game::shop_action`]'s buy path
-    /// deliberately does not consult them. A test that re-implemented this
-    /// predicate instead of calling it would pass with the gate deleted --
-    /// round 1 of this task shipped exactly that -- so
-    /// `a_gated_dealers_row_is_bought_below_its_district` calls this.
+    /// This is only the listing filter; buying a row applies its own,
+    /// separate district check.
     fn listed_rows(&self, tag: &str) -> Vec<&'static data::ShopEntry> {
         data::shops()
             .iter()
@@ -1243,41 +815,15 @@ impl Game {
             .collect()
     }
 
-    /// The menu gates that are not a district test -- `data/shops.json`'s
-    /// `extra_gates`, which only `("bmar","9")`, the silencer, carries.
-    ///
-    /// ```text
-    /// c81d  cmp byte [0x3692],0x3 / jbe 0xc88e   district > 3  (gate_open)
-    /// c824  cmp byte [0x394d],0x0 / jz  0xc88e   owns a pistol
-    /// c82b  cmp byte [0x3e32],0x19 / jnz 0xc88e  delivery counter == 25
-    /// ```
-    ///
-    /// Re-derive with
-    /// `python3 tools/re_query.py resolve 1000:c81d -n 30 -i 12`.
-    ///
-    /// All three jump to the SAME target, `0xc88e`, which is past the row's
-    /// whole print block -- so a miss prints nothing at all, rather than
-    /// printing the row in a refusing colour. That is why this belongs in
-    /// the `listed_rows` filter and not in [`Game::afford`].
-    ///
-    /// The field this reads was generated by `build.rs` from
-    /// `data/shops.json` and read by nothing until now; the buy arm
-    /// (`Game::buy_dealer_row`'s `"9"`) re-tests both facts itself at
-    /// `1000:cdfe` and `1000:ce05`, which is why the menu being wrong could
-    /// never let anyone actually buy the silencer early -- it only listed a
-    /// row the original does not print.
+    /// The menu gates that are not a district test -- the dealers'
+    /// silencer row is the only one with extra requirements: owning a
+    /// pistol, and the delivery counter at exactly 25 (on top of
+    /// district > 3). Missing any of these prints nothing at all, rather
+    /// than printing the row in a refusing colour.
     fn extra_gates_open(&self, row: &data::ShopEntry) -> bool {
         row.extra_gates.iter().all(|gate| match *gate {
-            // 1000:c824 -- `20ae:394d`, the pistol.
             "byte[20ae:394d]!=0" => self.pistol.owned,
-            // 1000:c82b -- `20ae:3e32`, the dealers' delivery counter.
             "byte[20ae:3e32]==25" => self.dealer_delivery_counter == 25,
-            // `data/shops.json` is frozen, build-time data derived from the
-            // image. A gate string that reaches here means the extractor
-            // found a new one and nothing models it -- which must be loud,
-            // not silently open or silently shut.
-            // `every_extra_gate_in_the_table_is_modelled` is the guard that
-            // keeps this unreachable.
             other => panic!(
                 "unmodelled extra_gate {other:?} on {} row {}",
                 row.shop, row.key
@@ -1304,97 +850,28 @@ impl Game {
         }
     }
 
-    /// What a priced row's `#` placeholders are filled with, in the order the
-    /// original pushes them.
+    /// What a priced row's `#` placeholders are filled with.
     ///
-    /// ## Why surplus values are ignored, and where the surplus is
+    /// Sixteen of the eighteen priced rows hold exactly one `#`, the
+    /// price. Two hold more, and the original discards the ones a row
+    /// does not use -- writing more fill values than a template has
+    /// `#`s is intentional and matches the original, not a port
+    /// convenience.
     ///
-    /// **Established from flow, and this is the premise both fills below rest
-    /// on.** Every priced menu line is written by one `call 0eed:01c2`
-    /// (`System.WriteLn`), and **all 24 of those call sites in the two menu
-    /// blocks push exactly five words**. Measured over an aligned linear walk
-    /// of `entry` from `1000:ab59` (7742 instructions, its whole recorded
-    /// `size`), filtered to `1000:b94a`..`1000:bd08` for `mar` and
-    /// `1000:c4be`..`1000:c8ce` for `bmar` -- each block from its shop-tag
-    /// compare to its prompt push, the same `shop_tag_at` anchors
-    /// `data/shop_arms.json` records, and **all four bounds are instruction
-    /// boundaries the walk reaches**. 24 sites, and the push-count histogram
-    /// is `{5: 24}` -- not one site with four or six. The slots a row does
-    /// not use are `xor ax,ax` / `push ax`, so a row with one `#` pushes its
-    /// price and then **four zeros**, and Borland's `Write` consumes the
-    /// placeholders left to right and drops what is left over. That is why
-    /// `text::fill` taking more values than the template has `#`s is the
-    /// original's own behaviour and not a port convenience
-    /// (`crate::text::tests::fill_drops_surplus_values` asserts it).
+    /// `mar` row 2, `#^7 руб.  Пиво(#з)`, always reads `Пиво(5з)`: the
+    /// second `#` is filled from a literal `5` baked into the row, not
+    /// from the price -- it only looks price-driven because the price
+    /// also happens to be 5.
     ///
-    /// **The lower bound is load-bearing.** Starting the `mar` filter at
-    /// `1000:b930` -- not an instruction boundary; a cold decode there reads
-    /// `rcl [bx+si+0x31],0xc0` -- sweeps in a 25th site at `1000:b93b`, which
-    /// is the `WriteLn` immediately *before* the `mar` verb compare at
-    /// `1000:b94a` and belongs to the handler that precedes the market, not
-    /// to its menu. Its five words are all zeros, so it changes no
-    /// conclusion, but it is a row that is not a row: hence the aligned
-    /// anchor.
+    /// `bmar`'s Кастет and Дубинка rows (`#^7 руб. Кастет(урон+2)` and
+    /// `#^7 руб. Дубинка(урон+4), заменяет кастет`) each push an extra
+    /// literal `5` that the original discards outright; it changes
+    /// nothing on screen.
     ///
-    /// The 120 pushed words split exactly **97 zeros + 18 price bytes + 5
-    /// immediates**. The 18 is the eighteen priced rows, one price byte each
-    /// (`mov al,[imm8]` / `xor ah,ah`), which is the cross-check that the
-    /// sweep found every row and no extra site. The five immediates belong to
-    /// three rows:
-    ///
-    /// | row | surplus pushes | consumed? |
-    /// |---|---|---|
-    /// | `mar` 2 | `1000:ba5a mov ax,0x5` | yes -- the second `#` |
-    /// | `bmar` 5 | `1000:c6df mov ax,0x5` | **no -- discarded** |
-    /// | `bmar` 6 | `1000:c743 mov ax,0x5` | **no -- discarded** |
-    /// | `bmar` 7 | `1000:c7a7 mov ax,0x14`, `1000:c7ab mov ax,0x1e` | yes -- the second and third `#` |
-    ///
-    /// **`1000:c6df` and `1000:c743` are surplus the original itself throws
-    /// away, and no row is broken by it.** Their strings hold one `#` each
-    /// and bake their numbers into the text --
-    /// CS `0x92b8` (pushed at `1000:c6cf`) is `#^7 руб. Кастет(урон+2)` and
-    /// CS `0x92d0` (pushed at `1000:c733`) is
-    /// `#^7 руб. Дубинка(урон+4), заменяет кастет` -- so the `5` each pushes
-    /// lands in no slot. Both are recorded here so a later task opening
-    /// `bmar`'s remaining arms reads them as *discarded*, not as a
-    /// placeholder this helper forgot; neither address had appeared anywhere
-    /// in `src/` or `docs/` before this note.
-    ///
-    /// ## The two rows that DO consume a surplus push
-    ///
-    /// Sixteen of the eighteen rows in `data/shops.json` hold exactly one
-    /// `#` and it is the price. **Two hold more, and every extra one is an
-    /// instruction immediate rather than a price.** Both were printing a
-    /// bare `#` on screen until Task 26. The inventory was first taken from
-    /// the `data/shops.json` side alone -- counting `#` in the template --
-    /// and the complementary sweep above, over which call sites push a
-    /// non-price immediate, is what found the other two rows and made
-    /// "sixteen" a measured number rather than a stopped search.
-    ///
-    /// **`mar` row 2, `#^7 руб.  Пиво(#з)`.** The line is assembled at
-    /// `1000:ba4a mov di,0x8bfe`; then `1000:ba54 mov al,[0xb2f]` /
-    /// `1000:ba57 xor ah,ah` / `1000:ba59 push ax` pushes the price byte
-    /// `20ae:0b2f`, and `1000:ba5a mov ax,0x5` / `1000:ba5d push ax` pushes
-    /// a literal `5` straight after it. `1000:ba5a` is file `0xD32A`, the
-    /// address `docs/re/tables.md` §2 records for it. So the screen reads
-    /// `Пиво(5з)` -- and it would read `Пиво(5з)` even if the price byte held
-    /// something else, because the two 5s only coincide. Filling the second
-    /// `#` from `displayed_price` would be that coincidence dressed as a
-    /// rule, which is why the literal is written out.
-    ///
-    /// **`bmar` row 7, `... ^6f^7 урон(#-#).`** Three placeholders, not two:
-    /// `1000:c7a1 mov al,[0xb3e]` pushes the price, then
-    /// `1000:c7a7 mov ax,0x14` and `1000:c7ab mov ax,0x1e` push 20 and 30.
-    /// **The 30 is the original's own off-by-one, reproduced**: the shot the
-    /// row is advertising rolls `20 + Random(10)` -- `1000:4f14 mov ax,0xa`
-    /// and `1000:4f1d add ax,0x14`, ported in [`crate::combat_dispatch::fire`]
-    /// -- so the real range is 20..=29 and the menu says 20-30. The line is
-    /// printed from its own immediates, not from the shot's, so the port
-    /// prints 30 here and rolls 29 there, as the original does.
-    ///
-    /// Both extras are keyed by shop and row rather than derived, because
-    /// nothing in `data/shops.json` carries them: the artifact records the
-    /// price array `20ae:0b2e`.. and these are not in it.
+    /// `bmar` row 7 (`... ^6f^7 урон(#-#).`) advertises 20-30 damage,
+    /// but the shot it sells actually rolls `20 + Random(10)`, i.e.
+    /// 20..=29 -- the original's own off-by-one, reproduced
+    /// deliberately.
     fn row_fill_values(row: &data::ShopEntry) -> Vec<i64> {
         let mut values = vec![row.displayed_price as i64];
         match (row.shop, row.key) {
@@ -1405,16 +882,14 @@ impl Game {
         values
     }
 
-    /// The [`IMM_ROWS`] belonging to `tag`, in image order, each gated by
-    /// [`Game::imm_row_visible`].
+    /// The [`IMM_ROWS`] belonging to `tag`, in image order, each gated
+    /// by [`Game::imm_row_visible`].
     ///
     /// Assembly is the same three parts as [`Game::print_priced_rows`]:
     /// prefix, affordability colour digit, row text. The one `#` in the
-    /// whole table -- `trn` row 3's `10^7  прокачать # качков опыта` -- is
-    /// filled from a *separate* immediate, `1000:e505` `mov ax,0xa`, which
-    /// happens to equal that row's price at `1000:e4c4`; the fill below uses
-    /// `price` and both immediates are checked against the image by
-    /// `tools/difftest.py`.
+    /// whole table -- `trn` row 3's `10^7  прокачать # качков опыта` --
+    /// is filled from a value that happens to equal that row's own
+    /// price.
     fn print_imm_rows(&self, tag: &str) {
         for row in IMM_ROWS.iter().filter(|r| r.shop == tag) {
             if self.imm_row_visible(row) {
@@ -1435,131 +910,44 @@ impl Game {
 
     /// Whether an [`IMM_ROWS`] row is printed at all.
     ///
-    /// The vet's two rows have no gate of their own (the whole menu is
-    /// skipped when the player is unhurt, at `1000:d3d3`). The other seven
-    /// are gated, each by a test that sits immediately before the row's own
-    /// `cmp word [20ae:38c7],imm8`:
+    /// The vet's two rows have no gate of their own -- the whole menu is
+    /// skipped when the player is unhurt. The other seven are gated:
     ///
-    /// | row | gate | address |
-    /// |---|---|---|
-    /// | `kl` 1 | none | -- |
-    /// | `kl` 2 | `district > 1` | `1000:dfc4` `cmp byte [0x3692],1` / `jbe 0xe020` |
-    /// | `trn` 1 | none | -- |
-    /// | `trn` 2 | none | -- |
-    /// | `trn` 3 | `district > 1` **and** `district * 10 - 3 > level` | `1000:e4aa`; `1000:e4b1`..`1000:e4c2` (`mul 10`, `sub ax,3`, `cmp ax,[0x38a6]`, `jle 0xe51a`) |
-    /// | `trn` 4 | `district > 1` | `1000:e51a` |
-    /// | `trn` 5 | `district > 2` **and** `abs < district * 2` | `1000:e576`; `1000:e57d`..`1000:e58d` (`shl ax,1`, `mov al,[0x3e34]`, `cmp ax,dx`, `jge 0xe5e4`) |
+    /// | row | gate |
+    /// |---|---|
+    /// | `kl` 1 | none |
+    /// | `kl` 2 | `district > 1` |
+    /// | `trn` 1 | none |
+    /// | `trn` 2 | none |
+    /// | `trn` 3 | `district > 1` **and** `district * 10 - 3 > level` |
+    /// | `trn` 4 | `district > 1` |
+    /// | `trn` 5 | `district > 2` **and** `abs < district * 2` |
     ///
-    /// `abs` is the scratch byte `20ae:3e34`, recomputed on every entry to
-    /// the gym at `1000:e3a4`..`1000:e3e2`: it starts as the armour byte
-    /// `20ae:38b2` and then has the armour that came from *equipment*
-    /// subtracted back out --
+    /// `abs` is the armour the player trained rather than bought: it
+    /// starts as the total armour byte, then has the armour that came
+    /// from equipment subtracted back out --
     ///
-    /// * `1000:e3aa`..`1000:e3b8`: `-1` when `[0x38b4]` is set
-    ///   (`1000:e3aa`/`1000:e3af`) and `[0x38b7]` is not
-    ///   (`1000:e3b1`/`1000:e3b6`),
-    /// * `1000:e3bc`..`1000:e3c3`: `-2` when `[0x38b7]` is set
-    ///   (`1000:e3bc`/`1000:e3c1`),
-    /// * `1000:e3c8`..`1000:e3d6`: `-2` when `[0x38b6]` is set
-    ///   (`1000:e3c8`/`1000:e3cd`) and `[0x38b9]` is not
-    ///   (`1000:e3cf`/`1000:e3d4`),
-    /// * `1000:e3db`..`1000:e3e2`: `-4` when `[0x38b9]` is set
-    ///   (`1000:e3db`/`1000:e3e0`),
+    /// * `-1` for the Abibas suit ("Смягчает пинок на 1") when the
+    ///   Adidas suit isn't also owned,
+    /// * `-2` for the Adidas suit ("на 2"),
+    /// * `-2` for the Кожанка jacket ("защиты ... на 2") when the
+    ///   Крутая кожанка isn't also owned,
+    /// * `-4` for the Крутая кожанка ("Броня +4").
     ///
-    /// so it is the part of the armour the player trained rather than
-    /// bought. Those four bytes are the ownership flags for four `mar` rows:
-    /// `1000:bf80` sets `[0x38b4]` (row 4, the abibas suit, "Смягчает пинок
-    /// на 1"), `1000:c183` sets `[0x38b7]` (row 7, adidas, "на 2"),
-    /// `1000:c0e0` sets `[0x38b6]` (row 6, the leather jacket, "защиты ... на
-    /// 2") and `1000:c2ca` sets `[0x38b9]` (row 9, "Броня +4") -- the four
-    /// subtrahends are those four rows' own advertised bonuses.
+    /// The lesser item's bonus is skipped when the better one is owned,
+    /// the same pairing [`crate::character_sheet`]'s `armour_block`
+    /// prints.
     ///
-    /// The bullets name **twelve** addresses, and they are not twelve
-    /// branches: `1000:e3a4`..`1000:e3e2` holds **six** compares
-    /// (`1000:e3aa`, `e3b1`, `e3bc`, `e3c8`, `e3cf`, `e3db`) and the **six**
-    /// branches that follow them (`1000:e3af`, `e3b6`, `e3c1`, `e3cd`,
-    /// `e3d4`, `e3e0`) -- one compare/branch pair per bullet clause, two
-    /// clauses in the first and third bullets and one in the second and
-    /// fourth. An earlier revision of this paragraph said "eight", which was
-    /// a count by eye of a thing the image answers; the command that answers
-    /// it is `python3 tools/re_query.py resolve 1000:e3a4 -n 70 -i 40`.
+    /// A related check in the gym's train command uses the same
+    /// trained-armour value against a different threshold --
+    /// `(district - 2) * 10` there, `district * 2` here -- the two are
+    /// deliberately not shared, since they are different numbers.
     ///
-    /// **None of those six branches is implemented here**; they are written
-    /// out one by one so the gap below is recorded per branch rather than
-    /// per range. `data/branches.json`'s `port_cross_reference` calls that
-    /// the over-reporting direction of its citation proxy ("a citation can
-    /// be a record of a gap"). Four of the six were already cited before
-    /// Task 32 (`1000:e3af`, `e3c1`, `e3cd`, `e3e0`); Task 32 added the
-    /// other two, `1000:e3b6` and `1000:e3d4`, which are the two branches
-    /// `docs/re/branches.md`'s coverage sentence names as records of a gap
-    /// rather than implementations.
-    ///
-    /// **The port carries all four flags and this method still ignores
-    /// them**, so `abs` is exactly `armor` here, where the original computes
-    /// `armor` minus 1 for `[38b4]` without `[38b7]`, minus 2 for `[38b7]`,
-    /// minus 2 for `[38b6]` without `[38b9]`, and minus 4 for `[38b9]`.
-    /// Only one row reads `abs`: `("trn","5")`. It has **two** gates, and
-    /// only the second reads `abs` -- `1000:e576` `cmp byte [0x3692],0x2` /
-    /// `jbe` is `district > 2`, and `1000:e57d`..`1000:e58d` is
-    /// `abs < district * 2`. This method implements both; the prose used to
-    /// fold them into one. So the whole consequence is that this port can
-    /// HIDE a gym row the original shows.
-    ///
-    /// **The `5` ARM reads `20ae:3e34` too, against a different threshold**
-    /// (`(district - 2) * 10` at `1000:e87f`..`1000:e894`, where this row's
-    /// is `district * 2`). [`crate::gym`]'s `train_abs` makes the same
-    /// `armor` substitution against its own threshold, so the population of
-    /// this divergence is two readers; the two predicates are deliberately
-    /// NOT shared, because they are different numbers.
-    ///
-    /// **FIXED.** Both readers now call [`Game::trained_armour`], the port
-    /// of `1000:e3a4`..`1000:e3e2`. The reason this stayed open was that
-    /// "buying a `mar` row deducts the price and prints the text but applies
-    /// no effect", so the flags could only arrive from a loaded `.SAV` and
-    /// the row would depend on a flag the player could not earn. That is no
-    /// longer true: all four purchases set their flag -- `1000:bf80`,
-    /// `1000:c0e0`, `1000:c183` and `1000:c2ca`, each in its own `bmar` arm.
-    /// The witness the old comment named still works as a test: **`SAVE_R4`
-    /// at slot 4** holds `38b4`/`38b6`/`38b7` set and `38b9` clear with
-    /// `armour` 10, so `abs = 10 - 2 - 2 = 6` against this row's threshold
-    /// of 8 and the row shows. It used to compute `abs = 10` and hide it.
-    /// `1000:e3a4`..`1000:e3e2` -- `20ae:3e34`, the gym's trained-armour
-    /// scratch, recomputed from scratch on every `trn` entry.
-    ///
-    /// ```text
-    /// e3a4  mov al,[0x38b2] / mov [0x3e34],al   abs := armour
-    /// e3aa  cmp byte [0x38b4],0 / jz  0xe3bc
-    /// e3b1  cmp byte [0x38b7],0 / jnz 0xe3bc
-    /// e3b8  dec [0x3e34]                        Abibas and no Adidas: -1
-    /// e3bc  cmp byte [0x38b7],0 / jz  0xe3c8
-    /// e3c3  sub byte [0x3e34],0x2               Adidas: -2
-    /// e3c8  cmp byte [0x38b6],0 / jz  0xe3db
-    /// e3cf  cmp byte [0x38b9],0 / jnz 0xe3db
-    /// e3d6  sub byte [0x3e34],0x2               Кожанка and no Крутая: -2
-    /// e3db  cmp byte [0x38b9],0 / jz  0xe3e7
-    /// e3e2  sub byte [0x3e34],0x4               Крутая кожанка: -4
-    /// ```
-    ///
-    /// Re-derive with
-    /// `python3 tools/re_query.py resolve 1000:e3a4 -n 70 -i 34`.
-    ///
-    /// The subtraction is the item's own armour contribution, so `abs` is
-    /// the armour the player trained rather than bought -- the lesser item
-    /// is skipped when the better one is owned, exactly the pairing
-    /// `crate::character_sheet`'s `armour_block` prints.
-    ///
-    /// **Byte arithmetic, and it can underflow.** `20ae:3e34` and
-    /// `20ae:38b2` are both bytes (`1000:e3a4 mov al`, `1000:e8d6 inc`), and
-    /// both readers zero-extend (`xor ah,ah` at `1000:e589` and
-    /// `1000:e890`). So armour 1 with the Крутая кожанка gives `1 - 4 = 253`,
-    /// not `-3`, which reads as *above* either threshold and blocks the row
-    /// and the arm. `wrapping_sub` on `u8` is that, not a convenience.
-    ///
-    /// The scratch's own `1000:e8da inc [0x3e34]` needs no counterpart:
-    /// `1000:e8d6` increments `20ae:38b2` in the same breath, and this
-    /// recomputes from it on the next read.
+    /// **Byte arithmetic, and it can underflow, matching the original.**
+    /// Armour 1 while wearing the Крутая кожанка computes `1 - 4 = 253`,
+    /// not `-3`, which reads as *above* either threshold and blocks the
+    /// row.
     pub(crate) fn trained_armour(&self) -> u8 {
-        // 1000:e3a4 `mov al,[0x38b2]` -- the low byte only.
         let mut abs = self.player.armor;
         if self.wear_suit_abibas && !self.wear_suit_adidas {
             abs = abs.wrapping_sub(1); // 1000:e3b8
@@ -1579,8 +967,6 @@ impl Game {
     pub(crate) fn imm_row_visible(&self, row: &ImmRow) -> bool {
         let district = i32::from(self.district);
         let level = i32::from(self.player.level);
-        // 1000:e586 `mov al,[0x3e34]` / `xor ah,ah` -- zero-extended, so an
-        // underflowed scratch reads as a large positive and hides the row.
         let abs = i32::from(self.trained_armour());
         match (row.shop, row.key) {
             ("kl", "2") => district > 1,
@@ -1591,24 +977,14 @@ impl Game {
         }
     }
 
-    /// `pr`, `1000:d816`..`1000:d8b9`. `Ты пришел в притон - ` (file
-    /// `0xB5C0`) is *written without a newline* (`call 0eed:0000` at
-    /// `1000:d82a`), then exactly one district-keyed suffix completes the
-    /// line. District 1 spends a real `Random(6)` draw for the dorm number
-    /// (`1000:d83f`, `+3`), so this branch is part of the RNG sequence.
+    /// `pr`, the den intro. `Ты пришел в притон - ` is written without
+    /// a newline, then exactly one district-keyed suffix completes the
+    /// line.
     ///
-    /// The call site is `1000:d83f`, not `1000:d83b`: re-derived from an
-    /// aligned start at `1000:d816`, `1000:d83b` is `b8 06 00`
-    /// (`mov ax,0x6`), `1000:d83e` is `50` (`push ax`) and `1000:d83f` is
-    /// the `9a 4b 11 78 0f` (`call 0f78:114b`), with `1000:d844`
-    /// `05 03 00` (`add ax,0x3`) after it. A four-byte-early label costs
-    /// nothing while the branch never fires, but `site` is the identity key
-    /// of the differential replay in `tests/wander_sequence.rs`, so a future
-    /// capture that drove the den would report a spurious mismatch.
+    /// District 1 spends a `Random(6)` draw (`+3`) for the dorm number,
+    /// so this branch is part of the RNG sequence.
     ///
-    /// The conditional lines that follow (`1000:d8b9` onward) are
-    /// [`Game::print_den_menu`], ported by Task 28; this method is menu
-    /// lines 0..4 of `data/den_arms.json`'s seventeen and nothing else.
+    /// The remaining menu lines are [`Game::print_den_menu`].
     fn print_den_intro(&mut self) {
         term::print(den::EMITTED[0].1);
         match self.district {
@@ -1619,233 +995,125 @@ impl Game {
             2 => term::println(den::EMITTED[2].1),
             3 => term::println(den::EMITTED[3].1),
             4 => term::println(den::EMITTED[4].1),
-            // No `else`: `1000:d82f`, `1000:d859`, `1000:d879` and
-            // `1000:d899` are four independent `cmp byte [0x3692],N`
-            // blocks, the last of which falls through to `1000:d8b9`. A
-            // district outside 1..=4 -- reachable, since
-            // [`Game::district_advance`] promotes while `district < 5`
-            // (`1000:ab88`) and so can leave it at 5 -- writes the
-            // prefix and nothing more: no suffix, and no newline either,
-            // because the prefix went out through `0eed:0000` (`Write`)
-            // and no `WriteLn` follows.
+            // District 5 (reachable once promotion caps out) prints
+            // only the prefix here, with no suffix and no trailing
+            // newline -- the four district blocks are independent, and
+            // none of them matches 5.
             _ => {}
         }
     }
 
-    /// The den's menu, `1000:d8b9`..`1000:dae2` -- lines 5..16 of
-    /// `data/den_arms.json`'s seventeen, the twelve
-    /// [`Game::print_den_intro`] does not print. `docs/re/den.md`, "The
-    /// menu", is the map; every gate, string and colour store below cites
-    /// its own address.
+    /// The den's menu -- the rest of the lines
+    /// [`Game::print_den_intro`] does not print.
     ///
-    /// **They print ONCE, on entry.** Established from flow in
-    /// `docs/re/den.md`: every branch in the image whose target is the
-    /// prompt push `1000:dae2` is one of exactly three -- `1000:dac0` and
-    /// `1000:dac7` (line 16's own gate misses, i.e. the entry from the
-    /// menu) and `1000:dede` (the `w` compare's miss, the loop's only back
-    /// edge). So the back edge lands on the PROMPT, never on the menu, and
-    /// this method belongs in [`Game::print_shop_intro`] and not in
-    /// [`Game::shop_turn`].
+    /// **They print ONCE, on entry**, never again on the loop's back
+    /// edge.
     ///
-    /// | # | gate | address |
+    /// | # | command | gate |
     /// |---|---|---|
-    /// | 5 | -- | a bare `WriteLn` on `20ae:3fcc`, `1000:d8be` -- one blank line, no literal |
-    /// | 6 | `1000:d8c8 cmp byte [0x3b78],0x1` / `jnz 0xd8e8` | errand one pending |
-    /// | 7 | `1000:d8e8 cmp byte [0x3b79],0x0` / `jz 0xd90f` **and** `1000:d8ef cmp word [0x38cb],0x64` / `jl 0xd90f` | errand two AND cred >= 100 |
-    /// | 8 | threshold block #1, `1000:d90f`..`1000:d941` | [`Game::den_menu_reveal_hint`] |
-    /// | 9 | -- | a second blank `WriteLn`, `1000:d961` |
+    /// | 5 | -- | blank line |
+    /// | 6 | -- | errand one pending |
+    /// | 7 | -- | errand two pending **and** cred >= 100 |
+    /// | 8 | -- | threshold block #1 ([`Game::den_menu_reveal_hint`]) |
+    /// | 9 | -- | blank line |
     /// | 10 | -- | unconditional |
-    /// | 11 | colour only, `1000:d984 cmp word [0x38c3],0x0` / `jnz 0xd992` | the `p` row |
-    /// | 12 | `1000:d9ec cmp byte [0x3e35],0x0` / `jbe 0xda35`, colour `1000:d9d9 cmp word [0x38cb],0x2` / `jnl 0xd9e7` | the `r` row |
-    /// | 13 | `1000:da35 cmp byte [0x3b78],0x1` / `jnz 0xda55` | the `hp` row |
+    /// | 11 | `p` | always shown; dimmed unless the beer count is non-zero |
+    /// | 12 | `r` | shown while the den loan is unpaid; dimmed unless cred >= 2 |
+    /// | 13 | `hp` | errand one pending |
     /// | 14 | -- | unconditional |
-    /// | 15 | threshold block #2, `1000:da6e`..`1000:daa0` | the `a` row |
-    /// | 16 | `1000:dabb cmp word [0x38cb],0x64` / `jl 0xdae2` **and** `1000:dac2 cmp byte [0x3b79],0x0` / `jz 0xdae2` | the `d` row |
+    /// | 15 | `a` | threshold block #2 |
+    /// | 16 | `d` | cred >= 100 **and** errand two not pending |
     ///
-    /// **The two dimmed rows.** Rows 11 and 12 are built with the same
-    /// three-call idiom `docs/re/tables.md` records for the priced shop
-    /// rows, writing the colour digit to `20ae:3b7a` first: `0x34` (ASCII
-    /// `4`, dim) at `1000:d98b` / `1000:d9e0` and `0x30` (ASCII `0`) at
-    /// `1000:d992` / `1000:d9e7`, then `1000:d9ad` / `1000:da09`
-    /// `mov al,[0x3b7a]` loads it back between the prefix `Напиши ^`
-    /// (CS `0x9dcb`) and the row text. This port computes the digit inline
-    /// rather than carrying `20ae:3b7a` as a field.
-    ///
-    /// **That is not a shortcut around row 12's ordering.** `1000:d9d9`'s
-    /// colour store runs BEFORE `1000:d9ec`'s visibility gate, so the
-    /// original writes `20ae:3b7a` even on a turn where the `r` row is not
-    /// printed. It is unobservable: `20ae:3b7a` has 87 image-wide
-    /// references and every one of them is the same store-store-load
-    /// triple (`data/den_arms.json`'s `globals[]` record for it), so no
-    /// reader anywhere reaches the byte without its own writer running
-    /// first, and row 12's is the last store in the den either way.
-    ///
-    /// **Nothing here is a `Random` site.** The whole `1000:d8b9`..
-    /// `1000:dae2` span holds no `call 0f78:114b`: `data/den_arms.json`'s
-    /// draw sweep over the range returns exactly five sites and they are
-    /// `1000:d83f` (the intro, ported), `1000:dd97`, `1000:ddda`,
-    /// `1000:de5a` and `1000:de7c` (all four in the `d` arm).
+    /// Rows 11 and 12 share the prefix `Напиши ^`, then the colour digit,
+    /// then the row text.
     fn print_den_menu(&self) {
-        // 1000:d8be `call 0f78:05dd` / 1000:d8c3 `call 0f78:0291` -- a bare
-        // Pascal `WriteLn` on the output `Text` at 20ae:3fcc, i.e. a blank
-        // line with no literal pushed.
         term::println("");
-        // 1000:d8c8, string CS 0x9d46 pushed at 1000:d8cf.
         if self.den_errand_1_pending {
             term::println(den::EMITTED[5].1);
         }
-        // 1000:d8e8 and 1000:d8ef -- a conjunction: either miss lands on the
-        // same 1000:d90f. `jl` is signed. String CS 0x9d6e at 1000:d8f6.
         if self.den_errand_2_pending && self.pontovost_street >= 0x64 {
             term::println(den::EMITTED[6].1);
         }
-        // 1000:d90f..1000:d941, threshold block #1. String CS 0x9d90 at
-        // 1000:d943, printed by 1000:d957.
         if self.den_menu_reveal_hint() {
             term::println(den::EMITTED[7].1);
         }
-        // 1000:d961 -- the second bare `WriteLn`.
         term::println("");
-        // 1000:d96b, string CS 0x9db3, printed by 1000:d97f.
         term::println(den::EMITTED[8].1);
-        // Row 11: prefix CS 0x9dcb (1000:d99d) + the colour digit + suffix
-        // CS 0x9dd4 (1000:d9bb), one `WriteLn` at 1000:d9d4. The line ALWAYS
-        // prints; only its colour depends on the beer count.
+        // Row 11 always prints; only its colour depends on the beer
+        // count.
         term::println(&format!(
             "Напиши ^{}p^7  чтобы угостить пацанов пивом",
-            // 1000:d984 `cmp word [0x38c3],0x0` / 1000:d989 `jnz 0xd992`:
-            // a NON-ZERO beer count takes the `jnz` to the '0' store. The
-            // test is equality, not order, so this is `!= 0` and not `> 0`
-            // -- unlike the `p` arm's own `jle` gate at 1000:db38.
             if self.player.beer_dl != 0 { "0" } else { "4" }
         ));
-        // Row 12: same prefix CS 0x9dcb (1000:d9f9) + digit + suffix
-        // CS 0x9df6 (1000:da17), one `WriteLn` at 1000:da30.
-        //
-        // 1000:d9ec `cmp byte [0x3e35],0x0` / `jbe 0xda35` is UNSIGNED on a
-        // byte compared with zero, so it refuses exactly `== 0`.
         if self.den_loan_credit != 0 {
             term::println(&format!(
                 "Напиши ^{}r^7  чтобы занять 2 рубля",
-                // 1000:d9d9 `cmp word [0x38cb],0x2` / 1000:d9de `jnl 0xd9e7`
-                // -- signed, `>= 2` is the normal colour.
                 if self.pontovost_street >= 2 { "0" } else { "4" }
             ));
         }
-        // 1000:da35, string CS 0x9e10 at 1000:da3c, printed by 1000:da50.
         if self.den_errand_1_pending {
             term::println(den::EMITTED[9].1);
         }
-        // 1000:da55, string CS 0x9e4e, printed by 1000:da69. Unconditional.
         term::println(den::EMITTED[10].1);
-        // 1000:da6e..1000:daa0, threshold block #2 -- BYTE-IDENTICAL to
-        // block #1 and NOT the block the `a` arm uses. String CS 0x9e73 at
-        // 1000:daa2, printed by 1000:dab6.
         if self.den_menu_reveal_hint() {
             term::println(den::EMITTED[11].1);
         }
-        // 1000:dabb (signed `jl`) and 1000:dac2 -- both misses land on the
-        // prompt push 1000:dae2. String CS 0x9e96 at 1000:dac9, printed by
-        // 1000:dadd.
         if self.pontovost_street >= 0x64 && self.den_errand_2_pending {
             term::println(den::EMITTED[12].1);
         }
     }
 
-    /// Threshold blocks **#1** (`1000:d90f`..`1000:d941`, menu line 8) and
-    /// **#2** (`1000:da6e`..`1000:daa0`, menu line 15, the `a` row).
+    /// Threshold blocks **#1** (menu line 8) and **#2** (menu line 15,
+    /// the `a` row).
     ///
-    /// **These two are one predicate and the `a` ARM's is a different one.**
-    /// Established from flow by re-slicing the bytes out of `orig/g.exe`
-    /// (`data/den_arms.json`'s `threshold_blocks[]` carries all three byte
-    /// strings): blocks #1 and #2 are **52 bytes each and byte-identical**,
-    /// branch displacements included, while block #3 -- `1000:dcba`, the one
-    /// [`Game::den_reveal`] implements -- is **43 bytes**. The nine missing
-    /// bytes are exactly `1000:d92f sub ax,0x5` (`2d 05 00`),
-    /// `1000:d932 mov si,ax` (`8b f0`), the *second* `1000:d936 shl ax,1`
-    /// (`d1 e0`) and `1000:d938 add ax,si` (`01 f0`). So with
-    /// `k = level - (district-1)*10`, this predicate is `5k - 25 + cred >= 40`
-    /// and the arm's is `2k + cred >= 40`.
+    /// **These two are one predicate, and the `a` command's own check is
+    /// a different one -- and neither implies the other.** With
+    /// `k = level - (district-1)*10`, the menu's predicate is
+    /// `5k - 25 + cred >= 40` and the `a` command's is `2k + cred >= 40`.
+    /// So `k = 1, cred = 38` satisfies the command and not the menu: the
+    /// reveal can succeed with no menu line ever having offered it.
+    /// `k = 13, cred = 0` satisfies the menu and not the command: the
+    /// menu offers `a` and using it fails in silence.
     ///
-    /// **Neither implies the other**, which is why they are two methods and
-    /// not one: `k = 1, cred = 38` satisfies the arm and not this, so the
-    /// reveal fires with no menu line offering it; `k = 13, cred = 0`
-    /// satisfies this and not the arm, so the menu offers `a` and the arm
-    /// refuses in silence.
-    /// `the_den_menu_hint_and_the_a_arm_disagree_in_both_directions` drives
-    /// both of those states.
-    ///
-    /// The shared thirteen-byte prefix IS identical in all three:
-    /// `1000:d90f cmp byte [0x3695],0x0` / `1000:d914 jz 0xd91d` /
-    /// `1000:d916 cmp byte [0x369a],0x0` / `1000:d91b jnz 0xd95c`, so the
-    /// skip happens only when Dealers **and** Gym are both already found --
-    /// Dealers clear takes the `jz` straight past the Gym test.
-    ///
-    /// The arithmetic runs in 16-bit `ax` in the original and `1000:d93e
-    /// cmp ax,0x28` / `1000:d941 jl 0xd95c` is a SIGNED compare; this port
-    /// widens to `i32`, exactly as [`Game::den_reveal`] already does, so a
-    /// `[0x38cb]` large enough to wrap `ax` would diverge. Unreachable at
-    /// any value the port can produce.
+    /// All three thresholds share the same prefix check: they're
+    /// skipped once both Dealers and Gym are already discovered.
     fn den_menu_reveal_hint(&self) -> bool {
         if self.places.is_found(Location::Dealers) && self.places.is_found(Location::Gym) {
             return false;
         }
-        // 1000:d91d..1000:d93a: ax := level - (district-1)*10, minus 5,
-        // times 5 (`mov si,ax` / `shl ax,1` / `shl ax,1` / `add ax,si`),
-        // plus [0x38cb].
         let level_in_district = i32::from(self.player.level) - (i32::from(self.district) - 1) * 10;
         (level_in_district - 5) * 5 + i32::from(self.pontovost_street) >= 0x28
     }
 
-    /// One turn at a location's own prompt. The location's keys are checked
-    /// *before* the street verb table, because the original reads them with
-    /// its own `ReadLn DS:3a72` that never reaches `entry`'s `DS:3972`
-    /// dispatch chain at all -- this is why the vet's `h` (heal a jaw) and
-    /// the street's `h` (drink a beer, `1000:e966`) can share a letter.
-    /// `w` leaves -- and ONLY `w`: every location's exit compare is against
-    /// the one-byte CS `0x848e` (`1000:ded7` is the den's), so `run` is not
-    /// an exit here the way it is on the street. Anything else is ignored and
-    /// the prompt repeats.
+    /// One turn at a location's own prompt. Location keys are checked
+    /// before the street's own commands, using the location's own input
+    /// buffer -- which is why the vet's `h` (heal a jaw) and the
+    /// street's `h` (drink a beer) can share a letter and mean different
+    /// things.
+    ///
+    /// Only `w` leaves a location; `run` is not an exit here the way it
+    /// is on the street. Anything else is ignored and the prompt
+    /// repeats.
     ///
     /// ## The den's seven keys
     ///
-    /// Each is established at its own `0f78:0bd8` compare against the den's
-    /// own buffer `20ae:3a72`, never from a menu string (`docs/re/den.md`,
-    /// "The arms"): `p` `1000:db2c`, `r` `1000:db81`, `hp` `1000:dc04`,
-    /// `s` `1000:dc6d`, `a` `1000:dcef`, `d` `1000:dd3c`, `w` `1000:ded7`.
+    /// `p`, `r`, `hp`, `s`, `a`, `d`, `w`.
     ///
-    /// `hp` is the one arm whose gate stands **in front of** its own key
-    /// compare rather than behind it: `1000:dbf3 cmp byte [0x3b78],0x1` /
-    /// `1000:dbf8 jnz 0xdc63`, so with no errand pending the token is never
-    /// compared and the line falls straight through to the `s` compare.
-    /// `a` is the same shape with threshold block #3 in front of it
-    /// ([`Game::den_reveal`]).
+    /// `hp` only works while an errand is pending -- with none pending,
+    /// the input is never even compared against it and falls through to
+    /// the `s` check instead. `a` is gated the same way, behind its own
+    /// threshold (see [`Game::den_reveal`]).
     ///
-    /// **An unrecognised key prints nothing.** `1000:dede jmp 0xdae2` is
-    /// the loop's only back edge from below and it targets the PROMPT, not
-    /// the menu; there is no "unknown command" literal anywhere in
-    /// `1000:d802`..`1000:df06` for it to print (`data/den_arms.json`'s
-    /// string sweep over the range: 45 pushes, none of them a refusal for a
-    /// bad key). The `_ => {}` fall-through below is that.
+    /// An unrecognised key prints nothing.
     ///
-    /// **The den's `ReadLn` does not trim.** `1000:db1d call 0eed:0216`
-    /// only lowercases ASCII `A`..`Z` -- it compares against no `0x20` --
-    /// so ` p` is a miss in the original and a hit here. That is the
-    /// former trimmed-prompt divergence in `docs/re/gaps.md`, now CLOSED:
-    /// the key below is taken as read, so ` p` is a miss here too.
+    /// **Keys are not trimmed.** A leading space (e.g. ` p`) is a miss,
+    /// matching the original.
     ///
     /// ## The gym's five keys
     ///
-    /// Same shape and the same buffer: `1` `1000:e62e`, `2` `1000:e6ba`,
-    /// `3` `1000:e73c`, `4` `1000:e7f3`, `5` `1000:e875`, and the shared
-    /// `w` at `1000:e93c`. Three of the six sit behind a district test that
-    /// decides whether the compare happens at all, so the arm below guards
-    /// on [`crate::gym::key_dispatches`] -- the chain, gate before key --
-    /// rather than on the key alone. The arms themselves are
-    /// [`crate::gym::run_key`]; `docs/re/gym.md` and `data/gym_arms.json`
-    /// are the map. **The gym's `ReadLn` does not trim either**
-    /// (`1000:e61f call 0eed:0216` lowercases and nothing else), so it joins
-    /// the den in the same `docs/re/gaps.md` entry.
+    /// `1`, `2`, `3`, `4`, `5`, and the shared `w`. Three of the five sit
+    /// behind their own district gate. Keys are not trimmed here
+    /// either.
     pub(crate) fn shop_turn(
         &mut self,
         loc: Location,
@@ -1854,56 +1122,29 @@ impl Game {
     ) -> io::Result<()> {
         let key = line.to_lowercase();
         match (loc, key.as_str()) {
-            // The vet's two keys -- `1000:d532`..`1000:d6a3`, ported by
-            // [`crate::vet`]. Neither sits behind a gate that skips its own
-            // compare, so the guard is the key alone; the arms carry their
-            // own preconditions, which is where they are in the original.
+            // The vet's two keys. Neither sits behind a gate that skips its
+            // own compare -- the arms carry their own preconditions
+            // instead.
             (Location::Vet, k) if vet::key_dispatches(k) => vet::run_key(self, k),
-            // `1000:d6ad` (`w`) and `1000:d6be` (`e`) both `jz 0xd6c8`. The
-            // vet is the only location with a second exit token, and `e`
-            // leaves the VET rather than quitting because the compare reads
-            // the vet's own buffer `20ae:3a72` and never `entry`'s
-            // `20ae:3972`.
+            // The vet is the only location with a second exit key: both
+            // `w` and `e` leave it. `e` here means leaving the vet, not
+            // quitting the game -- that's a separate compare on the
+            // street's own buffer.
             (Location::Vet, k) if vet::exits(k) => self.leave_shop(),
-            // 1000:ce80 against CS 0x96ce (`x`); 1000:ce85 misses straight
-            // into the `wes` compare below, so a line that reaches the junk
-            // arm also runs it -- and then misses on the buffer `x`.
             (Location::Dealers, "x") => self.sell_junk(),
-            // 1000:ced8 against CS 0x970a (`wes`); 1000:cedd is the hit, the
-            // inverted pair over `1000:cedf jmp 0xd36d`.
             (Location::Dealers, "wes") => return self.sell_items(lines),
-            // 1000:db2c, key literal CS 0x9ec1.
             (Location::Den, "p") => self.den_beer(),
-            // 1000:db81, key literal CS 0x9a50.
             (Location::Den, "r") => self.den_borrow(),
-            // 1000:dbf3 gates 1000:dc04, key literal CS 0x9f82. The guard is
-            // the arm's own, not a dispatch condition the port invented: a
-            // `hp` typed with no errand pending reaches 1000:dc63 and is
-            // compared against `s`, which it is not.
             (Location::Den, "hp") if self.den_errand_1_pending => {
                 return self.den_beat_up(lines);
             }
-            // 1000:dc6d, key literal CS 0x9f85.
             (Location::Den, "s") => self.den_regard(),
-            // 1000:dcef behind threshold block #3 at 1000:dcba.
             (Location::Den, "a") => self.den_reveal(),
-            // 1000:dd3c, key literal CS 0xa036.
             (Location::Den, "d") => return self.den_job(lines),
-            // The gym's five keys -- `1000:e624`..`1000:e932`, ported by
-            // [`crate::gym`], which owns the district gates and the arms.
-            // The guard is the compare CHAIN (gate then key, as
-            // `1000:e728`/`1000:e73c` are ordered) and is side-effect-free;
-            // a `false` falls into the catch-all below, which is the
-            // original's own fall-through to the `w` compare at
-            // `1000:e93c`.
             (Location::Gym, k) if gym::key_dispatches(self, k) => gym::run_key(self, k),
-            // The club's three keys -- `1000:e065`..`1000:e357`, ported by
-            // [`crate::club`], which owns the district gate and the arms.
-            // Same shape as the gym's arm above: the guard is the compare
-            // CHAIN (gate then key, as `1000:e2e2`/`1000:e2f3` are ordered)
-            // and is side-effect-free, so a `false` falls into the catch-all
-            // below -- the original's own fall-through to the `w` compare at
-            // `1000:e361`.
+            // The club's three keys, gated the same way as the gym's -- a
+            // district check before the key compare, with an
+            // unrecognised key falling through to `w`.
             (Location::Club, k) if club::key_dispatches(self, k) => {
                 return club::run_key(self, k, lines);
             }

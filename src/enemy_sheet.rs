@@ -43,17 +43,17 @@ pub const GAPS: [(usize, &str); 2] = [(0, "C"), (2, "C")];
 
 pub const LITERAL_COUNT: usize = FRAGMENTS.len() + EMITTED.len();
 
-/// The whole block, in the original's order.
+/// The whole block, printed in this order.
 ///
 /// Five lines, or six when the enemy wears armour:
 ///
 /// ```text
-/// 1000:1404   ^2Это <rank> # уровня[ - <крутизна>]
-/// 1000:1419   Сл:# Лв:# Жв:# Уд:#
-/// 1000:1436   Урон #-#
-/// 1000:1568   ^<digit>Здоровье #/#  [<injuries>]
-/// 1000:157b.. Точность ...
-/// 1000:1656   ^2Броня #          (only when the armour byte is non-zero)
+/// ^2Это <rank> # уровня[ - <крутизна>]
+/// Сл:# Лв:# Жв:# Уд:#
+/// Урон #-#
+/// ^<digit>Здоровье #/#  [<injuries>]
+/// Точность ...
+/// ^2Броня #          (only when the armour byte is non-zero)
 /// ```
 pub fn lines(e: &Fighter) -> Vec<String> {
     let mut o = Out::default();
