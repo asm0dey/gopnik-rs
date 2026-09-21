@@ -888,7 +888,7 @@ mod tests {
     fn arm_5_counts_trained_armour_not_worn_armour() {
         let mut g = gym(3, 10_000);
         g.player.armor = 4; // the jacket's own +4, already granted
-        g.wear_jacket_krutaya_38b9 = true;
+        g.wear_jacket_krutaya = true;
         let mut bought = 0;
         for _ in 0..40 {
             let out = turn(&mut g, "5");

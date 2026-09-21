@@ -250,7 +250,7 @@ mod tests {
     /// does not have. The thunk below panics if it is called, so this test
     /// fails if the laziness is ever lost.
     #[test]
-    fn the_rank_is_read_only_by_the_two_arms_that_read_20ae_389c() {
+    fn the_rank_is_read_only_by_the_two_arms_that_read_it() {
         for class in [0u16, 1, 2, 3, 4, 5, 6, 7, 10, 400] {
             let out = capture::lines(|| {
                 greet(class, "Вася", || {

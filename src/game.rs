@@ -258,7 +258,7 @@ pub struct Game {
     /// draw count and the draw values of every later encounter, which is why
     /// this port has to carry it even though bucket 1 itself prints only
     /// flavour text.
-    pub flag_3693: bool,
+    pub harder_encounters: bool,
     /// `20ae:38b3` / `.SAV 0x217` -- тёмные очки, listed in the stat block by
     /// `1000:1cf8`/`1000:1cff` (`^1У тебя есть тёмные очки`). On the cop
     /// encounter's losing roll they are what stops the fight
@@ -389,7 +389,7 @@ pub struct Game {
     /// arms need ... on `Game` when it is a standalone global", and
     /// registered in `docs/re/gaps.md`, "The den's `hp` arm sets
     /// `20ae:3b72` and nothing in this port reads it".
-    pub fight_accepted_3b72: bool,
+    pub fight_accepted: bool,
     /// `20ae:394d` / `.SAV 0x2b1`, `20ae:394e`, `20ae:394f` -- the pistol, its
     /// silencer and its magazine. See [`crate::combat_dispatch::Pistol`],
     /// which carries the evidence for all three.
@@ -459,21 +459,21 @@ pub struct Game {
     pub tooth_guard: bool,
     /// `20ae:38bd` / `.SAV 0x221` -- the крестик, `luck += 2`, granted once
     /// by the post-kill item table (`1000:548c` gate, `1000:54b1` flag).
-    pub charm_krestik_38bd: bool,
+    pub charm_krestik: bool,
     /// `20ae:38be` / `.SAV 0x222` -- кольцо "Господи спаси", `luck += 1`
     /// (`1000:54bd` gate, `1000:54e1` flag).
-    pub charm_ring_38be: bool,
+    pub charm_ring: bool,
     /// `20ae:38ba` / `.SAV 0x21e` -- кастет. The four weapon flags gate each
     /// other's damage bonuses in the post-kill item table
     /// (`1000:552c`..`1000:57cc`), so all four have to be carried even
     /// though none of them is read anywhere else.
-    pub weapon_kastet_38ba: bool,
+    pub weapon_kastet: bool,
     /// `20ae:394b` / `.SAV 0x2af` -- дубинка (`1000:55a0` gate).
-    pub weapon_dubinka_394b: bool,
+    pub weapon_dubinka: bool,
     /// `20ae:38c2` / `.SAV 0x226` -- ножик (`1000:568e` gate).
-    pub weapon_nozhik_38c2: bool,
+    pub weapon_nozhik: bool,
     /// `20ae:394c` / `.SAV 0x2b0` -- тесак (`1000:5734` gate).
-    pub weapon_tesak_394c: bool,
+    pub weapon_tesak: bool,
     /// `20ae:38b4` / `.SAV 0x218` -- костюм Abibas, `mar` row 4
     /// (`1000:bf80` sets it, `^1Костюм Abibas(+1) ` at `1000:22a1`).
     ///
@@ -485,21 +485,21 @@ pub struct Game {
     /// all four of the armour-bearing ones, which is the same divergence
     /// `docs/re/gaps.md` records; closing that is the gym's recompute
     /// (`1000:e3a4`..`1000:e3e2`), not this shop's, and it stays open.
-    pub wear_suit_abibas_38b4: bool,
+    pub wear_suit_abibas: bool,
     /// `20ae:38b5` / `.SAV 0x219` -- Бутсы (`1000:c029`, `1000:1e81`).
-    pub wear_boots_38b5: bool,
+    pub wear_boots: bool,
     /// `20ae:38b6` / `.SAV 0x21a` -- Кожанка, `mar` row 6 (`1000:c0e0`,
     /// `1000:2323`).
-    pub wear_jacket_38b6: bool,
+    pub wear_jacket: bool,
     /// `20ae:38b7` / `.SAV 0x21b` -- костюм Adidas, `mar` row 7
     /// (`1000:c183`, `1000:22fc`).
-    pub wear_suit_adidas_38b7: bool,
+    pub wear_suit_adidas: bool,
     /// `20ae:38b8` / `.SAV 0x21c` -- Понтовые бутсы (`1000:c222`,
     /// `1000:1ecf`).
-    pub wear_boots_pontovye_38b8: bool,
+    pub wear_boots_pontovye: bool,
     /// `20ae:38b9` / `.SAV 0x21d` -- Крутая кожанка, `mar` row 9
     /// (`1000:c2ca`, `1000:237e`).
-    pub wear_jacket_krutaya_38b9: bool,
+    pub wear_jacket_krutaya: bool,
     /// Where [`Game::mage_save`](crate::persist) and any other writer put
     /// their files.
     ///
@@ -585,7 +585,7 @@ impl Game {
             rng: Rng::new(seed),
             location: Location::Street,
             has_mobile: false,
-            flag_3693: false,
+            harder_encounters: false,
             dark_glasses: false,
             prison_tattoo: false,
             oneshot_gift_1: false,
@@ -598,25 +598,25 @@ impl Game {
             club_stake: 5,
             den_errand_1_pending: false,
             den_errand_2_pending: false,
-            fight_accepted_3b72: false,
+            fight_accepted: false,
             pistol: crate::combat_dispatch::Pistol::default(),
             rector_showdown: false,
             dealer_delivery_counter: 0,
             den_loan_credit: 0,
             church_visits: 0,
             tooth_guard: false,
-            charm_krestik_38bd: false,
-            charm_ring_38be: false,
-            weapon_kastet_38ba: false,
-            weapon_dubinka_394b: false,
-            weapon_nozhik_38c2: false,
-            weapon_tesak_394c: false,
-            wear_suit_abibas_38b4: false,
-            wear_boots_38b5: false,
-            wear_jacket_38b6: false,
-            wear_suit_adidas_38b7: false,
-            wear_boots_pontovye_38b8: false,
-            wear_jacket_krutaya_38b9: false,
+            charm_krestik: false,
+            charm_ring: false,
+            weapon_kastet: false,
+            weapon_dubinka: false,
+            weapon_nozhik: false,
+            weapon_tesak: false,
+            wear_suit_abibas: false,
+            wear_boots: false,
+            wear_jacket: false,
+            wear_suit_adidas: false,
+            wear_boots_pontovye: false,
+            wear_jacket_krutaya: false,
             save_dir: std::path::PathBuf::from("."),
             mode: Mode::Street,
             last_enemy: None,
@@ -1845,16 +1845,16 @@ impl Game {
     pub(crate) fn trained_armour(&self) -> u8 {
         // 1000:e3a4 `mov al,[0x38b2]` -- the low byte only.
         let mut abs = self.player.armor;
-        if self.wear_suit_abibas_38b4 && !self.wear_suit_adidas_38b7 {
+        if self.wear_suit_abibas && !self.wear_suit_adidas {
             abs = abs.wrapping_sub(1); // 1000:e3b8
         }
-        if self.wear_suit_adidas_38b7 {
+        if self.wear_suit_adidas {
             abs = abs.wrapping_sub(2); // 1000:e3c3
         }
-        if self.wear_jacket_38b6 && !self.wear_jacket_krutaya_38b9 {
+        if self.wear_jacket && !self.wear_jacket_krutaya {
             abs = abs.wrapping_sub(2); // 1000:e3d6
         }
-        if self.wear_jacket_krutaya_38b9 {
+        if self.wear_jacket_krutaya {
             abs = abs.wrapping_sub(4); // 1000:e3e2
         }
         abs
@@ -2474,7 +2474,7 @@ impl Game {
         // 1000:dc0b/1000:dc0e -- FUN_1000_0d14(1).
         let enemy = self.roll_enemy(1);
         // 1000:dc11.
-        self.fight_accepted_3b72 = true;
+        self.fight_accepted = true;
         // 1000:dc1c (CS 0x90c0), 1000:dc26..1000:dc2e (the rank name),
         // 1000:dc39 (CS 0x90c7) and 1000:dc43 (20ae:395c, the rolled
         // level) -- one `WriteLn` at 1000:dc53.
@@ -2733,29 +2733,29 @@ impl Game {
     /// copied into the struct instead of being read out of a data segment.
     fn sheet_kit(&self) -> character_sheet::Kit {
         character_sheet::Kit {
-            xp_38ce: self.progress.xp,
-            threshold_38d0: self.progress.threshold,
-            buff_countdown_38cd: self.buff_countdown,
-            krestik_38bd: self.charm_krestik_38bd,
-            ring_gs_38be: self.charm_ring_38be,
-            ring_pg_38bf: self.oneshot_gift_1,
-            mega_ring_38c0: self.oneshot_gift_2,
-            ring_gp_38c1: self.ring_gospodi_pomilui,
-            mobile_38bb: self.has_mobile,
-            dark_glasses_38b3: self.dark_glasses,
-            prison_tattoo_38bc: self.prison_tattoo,
+            xp: self.progress.xp,
+            threshold: self.progress.threshold,
+            buff_countdown: self.buff_countdown,
+            krestik: self.charm_krestik,
+            ring_gs: self.charm_ring,
+            ring_pg: self.oneshot_gift_1,
+            mega_ring: self.oneshot_gift_2,
+            ring_gp: self.ring_gospodi_pomilui,
+            mobile: self.has_mobile,
+            dark_glasses: self.dark_glasses,
+            prison_tattoo: self.prison_tattoo,
             pistol: self.pistol,
-            boots_38b5: self.wear_boots_38b5,
-            boots_pontovye_38b8: self.wear_boots_pontovye_38b8,
-            kastet_38ba: self.weapon_kastet_38ba,
-            dubinka_394b: self.weapon_dubinka_394b,
-            nozh_38c2: self.weapon_nozhik_38c2,
-            tesak_394c: self.weapon_tesak_394c,
-            tooth_guard_394a: self.tooth_guard,
-            suit_abibas_38b4: self.wear_suit_abibas_38b4,
-            suit_adidas_38b7: self.wear_suit_adidas_38b7,
-            jacket_38b6: self.wear_jacket_38b6,
-            jacket_krutaya_38b9: self.wear_jacket_krutaya_38b9,
+            boots: self.wear_boots,
+            boots_pontovye: self.wear_boots_pontovye,
+            kastet: self.weapon_kastet,
+            dubinka: self.weapon_dubinka,
+            nozh: self.weapon_nozhik,
+            tesak: self.weapon_tesak,
+            tooth_guard: self.tooth_guard,
+            suit_abibas: self.wear_suit_abibas,
+            suit_adidas: self.wear_suit_adidas,
+            jacket: self.wear_jacket,
+            jacket_krutaya: self.wear_jacket_krutaya,
         }
     }
 
@@ -3046,7 +3046,7 @@ impl Game {
     ///   district-keyed line from [`wander::BUCKET1`] (four "entered" lines,
     ///   then four "left" lines; districts 1..4 only -- district 5 prints
     ///   nothing in either half). Both the **toggle and the lines are
-    ///   modelled** (see [`Game::flag_3693`] -- `FUN_1000_0d14` branches on
+    ///   modelled** (see [`Game::harder_encounters`] -- `FUN_1000_0d14` branches on
     ///   the toggle twice, so it changes both the draw count and the draw
     ///   values of every later encounter). The bucket spends no draw either
     ///   way. `docs/re/port-gaps.md` row 12.
@@ -3134,11 +3134,11 @@ impl Game {
             // `FUN_1000_0d14` branches on the toggle twice, so it is not
             // optional even though the line it picks is flavour only.
             1 => {
-                self.flag_3693 = !self.flag_3693;
+                self.harder_encounters = !self.harder_encounters;
                 // 1000:b3db../1000:b45b.. -- four lines per half, districts
                 // 1..4 only. `docs/re/port-gaps.md` row 12.
                 if (1..=4).contains(&self.district) {
-                    let base = if self.flag_3693 { 0 } else { 4 };
+                    let base = if self.harder_encounters { 0 } else { 4 };
                     term::println(wander::BUCKET1[base + usize::from(self.district - 1)]);
                 }
                 return Ok(());
@@ -3957,7 +3957,7 @@ impl Game {
     ///    classes: `Random(0x33)` of 0..1 gives class 8, 44..50 gives class 0.
     /// 2. `1000:0d6a`..`1000:0d83` -- plus `Random(district)`.
     /// 3. `1000:0d86`..`1000:0d96` -- plus `Random(4)`, but **only** when
-    ///    `[0x3693]` is set (see [`Game::flag_3693`]).
+    ///    `[0x3693]` is set (see [`Game::harder_encounters`]).
     /// 4. `1000:0d9a`..`1000:0dc4` -- clamp to 9; then `param_1 == 1` clamps
     ///    to 7 and `param_1 == 2` forces 8.
     /// 5. `1000:0dc6`..`1000:0e45` -- крутизна:
@@ -4014,7 +4014,7 @@ impl Game {
             cls -= i;
         }
         cls += i32::from(self.rng.below(u16::from(self.district)));
-        if self.flag_3693 {
+        if self.harder_encounters {
             cls += i32::from(self.rng.below(4));
         }
         if cls > 9 {
@@ -4044,7 +4044,7 @@ impl Game {
         if ponty < 0 {
             ponty = 0;
         }
-        if self.flag_3693 {
+        if self.harder_encounters {
             ponty = Self::round_half(ponty * 3);
         }
 
@@ -4539,7 +4539,6 @@ impl Game {
     /// this file ends the run the same way.
     fn sell_offer(
         rng: &mut Rng,
-        roll_site: &'static str,
         base: u16,
         span: u16,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
@@ -4605,12 +4604,11 @@ impl Game {
         // / 1000:ceec `jnz 0xcef1`, miss `1000:ceee jmp 0xcf9c`; ladder gate
         // 1000:cef1 `cmp byte [0x38b7],0x0` / 1000:cef6 `jnz 0xcefb`, miss
         // `1000:cef8 jmp 0xcf9c`. Both misses are silent.
-        if self.wear_suit_abibas_38b4 && self.wear_suit_adidas_38b7 {
+        if self.wear_suit_abibas && self.wear_suit_adidas {
             offered = true;
             // CS 0x970e, file 0xAFDE; pushed 1000:cefb, printed 1000:cf0f.
             term::println("^2У тебя есть ненужный костюм хочешь продать?");
-            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, "1000:cf58", 8, 5, lines)?
-            else {
+            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, 8, 5, lines)? else {
                 self.running = false;
                 return Ok(());
             };
@@ -4619,7 +4617,7 @@ impl Game {
             if yes {
                 // CS 0x974c, file 0xB01C; pushed 1000:cf81, printed
                 // 1000:cf97. The `#` is 1000:cf86 `mov al,[0x3e33]`.
-                self.wear_suit_abibas_38b4 = false; // 1000:cf74
+                self.wear_suit_abibas = false; // 1000:cf74
                 self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:cf79 / 1000:cf7c / 1000:cf7d
                 term::println(&text::fill(
                     "^2Ты продал костюм за #.",
@@ -4631,12 +4629,11 @@ impl Game {
         // Arm 2, Бутсы. Own gate 1000:cf9c / 1000:cfa1, miss
         // `1000:cfa3 jmp 0xd051`; ladder gate 1000:cfa6 `cmp byte
         // [0x38b8],0x0` / 1000:cfab, miss `1000:cfad jmp 0xd051`.
-        if self.wear_boots_38b5 && self.wear_boots_pontovye_38b8 {
+        if self.wear_boots && self.wear_boots_pontovye {
             offered = true;
             // CS 0x9765, file 0xB035; pushed 1000:cfb0, printed 1000:cfc4.
             term::println("^2У тебя есть ненужные кроссовки хочешь продать?");
-            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, "1000:d00d", 8, 5, lines)?
-            else {
+            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, 8, 5, lines)? else {
                 self.running = false;
                 return Ok(());
             };
@@ -4644,7 +4641,7 @@ impl Game {
             if yes {
                 // CS 0x9796, file 0xB066; pushed 1000:d036, printed
                 // 1000:d04c; the `#` is 1000:d03b.
-                self.wear_boots_38b5 = false; // 1000:d029
+                self.wear_boots = false; // 1000:d029
                 self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d032
                 term::println(&text::fill(
                     "^2Ты продал кроссовки за #.",
@@ -4656,12 +4653,11 @@ impl Game {
         // Arm 3, Кожанка. Own gate 1000:d051 / 1000:d056, miss
         // `1000:d058 jmp 0xd106`; ladder gate 1000:d05b `cmp byte
         // [0x38b9],0x0` / 1000:d060, miss `1000:d062 jmp 0xd106`.
-        if self.wear_jacket_38b6 && self.wear_jacket_krutaya_38b9 {
+        if self.wear_jacket && self.wear_jacket_krutaya {
             offered = true;
             // CS 0x97b2, file 0xB082; pushed 1000:d065, printed 1000:d079.
             term::println("^2У тебя есть ненужная кожанка хочешь продать?");
-            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, "1000:d0c2", 13, 8, lines)?
-            else {
+            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, 13, 8, lines)? else {
                 self.running = false;
                 return Ok(());
             };
@@ -4669,7 +4665,7 @@ impl Game {
             if yes {
                 // CS 0x97e1, file 0xB0B1; pushed 1000:d0eb, printed
                 // 1000:d101; the `#` is 1000:d0f0.
-                self.wear_jacket_38b6 = false; // 1000:d0de
+                self.wear_jacket = false; // 1000:d0de
                 self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d0e7
                 term::println(&text::fill(
                     "^2Ты продал кожанку за #.",
@@ -4685,14 +4681,11 @@ impl Game {
         // `cmp byte [0x38c2],0x0` / 1000:d11c, 1000:d11e
         // `cmp byte [0x394c],0x0` / 1000:d123 -- with the all-clear miss at
         // `1000:d125 jmp 0xd1c9`.
-        if self.weapon_kastet_38ba
-            && (self.weapon_dubinka_394b || self.weapon_nozhik_38c2 || self.weapon_tesak_394c)
-        {
+        if self.weapon_kastet && (self.weapon_dubinka || self.weapon_nozhik || self.weapon_tesak) {
             offered = true;
             // CS 0x97fb, file 0xB0CB; pushed 1000:d128, printed 1000:d13c.
             term::println("^2У тебя есть кастет, а это отстой хочешь продать?");
-            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, "1000:d185", 13, 8, lines)?
-            else {
+            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, 13, 8, lines)? else {
                 self.running = false;
                 return Ok(());
             };
@@ -4700,7 +4693,7 @@ impl Game {
             if yes {
                 // CS 0x982e, file 0xB0FE; pushed 1000:d1ae, printed
                 // 1000:d1c4; the `#` is 1000:d1b3.
-                self.weapon_kastet_38ba = false; // 1000:d1a1
+                self.weapon_kastet = false; // 1000:d1a1
                 self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d1aa
                 term::println(&text::fill(
                     "^2Ты продал кастет за #.",
@@ -4713,12 +4706,11 @@ impl Game {
         // `1000:d1d0 jmp 0xd285`; two conjuncts, 1000:d1d3
         // `cmp byte [0x38c2],0x0` / 1000:d1d8 and 1000:d1da
         // `cmp byte [0x394c],0x0` / 1000:d1df, miss `1000:d1e1 jmp 0xd285`.
-        if self.weapon_dubinka_394b && (self.weapon_nozhik_38c2 || self.weapon_tesak_394c) {
+        if self.weapon_dubinka && (self.weapon_nozhik || self.weapon_tesak) {
             offered = true;
             // CS 0x9847, file 0xB117; pushed 1000:d1e4, printed 1000:d1f8.
             term::println("^2У тебя есть дубинка - барахло - хочешь продать?");
-            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, "1000:d241", 25, 15, lines)?
-            else {
+            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, 25, 15, lines)? else {
                 self.running = false;
                 return Ok(());
             };
@@ -4726,7 +4718,7 @@ impl Game {
             if yes {
                 // CS 0x9879, file 0xB149; pushed 1000:d26a, printed
                 // 1000:d280; the `#` is 1000:d26f.
-                self.weapon_dubinka_394b = false; // 1000:d25d
+                self.weapon_dubinka = false; // 1000:d25d
                 self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d266
                 term::println(&text::fill(
                     "^2Ты продал дубинку за #.",
@@ -4738,13 +4730,12 @@ impl Game {
         // Arm 6, ножик. Own gate 1000:d285 / 1000:d28a, miss
         // `1000:d28c jmp 0xd33a`; one conjunct, 1000:d28f
         // `cmp byte [0x394c],0x0` / 1000:d294, miss `1000:d296 jmp 0xd33a`.
-        if self.weapon_nozhik_38c2 && self.weapon_tesak_394c {
+        if self.weapon_nozhik && self.weapon_tesak {
             offered = true;
             // The e in тeсак is a Latin e in the binary; transcribed as is.
             // CS 0x9893, file 0xB163; pushed 1000:d299, printed 1000:d2ad.
             term::println("^2У тебя есть ножик и тeсак, хочешь продать ножик?");
-            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, "1000:d2f6", 38, 23, lines)?
-            else {
+            let Some((yes, refund)) = Self::sell_offer(&mut self.rng, 38, 23, lines)? else {
                 self.running = false;
                 return Ok(());
             };
@@ -4752,7 +4743,7 @@ impl Game {
             if yes {
                 // CS 0x98c6, file 0xB196; pushed 1000:d31f, printed
                 // 1000:d335; the `#` is 1000:d324.
-                self.weapon_nozhik_38c2 = false; // 1000:d312
+                self.weapon_nozhik = false; // 1000:d312
                 self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d31b
                 term::println(&text::fill("^2Ты продал ножик за #.", &[i64::from(refund)]));
             }
@@ -5183,10 +5174,9 @@ impl Game {
                 // one is set (1000:555f, 1000:5566, 1000:556d are each a
                 // `jnz <refusal>`), so a player holding a knife can buy the
                 // knuckles here but cannot loot them.
-                let better =
-                    self.weapon_dubinka_394b && self.weapon_nozhik_38c2 && self.weapon_tesak_394c;
+                let better = self.weapon_dubinka && self.weapon_nozhik && self.weapon_tesak;
                 // 1000:cb70 `cmp byte [0x38ba],0x0` / 1000:cb75 `jnz 0xcbd0`.
-                let owned = self.weapon_kastet_38ba;
+                let owned = self.weapon_kastet;
                 self.buy_after_gates(
                     price, // 20ae:0b3c = 25
                     &[
@@ -5200,7 +5190,7 @@ impl Game {
                     ],
                     "^4Не хватает деньжат", // CS 0x9473 `^4Не хватает деньжат`, 1000:cb82
                     |g| {
-                        g.weapon_kastet_38ba = true; // 1000:cb9d mov byte [0x38ba],0x1
+                        g.weapon_kastet = true; // 1000:cb9d mov byte [0x38ba],0x1
 
                         // Debit 1000:cba7. The +2/+2 is unconditional here.
                         g.player.dmg_min += 2; // 1000:cbab add word [0x38a8],0x2
@@ -5221,11 +5211,11 @@ impl Game {
                 // 1000:cc26 `jmp 0xccab` only when
                 // both are set. Same AND/OR mismatch with the loot arm
                 // (1000:55c5, 1000:55cc) as row 5.
-                let better = self.weapon_nozhik_38c2 && self.weapon_tesak_394c;
+                let better = self.weapon_nozhik && self.weapon_tesak;
                 // 1000:cc29 `cmp byte [0x394b],0x0` / 1000:cc2e `jnz 0xcc90`.
-                let owned = self.weapon_dubinka_394b;
+                let owned = self.weapon_dubinka;
                 // 1000:cc64 `cmp byte [0x38ba],0x0` / 1000:cc69 `jz 0xcc75`.
-                let kastet = self.weapon_kastet_38ba;
+                let kastet = self.weapon_kastet;
                 self.buy_after_gates(
                     price, // 20ae:0b3d = 50
                     &[
@@ -5239,7 +5229,7 @@ impl Game {
                     ],
                     "^4Не хватает на дубинку деньжат", // CS 0x9511 `^4Не хватает на дубинку деньжат`, 1000:cc3b
                     |g| {
-                        g.weapon_dubinka_394b = true; // 1000:cc56 mov byte [0x394b],0x1
+                        g.weapon_dubinka = true; // 1000:cc56 mov byte [0x394b],0x1
 
                         // Debit 1000:cc60.
                         //
@@ -5506,9 +5496,9 @@ impl Game {
                 // 1000:bf4c `cmp byte [0x38b7],0x0` / 1000:bf51 `jnz 0xbfc8`.
                 // ONE conjunct -- unlike `bmar` rows 5 and 6, whose
                 // better-weapon gates AND three and two flags together.
-                let better = self.wear_suit_adidas_38b7;
+                let better = self.wear_suit_adidas;
                 // 1000:bf53 `cmp byte [0x38b4],0x0` / 1000:bf58 `jnz 0xbfad`.
-                let owned = self.wear_suit_abibas_38b4;
+                let owned = self.wear_suit_abibas;
                 self.buy_after_gates(
                     price, // 20ae:0b31 = 15
                     &[
@@ -5519,8 +5509,8 @@ impl Game {
                     ],
                     "^4Не хватает денег", // CS 0x8ef9 `^4Не хватает денег`, 1000:bf65
                     |g| {
-                        g.wear_suit_abibas_38b4 = true; // 1000:bf80
-                                                        // Debit 1000:bf8a.
+                        g.wear_suit_abibas = true; // 1000:bf80
+                                                   // Debit 1000:bf8a.
                         term::println("^2Теперь ты больше похож на гопа."); // CS 0x8f0c `^2Теперь ты больше похож на гопа.`, 1000:bf8e
                                                                             // 1000:bfa7 `inc [0x38b2]` -- the armour byte, +1,
                                                                             // unconditionally. The menu line's `Смягчает пинок
@@ -5538,9 +5528,9 @@ impl Game {
             // 1000:c08e is row 6's DISTRICT GATE, not its setup.
             "5" => {
                 // 1000:bff5 `cmp byte [0x38b8],0x0` / 1000:bffa `jnz 0xc075`.
-                let better = self.wear_boots_pontovye_38b8;
+                let better = self.wear_boots_pontovye;
                 // 1000:bffc `cmp byte [0x38b5],0x0` / 1000:c001 `jnz 0xc05a`.
-                let owned = self.wear_boots_38b5;
+                let owned = self.wear_boots;
                 self.buy_after_gates(
                     price, // 20ae:0b32 = 15
                     &[
@@ -5551,8 +5541,8 @@ impl Game {
                     ],
                     "^4Нету на них денег", // CS 0x8f6d `^4Нету на них денег`, 1000:c00e
                     |g| {
-                        g.wear_boots_38b5 = true; // 1000:c029
-                                                  // Debit 1000:c033.
+                        g.wear_boots = true; // 1000:c029
+                                             // Debit 1000:c033.
                         term::println("^2Зацени красовки."); // CS 0x8f81 `^2Зацени красовки.`, 1000:c037
                                                              // 1000:c050 `inc [0x38a8]` and 1000:c054
                                                              // `inc [0x38aa]` -- the damage range, +1/+1,
@@ -5575,9 +5565,9 @@ impl Game {
                 // row 7's setup and the line falls through to the re-prompt.
                 let below_district = self.district <= 1;
                 // 1000:c0ac `cmp byte [0x38b9],0x0` / 1000:c0b1 `jnz 0xc129`.
-                let better = self.wear_jacket_krutaya_38b9;
+                let better = self.wear_jacket_krutaya;
                 // 1000:c0b3 `cmp byte [0x38b6],0x0` / 1000:c0b8 `jnz 0xc10e`.
-                let owned = self.wear_jacket_38b6;
+                let owned = self.wear_jacket;
                 self.buy_after_gates(
                     price, // 20ae:0b33 = 25
                     &[
@@ -5590,8 +5580,8 @@ impl Game {
                     ],
                     "^4Не достаточно бабла", // CS 0x8fc8 `^4Не достаточно бабла`, 1000:c0c5
                     |g| {
-                        g.wear_jacket_38b6 = true; // 1000:c0e0
-                                                   // Debit 1000:c0ea.
+                        g.wear_jacket = true; // 1000:c0e0
+                                              // Debit 1000:c0ea.
                         term::println("^2Ну весь на понтах."); // CS 0x8fde `^2Ну весь на понтах.`, 1000:c0ee
                                                                // 1000:c107 `add byte [0x38b2],0x2` -- a byte add, so it
                                                                // wraps at 255 rather than widening.
@@ -5619,20 +5609,20 @@ impl Game {
                 // below and the upgrade guard account for all of them.
                 //
                 // 1000:c156 `cmp byte [0x38b7],0x0` / 1000:c15b `jnz 0xc1be`.
-                let owned = self.wear_suit_adidas_38b7;
+                let owned = self.wear_suit_adidas;
                 // 1000:c1aa `cmp byte [0x38b4],0x0` / 1000:c1af `jz 0xc1b7`.
                 // Read BEFORE the arm runs because the flag this arm writes
                 // is a different one (`20ae:38b7`), so nothing here observes
                 // its own write.
-                let has_abibas = self.wear_suit_abibas_38b4;
+                let has_abibas = self.wear_suit_abibas;
                 self.buy_after_gates(
                     price, // 20ae:0b34 = 30
                     // CS 0x9036 `^6У тебя уже есть этот костюм.`, pushed at 1000:c1be.
                     &[(owned, Some("^6У тебя уже есть этот костюм."))],
                     "^4Не хватает денег", // CS 0x8ef9 `^4Не хватает денег`, 1000:c168 -- row 4's literal
                     |g| {
-                        g.wear_suit_adidas_38b7 = true; // 1000:c183
-                                                        // Debit 1000:c18d.
+                        g.wear_suit_adidas = true; // 1000:c183
+                                                   // Debit 1000:c18d.
                         term::println("^2Чистый гопник."); // CS 0x9025 `^2Чистый гопник.`, 1000:c191
                                                            // The UPGRADE SPLIT: 1000:c1b1 `inc [0x38b2]` when
                                                            // the abibas suit is already owned, 1000:c1b7
@@ -5655,9 +5645,9 @@ impl Game {
                 let below_district = self.district <= 2;
                 // 1000:c1f5 `cmp byte [0x38b8],0x0` / 1000:c1fa `jnz 0xc266`.
                 // No better-item gate.
-                let owned = self.wear_boots_pontovye_38b8;
+                let owned = self.wear_boots_pontovye;
                 // 1000:c249 `cmp byte [0x38b5],0x0` / 1000:c24e `jz 0xc25a`.
-                let has_boots = self.wear_boots_38b5;
+                let has_boots = self.wear_boots;
                 self.buy_after_gates(
                     price, // 20ae:0b35 = 30
                     &[
@@ -5667,8 +5657,8 @@ impl Game {
                     ],
                     "^4Нету на них денег", // CS 0x8f6d `^4Нету на них денег`, 1000:c207 -- row 5's too
                     |g| {
-                        g.wear_boots_pontovye_38b8 = true; // 1000:c222
-                                                           // Debit 1000:c22c.
+                        g.wear_boots_pontovye = true; // 1000:c222
+                                                      // Debit 1000:c22c.
                         term::println("^2Офигенные бутцы."); // CS 0x9057 `^2Офигенные бутцы.`, 1000:c230
                                                              // The UPGRADE SPLIT on the damage range: 1000:c250
                                                              // `inc [0x38a8]` / 1000:c254 `inc [0x38aa]` with the
@@ -5691,9 +5681,9 @@ impl Game {
                 // 1000:c286 `jmp 0xc31f`. Silent, like rows 6 and 8.
                 let below_district = self.district <= 3;
                 // 1000:c29d `cmp byte [0x38b9],0x0` / 1000:c2a2 `jnz 0xc306`.
-                let owned = self.wear_jacket_krutaya_38b9;
+                let owned = self.wear_jacket_krutaya;
                 // 1000:c2f1 `cmp byte [0x38b6],0x0` / 1000:c2f6 `jz 0xc2ff`.
-                let has_jacket = self.wear_jacket_38b6;
+                let has_jacket = self.wear_jacket;
                 self.buy_after_gates(
                     price, // 20ae:0b36 = 50
                     &[
@@ -5703,8 +5693,8 @@ impl Game {
                     ],
                     "^4Не достаточно бабла", // CS 0x8fc8 `^4Не достаточно бабла`, 1000:c2af -- row 6's too
                     |g| {
-                        g.wear_jacket_krutaya_38b9 = true; // 1000:c2ca
-                                                           // Debit 1000:c2d4.
+                        g.wear_jacket_krutaya = true; // 1000:c2ca
+                                                      // Debit 1000:c2d4.
                         term::println("^2Ну крутой, сдохнуть можно!"); // CS 0x906c `^2Ну крутой, сдохнуть можно!`, 1000:c2d8
                                                                        // The UPGRADE SPLIT: 1000:c2f8
                                                                        // `add byte [0x38b2],0x2` with the lesser jacket
@@ -6481,19 +6471,6 @@ impl Game {
             .unwrap_or_else(|| panic!("data/enemies.json has no scripted row `{id}`"))
     }
 
-    /// Begin recording the fight channels, discarding anything recorded.
-    ///
-    /// The same design as [`crate::rng::Rng::start_log`], and for the same
-    /// reason: `data/combat_trace.json` carries two channels the draw stream
-    /// cannot see -- the enemy record each fight was entered with
-    /// (`1000:3d11`) and both fighters' hp and break flags at every `Битва\`
-    /// prompt (`1000:441d`) -- and a replay that could not produce them would
-    /// leave `Fighter::broken_jaw`/`broken_leg` asserted by nothing, which is
-    /// where they stood before Task 13. `None` for every game the binary
-    /// builds, so a real session allocates nothing.
-
-    /// Take the recorded fight channels and stop recording.
-
     /// `1000:4fba`..`1000:5051` -- the hospital rescue that turns a death
     /// into a survivable turn. Returns `true` when it fired, i.e. the player
     /// lives and the fight is left.
@@ -6744,7 +6721,7 @@ impl Game {
         match combat_dispatch::fire(
             &mut self.rng,
             &mut self.pistol,
-            self.flag_3693,
+            self.harder_encounters,
             self.player.agility,
         ) {
             // 1000:4eb9 jumps straight to the death test: an accepted verb
@@ -6935,19 +6912,19 @@ impl Game {
             // 1000:5487 `cmp ax,0x0` / 1000:548a `jnz 0x54b8`
             0 => {
                 // 1000:548c gate, 1000:5493 `add [0x38a4],2`, 1000:54b1 flag.
-                if !self.charm_krestik_38bd {
+                if !self.charm_krestik {
                     self.player.luck += 2;
                     term::println(spoils::EMITTED[8].1);
-                    self.charm_krestik_38bd = true;
+                    self.charm_krestik = true;
                 }
             }
             // 1000:54b8 `cmp ax,0x1` / 1000:54bb `jnz 0x54e8`
             1 => {
                 // 1000:54bd gate, 1000:54c4 `inc [0x38a4]`, 1000:54e1 flag.
-                if !self.charm_ring_38be {
+                if !self.charm_ring {
                     self.player.luck += 1;
                     term::println(spoils::EMITTED[9].1);
-                    self.charm_ring_38be = true;
+                    self.charm_ring = true;
                 }
             }
             // 1000:54e8 `cmp ax,0x2` / 1000:54eb `jnz 0x5512` -- the chain's
@@ -6974,14 +6951,13 @@ impl Game {
             0 => {
                 // 1000:553a `cmp byte [0x38ba],0x0` / 1000:553f `jnz 0x5599`
                 // -- the кастет is granted only once.
-                if self.weapon_kastet_38ba {
+                if self.weapon_kastet {
                     return;
                 }
-                self.weapon_kastet_38ba = true; // 1000:5541
+                self.weapon_kastet = true; // 1000:5541
                 term::println(spoils::EMITTED[11].1);
                 // 1000:555f/1000:5566/1000:556d -- ножик, дубинка, тесак.
-                if !self.weapon_nozhik_38c2 && !self.weapon_dubinka_394b && !self.weapon_tesak_394c
-                {
+                if !self.weapon_nozhik && !self.weapon_dubinka && !self.weapon_tesak {
                     self.player.dmg_min += 2; // 1000:5574
                     self.player.dmg_max += 2;
                 } else {
@@ -6992,15 +6968,15 @@ impl Game {
             // link drops anything else where this `_` does not; `Random(2)`
             // at 1000:5530 returns 0..1 (`port_equivalences`).
             _ => {
-                if self.weapon_dubinka_394b {
+                if self.weapon_dubinka {
                     return;
                 }
-                self.weapon_dubinka_394b = true; // 1000:55a7
+                self.weapon_dubinka = true; // 1000:55a7
                 term::println(spoils::EMITTED[13].1);
                 // 1000:55c5/1000:55cc -- ножик, тесак.
-                if self.weapon_nozhik_38c2 || self.weapon_tesak_394c {
+                if self.weapon_nozhik || self.weapon_tesak {
                     term::println(spoils::EMITTED[14].1);
-                } else if self.weapon_kastet_38ba {
+                } else if self.weapon_kastet {
                     self.player.dmg_min += 2; // 1000:55da
                     self.player.dmg_max += 2;
                 } else {
@@ -7044,31 +7020,30 @@ impl Game {
         match self.rng.below(2) {
             // 1000:5686 `cmp ax,0x0` / 1000:5689 `jz 0x568e`
             0 => {
-                if self.weapon_nozhik_38c2 {
+                if self.weapon_nozhik {
                     return;
                 }
-                self.weapon_nozhik_38c2 = true; // 1000:5698
+                self.weapon_nozhik = true; // 1000:5698
                 term::println(spoils::EMITTED[17].1);
                 // 1000:56bc..1000:56cd: al := (394b == 0); `cmp al,[0x38ba]`.
-                if !self.weapon_dubinka_394b == self.weapon_kastet_38ba {
+                if !self.weapon_dubinka == self.weapon_kastet {
                     self.player.dmg_min += 4; // 1000:56cf
                     self.player.dmg_max += 4;
                 }
                 // 1000:56d9 `cmp byte [0x394b],0x0` / 1000:56de `jz 0x56ea`
-                if self.weapon_dubinka_394b {
+                if self.weapon_dubinka {
                     self.player.dmg_min += 2; // 1000:56e0
                     self.player.dmg_max += 2;
                 }
                 // Three conjuncts, three branches onto one target 0x5709:
                 // 1000:56ea / 1000:56ef `jnz 0x5709`, 1000:56f1 / 1000:56f6
                 // `jnz 0x5709`, 1000:56f8 / 1000:56fd `jnz 0x5709`.
-                if !self.weapon_kastet_38ba && !self.weapon_dubinka_394b && !self.weapon_tesak_394c
-                {
+                if !self.weapon_kastet && !self.weapon_dubinka && !self.weapon_tesak {
                     self.player.dmg_min += 6; // 1000:56ff
                     self.player.dmg_max += 6;
                 }
                 // 1000:5709 `cmp byte [0x394c],0x0` / 1000:570e `jz 0x5729`
-                if self.weapon_tesak_394c {
+                if self.weapon_tesak {
                     term::println(spoils::EMITTED[18].1); // file 0x5516
                 }
             }
@@ -7076,10 +7051,10 @@ impl Game {
             // wider than that last link -- the original drops anything else;
             // `Random(2)` at 1000:5681 returns 0..1.
             _ => {
-                if self.weapon_tesak_394c {
+                if self.weapon_tesak {
                     return;
                 }
-                self.weapon_tesak_394c = true; // 1000:573e
+                self.weapon_tesak = true; // 1000:573e
                 term::println(spoils::EMITTED[19].1);
                 // 1000:5762..1000:577a: al := (394b == 0 && 38c2 == 0). Its
                 // two halves are 1000:5762 `cmp byte [0x394b],0x0` /
@@ -7094,29 +7069,26 @@ impl Game {
                 // does something else would be a false citation.
                 // `docs/re/gaps.md`, "Two never-taken branches ... are
                 // permanently excluded from citation".
-                if (!self.weapon_dubinka_394b && !self.weapon_nozhik_38c2)
-                    == self.weapon_kastet_38ba
-                {
+                if (!self.weapon_dubinka && !self.weapon_nozhik) == self.weapon_kastet {
                     self.player.dmg_min += 7; // 1000:577c
                     self.player.dmg_max += 7;
                 }
                 // 1000:5786 `cmp byte [0x394b],0x0` / 1000:578b `jz 0x579e`
                 // and 1000:578d `cmp byte [0x38c2],0x0` / 1000:5792
                 // `jnz 0x579e` -- one conjunction, two branches.
-                if self.weapon_dubinka_394b && !self.weapon_nozhik_38c2 {
+                if self.weapon_dubinka && !self.weapon_nozhik {
                     self.player.dmg_min += 5; // 1000:5794
                     self.player.dmg_max += 5;
                 }
                 // 1000:579e `cmp byte [0x38c2],0x0` / 1000:57a3 `jz 0x57af`
-                if self.weapon_nozhik_38c2 {
+                if self.weapon_nozhik {
                     self.player.dmg_min += 3; // 1000:57a5
                     self.player.dmg_max += 3;
                 }
                 // Three conjuncts onto 0x57ce: 1000:57af / 1000:57b4
                 // `jnz 0x57ce`, 1000:57b6 / 1000:57bb `jnz 0x57ce`,
                 // 1000:57bd / 1000:57c2 `jnz 0x57ce`.
-                if !self.weapon_kastet_38ba && !self.weapon_dubinka_394b && !self.weapon_nozhik_38c2
-                {
+                if !self.weapon_kastet && !self.weapon_dubinka && !self.weapon_nozhik {
                     self.player.dmg_min += 9; // 1000:57c4
                     self.player.dmg_max += 9;
                 }
@@ -8582,11 +8554,11 @@ mod tests {
         g.district = 1; // 1000:c08e is `cmp byte [0x3692],0x1`
         g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 1000, "gated row must not be sellable yet");
-        assert!(!g.wear_jacket_38b6, "1000:c0e0 must not have run");
+        assert!(!g.wear_jacket, "1000:c0e0 must not have run");
         g.district = 2;
         g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 1000 - 25);
-        assert!(g.wear_jacket_38b6, "1000:c0e0");
+        assert!(g.wear_jacket, "1000:c0e0");
     }
 
     /// The dealers' three pistol rows, each on both sides of every gate its
@@ -8762,7 +8734,7 @@ mod tests {
         let (min, max) = (g.player.dmg_min, g.player.dmg_max);
         g.shop_turn(Location::Dealers, "5", &mut no_input())
             .unwrap();
-        assert!(g.weapon_kastet_38ba, "1000:cb9d");
+        assert!(g.weapon_kastet, "1000:cb9d");
         assert_eq!(g.player.money, 15, "20ae:0b3c = 25, debit 1000:cba7");
         assert_eq!(g.player.dmg_min, min + 2, "1000:cbab");
         assert_eq!(g.player.dmg_max, max + 2, "1000:cbb0");
@@ -8784,13 +8756,13 @@ mod tests {
             (true, true, true, false),
         ] {
             let mut g = dealers(40);
-            g.weapon_dubinka_394b = club;
-            g.weapon_nozhik_38c2 = knife;
-            g.weapon_tesak_394c = cleaver;
+            g.weapon_dubinka = club;
+            g.weapon_nozhik = knife;
+            g.weapon_tesak = cleaver;
             g.shop_turn(Location::Dealers, "5", &mut no_input())
                 .unwrap();
             assert_eq!(
-                g.weapon_kastet_38ba, want,
+                g.weapon_kastet, want,
                 "club {club} knife {knife} cleaver {cleaver}"
             );
         }
@@ -8799,7 +8771,7 @@ mod tests {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "5", &mut no_input())
                 .unwrap();
-            assert_eq!(g.weapon_kastet_38ba, want, "money {money}");
+            assert_eq!(g.weapon_kastet, want, "money {money}");
         }
     }
 
@@ -8813,7 +8785,7 @@ mod tests {
         let (min, max) = (g.player.dmg_min, g.player.dmg_max);
         g.shop_turn(Location::Dealers, "6", &mut no_input())
             .unwrap();
-        assert!(g.weapon_dubinka_394b, "1000:cc56");
+        assert!(g.weapon_dubinka, "1000:cc56");
         assert_eq!(g.player.money, 10, "20ae:0b3d = 50, debit 1000:cc60");
         assert_eq!(g.player.dmg_min, min, "1000:cc69 skips 1000:cc6b");
         assert_eq!(g.player.dmg_max, max, "1000:cc69 skips 1000:cc70");
@@ -8821,7 +8793,7 @@ mod tests {
         // With the knuckles it is +2/+2 -- never the +4/+4 the loot arm has
         // at 1000:55e6.
         let mut g = dealers(60);
-        g.weapon_kastet_38ba = true;
+        g.weapon_kastet = true;
         g.shop_turn(Location::Dealers, "6", &mut no_input())
             .unwrap();
         assert_eq!(g.player.dmg_min, min + 2, "1000:cc6b");
@@ -8842,21 +8814,18 @@ mod tests {
             (true, true, false),
         ] {
             let mut g = dealers(60);
-            g.weapon_nozhik_38c2 = knife;
-            g.weapon_tesak_394c = cleaver;
+            g.weapon_nozhik = knife;
+            g.weapon_tesak = cleaver;
             g.shop_turn(Location::Dealers, "6", &mut no_input())
                 .unwrap();
-            assert_eq!(
-                g.weapon_dubinka_394b, want,
-                "knife {knife} cleaver {cleaver}"
-            );
+            assert_eq!(g.weapon_dubinka, want, "knife {knife} cleaver {cleaver}");
         }
         // Too poor: 1000:cc39 is `jle`.
         for (money, want) in [(49i16, false), (50, true)] {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "6", &mut no_input())
                 .unwrap();
-            assert_eq!(g.weapon_dubinka_394b, want, "money {money}");
+            assert_eq!(g.weapon_dubinka, want, "money {money}");
         }
     }
 
@@ -8979,10 +8948,10 @@ mod tests {
         assert_eq!(g.district, 1);
         g.shop_turn(Location::Dealers, "5", &mut no_input())
             .unwrap(); // gate district>1
-        assert!(g.weapon_kastet_38ba, "1000:cb9d fires at district 1");
+        assert!(g.weapon_kastet, "1000:cb9d fires at district 1");
         g.shop_turn(Location::Dealers, "6", &mut no_input())
             .unwrap(); // gate district>2
-        assert!(g.weapon_dubinka_394b, "1000:cc56 fires at district 1");
+        assert!(g.weapon_dubinka, "1000:cc56 fires at district 1");
         g.shop_turn(Location::Dealers, "7", &mut no_input())
             .unwrap(); // gate district>3
         assert!(g.pistol.owned, "1000:cd05 fires at district 1");
@@ -9032,10 +9001,10 @@ mod tests {
     fn the_market_suits_end_on_two_armour_in_either_purchase_order() {
         let mut g = market(100);
         g.shop_turn(Location::Market, "4", &mut no_input()).unwrap();
-        assert!(g.wear_suit_abibas_38b4, "1000:bf80");
+        assert!(g.wear_suit_abibas, "1000:bf80");
         assert_eq!(g.player.armor, 1, "1000:bfa7");
         g.shop_turn(Location::Market, "7", &mut no_input()).unwrap();
-        assert!(g.wear_suit_adidas_38b7, "1000:c183");
+        assert!(g.wear_suit_adidas, "1000:c183");
         assert_eq!(g.player.armor, 2, "1000:c1b1, the delta, not 1000:c1b7");
         assert_eq!(g.player.money, 100 - 15 - 30);
 
@@ -9045,7 +9014,7 @@ mod tests {
         assert_eq!(g.player.armor, 2, "1000:c1b7");
         // ...and row 4's better-item gate 1000:bf51 then refuses, free.
         g.shop_turn(Location::Market, "4", &mut no_input()).unwrap();
-        assert!(!g.wear_suit_abibas_38b4, "1000:bfc8 is a refusal");
+        assert!(!g.wear_suit_abibas, "1000:bfc8 is a refusal");
         assert_eq!(g.player.money, 70);
         assert_eq!(g.player.armor, 2);
 
@@ -9071,14 +9040,14 @@ mod tests {
         let mut g = market(100);
         g.district = 3; // 1000:c1d7 is `cmp byte [0x3692],0x2`
         g.shop_turn(Location::Market, "5", &mut no_input()).unwrap();
-        assert!(g.wear_boots_38b5, "1000:c029");
+        assert!(g.wear_boots, "1000:c029");
         assert_eq!(
             (g.player.dmg_min, g.player.dmg_max),
             (base_min + 1, base_max + 1),
             "1000:c050 / 1000:c054"
         );
         g.shop_turn(Location::Market, "8", &mut no_input()).unwrap();
-        assert!(g.wear_boots_pontovye_38b8, "1000:c222");
+        assert!(g.wear_boots_pontovye, "1000:c222");
         assert_eq!(
             (g.player.dmg_min, g.player.dmg_max),
             (base_min + 2, base_max + 2),
@@ -9097,7 +9066,7 @@ mod tests {
         );
         // Row 5's better-item gate 1000:bffa then refuses, free.
         g.shop_turn(Location::Market, "5", &mut no_input()).unwrap();
-        assert!(!g.wear_boots_38b5, "1000:c075 is a refusal");
+        assert!(!g.wear_boots, "1000:c075 is a refusal");
         assert_eq!(g.player.money, 70);
         // Row 8's already-own gate 1000:c1fa.
         g.shop_turn(Location::Market, "8", &mut no_input()).unwrap();
@@ -9108,7 +9077,7 @@ mod tests {
         for (money, want) in [(14i16, false), (15, true)] {
             let mut g = market(money);
             g.shop_turn(Location::Market, "5", &mut no_input()).unwrap();
-            assert_eq!(g.wear_boots_38b5, want, "money {money}");
+            assert_eq!(g.wear_boots, want, "money {money}");
         }
         let mut g = market(100);
         g.shop_turn(Location::Market, "5", &mut no_input()).unwrap();
@@ -9124,10 +9093,10 @@ mod tests {
         let mut g = market(100);
         g.district = 4; // 1000:c27f is `cmp byte [0x3692],0x3`
         g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
-        assert!(g.wear_jacket_38b6, "1000:c0e0");
+        assert!(g.wear_jacket, "1000:c0e0");
         assert_eq!(g.player.armor, 2, "1000:c107");
         g.shop_turn(Location::Market, "9", &mut no_input()).unwrap();
-        assert!(g.wear_jacket_krutaya_38b9, "1000:c2ca");
+        assert!(g.wear_jacket_krutaya, "1000:c2ca");
         assert_eq!(g.player.armor, 4, "1000:c2f8, the delta, not 1000:c2ff");
         assert_eq!(g.player.money, 100 - 25 - 50);
 
@@ -9138,7 +9107,7 @@ mod tests {
         assert_eq!(g.player.armor, 4, "1000:c2ff");
         // Row 6's better-item gate 1000:c0b1 then refuses, free.
         g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
-        assert!(!g.wear_jacket_38b6, "1000:c129 is a refusal");
+        assert!(!g.wear_jacket, "1000:c129 is a refusal");
         assert_eq!(g.player.money, 50);
         // Row 9's already-own gate 1000:c2a2.
         g.shop_turn(Location::Market, "9", &mut no_input()).unwrap();
@@ -9149,7 +9118,7 @@ mod tests {
             let mut g = market(money);
             g.district = 2;
             g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
-            assert_eq!(g.wear_jacket_38b6, want, "money {money}");
+            assert_eq!(g.wear_jacket, want, "money {money}");
         }
         let mut g = market(100);
         g.district = 2;
@@ -9190,11 +9159,11 @@ mod tests {
         assert_eq!(g.district, 1);
         // Row 6 IS buy-gated: 1000:c095 skips it, silently.
         g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
-        assert!(!g.wear_jacket_38b6, "1000:c08e is on the buy path");
+        assert!(!g.wear_jacket, "1000:c08e is on the buy path");
         assert_eq!(g.player.money, 100);
         // Row 7 is NOT: 1000:c142 is reached with no district test.
         g.shop_turn(Location::Market, "7", &mut no_input()).unwrap();
-        assert!(g.wear_suit_adidas_38b7, "1000:c183 fires at district 1");
+        assert!(g.wear_suit_adidas, "1000:c183 fires at district 1");
         assert_eq!(g.player.money, 70);
         assert_eq!(g.player.armor, 2, "1000:c1b7");
         // Rows 8 and 9 have matching menu and buy gates, so both stay shut.
@@ -9204,8 +9173,8 @@ mod tests {
             g.player.money, 70,
             "1000:c1de and 1000:c286 skip, in silence"
         );
-        assert!(!g.wear_boots_pontovye_38b8);
-        assert!(!g.wear_jacket_krutaya_38b9);
+        assert!(!g.wear_boots_pontovye);
+        assert!(!g.wear_jacket_krutaya);
     }
 
     /// Every `mar` row in `data::shops()` is consumed by
@@ -9287,8 +9256,8 @@ mod tests {
     #[test]
     fn sheet_kit_wires_each_game_flag_to_its_own_sheet_line() {
         let cases: [FlagCase; 18] = [
-            (|g| g.charm_krestik_38bd = true, "^1Крестик(Удача +2) "),
-            (|g| g.charm_ring_38be = true, "^1Кольцо \"Гс\"(Удача +1) "),
+            (|g| g.charm_krestik = true, "^1Крестик(Удача +2) "),
+            (|g| g.charm_ring = true, "^1Кольцо \"Гс\"(Удача +1) "),
             (|g| g.oneshot_gift_1 = true, "^1Кольцо \"Пг\"(Всё +1) "),
             (|g| g.oneshot_gift_2 = true, "^1Мега Кольцо(Всё +4) "),
             (
@@ -9299,21 +9268,21 @@ mod tests {
             (|g| g.dark_glasses = true, "^1У тебя есть тёмные очки"),
             (|g| g.prison_tattoo = true, "^1На тебе зоновская наколка"),
             (|g| g.pistol.owned = true, "^1У тебя есть пистолет"),
-            (|g| g.wear_boots_38b5 = true, "^1Бутсы(+1) "),
+            (|g| g.wear_boots = true, "^1Бутсы(+1) "),
             (
-                |g| g.wear_boots_pontovye_38b8 = true,
+                |g| g.wear_boots_pontovye = true,
                 "^1Понтовые бутсы(Урон+2) ",
             ),
-            (|g| g.weapon_kastet_38ba = true, "^1Кастет(+2) "),
-            (|g| g.weapon_dubinka_394b = true, "^1Дубинка(+4)  "),
-            (|g| g.weapon_nozhik_38c2 = true, "^1Нож(+6) "),
-            (|g| g.weapon_tesak_394c = true, "^1Тесак(Урон+9) "),
+            (|g| g.weapon_kastet = true, "^1Кастет(+2) "),
+            (|g| g.weapon_dubinka = true, "^1Дубинка(+4)  "),
+            (|g| g.weapon_nozhik = true, "^1Нож(+6) "),
+            (|g| g.weapon_tesak = true, "^1Тесак(Урон+9) "),
             (|g| g.tooth_guard = true, "^1Зубная защита  "),
             (|g| g.buff_countdown = 3, "^6Обдолбаный  "),
             (
                 |g| {
                     g.player.armor = 2;
-                    g.wear_suit_abibas_38b4 = true;
+                    g.wear_suit_abibas = true;
                 },
                 "^1Костюм Abibas(+1) ",
             ),
@@ -9340,12 +9309,9 @@ mod tests {
     #[test]
     fn sheet_kit_wires_the_three_remaining_clothing_flags() {
         let cases: [FlagCase; 3] = [
-            (|g| g.wear_suit_adidas_38b7 = true, "^1Костюм Adidas(+2) "),
-            (|g| g.wear_jacket_38b6 = true, "^1Кожанка(+2) "),
-            (
-                |g| g.wear_jacket_krutaya_38b9 = true,
-                "^1Крутая кожанка(+4) ",
-            ),
+            (|g| g.wear_suit_adidas = true, "^1Костюм Adidas(+2) "),
+            (|g| g.wear_jacket = true, "^1Кожанка(+2) "),
+            (|g| g.wear_jacket_krutaya = true, "^1Крутая кожанка(+4) "),
         ];
         for (set, want) in cases {
             let mut g = game();
@@ -9401,16 +9367,16 @@ mod tests {
 
     /// Every flag the six `wes` arms gate on, set -- so all six are offered.
     fn all_sellable(g: &mut Game) {
-        g.wear_suit_abibas_38b4 = true; // 20ae:38b4
-        g.wear_suit_adidas_38b7 = true; // 20ae:38b7
-        g.wear_boots_38b5 = true; // 20ae:38b5
-        g.wear_boots_pontovye_38b8 = true; // 20ae:38b8
-        g.wear_jacket_38b6 = true; // 20ae:38b6
-        g.wear_jacket_krutaya_38b9 = true; // 20ae:38b9
-        g.weapon_kastet_38ba = true; // 20ae:38ba
-        g.weapon_dubinka_394b = true; // 20ae:394b
-        g.weapon_nozhik_38c2 = true; // 20ae:38c2
-        g.weapon_tesak_394c = true; // 20ae:394c
+        g.wear_suit_abibas = true; // 20ae:38b4
+        g.wear_suit_adidas = true; // 20ae:38b7
+        g.wear_boots = true; // 20ae:38b5
+        g.wear_boots_pontovye = true; // 20ae:38b8
+        g.wear_jacket = true; // 20ae:38b6
+        g.wear_jacket_krutaya = true; // 20ae:38b9
+        g.weapon_kastet = true; // 20ae:38ba
+        g.weapon_dubinka = true; // 20ae:394b
+        g.weapon_nozhik = true; // 20ae:38c2
+        g.weapon_tesak = true; // 20ae:394c
     }
 
     /// The `1000:ce8c jle` refusal: CS 0x96f2 and nothing else changes.
@@ -9507,7 +9473,7 @@ mod tests {
         });
         assert!(!g.running);
         assert_eq!(g.player.money, 0);
-        assert!(g.wear_suit_abibas_38b4, "1000:cf74 is not reached");
+        assert!(g.wear_suit_abibas, "1000:cf74 is not reached");
     }
 
     /// `x` and `wes` are dealers' sub-verbs (`1000:ce7b`, `1000:ced3`), not
@@ -9528,7 +9494,7 @@ mod tests {
         assert!(out.is_empty(), "{out:?}");
         assert_eq!(g.player.junk, 40);
         assert_eq!(g.player.money, 3);
-        assert!(g.wear_suit_abibas_38b4);
+        assert!(g.wear_suit_abibas);
     }
 
     #[test]
@@ -9701,10 +9667,10 @@ mod tests {
         let abs = |armor, abibas, adidas, jacket, krutaya| {
             let mut g = game();
             g.player.armor = armor;
-            g.wear_suit_abibas_38b4 = abibas;
-            g.wear_suit_adidas_38b7 = adidas;
-            g.wear_jacket_38b6 = jacket;
-            g.wear_jacket_krutaya_38b9 = krutaya;
+            g.wear_suit_abibas = abibas;
+            g.wear_suit_adidas = adidas;
+            g.wear_jacket = jacket;
+            g.wear_jacket_krutaya = krutaya;
             g.trained_armour()
         };
         // Nothing owned: the scratch is the armour byte.
@@ -9730,7 +9696,7 @@ mod tests {
         let mut g = game();
         g.district = 3;
         g.player.armor = 1;
-        g.wear_jacket_krutaya_38b9 = true;
+        g.wear_jacket_krutaya = true;
         assert_eq!(g.trained_armour(), 253); // 1 - 4, as a byte
         let row = IMM_ROWS
             .iter()
@@ -9750,10 +9716,10 @@ mod tests {
         let mut g = game();
         g.district = 4;
         g.player.armor = 10;
-        g.wear_suit_abibas_38b4 = true;
-        g.wear_suit_adidas_38b7 = true;
-        g.wear_jacket_38b6 = true;
-        g.wear_jacket_krutaya_38b9 = false;
+        g.wear_suit_abibas = true;
+        g.wear_suit_adidas = true;
+        g.wear_jacket = true;
+        g.wear_jacket_krutaya = false;
         assert_eq!(g.trained_armour(), 6);
         let row = IMM_ROWS
             .iter()
@@ -10971,7 +10937,7 @@ mod tests {
                 .unwrap()
         });
         assert_eq!(out.first().map(String::as_str), Some(expected.as_str()));
-        assert!(g.fight_accepted_3b72, "1000:dc11 `mov byte [0x3b72],1`");
+        assert!(g.fight_accepted, "1000:dc11 `mov byte [0x3b72],1`");
         assert!(
             !g.den_errand_1_pending,
             "1000:dc5e `mov byte [0x3b78],0`, after the fight"
@@ -11374,10 +11340,10 @@ mod tests {
     type SpoilRow = (u16, Owned, i64);
 
     fn arm_player(g: &mut Game, owned: Owned) {
-        g.weapon_kastet_38ba = owned.0;
-        g.weapon_nozhik_38c2 = owned.1;
-        g.weapon_dubinka_394b = owned.2;
-        g.weapon_tesak_394c = owned.3;
+        g.weapon_kastet = owned.0;
+        g.weapon_nozhik = owned.1;
+        g.weapon_dubinka = owned.2;
+        g.weapon_tesak = owned.3;
     }
 
     /// The weapon-spoils damage table, every arm against every relevant
@@ -11470,9 +11436,9 @@ mod tests {
             g.rng = Rng::new(seed_drawing(&[(2, draw), (2, draw)]));
             term::capture::lines(|| g.spoil_club());
             let set = if flag == "kastet" {
-                g.weapon_kastet_38ba
+                g.weapon_kastet
             } else {
-                g.weapon_dubinka_394b
+                g.weapon_dubinka
             };
             assert!(set, "{flag} flag not set");
             let (lo, hi) = (g.player.dmg_min, g.player.dmg_max);

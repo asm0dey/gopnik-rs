@@ -304,7 +304,7 @@ fn caught_cheating(
 ) -> io::Result<()> {
     // 1000:e17e / 1000:e181 -- FUN_1000_0d14(1).
     let enemy = g.roll_enemy(1);
-    g.fight_accepted_3b72 = true; // 1000:e184
+    g.fight_accepted = true; // 1000:e184
 
     // 1000:e189 pushes file `0xBB24` `^4Козёл! Да ты мухлевал!`, printed by
     // 1000:e19d.
@@ -712,7 +712,7 @@ mod tests {
             g.player.level > level0,
             "1000:e21c ran, and it ran before 1000:e222"
         );
-        assert!(g.fight_accepted_3b72, "1000:e184");
+        assert!(g.fight_accepted, "1000:e184");
     }
 
     // -- the chain itself ------------------------------------------------

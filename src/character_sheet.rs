@@ -125,56 +125,56 @@ pub const HEALTH_GREEN_ABOVE: f64 = 0.50;
 pub struct Kit {
     /// `20ae:38ce` -- XP not yet spent on a level
     /// (`crate::progress::Progress::xp`), pushed at `1000:1ab5`.
-    pub xp_38ce: u16,
+    pub xp: u16,
     /// `20ae:38d0` -- XP needed for the next level, pushed at `1000:1ab9`.
-    pub threshold_38d0: u16,
+    pub threshold: u16,
     /// `20ae:38cd` -- the joint buff's countdown. Read three times: the
     /// Сила colour slot (`1000:1acb`), the damage line's colour
     /// (`1000:1e06`) and the `Обдолбаный` condition (`1000:20ca`). All three
     /// guards are unsigned (`ja` / `jbe`), so any non-zero count counts.
-    pub buff_countdown_38cd: u8,
+    pub buff_countdown: u8,
     /// `20ae:38bd` -- Крестик (`1000:1be9`).
-    pub krestik_38bd: bool,
+    pub krestik: bool,
     /// `20ae:38be` -- кольцо "Гс" (`1000:1c09`).
-    pub ring_gs_38be: bool,
+    pub ring_gs: bool,
     /// `20ae:38bf` -- кольцо "Пг" (`1000:1c69`).
-    pub ring_pg_38bf: bool,
+    pub ring_pg: bool,
     /// `20ae:38c0` -- Мега Кольцо (`1000:1c89`).
-    pub mega_ring_38c0: bool,
+    pub mega_ring: bool,
     /// `20ae:38c1` -- кольцо "Гп" (`1000:1ca9`).
-    pub ring_gp_38c1: bool,
+    pub ring_gp: bool,
     /// `20ae:38bb` -- мобильник (`1000:1cd8`).
-    pub mobile_38bb: bool,
+    pub mobile: bool,
     /// `20ae:38b3` -- тёмные очки (`1000:1cf8`).
-    pub dark_glasses_38b3: bool,
+    pub dark_glasses: bool,
     /// `20ae:38bc` -- зоновская наколка (`1000:1d18`).
-    pub prison_tattoo_38bc: bool,
+    pub prison_tattoo: bool,
     /// `20ae:394d` / `394e` / `394f` -- the pistol block (`1000:1d38`).
     pub pistol: Pistol,
     /// `20ae:38b5` -- Бутсы (`1000:1e81`).
-    pub boots_38b5: bool,
+    pub boots: bool,
     /// `20ae:38b8` -- Понтовые бутсы (`1000:1ecf`).
-    pub boots_pontovye_38b8: bool,
+    pub boots_pontovye: bool,
     /// `20ae:38ba` -- Кастет (`1000:1eef`).
-    pub kastet_38ba: bool,
+    pub kastet: bool,
     /// `20ae:394b` -- Дубинка (`1000:1f59`).
-    pub dubinka_394b: bool,
+    pub dubinka: bool,
     /// `20ae:38c2` -- Нож (`1000:1fb5`).
-    pub nozh_38c2: bool,
+    pub nozh: bool,
     /// `20ae:394c` -- Тесак (`1000:2003`).
-    pub tesak_394c: bool,
+    pub tesak: bool,
     /// `20ae:394a` -- зубная защита (`1000:2068`). Its guard is
     /// `cmp byte [0x394a],0x1`, an EQUALITY, not the `cmp ..,0x0` the
     /// item flags use.
-    pub tooth_guard_394a: bool,
+    pub tooth_guard: bool,
     /// `20ae:38b4` -- костюм Abibas (`1000:22a1`).
-    pub suit_abibas_38b4: bool,
+    pub suit_abibas: bool,
     /// `20ae:38b7` -- костюм Adidas (`1000:22fc`).
-    pub suit_adidas_38b7: bool,
+    pub suit_adidas: bool,
     /// `20ae:38b6` -- Кожанка (`1000:2323`).
-    pub jacket_38b6: bool,
+    pub jacket: bool,
     /// `20ae:38b9` -- Крутая кожанка (`1000:237e`).
-    pub jacket_krutaya_38b9: bool,
+    pub jacket_krutaya: bool,
 }
 
 /// One open line plus the lines already closed.
@@ -287,7 +287,7 @@ fn header(o: &mut Out, p: &Fighter, name: &str, kit: &Kit) {
         o.writeln(&text::fill(
             // CS `0x1688`.
             EMITTED[0].1,
-            &[i64::from(kit.xp_38ce), i64::from(kit.threshold_38d0)],
+            &[i64::from(kit.xp), i64::from(kit.threshold)],
         ));
     }
 }
@@ -298,8 +298,8 @@ fn header(o: &mut Out, p: &Fighter, name: &str, kit: &Kit) {
 /// `[bp-0x100]`; each of its four characters is a Turbo colour digit that a
 /// worn item patches to `'1'`, and the format string interleaves them.
 fn stat_line(o: &mut Out, p: &Fighter, kit: &Kit) {
-    let stoned = kit.buff_countdown_38cd > 0;
-    let all = kit.ring_pg_38bf || kit.mega_ring_38c0;
+    let stoned = kit.buff_countdown > 0;
+    let all = kit.ring_pg || kit.mega_ring;
     // `1000:1acb`/`1ad2`/`1ad9` -> `1000:1ae0 mov byte [bp-0xff],0x31`.
     let c0 = digit(stoned || all);
     // `1000:1ae5`/`1aec` -> `1000:1af3` and `1000:1af8`, one guard pair
@@ -307,7 +307,7 @@ fn stat_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     let c1 = digit(all);
     let c2 = c1;
     // `1000:1afd`/`1b04`/`1b0b`/`1b12` -> `1000:1b19`.
-    let c3 = digit(kit.krestik_38bd || kit.ring_gs_38be || all);
+    let c3 = digit(kit.krestik || kit.ring_gs || all);
     // Five literals interleaved with the four digits, appended in order:
     // CS `0x16b7` is `Сл:^`,
     // CS `0x16bc` is `#^7 Лв:^`,
@@ -350,27 +350,27 @@ fn charms(o: &mut Out, kit: &Kit) {
     // `1000:1bc2 cmp byte [0x38bd],0x0` / `jnz 0x1bd0`, `1000:1bc9
     // cmp byte [0x38be],0x0` / `jz 0x1c38` -- the whole block, including its
     // closing newline at `1000:1c29`, is skipped when neither is set.
-    if kit.krestik_38bd || kit.ring_gs_38be {
+    if kit.krestik || kit.ring_gs {
         o.write(EMITTED[1].1); // CS `0x16d9`
-        if kit.krestik_38bd {
+        if kit.krestik {
             o.write(EMITTED[2].1); // CS `0x16e2`
         }
-        if kit.ring_gs_38be {
+        if kit.ring_gs {
             o.write(EMITTED[3].1); // CS `0x16f7`
         }
         o.newline();
     }
     // `1000:1c38`/`1c3f`/`1c46`, whose all-clear arm is the
     // `1000:1c4d jmp 0x1cd8` over the section and its `1000:1cc9` newline.
-    if kit.ring_pg_38bf || kit.mega_ring_38c0 || kit.ring_gp_38c1 {
+    if kit.ring_pg || kit.mega_ring || kit.ring_gp {
         o.write(EMITTED[4].1); // CS `0x1710`
-        if kit.ring_pg_38bf {
+        if kit.ring_pg {
             o.write(EMITTED[5].1); // CS `0x1720`
         }
-        if kit.mega_ring_38c0 {
+        if kit.mega_ring {
             o.write(EMITTED[6].1); // CS `0x1737`
         }
-        if kit.ring_gp_38c1 {
+        if kit.ring_gp {
             o.write(EMITTED[7].1); // CS `0x174e`
         }
         o.newline();
@@ -379,13 +379,13 @@ fn charms(o: &mut Out, kit: &Kit) {
 
 /// `1000:1cd8`..`1000:1d33` -- the three items that get a whole line each.
 fn worn_singletons(o: &mut Out, kit: &Kit) {
-    if kit.mobile_38bb {
+    if kit.mobile {
         o.writeln(EMITTED[8].1); // CS `0x176a`
     }
-    if kit.dark_glasses_38b3 {
+    if kit.dark_glasses {
         o.writeln(EMITTED[9].1); // CS `0x1782`
     }
-    if kit.prison_tattoo_38bc {
+    if kit.prison_tattoo {
         o.writeln(EMITTED[10].1); // CS `0x179c`
     }
 }
@@ -431,13 +431,13 @@ fn pistol_block(o: &mut Out, kit: &Kit) {
 /// (`0x181f`), appends that digit, appends `Урон #-#    ` and `Write`s the
 /// pair at `1000:1e7c`, leaving the line open for the weapon labels.
 fn damage_line(o: &mut Out, p: &Fighter, kit: &Kit) {
-    let armed = kit.buff_countdown_38cd > 0
-        || kit.boots_38b5
-        || kit.boots_pontovye_38b8
-        || kit.kastet_38ba
-        || kit.dubinka_394b
-        || kit.nozh_38c2
-        || kit.tesak_394c;
+    let armed = kit.buff_countdown > 0
+        || kit.boots
+        || kit.boots_pontovye
+        || kit.kastet
+        || kit.dubinka
+        || kit.nozh
+        || kit.tesak;
     o.write(&text::fill(
         // CS `0x1821` `Урон #-#    `, four trailing spaces.
         &format!("^{}Урон #-#    ", digit(armed)),
@@ -446,41 +446,41 @@ fn damage_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     // Best-item-wins: each pair prints the superseded item dim (`^4`) beside
     // the good one, as two arms sharing the lesser item's flag.
     // `1000:1e81`/`1e88` and `1000:1ea8`/`1eaf`.
-    if kit.boots_38b5 && !kit.boots_pontovye_38b8 {
+    if kit.boots && !kit.boots_pontovye {
         o.write(EMITTED[16].1); // CS `0x182e`
     }
-    if kit.boots_38b5 && kit.boots_pontovye_38b8 {
+    if kit.boots && kit.boots_pontovye {
         o.write(EMITTED[17].1); // CS `0x183b`
     }
-    if kit.boots_pontovye_38b8 {
+    if kit.boots_pontovye {
         o.write(EMITTED[18].1); // CS `0x1844`
     }
     // The three blades supersede the кастет, `1000:1eef`..`1000:1f09`; the
     // dim arm is `1000:1f24`..`1000:1f3e`.
-    let over_kastet = kit.nozh_38c2 || kit.dubinka_394b || kit.tesak_394c;
-    if kit.kastet_38ba && !over_kastet {
+    let over_kastet = kit.nozh || kit.dubinka || kit.tesak;
+    if kit.kastet && !over_kastet {
         o.write(EMITTED[19].1); // CS `0x185e`
     }
-    if kit.kastet_38ba && over_kastet {
+    if kit.kastet && over_kastet {
         o.write(EMITTED[20].1); // CS `0x186c`
     }
     // `1000:1f59`/`1f60`/`1f67` and `1000:1f87`/`1f8e`/`1f95`.
-    let over_dubinka = kit.nozh_38c2 || kit.tesak_394c;
-    if kit.dubinka_394b && !over_dubinka {
+    let over_dubinka = kit.nozh || kit.tesak;
+    if kit.dubinka && !over_dubinka {
         o.write(EMITTED[21].1); // CS `0x1876`
     }
-    if kit.dubinka_394b && over_dubinka {
+    if kit.dubinka && over_dubinka {
         o.write(EMITTED[22].1); // CS `0x1886`
     }
     // `1000:1fb5`/`1fbc` and `1000:1fdc`/`1fe3`.
-    if kit.nozh_38c2 && !kit.tesak_394c {
+    if kit.nozh && !kit.tesak {
         o.write(EMITTED[23].1); // CS `0x1891`
     }
-    if kit.nozh_38c2 && kit.tesak_394c {
+    if kit.nozh && kit.tesak {
         o.write(EMITTED[24].1); // CS `0x189c`
     }
     // `1000:2003` -- nothing supersedes the тесак.
-    if kit.tesak_394c {
+    if kit.tesak {
         o.write(EMITTED[25].1); // CS `0x18a3`
     }
     o.newline(); // `1000:2023`..`1000:202d`
@@ -500,7 +500,7 @@ fn health_line(o: &mut Out, p: &Fighter, kit: &Kit) {
         cond.push_str(CONDITIONS[0]); // CS `0x18b4`
     }
     // `1000:2068 cmp byte [0x394a],0x1` / `1000:206d jnz 0x2099`.
-    if kit.tooth_guard_394a {
+    if kit.tooth_guard {
         cond.push_str(CONDITIONS[1]); // CS `0x18c8`
     }
     // `1000:2099 cmp byte [0x38b1],0x1` / `1000:209e jnz 0x20ca` -- the same
@@ -509,7 +509,7 @@ fn health_line(o: &mut Out, p: &Fighter, kit: &Kit) {
         cond.push_str(CONDITIONS[2]); // CS `0x18da`
     }
     // `1000:20ca cmp byte [0x38cd],0x0` / `jbe 0x20fb` -- unsigned.
-    if kit.buff_countdown_38cd > 0 {
+    if kit.buff_countdown > 0 {
         cond.push_str(CONDITIONS[3]); // CS `0x18eb`
     }
     o.writeln(&text::fill(
@@ -650,26 +650,26 @@ fn armour_block(o: &mut Out, p: &Fighter, kit: &Kit) {
     // CS `0x1956`, four trailing spaces. `1000:228a` loads the byte and
     // zero-extends it.
     o.write(&text::fill(EMITTED[30].1, &[i64::from(p.armor)]));
-    if kit.suit_abibas_38b4 {
-        if kit.suit_adidas_38b7 {
+    if kit.suit_abibas {
+        if kit.suit_adidas {
             o.write(EMITTED[31].1); // CS `0x1964`
             o.write(EMITTED[32].1); // CS `0x196e`
         } else {
             o.write(EMITTED[33].1); // CS `0x1983`
         }
     }
-    if kit.suit_adidas_38b7 && !kit.suit_abibas_38b4 {
+    if kit.suit_adidas && !kit.suit_abibas {
         o.write(EMITTED[34].1); // CS `0x196e`
     }
-    if kit.jacket_38b6 {
-        if kit.jacket_krutaya_38b9 {
+    if kit.jacket {
+        if kit.jacket_krutaya {
             o.write(EMITTED[35].1); // CS `0x1998`
             o.write(EMITTED[36].1); // CS `0x19a3`
         } else {
             o.write(EMITTED[37].1); // CS `0x19b9`
         }
     }
-    if kit.jacket_krutaya_38b9 && !kit.jacket_38b6 {
+    if kit.jacket_krutaya && !kit.jacket {
         o.write(EMITTED[38].1); // CS `0x19a3`
     }
     o.newline(); // `1000:23a5`..`1000:23af`
@@ -881,8 +881,8 @@ mod tests {
     #[test]
     fn the_experience_line_is_gated_at_level_39() {
         let kit = Kit {
-            xp_38ce: 42,
-            threshold_38d0: 60,
+            xp: 42,
+            threshold: 60,
             ..Kit::default()
         };
         let mut p = player();
@@ -910,7 +910,7 @@ mod tests {
         // 20ae:38cd -- Сила alone.
         assert_eq!(
             line(&Kit {
-                buff_countdown_38cd: 1,
+                buff_countdown: 1,
                 ..Kit::default()
             }),
             "Сл:^16^7 Лв:^77^7 Жв:^78^7 Уд:^79"
@@ -918,7 +918,7 @@ mod tests {
         // 20ae:38bd -- Удача alone.
         assert_eq!(
             line(&Kit {
-                krestik_38bd: true,
+                krestik: true,
                 ..Kit::default()
             }),
             "Сл:^76^7 Лв:^77^7 Жв:^78^7 Уд:^19"
@@ -926,7 +926,7 @@ mod tests {
         // 20ae:38be -- Удача alone.
         assert_eq!(
             line(&Kit {
-                ring_gs_38be: true,
+                ring_gs: true,
                 ..Kit::default()
             }),
             "Сл:^76^7 Лв:^77^7 Жв:^78^7 Уд:^19"
@@ -934,11 +934,11 @@ mod tests {
         // 20ae:38bf and 20ae:38c0 -- all four.
         for kit in [
             Kit {
-                ring_pg_38bf: true,
+                ring_pg: true,
                 ..Kit::default()
             },
             Kit {
-                mega_ring_38c0: true,
+                mega_ring: true,
                 ..Kit::default()
             },
         ] {
@@ -957,7 +957,7 @@ mod tests {
         assert!(find(&bare, "Феньки").is_none(), "{bare:?}");
 
         let kit = Kit {
-            ring_gs_38be: true,
+            ring_gs: true,
             ..Kit::default()
         };
         assert_eq!(
@@ -966,8 +966,8 @@ mod tests {
         );
 
         let kit = Kit {
-            krestik_38bd: true,
-            ring_gs_38be: true,
+            krestik: true,
+            ring_gs: true,
             ..Kit::default()
         };
         assert_eq!(
@@ -976,9 +976,9 @@ mod tests {
         );
 
         let kit = Kit {
-            ring_pg_38bf: true,
-            mega_ring_38c0: true,
-            ring_gp_38c1: true,
+            ring_pg: true,
+            mega_ring: true,
+            ring_gp: true,
             ..Kit::default()
         };
         assert_eq!(
@@ -994,21 +994,21 @@ mod tests {
         for (kit, want) in [
             (
                 Kit {
-                    mobile_38bb: true,
+                    mobile: true,
                     ..Kit::default()
                 },
                 "^1У тебя есть мобильник",
             ),
             (
                 Kit {
-                    dark_glasses_38b3: true,
+                    dark_glasses: true,
                     ..Kit::default()
                 },
                 "^1У тебя есть тёмные очки",
             ),
             (
                 Kit {
-                    prison_tattoo_38bc: true,
+                    prison_tattoo: true,
                     ..Kit::default()
                 },
                 "^1На тебе зоновская наколка",
@@ -1080,13 +1080,13 @@ mod tests {
         // raise the digit on its own -- one `||` written `&&` survives every
         // test that only ever sets two of them together.
         let setters: [fn(&mut Kit); 7] = [
-            |k| k.buff_countdown_38cd = 3,
-            |k| k.boots_38b5 = true,
-            |k| k.boots_pontovye_38b8 = true,
-            |k| k.kastet_38ba = true,
-            |k| k.dubinka_394b = true,
-            |k| k.nozh_38c2 = true,
-            |k| k.tesak_394c = true,
+            |k| k.buff_countdown = 3,
+            |k| k.boots = true,
+            |k| k.boots_pontovye = true,
+            |k| k.kastet = true,
+            |k| k.dubinka = true,
+            |k| k.nozh = true,
+            |k| k.tesak = true,
         ];
         for (i, set) in setters.into_iter().enumerate() {
             let mut kit = Kit::default();
@@ -1103,42 +1103,42 @@ mod tests {
         let p = player();
         let d = |kit: Kit| damage(&sheet(&p, &kit));
         let boots = Kit {
-            boots_38b5: true,
+            boots: true,
             ..Kit::default()
         };
         assert_eq!(d(boots), "^1Урон 3-6    ^1Бутсы(+1) ");
         assert_eq!(
             d(Kit {
-                boots_pontovye_38b8: true,
+                boots_pontovye: true,
                 ..boots
             }),
             "^1Урон 3-6    ^4Бутсы ^1Понтовые бутсы(Урон+2) "
         );
         let kastet = Kit {
-            kastet_38ba: true,
+            kastet: true,
             ..Kit::default()
         };
         assert_eq!(d(kastet), "^1Урон 3-6    ^1Кастет(+2) ");
         assert_eq!(
             d(Kit {
-                dubinka_394b: true,
+                dubinka: true,
                 ..kastet
             }),
             "^1Урон 3-6    ^4Кастет ^1Дубинка(+4)  "
         );
         assert_eq!(
             d(Kit {
-                nozh_38c2: true,
-                dubinka_394b: true,
+                nozh: true,
+                dubinka: true,
                 ..kastet
             }),
             "^1Урон 3-6    ^4Кастет ^4Дубинка ^1Нож(+6) "
         );
         assert_eq!(
             d(Kit {
-                tesak_394c: true,
-                nozh_38c2: true,
-                dubinka_394b: true,
+                tesak: true,
+                nozh: true,
+                dubinka: true,
                 ..kastet
             }),
             "^1Урон 3-6    ^4Кастет ^4Дубинка ^4Нож ^1Тесак(Урон+9) "
@@ -1146,7 +1146,7 @@ mod tests {
         // The тесак alone supersedes nothing, so no dim label appears.
         assert_eq!(
             d(Kit {
-                tesak_394c: true,
+                tesak: true,
                 ..Kit::default()
             }),
             "^1Урон 3-6    ^1Тесак(Урон+9) "
@@ -1163,8 +1163,8 @@ mod tests {
         p.broken_jaw = true;
         p.broken_leg = true;
         let kit = Kit {
-            tooth_guard_394a: true,
-            buff_countdown_38cd: 2,
+            tooth_guard: true,
+            buff_countdown: 2,
             ..Kit::default()
         };
         assert_eq!(
@@ -1193,11 +1193,11 @@ mod tests {
             // `1000:2037 cmp byte [0x38b0],0x1` / `jnz 0x2068`.
             (|p, _| p.broken_jaw = true, "^4Сломана челюсть  "),
             // `1000:2068 cmp byte [0x394a],0x1` / `jnz 0x2099`.
-            (|_, k| k.tooth_guard_394a = true, "^1Зубная защита  "),
+            (|_, k| k.tooth_guard = true, "^1Зубная защита  "),
             // `1000:2099 cmp byte [0x38b1],0x1` / `jnz 0x20ca`.
             (|p, _| p.broken_leg = true, "^4Сломана нога  "),
             // `1000:20ca cmp byte [0x38cd],0x0` / `jbe 0x20fb`.
-            (|_, k| k.buff_countdown_38cd = 1, "^6Обдолбаный  "),
+            (|_, k| k.buff_countdown = 1, "^6Обдолбаный  "),
         ];
         for (set, want) in cases {
             let mut p = player();
@@ -1282,8 +1282,8 @@ mod tests {
         let mut p = player();
         p.armor = 0;
         let kit = Kit {
-            suit_adidas_38b7: true,
-            jacket_krutaya_38b9: true,
+            suit_adidas: true,
+            jacket_krutaya: true,
             ..Kit::default()
         };
         let out = sheet(&p, &kit);
@@ -1303,44 +1303,44 @@ mod tests {
         assert_eq!(a(Kit::default()), "^2Броня 4    ");
         assert_eq!(
             a(Kit {
-                suit_abibas_38b4: true,
+                suit_abibas: true,
                 ..Kit::default()
             }),
             "^2Броня 4    ^1Костюм Abibas(+1) "
         );
         assert_eq!(
             a(Kit {
-                suit_adidas_38b7: true,
+                suit_adidas: true,
                 ..Kit::default()
             }),
             "^2Броня 4    ^1Костюм Adidas(+2) "
         );
         assert_eq!(
             a(Kit {
-                suit_abibas_38b4: true,
-                suit_adidas_38b7: true,
+                suit_abibas: true,
+                suit_adidas: true,
                 ..Kit::default()
             }),
             "^2Броня 4    ^4Abibas ^1Костюм Adidas(+2) "
         );
         assert_eq!(
             a(Kit {
-                jacket_38b6: true,
+                jacket: true,
                 ..Kit::default()
             }),
             "^2Броня 4    ^1Кожанка(+2) "
         );
         assert_eq!(
             a(Kit {
-                jacket_krutaya_38b9: true,
+                jacket_krutaya: true,
                 ..Kit::default()
             }),
             "^2Броня 4    ^1Крутая кожанка(+4) "
         );
         assert_eq!(
             a(Kit {
-                jacket_38b6: true,
-                jacket_krutaya_38b9: true,
+                jacket: true,
+                jacket_krutaya: true,
                 ..Kit::default()
             }),
             "^2Броня 4    ^4Кожанка ^1Крутая кожанка(+4) "

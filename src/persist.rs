@@ -229,8 +229,8 @@ impl Game {
     ///
     /// | field | address | side of the record |
     /// |---|---|---|
-    /// | [`Game::flag_3693`] | `20ae:3693` | below `369c` |
-    /// | [`Game::fight_accepted_3b72`] | `20ae:3b72` | above `3951` |
+    /// | [`Game::harder_encounters`] | `20ae:3693` | below `369c` |
+    /// | [`Game::fight_accepted`] | `20ae:3b72` | above `3951` |
     /// | [`Game::market_ban_countdown`] | `20ae:3b76` | above `3951` |
     /// | [`Game::club_ban_countdown`] | `20ae:3b77` | above |
     /// | [`Game::den_errand_1_pending`] | `20ae:3b78` | above |
@@ -255,7 +255,7 @@ impl Game {
     ///   `struct Game`'s own field list and requires every field whose doc
     ///   names a `20ae:` address to be accounted for on ONE of the two
     ///   sides. The table above was written as complete and then went
-    ///   stale — Task 28 added [`Game::fight_accepted_3b72`], above `3951`,
+    ///   stale — Task 28 added [`Game::fight_accepted`], above `3951`,
     ///   and no row — because the in-record test filters to `(lo..hi)` and
     ///   structurally cannot see this half. Its limit is stated in its own
     ///   doc.
@@ -284,37 +284,37 @@ impl Game {
         save.threshold = self.progress.threshold;
         save.growth_log = growth_log_to_record(&self.progress);
         save.items = Items {
-            broken_jaw: p.broken_jaw,                      // 20ae:38b0
-            broken_leg: p.broken_leg,                      // 20ae:38b1
-            armour: p.armor,                               // 20ae:38b2
-            dark_glasses: self.dark_glasses,               // 20ae:38b3
-            suit_abibas: self.wear_suit_abibas_38b4,       // 20ae:38b4
-            boots: self.wear_boots_38b5,                   // 20ae:38b5
-            jacket: self.wear_jacket_38b6,                 // 20ae:38b6
-            suit_adidas: self.wear_suit_adidas_38b7,       // 20ae:38b7
-            boots_pontovye: self.wear_boots_pontovye_38b8, // 20ae:38b8
-            jacket_krutaya: self.wear_jacket_krutaya_38b9, // 20ae:38b9
-            kastet: self.weapon_kastet_38ba,               // 20ae:38ba
-            mobile: self.has_mobile,                       // 20ae:38bb
-            prison_tattoo: self.prison_tattoo,             // 20ae:38bc
-            krestik: self.charm_krestik_38bd,              // 20ae:38bd
-            ring_gs: self.charm_ring_38be,                 // 20ae:38be
-            ring_pg: self.oneshot_gift_1,                  // 20ae:38bf
-            mega_ring: self.oneshot_gift_2,                // 20ae:38c0
-            ring_gp: self.ring_gospodi_pomilui,            // 20ae:38c1
-            nozh: self.weapon_nozhik_38c2,                 // 20ae:38c2
-            beer_half_litres: p.beer_dl,                   // 20ae:38c3
-            joints: p.joints,                              // 20ae:38c5
-            money: p.money,                                // 20ae:38c7
-            junk: p.junk,                                  // 20ae:38c9
-            street_cred: self.pontovost_street,            // 20ae:38cb
-            tooth_guard: self.tooth_guard,                 // 20ae:394a
-            dubinka: self.weapon_dubinka_394b,             // 20ae:394b
-            tesak: self.weapon_tesak_394c,                 // 20ae:394c
-            pistol: self.pistol.owned,                     // 20ae:394d
-            silencer: self.pistol.silencer,                // 20ae:394e
-            cartridges: self.pistol.cartridges,            // 20ae:394f
-            church_stage: self.church_visits,              // 20ae:3951
+            broken_jaw: p.broken_jaw,                 // 20ae:38b0
+            broken_leg: p.broken_leg,                 // 20ae:38b1
+            armour: p.armor,                          // 20ae:38b2
+            dark_glasses: self.dark_glasses,          // 20ae:38b3
+            suit_abibas: self.wear_suit_abibas,       // 20ae:38b4
+            boots: self.wear_boots,                   // 20ae:38b5
+            jacket: self.wear_jacket,                 // 20ae:38b6
+            suit_adidas: self.wear_suit_adidas,       // 20ae:38b7
+            boots_pontovye: self.wear_boots_pontovye, // 20ae:38b8
+            jacket_krutaya: self.wear_jacket_krutaya, // 20ae:38b9
+            kastet: self.weapon_kastet,               // 20ae:38ba
+            mobile: self.has_mobile,                  // 20ae:38bb
+            prison_tattoo: self.prison_tattoo,        // 20ae:38bc
+            krestik: self.charm_krestik,              // 20ae:38bd
+            ring_gs: self.charm_ring,                 // 20ae:38be
+            ring_pg: self.oneshot_gift_1,             // 20ae:38bf
+            mega_ring: self.oneshot_gift_2,           // 20ae:38c0
+            ring_gp: self.ring_gospodi_pomilui,       // 20ae:38c1
+            nozh: self.weapon_nozhik,                 // 20ae:38c2
+            beer_half_litres: p.beer_dl,              // 20ae:38c3
+            joints: p.joints,                         // 20ae:38c5
+            money: p.money,                           // 20ae:38c7
+            junk: p.junk,                             // 20ae:38c9
+            street_cred: self.pontovost_street,       // 20ae:38cb
+            tooth_guard: self.tooth_guard,            // 20ae:394a
+            dubinka: self.weapon_dubinka,             // 20ae:394b
+            tesak: self.weapon_tesak,                 // 20ae:394c
+            pistol: self.pistol.owned,                // 20ae:394d
+            silencer: self.pistol.silencer,           // 20ae:394e
+            cartridges: self.pistol.cartridges,       // 20ae:394f
+            church_stage: self.church_visits,         // 20ae:3951
         };
         save
     }
@@ -399,18 +399,18 @@ impl Game {
         g.pontovost_street = it.street_cred;
         g.buff_countdown = save.buff_countdown;
         g.tooth_guard = it.tooth_guard;
-        g.charm_krestik_38bd = it.krestik;
-        g.charm_ring_38be = it.ring_gs;
-        g.weapon_kastet_38ba = it.kastet;
-        g.weapon_dubinka_394b = it.dubinka;
-        g.weapon_nozhik_38c2 = it.nozh;
-        g.weapon_tesak_394c = it.tesak;
-        g.wear_suit_abibas_38b4 = it.suit_abibas;
-        g.wear_boots_38b5 = it.boots;
-        g.wear_jacket_38b6 = it.jacket;
-        g.wear_suit_adidas_38b7 = it.suit_adidas;
-        g.wear_boots_pontovye_38b8 = it.boots_pontovye;
-        g.wear_jacket_krutaya_38b9 = it.jacket_krutaya;
+        g.charm_krestik = it.krestik;
+        g.charm_ring = it.ring_gs;
+        g.weapon_kastet = it.kastet;
+        g.weapon_dubinka = it.dubinka;
+        g.weapon_nozhik = it.nozh;
+        g.weapon_tesak = it.tesak;
+        g.wear_suit_abibas = it.suit_abibas;
+        g.wear_boots = it.boots;
+        g.wear_jacket = it.jacket;
+        g.wear_suit_adidas = it.suit_adidas;
+        g.wear_boots_pontovye = it.boots_pontovye;
+        g.wear_jacket_krutaya = it.jacket_krutaya;
         g.church_visits = it.church_stage;
         g.pistol.owned = it.pistol;
         g.pistol.silencer = it.silencer;

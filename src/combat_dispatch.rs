@@ -89,7 +89,7 @@ pub enum Shot {
 
 /// Fire once -- `[1000:4eb2, 1000:4f82)`.
 ///
-/// `flag_3693` is `20ae:3693`, [`crate::game::Game::flag_3693`]. What the flag
+/// `harder_encounters` is `20ae:3693`, [`crate::game::Game::harder_encounters`]. What the flag
 /// *means* is still not established (`docs/re/gaps.md` has it as a wander
 /// toggle flipped in bucket 1, and `docs/re/combat-dispatch.md` records
 /// `1000:4ebc` as a **third** reader where that entry claimed two); the
@@ -102,13 +102,13 @@ pub enum Shot {
 /// `1000:4ef5` `Random(0x32)` and, on a hit, `1000:4f18` `Random(0xa)`. A miss
 /// spends one. Nothing before `1000:4eed` draws, so a player with no pistol,
 /// no permission or no cartridges leaves the RNG stream untouched.
-pub fn fire(rng: &mut Rng, pistol: &mut Pistol, flag_3693: bool, agility: u16) -> Shot {
+pub fn fire(rng: &mut Rng, pistol: &mut Pistol, harder_encounters: bool, agility: u16) -> Shot {
     if !pistol.owned {
         return Shot::NoPistol;
     }
     // 1000:4ebc `cmp byte [0x3693],0` / `jnz 0x4ee6`, then 1000:4ec3
     // `cmp byte [0x394e],0` / `jnz 0x4ee6` -- either one alone is enough.
-    if !flag_3693 && !pistol.silencer {
+    if !harder_encounters && !pistol.silencer {
         return Shot::NotHere;
     }
     if pistol.cartridges <= 0 {
@@ -595,7 +595,7 @@ mod tests {
     /// clear.
     #[test]
     fn either_the_flag_or_the_silencer_permits_the_shot() {
-        for (flag_3693, silencer, permitted) in [
+        for (harder_encounters, silencer, permitted) in [
             (false, false, false),
             (true, false, true),
             (false, true, true),
@@ -607,11 +607,11 @@ mod tests {
                 silencer,
                 cartridges: 9,
             };
-            let got = fire(&mut rng, &mut p, flag_3693, 50);
+            let got = fire(&mut rng, &mut p, harder_encounters, 50);
             assert_eq!(
                 got != Shot::NotHere,
                 permitted,
-                "flag {flag_3693}, silencer {silencer}"
+                "flag {harder_encounters}, silencer {silencer}"
             );
         }
     }

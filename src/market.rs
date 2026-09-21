@@ -237,7 +237,7 @@ fn busted(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>) -> 
     // 1000:c3cd `mov al,0x1` / 1000:c3d0 `call 0x10d14` -- FUN_1000_0d14(1),
     // the clamp-to-class-7 form, so no Мент ever answers a pickpocket.
     let enemy = g.roll_enemy(1);
-    g.fight_accepted_3b72 = true; // 1000:c3d3
+    g.fight_accepted = true; // 1000:c3d3
 
     // 1000:c3d8 pushes file `0xA979` `^4Корявый! ты попался!`, printed by
     // 1000:c3ec.
@@ -391,7 +391,7 @@ mod tests {
             out.last().map(|l| l.ends_with(SCRAM)) == Some(true),
             "1000:c44d must print after the fight, got {out:?}"
         );
-        assert!(g.fight_accepted_3b72, "1000:c3d3");
+        assert!(g.fight_accepted, "1000:c3d3");
         assert_eq!(g.market_ban_countdown, BAN_TURNS, "1000:c465");
         assert_eq!(g.location, Location::Street, "1000:c460 writes `w`");
         assert_eq!(g.progress.xp, 0, "the bust arm has no xp credit");

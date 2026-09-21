@@ -520,15 +520,6 @@ mod tests {
         assert_eq!(blows_per_round(&f(15), &weak), 2);
     }
 
-    /// A brawler who hits, crits and breaks something on every swing.
-    ///
-    /// `luck * 3` = 900 is above every `Random(100) + 1` (the crit,
-    /// `1000:44cd`) and above every `Random(defender.luck * 3 + 200) + 1`
-    /// (the break, `1000:47b3`), so both comparisons are decided by the
-    /// stats and the DRAW SHAPE is what the seed decides. `agility 20` gives
-    /// `blow_budget` 24 against an agility-0 defender, i.e. `24 * 5 = 120`
-    /// capped at the `1000:447f` accuracy cap of 90.
-
     /// Both boundaries in [`blow_budget`] are UNOBSERVABLE, and this test
     /// says why: the three constants are one arithmetic identity.
     ///

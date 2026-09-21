@@ -110,13 +110,10 @@ fn save_r5_loads_the_character_the_shipped_bytes_describe() {
     assert_eq!(g.player.joints, 4);
     assert_eq!(g.player.junk, 0);
     assert_eq!(g.church_visits, 1);
-    assert!(
-        g.weapon_nozhik_38c2,
-        "SAVE_R5 is the only save with the нож"
-    );
-    assert!(g.wear_jacket_krutaya_38b9, "...and the only крутая кожанка");
-    assert!(!g.weapon_dubinka_394b, "...and it has no дубинка");
-    assert!(!g.weapon_tesak_394c);
+    assert!(g.weapon_nozhik, "SAVE_R5 is the only save with the нож");
+    assert!(g.wear_jacket_krutaya, "...and the only крутая кожанка");
+    assert!(!g.weapon_dubinka, "...and it has no дубинка");
+    assert!(!g.weapon_tesak);
     assert!(g.tooth_guard);
     assert!(g.has_mobile);
     assert!(g.prison_tattoo);
@@ -873,7 +870,7 @@ fn game_fields(game_rs: &str) -> Vec<(String, String)> {
 ///
 /// `every_in_record_address_named_in_game_rs_is_persisted` filters to
 /// `(lo..hi)`, so it can only ever see the persisted half. That is why Task
-/// 28 could add `Game::fight_accepted_3b72` (`20ae:3b72`, above `0x3951`)
+/// 28 could add `Game::fight_accepted` (`20ae:3b72`, above `0x3951`)
 /// with no row and pass every gate: the table claimed to enumerate "every
 /// other global this port carries" and no assertion read it.
 ///
@@ -903,7 +900,7 @@ fn every_game_field_is_either_persisted_or_named_out_of_record() {
     let body_to = persist_rs.find("pub fn from_save").expect("from_save");
     assert!(doc_from < body_from && body_from < body_to);
     // The markdown table ROWS only, not the prose around them: this test's
-    // own bullet in that doc names `Game::fight_accepted_3b72`, and a slice
+    // own bullet in that doc names `Game::fight_accepted`, and a slice
     // that swallowed it would let the row be deleted and still pass -- the
     // check-that-cannot-fail, reintroduced by the fix for one.
     let table: String = persist_rs[doc_from..body_from]
