@@ -94,48 +94,38 @@ use crate::progress;
 use crate::term;
 use crate::text;
 
-/// CS `0x87c6`, file `0xA096` `^2Опа бабки! # рублей на пиво!` -- the take,
-/// pushed from `20ae:3b74` at `1000:c386` and printed at `1000:c396`.
+/// `^2Опа бабки! # рублей на пиво!` -- prints the take.
 pub const PAYOFF: &str = "^2Опа бабки! # рублей на пиво!";
-/// CS `0x908b`, file `0xA95B` `^6Ты получаешь # качков опыта` -- `#` is
-/// `district * 2`, computed at `1000:c3a0`..`c3a7`, printed at `1000:c3b4`.
+/// `^6Ты получаешь # качков опыта` -- `#` is `district * 2`.
 pub const XP_LINE: &str = "^6Ты получаешь # качков опыта";
-/// CS `0x90a9`, file `0xA979` `^4Корявый! ты попался!` -- the bust, printed
-/// at `1000:c3ec`.
+/// `^4Корявый! ты попался!` -- the bust.
 pub const CAUGHT: &str = "^4Корявый! ты попался!";
-/// The 66-byte announcement run occurs at exactly three addresses
-/// image-wide, one per `FUN_1000_0d14(1)` site: `1000:c3f1` (here),
-/// `1000:dc16` ([`crate::game::Game::den_beat_up`]) and `1000:e1a2`
-/// (`crate::club`'s caught-cheating block). The other two transcribe these
-/// two literals inline; only this copy is compared against the image by a
-/// `difftest` record (`market_fragment pickpocket 0` and `1`).
+/// The same opponent-announcement text is shared by this pickpocket bust,
+/// [`crate::game::Game::den_beat_up`], and `crate::club`'s caught-cheating
+/// block.
 ///
-/// CS `0x90c0`, file `0xA990` `^6Это ` -- the first half of the composed
-/// opponent announcement, assigned at `1000:c3fc`.
+/// `^6Это ` -- the first half of the composed opponent announcement.
 pub const ANNOUNCE_OPEN: &str = "^6Это ";
-/// CS `0x90c7`, file `0xA997` ` # уровня.` -- the second half, `#` filled
-/// from `20ae:395c` at `1000:c41e`. The rank between the two is
-/// `ranks[[0x3952]]`, appended at `1000:c40f` with `push ds`, so it is not a
-/// CS literal and [`busted`] interpolates it.
+/// ` # уровня.` -- the second half. The rank between the two halves comes
+/// from `ranks[...]` and is interpolated by [`busted`], not a fixed
+/// literal.
 pub const ANNOUNCE_LEVEL: &str = " # уровня.";
-/// CS `0x90d2`, file `0xA9A2` `^6Блин менты запалят сматывайся!.` -- printed
-/// after the fight, at `1000:c44d`. The trailing `!.` is the original's.
+/// `^6Блин менты запалят сматывайся!.` -- printed after the fight. The
+/// trailing `!.` is intentional, not a typo to fix.
 pub const SCRAM: &str = "^6Блин менты запалят сматывайся!.";
-/// CS `0x848e`, file `0x9D5E` `w` -- the exit token `1000:c460` forces into
-/// the market's own buffer `20ae:3a72`, so the visit ends without the player
-/// typing anything. Shared by nine push sites image-wide;
+/// `w` -- the exit token forced into the market's own input, so the visit
+/// ends without the player typing anything.
 /// [`crate::game::Game::leave_shop`] is the consequence.
 pub const EXIT_TOKEN: &str = "w";
-/// The refusal `1000:b95e`'s non-zero arm jumps to (`1000:b965 jmp 0xc480`),
-/// printed at `1000:c494`.
+/// The refusal message, printed when a wanted player is kept out of the
+/// market:
 ///
-/// CS `0x90f4`, file `0xA9C4` `^6На базар пока нельзя там менты бродят, тебя ищут.`
+/// `^6На базар пока нельзя там менты бродят, тебя ищут.`
 pub const BANNED: &str = "^6На базар пока нельзя там менты бродят, тебя ищут.";
 
-/// The four CS literals `1000:c329`..`c46a` passes STRAIGHT to `WriteLn`, in
-/// the image's address order, each with whether the call closes the line --
-/// the shape [`crate::enemy_sheet::EMITTED`] uses. All four are
-/// `call 0eed:01c2`; the span holds no `Write`.
+/// The pickpocket verb's own printed lines, each with whether the call
+/// closes the line -- the same shape [`crate::enemy_sheet::EMITTED`]
+/// uses.
 pub const PICKPOCKET_EMITTED: [(bool, &str); 4] = [
     (true, PAYOFF),  // 1000:c381, printed 1000:c396
     (true, XP_LINE), // 1000:c39b, printed 1000:c3b4
@@ -143,63 +133,54 @@ pub const PICKPOCKET_EMITTED: [(bool, &str); 4] = [
     (true, SCRAM),   // 1000:c439, printed 1000:c44d
 ];
 
-/// Where the one composed line falls among [`PICKPOCKET_EMITTED`]'s four:
-/// the announcement's `WriteLn` at `1000:c42e` sits between index 2
-/// ([`CAUGHT`]) and index 3 ([`SCRAM`]), and carries no CS literal of its
-/// own because it prints the stack local `ss:[bp-0x100]`.
+/// The composed announcement line sits between index 2 ([`CAUGHT`]) and
+/// index 3 ([`SCRAM`]) in [`PICKPOCKET_EMITTED`], and carries no literal of
+/// its own because it prints an assembled string.
 ///
-/// The same sweep collects bare `WriteLn`s and `ReadKey`s, so "the `t` verb
-/// blocks on nothing and prints no blank line" is a COMPARED claim: the
-/// image holds 59 `call 0f16:031a` sites and **none** of them is in this
-/// span or in [`BANNED_EMITTED`]'s, which is why row 19 gains nothing here.
+/// The `t` verb blocks on nothing and prints no blank line.
 pub const PICKPOCKET_GAPS: Gaps = &[(3, "C")];
 
-/// The three CS literals the span hands to the string RTL rather than to a
-/// `WriteLn`, in the image's address order: two halves of the announcement
-/// and the forced exit token.
+/// The three strings assembled rather than written directly: the two
+/// halves of the announcement, and the forced exit token.
 pub const PICKPOCKET_FRAGMENTS: [&str; 3] = [
     ANNOUNCE_OPEN,  // 1000:c3f7, 0f78:0ae7 at 1000:c3fc
     ANNOUNCE_LEVEL, // 1000:c414, 0f78:0b66 at 1000:c419
     EXIT_TOKEN,     // 1000:c452, 0f78:0b01 at 1000:c460
 ];
 
-/// `1000:c480`..`c499` -- the whole of the ban's refusal arm: one literal,
-/// one `WriteLn`, and `1000:c499`'s `jmp short 0xc4b4` out.
+/// The whole of the ban's refusal arm: one literal, printed once, then
+/// out.
 pub const BANNED_EMITTED: [(bool, &str); 1] = [
     (true, BANNED), // 1000:c480, printed 1000:c494
 ];
 
-/// How many turns the market stays shut after a bust -- `1000:c465`
-/// `c6 06 76 3b 05`. [`crate::game::Game::walk_preamble`] ticks it down at
-/// `1000:b173` and announces its last turn at `1000:b11e`; `girl` clears it
-/// at `1000:d793` and the district advance at `1000:abce`.
+/// How many turns the market stays shut after a bust.
+/// [`crate::game::Game::walk_preamble`] ticks it down and announces its
+/// last turn; `girl` and a district advance both clear it.
 pub const BAN_TURNS: u8 = 5;
 
-/// `t` at the `mar` prompt -- the whole of `1000:c333`..`c46a`.
+/// `t` at the `mar` prompt.
 ///
-/// `lines` is threaded through because the caught arm reaches a real fight
-/// (`1000:c436`, `FUN_1000_3d11(1)`), which reads the combat prompt. That
-/// call is also the **only** caller of `1000:3e8d`'s opener
-/// ([`crate::ending::OPENER_1`]) anywhere in the image: before this arm
-/// landed, that arm of [`crate::game::Game::run_combat`] was unreachable.
+/// `lines` is threaded through because the caught arm reaches a real
+/// fight, which reads the combat prompt. That call is also the **only**
+/// caller of [`crate::ending::OPENER_1`] anywhere in the game: without
+/// this arm, that path of [`crate::game::Game::run_combat`] is
+/// unreachable.
 pub(crate) fn pickpocket(
     g: &mut Game,
     lines: &mut dyn Iterator<Item = io::Result<String>>,
 ) -> io::Result<()> {
-    // 1000:c333..1000:c343 -- `mov si,ax` / two `shl ax,1` / `add ax,si` /
-    // `add ax,0x5`, i.e. district * 5 + 5, not district * 5.
+    // The draw is over `district * 5 + 5`, not `district * 5`.
     let n = u16::from(g.district) * 5 + 5;
     let draw = g.rng.below(n);
 
-    // 1000:c353..1000:c35b. The SUCCESS arm is the fall-through of the three
-    // branches -- удача NOT below the draw -- so the predicate is negated
-    // here, exactly as `crate::club`'s `play_cards` negates its copy.
-    // `&&` short-circuits, which is the original's order: a failed compare
-    // jumps straight to 1000:c3cd and never reaches the `Random(10)` at
-    // 1000:c361, so the second draw is spent only when the first succeeded.
+    // The success arm is the fall-through -- удача NOT below the draw --
+    // so the predicate is negated here, exactly as `crate::club`'s
+    // `play_cards` negates its copy. The `&&` short-circuits: a failed
+    // compare skips the second draw entirely, so it is spent only when the
+    // first succeeded.
     if !Game::luck_below_random_32(g.player.luck, draw)
-        // 1000:c361 / 1000:c366 `cmp ax,0x9` / 1000:c369 `jnb 0xc3cd` -- so
-        // one draw in ten busts a theft that luck had already carried.
+        // One draw in ten busts a theft that luck had already carried.
         && g.rng.below(10) < 9
     {
         haul(g);
@@ -208,61 +189,48 @@ pub(crate) fn pickpocket(
     busted(g, lines)
 }
 
-/// `1000:c36b`..`c3ca` -- the theft pays off.
+/// The theft pays off.
 fn haul(g: &mut Game) {
-    // 1000:c36b `mov ax,[0x38a4]` / 1000:c36e `shl ax,1` -- a 16-bit shift,
-    // so a удача above 0x7fff wraps; `wrapping_mul` is that, not a guess.
-    // 1000:c376 `inc ax`, 1000:c377 stores into 20ae:3b74.
+    // A удача above `0x7fff` wraps when doubled; `wrapping_mul`
+    // reproduces that wraparound intentionally, not as an approximation.
     let take = i32::from(g.rng.below(g.player.luck.wrapping_mul(2))) + 1;
-    // 1000:c37a reads it back and 1000:c37d `add [0x38c7],ax` credits it.
+    // Reads the take back and credits it to money.
     g.player.money = g.player.money.wrapping_add(take as i16);
-    // 1000:c381 pushes file `0xA096` `^2Опа бабки! # рублей на пиво!`, whose
-    // `#` is 1000:c386's `push [0x3b74]`; printed by 1000:c396.
+    // Prints `^2Опа бабки! # рублей на пиво!`, whose `#` is the take.
     term::println(&text::fill(PAYOFF, &[i64::from(take)]));
 
-    // 1000:c3a0..1000:c3a7 -- `mov al,[0x3692]` / `xor ah,ah` / `shl ax,1`.
+    // Computes district * 2.
     let xp = u16::from(g.district) * 2;
-    // 1000:c39b pushes file `0xA95B` `^6Ты получаешь # качков опыта`, printed
-    // by 1000:c3b4 -- BEFORE 1000:c3c0 credits the same value.
+    // Prints `^6Ты получаешь # качков опыта` before the value is
+    // credited.
     term::println(&text::fill(XP_LINE, &[i64::from(xp)]));
-    // 1000:c3c0 `add [0x38ce],ax` is the credit and 1000:c3c7 the call. As in
-    // `crate::club`, `xp` is `apply_levels`'s `award` (the `add`) and `false`
-    // is the original's own `param_1 = 0` from 1000:c3c4 -- the capped form,
-    // not an award of zero.
+    // As in `crate::club`, `xp` is `apply_levels`'s `award` and `false`
+    // is the capped form, not an award of zero.
     progress::apply_levels(&mut g.progress, &mut g.player, &mut g.rng, xp, false);
 }
 
-/// `1000:c3cd`..`c46a` -- the theft is spotted.
+/// The theft is spotted.
 fn busted(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
-    // 1000:c3cd `mov al,0x1` / 1000:c3d0 `call 0x10d14` -- FUN_1000_0d14(1),
-    // the clamp-to-class-7 form, so no Мент ever answers a pickpocket.
+    // Uses the clamp-to-class-7 form, so no Мент ever answers a
+    // pickpocket.
     let enemy = g.roll_enemy(1);
     g.fight_accepted = true; // 1000:c3d3
 
-    // 1000:c3d8 pushes file `0xA979` `^4Корявый! ты попался!`, printed by
-    // 1000:c3ec.
+    // Prints `^4Корявый! ты попался!`.
     term::println(CAUGHT);
-    // 1000:c3f7 pushes file `0xA990` `^6Это `, 1000:c401..1000:c40f appends
-    // ranks[[0x3952]] (`push ds`, so not a CS literal), 1000:c414 pushes
-    // file `0xA997` ` # уровня.` with 1000:c41e's `20ae:395c` as its `#`;
-    // ONE WriteLn at 1000:c42e closes the assembled line.
+    // Prints `^6Это ` + the rank + ` # уровня.` as one assembled line.
     term::print(ANNOUNCE_OPEN);
     term::print(&Game::rank_name(enemy.class));
     term::println(&text::fill(ANNOUNCE_LEVEL, &[i64::from(enemy.level)]));
 
-    // 1000:c433 `mov al,0x1` / 1000:c436 `call 0x13d11` -- FUN_1000_3d11(1).
-    // `param_1 = 1` skips the class-keyed greeting (1000:3d2f `jmp 0x3e8d`)
-    // and takes `1000:3e8d`'s own one-line opener instead.
+    // Skips the class-keyed greeting and uses a one-line opener instead.
     g.run_combat(1, enemy, lines)?;
 
-    // 1000:c439 pushes file `0xA9A2` `^6Блин менты запалят сматывайся!.`,
-    // printed by 1000:c44d.
+    // Prints `^6Блин менты запалят сматывайся!.`.
     term::println(SCRAM);
-    // 1000:c452..1000:c460 -- `0f78:0b01` with a maxlen of 0xff, whose SOURCE
-    // is the first push (file `0x9D5E` `w`) and DESTINATION the second (the
-    // market's buffer 20ae:3a72), the same argument order `crate::club`'s
-    // 1000:e251 uses. The `w` compare at 1000:c474 then hits and the visit
-    // ends with no further input.
+    // Forces `w` into the market's own input, the same technique
+    // `crate::club` uses elsewhere. The exit compare then hits and the
+    // visit ends with no further input.
     g.leave_shop();
     g.market_ban_countdown = BAN_TURNS; // 1000:c465
     Ok(())
@@ -317,11 +285,9 @@ mod tests {
         })
     }
 
-    /// A seed whose `1000:c344` draw the given удача beats (or loses to) and
-    /// whose `1000:c361` draw then clears 9 -- found by replaying the two
-    /// draws rather than asserted, so the arm each test drives is the arm the
-    /// RNG actually selects. `min_first` rejects a zero first draw, which
-    /// удача 0 would otherwise tie with.
+    /// A seed whose first draw the given удача beats (or loses to) and
+    /// whose second draw then clears 9. `min_first` rejects a zero first
+    /// draw, which удача 0 would otherwise tie with.
     fn seed_for(district: u8, luck: u16, want_haul: bool, min_first: u16) -> u32 {
         for seed in 1u32..500_000 {
             let mut g = market(district, seed);
@@ -339,8 +305,8 @@ mod tests {
 
     // -- the payoff arm ---------------------------------------------------
 
-    /// `1000:c376`..`c3b4`: the take is `Random(удача*2) + 1`, it is added to
-    /// the money before it is printed, and the xp line is `district * 2`.
+    /// The take is `Random(удача*2) + 1`; it is added to the money before
+    /// it is printed, and the xp line is `district * 2`.
     #[test]
     fn the_haul_credits_the_take_and_the_district_xp() {
         let district = 3u8;
@@ -368,9 +334,9 @@ mod tests {
 
     // -- the caught arm ---------------------------------------------------
 
-    /// The bust's order and its effects: the flag at `1000:c3d3`, the
-    /// accusation, the composed announcement, the fight, the closing line,
-    /// the forced `w` at `1000:c460` and the ban at `1000:c465`.
+    /// The bust's order and its effects: the flag, the accusation, the
+    /// composed announcement, the fight, the closing line, the forced
+    /// exit, and the ban.
     #[test]
     fn the_bust_fights_ejects_and_bans() {
         let district = 2u8;
@@ -397,10 +363,8 @@ mod tests {
         assert_eq!(g.progress.xp, 0, "the bust arm has no xp credit");
     }
 
-    /// `1000:c433` pushes `1`, and `1000:3d2f jmp 0x3e8d` sends that value
-    /// past the class-keyed greeting to `1000:3e8d`'s own opener -- whose
-    /// ONLY caller image-wide is `1000:c436`. This is the assertion that
-    /// `docs/re/port-gaps.md` row 21 stopped being dead code.
+    /// Confirms the pickpocket's fight always takes the class-independent
+    /// opener, whose only caller anywhere in the game is this arm.
     #[test]
     fn the_bust_is_the_only_caller_of_the_param_one_opener() {
         let district = 1u8;
@@ -412,8 +376,7 @@ mod tests {
             out.iter().any(|l| l == crate::ending::OPENER_1[0]),
             "1000:3ea5 must print, got {out:?}"
         );
-        // And the class-keyed greeting must NOT: `param_1 = 1` is neither of
-        // the two values 1000:3d27/1000:3d2b admit.
+        // And the class-keyed greeting must not run here.
         assert!(
             !out.iter()
                 .any(|l| l == "^4Эй мудак?!" || l == "Слышь Вась.."),
@@ -421,8 +384,8 @@ mod tests {
         );
     }
 
-    /// `1000:c3d0` passes `param_1 = 1`, the clamp-to-class-7 form
-    /// (`1000:0da7`/`1000:0dba`), so a pickpocket never faces class 8 or 9.
+    /// Uses the clamp-to-class-7 form, so a pickpocket never faces class 8
+    /// or 9.
     #[test]
     fn the_bust_never_rolls_above_class_seven() {
         for seed in 1u32..40 {
@@ -467,8 +430,8 @@ mod tests {
         assert_eq!(EXIT_TOKEN, "w", "1000:c452 pushes the shared exit token");
     }
 
-    /// `t` is the market's alone: `1000:c329` sits inside the `mar` loop
-    /// (`1000:bd08`..`c479`) and the dealers' loop has no such compare.
+    /// `t` is the market's alone: the dealers' loop has no such
+    /// compare.
     #[test]
     fn the_t_verb_is_the_markets_alone() {
         let mut g = market(1, 1);

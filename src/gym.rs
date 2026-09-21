@@ -161,9 +161,8 @@ fn train_stamina(g: &mut Game) {
 /// *before* the threshold test, so passing `award = 10` after the manual
 /// `xp += 10` would grant twenty.
 ///
-/// **The outer threshold guard is kept**, even though it duplicates the
-/// callee's own entry check -- consistent with the original having that
-/// branch, since this is a port.
+/// **The outer threshold guard duplicates the callee's own entry check --
+/// kept intentionally.**
 ///
 /// This is the only arm in the whole range that can move the RNG stream,
 /// and it moves it indirectly: the gym contains no `Random` call site of
@@ -198,37 +197,21 @@ fn train_xp(g: &mut Game) {
     progress::apply_levels(&mut g.progress, &mut g.player, &mut g.rng, 0, false);
 }
 
-/// `4` -- `1000:e7e2`..`1000:e861`, `купить зубную защиту боксёров`, 30 rubles.
-///
-/// **Established from flow**, same decode:
-///
-/// ```text
-/// e7fa  cmp byte [0x394a],0x0 / e7ff jnz 0xe848
-/// e801  cmp word [0x38c7],0x1e / e806 jnl 0xe823
-/// e808  mov di,0xa51f (file 0xBDEF) .. e81c WriteLn / e821 jmp short 0xe846
-/// e823  sub word [0x38c7],0x1e            ; бабки -30
-/// e828  mov byte [0x394a],0x1             ; зубная защита := 1
-/// e82d  mov di,0xa537 (file 0xBE07) .. e841 WriteLn / e846 jmp short 0xe861
-/// e848  mov di,0xa54a (file 0xBE1A) .. e85c WriteLn
-/// ```
+/// `4` -- `купить зубную защиту боксёров` (зубная защита), 30 rubles.
 ///
 /// **The ownership gate is the arm's and the menu row has no counterpart.**
-/// Row 4's only gate is `1000:e51a`, `district > 1`, so after the purchase
+/// Row 4's only gate is `district > 1`, so after the purchase
 /// the row is still listed and the key still prints
-/// `^6У тебя есть эта штучка.` That is the original's behaviour, not a bug
-/// to fix in the menu; `arm_4_stays_listed_and_refuses_after_the_purchase`
-/// pins it.
+/// `^6У тебя есть эта штучка.` That is intentional, not a bug
+/// to fix in the menu.
 ///
 /// The gate order is the ownership test first and the money test second, so
 /// an owner with no money still sees the already-owned line.
 ///
-/// `1000:e828` is the only image-wide absolute write to `20ae:394a`
-/// (`python3 tools/re_query.py xrefs-to 20ae:394a` reports five references,
-/// one write) and nothing clears it -- not the district reset at
-/// `1000:abbd`, which clears the discovery flags and leaves this one alone --
-/// so the purchase is permanent for the character. What it buys is
-/// `1000:47ce`/`1000:47f3`, which splits a jaw break into the plain arm and
-/// a `Random(4)`: a DRAW-COUNT difference, not flavour.
+/// Nothing clears the purchase once made -- not the district reset, which
+/// clears the discovery flags and leaves this one alone -- so the purchase
+/// is permanent for the character. It splits a jaw break into the plain arm
+/// and an extra roll: a draw-count difference, not flavour.
 fn buy_tooth_guard(g: &mut Game) {
     // Checked first, so it wins over the money test below.
     if g.tooth_guard {
@@ -279,43 +262,31 @@ fn train_abs(g: &mut Game) {
     if i32::from(g.trained_armour()) >= ceiling {
         // Prints `^6Ты максимально прокачал пресс для своего уровня`.
         term::println(EMITTED[18].1);
-        // 1000:e912 / 1000:e917 -- inside the ceiling branch only.
         if g.district < 4 {
-            // file `0xBEA0` `^6Качай дальше в следующем районе`, pushed at
-            // 1000:e919 and printed by 1000:e92d.
+            // Prints `^6Качай дальше в следующем районе`.
             term::println(EMITTED[19].1);
         }
         return;
     }
-    // 1000:e896 / 1000:e89b -- second, so the ceiling line wins over it.
+    // The money check comes second, so the ceiling line wins over it.
     if g.player.money < 20 {
-        // 1000:e89d pushes file `0xBE34` `^4Не хватает рубликов`, printed
-        // by 1000:e8b1; 1000:e8b6 leaves.
+        // Prints `^4Не хватает рубликов` and leaves.
         term::println(EMITTED[15].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(20_i16); // 1000:e8b8
 
-    // 1000:e8bd pushes file `0xBE4A` `^2Ты прокачиваешь пресс.`, printed by
-    // 1000:e8d1.
+    // Prints `^2Ты прокачиваешь пресс.`
     term::println(EMITTED[16].1);
-    // 1000:e8d6 `inc [0x38b2]`, the visible Броня, AND 1000:e8da
-    // `inc [0x3e34]`, the scratch this arm's own ceiling is tested against.
-    // They are one statement here because the port has one value for both.
+    // Raises the visible Броня and the scratch this arm's own ceiling is
+    // tested against together, as one statement, because the port keeps
+    // one value for both.
     g.player.armor = g.player.armor.wrapping_add(1);
-    // 1000:e8de pushes file `0xBE63` `^1Броня +1`, printed by 1000:e8f2.
+    // Prints `^1Броня +1`.
     term::println(EMITTED[17].1);
 }
 
-/// The literal pool for the gym -- `1000:e390`..`1000:ea8f`, in the image's
-/// ADDRESS order, the order `tools/difftest.py`'s `literal_walk` reads them
-/// in. The span's last five bytes are trimmed: they push the NEXT verb's
-/// key literal, which a call past the end consumes, so a walk including
-/// them reports a literal nothing in the span takes.
-///
-/// `docs/re/port-gaps.md` recorded that the club and gym rest on their
-/// module-local unit tests, with `difftest` carrying their MENU rows and
-/// nothing else. This pool is the arm bodies' half of that comparison.
+/// The gym's list of printed lines.
 ///
 /// `(closes, text)` -- `closes` is true for a `WriteLn`, false for a
 /// `Write` the next literal continues.
@@ -377,7 +348,7 @@ mod tests {
         }
     }
 
-    /// A gym-ready game: the gym discovered (`20ae:369a`), the player
+    /// A gym-ready game: the gym discovered, the player
     /// standing in it, at `district`, with `money` in the pocket. `Game`'s
     /// `mode` is private to `crate::game`, so [`turn`] names the location
     /// explicitly the way `Game::run` does from `Mode::Shop(loc)`.
@@ -405,11 +376,8 @@ mod tests {
 
     // -- arm `1` ---------------------------------------------------------
 
-    /// `1000:e68d`'s four-byte `jnz` skips `1000:e68f inc [0x38a8]` and
-    /// lands on `1000:e693 inc [0x38aa]`. Buying twice from an ODD strength
-    /// makes the new strength even once and odd once, so урон min must rise
-    /// by 1 and урон max by 2. Both-conditional gives +1/+1 and
-    /// both-unconditional +2/+2; this fails on either.
+    /// Buying twice from an ODD strength makes the new strength even once
+    /// and odd once, so урон min must rise by 1 and урон max by 2.
     #[test]
     fn arm_1_raises_dmg_max_every_time_and_dmg_min_only_on_an_even_strength() {
         let mut g = gym(1, 100);
@@ -444,8 +412,7 @@ mod tests {
         );
     }
 
-    /// `1000:e635` is `cmp ... ,0x14` and `1000:e63a` is `jnl`, so 19 refuses
-    /// and 20 buys. A ceiling off by one fails here.
+    /// A strength of 19 refuses and 20 buys; the ceiling is 20.
     #[test]
     fn arm_1_refuses_at_nineteen_and_buys_at_twenty() {
         let mut g = gym(1, 19);
@@ -482,7 +449,7 @@ mod tests {
         );
     }
 
-    /// Same price as `1`, same literal, its own compare at `1000:e6c1`.
+    /// Same price as `1`.
     #[test]
     fn arm_2_refuses_at_nineteen() {
         let mut g = gym(1, 19);
@@ -494,9 +461,9 @@ mod tests {
 
     // -- arm `3` ---------------------------------------------------------
 
-    /// The `#` of file `0xBDDB` is `1000:e7be`'s own immediate 10, and the
-    /// credit at `1000:e7b4` is 10. A port that printed the xp TOTAL, or
-    /// credited the printed number twice, fails here.
+    /// The printed `#` and the xp credited are both 10, independently --
+    /// a port that printed the xp total, or credited the printed number
+    /// twice, would be wrong.
     #[test]
     fn arm_3_credits_ten_qualification_points_once_not_twice() {
         let mut g = gym(2, 10);
@@ -512,10 +479,9 @@ mod tests {
         );
     }
 
-    /// `1000:e7df` passes `param_1 = 0`, and the grant already happened at
-    /// `1000:e7b4`. So `apply_levels` gets `award = 0`: the xp left after the
-    /// level-up must be `(xp + 10) - threshold`. Passing `award = 10` would
-    /// leave ten more than that.
+    /// `apply_levels` gets `award = 0` because the xp grant already
+    /// happened: the xp left after the level-up must be `(xp + 10) -
+    /// threshold`. Passing `award = 10` would leave ten more than that.
     #[test]
     fn arm_3_does_not_grant_the_award_twice_at_the_level_up() {
         let mut g = gym(2, 10);
@@ -528,8 +494,7 @@ mod tests {
         assert_eq!(g.progress.xp, 5 + 10 - step, "award must be 0, not 10");
     }
 
-    /// `1000:e7d3`..`1000:e7da` -- below the threshold nothing is called and
-    /// the level stands.
+    /// Below the threshold nothing is called and the level stands.
     #[test]
     fn arm_3_below_the_threshold_does_not_level_up() {
         let mut g = gym(2, 10);
@@ -541,8 +506,8 @@ mod tests {
         assert_eq!(g.progress.xp, 10);
     }
 
-    /// `1000:e757` is `jnle`: the arm runs iff `district * 10 - 3 > level`.
-    /// At district 2 that is 17, so level 16 trains and level 17 does not.
+    /// The arm runs iff `district * 10 - 3 > level`. At district 2 that is
+    /// 17, so level 16 trains and level 17 does not.
     #[test]
     fn arm_3_ceiling_is_district_times_ten_minus_three() {
         for (level, trains) in [(16u16, true), (17, false)] {
@@ -559,9 +524,9 @@ mod tests {
         }
     }
 
-    /// The level test is `1000:e757` and the money test is `1000:e779`, in
-    /// that order. Too strong AND too poor must print the level refusal; a
-    /// port that tested the money first would print the other line.
+    /// The level test comes before the money test. Too strong AND too
+    /// poor must print the level refusal; testing money first would print
+    /// the other line.
     #[test]
     fn arm_3_tests_the_level_before_the_money() {
         let mut g = gym(2, 0);
@@ -573,7 +538,7 @@ mod tests {
         );
     }
 
-    /// `1000:e774` is `cmp ... ,0xa`: 9 refuses with its own literal, 10 buys.
+    /// 9 refuses and 10 buys.
     #[test]
     fn arm_3_refuses_at_nine_and_buys_at_ten() {
         let mut g = gym(2, 9);
@@ -590,7 +555,7 @@ mod tests {
 
     // -- arm `4` ---------------------------------------------------------
 
-    /// `1000:e801` is `cmp ... ,0x1e` and `1000:e828` sets `20ae:394a`.
+    /// Costs 30 rubles and sets the зубная защита flag.
     #[test]
     fn arm_4_costs_thirty_and_sets_the_flag() {
         let mut g = gym(2, 29);
@@ -608,12 +573,12 @@ mod tests {
         assert_eq!(g.player.money, 0, "1000:e823");
     }
 
-    /// **Do not "fix" the menu.** Row 4's only gate is `1000:e51a`
-    /// (`district > 1`) and the ownership test `1000:e7fa` is the ARM's, so
-    /// after the purchase the row is still listed and the key still prints
-    /// the already-owned line. The `1000:e7ff` gate also comes before the
-    /// money test at `1000:e801`, so an owner with nothing in the pocket
-    /// still sees the owned line and not the money one.
+    /// **Do not "fix" the menu.** Row 4's only gate is `district > 1`;
+    /// the ownership test is the arm's alone, so after the purchase the
+    /// row is still listed and the key still prints the already-owned
+    /// line. The ownership test also comes before the money test, so an
+    /// owner with nothing in the pocket still sees the owned line and not
+    /// the money one.
     #[test]
     fn arm_4_stays_listed_and_refuses_after_the_purchase() {
         let mut g = gym(2, 30);
@@ -637,7 +602,7 @@ mod tests {
 
     // -- arm `5` ---------------------------------------------------------
 
-    /// `1000:e896` is `cmp ... ,0x14`; `1000:e8d6` raises the armour.
+    /// Costs 20 rubles and raises the armour.
     #[test]
     fn arm_5_costs_twenty_and_raises_the_armour() {
         let mut g = gym(3, 19);
@@ -658,11 +623,9 @@ mod tests {
         assert_eq!(g.player.money, 0, "1000:e8b8");
     }
 
-    /// The arm's ceiling is `(district - 2) * 10` (`1000:e87f`..`1000:e894`)
-    /// and the MENU row's is `district * 2` (`1000:e57d`..`1000:e58d`). At
-    /// district 3 that is 10 against 6, so at armour 6 the row is gone and
-    /// the arm still works. A port that shared one predicate between them
-    /// would refuse here.
+    /// The arm's ceiling is `(district - 2) * 10` and the menu row's is
+    /// `district * 2`. At district 3 that is 10 against 6, so at armour 6
+    /// the row is gone from the menu even though the arm still works.
     #[test]
     fn arm_5_keeps_working_after_its_menu_row_has_gone() {
         let mut g = gym(3, 20);
@@ -683,10 +646,9 @@ mod tests {
         assert_eq!(g.player.armor, 7);
     }
 
-    /// `1000:e8da` keeps the value the ceiling is tested against in step
-    /// with the purchase, so the arm terminates. At district 3 the ceiling
-    /// is 10 and exactly ten purchases fit; an arm that raised nothing the
-    /// gate reads would never stop.
+    /// The value the ceiling is tested against stays in step with the
+    /// purchase, so the arm terminates. At district 3 the ceiling is 10
+    /// and exactly ten purchases fit.
     #[test]
     fn arm_5_stops_when_the_ceiling_is_reached() {
         let mut g = gym(3, 10_000);
@@ -703,12 +665,12 @@ mod tests {
         assert_eq!(g.player.armor, 10);
     }
 
-    /// The ceiling at `1000:e894` reads `20ae:3e34`, not the armour byte, so
-    /// equipment does NOT eat into the training budget: the same district-3
+    /// The training ceiling tracks a scratch value, not the armour byte,
+    /// so equipment does NOT eat into the training budget: a district-3
     /// player buys the same 10 whether or not he owns the Крутая кожанка,
-    /// and ends on armour 14 instead of 10 because the jacket's 4 sat on top
-    /// of the trained 10 the whole time. Substituting plain `armor` counted
-    /// the jacket against the ceiling and stopped him at 6.
+    /// ending on armour 14 instead of 10 because the jacket's 4 sits on
+    /// top of the trained 10. Intentional -- counting the jacket against
+    /// the ceiling would stop him at 6.
     #[test]
     fn arm_5_counts_trained_armour_not_worn_armour() {
         let mut g = gym(3, 10_000);
@@ -728,8 +690,8 @@ mod tests {
         assert_eq!(g.trained_armour(), 10);
     }
 
-    /// `1000:e912`/`1000:e917` is inside the ceiling branch: the hint
-    /// follows the ceiling line while district < 4 and is suppressed from 4.
+    /// The hint follows the ceiling line while district < 4, and is
+    /// suppressed from district 4 on.
     #[test]
     fn arm_5_hint_is_suppressed_from_district_four() {
         let mut g = gym(3, 20);
@@ -753,8 +715,7 @@ mod tests {
         );
     }
 
-    /// The ceiling test is `1000:e894` and the money test is `1000:e89b`, in
-    /// that order.
+    /// The ceiling test comes before the money test.
     #[test]
     fn arm_5_tests_the_ceiling_before_the_money() {
         let mut g = gym(3, 0);
@@ -768,11 +729,9 @@ mod tests {
 
     // -- the chain itself ------------------------------------------------
 
-    /// At district 1 the `3`, `4` and `5` compares are jumped over
-    /// (`1000:e72d`, `1000:e7e7`, `1000:e866`), so the key is never compared
-    /// and the line falls through to `1000:e932`. **Nothing is printed and
-    /// nothing changes** -- a port that compared the key first and the
-    /// district second would print a refusal the original has no path to.
+    /// At district 1, keys `3`, `4` and `5` are not recognised at all: no
+    /// refusal is printed and nothing changes. This is intentional -- the
+    /// district 1 gym has no path to a refusal for these keys.
     #[test]
     fn district_one_swallows_three_four_and_five_in_silence() {
         for key in ["3", "4", "5"] {
@@ -787,8 +746,7 @@ mod tests {
         }
     }
 
-    /// District 2 opens `3` and `4` (`1000:e728`, `1000:e7e2` are both
-    /// `cmp ...,0x1`) and still hides `5` (`1000:e861` is `cmp ...,0x2`).
+    /// District 2 opens `3` and `4`, and still hides `5`.
     #[test]
     fn district_two_opens_three_and_four_but_not_five() {
         let g = gym(2, 1_000);
@@ -799,10 +757,8 @@ mod tests {
         assert!(key_dispatches(&g, "5"));
     }
 
-    /// **There is no `Непонятно` line.** The chain falls off its end at
-    /// `1000:e943`, which jumps to the PROMPT; the range holds no literal
-    /// for an unrecognised key. The turn must also leave the player in the
-    /// gym.
+    /// **There is no `Непонятно` line.** An unrecognised key prints
+    /// nothing; the turn re-prompts, and the player stays in the gym.
     #[test]
     fn an_unrecognised_key_prints_nothing_and_stays_in_the_gym() {
         for key in ["6", "0", "x", "", "hp"] {
@@ -814,9 +770,9 @@ mod tests {
         }
     }
 
-    /// `w` is the shared exit at `1000:e93c`, owned by `Game::shop_turn`'s
-    /// catch-all rather than by this module, and `key_dispatches` must let
-    /// it through to there.
+    /// `w` is the shared exit, owned by `Game::shop_turn`'s catch-all
+    /// rather than by this module, and `key_dispatches` must let it
+    /// through to there.
     #[test]
     fn w_still_leaves_the_gym() {
         let mut g = gym(5, 1_000);
@@ -842,9 +798,9 @@ mod tests {
         }
     }
 
-    /// The gym's own `ReadLn` does not trim (`1000:e61f call 0eed:0216` only
-    /// lowercases), and `Game::shop_turn` no longer does either. ` 1` is a
-    /// MISS, here as there.
+    /// The gym's own input reading does not trim, only lowercases, and
+    /// `Game::shop_turn` no longer trims either. ` 1` is a MISS, here as
+    /// there.
     #[test]
     fn the_gym_prompt_refuses_untrimmed_input_like_the_original() {
         let mut g = gym(1, 20);
@@ -852,8 +808,8 @@ mod tests {
         assert_eq!(g.player.money, 20, "and nothing was spent");
     }
 
-    /// And it is case-insensitive in both, because `0eed:0216` lowercases
-    /// ASCII `A`..`Z` in place.
+    /// And it is case-insensitive in both: input is lowercased before
+    /// matching.
     #[test]
     fn the_gym_prompt_is_case_insensitive() {
         let mut g = gym(5, 1_000);

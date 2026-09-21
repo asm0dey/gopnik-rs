@@ -7910,8 +7910,7 @@ mod tests {
         assert_eq!(g.location, Location::Street);
     }
 
-    /// The reveal hint's early return has a byte-identical twin. Both flags
-    /// found means no hint, whatever the arithmetic says.
+    /// Both flags found means no hint, whatever the arithmetic says.
     #[test]
     fn the_den_reveal_hint_is_suppressed_once_both_places_are_found() {
         // Arithmetic that comfortably clears the 0x28 gate on its own:

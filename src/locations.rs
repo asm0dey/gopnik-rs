@@ -44,18 +44,13 @@
 //! scope) the only thing left holding it open was that the brief had scoped
 //! it out. The class is now a parameter.
 
-/// `Dealers` is `20ae:3695`, the `bmar` verb -- the original calls the place
-/// **Барыги**, not a market. Named from its own handler's strings: entry text
-/// at file `0xAA29`, `Ты пришел к барыгам напиши  ^6w^7  чтобы уйти.` (note
-/// the double spaces around `^6w^7` in the binary), and prompt at
-/// file `0xAC4B`, `^0Барыги\`, both inside `1000:c4be`'s body, which is also
-/// where the pistol is bought (`1000:cd05`). `mar` / `20ae:3694` is the
-/// separate базар, file `0xA9F8`,
-/// `^6Ты незнаешь, пока ешё, где находтся базар`, so `bmar` is a different
-/// location and not a bigger one; the Вор class bonus at `1000:73e0` sets
-/// this flag and its menu line calls the bonus `Барыги`
-/// (`docs/re/wander.md`). Earlier revisions called it `BigMarket`, read off
-/// the verb token alone.
+/// `Dealers` is the `bmar` verb -- the game calls the place **Барыги**, not
+/// a market. Its entry text is `Ты пришел к барыгам напиши  ^6w^7  чтобы
+/// уйти.` (note the double spaces around `^6w^7`) and its prompt is
+/// `^0Барыги\`. That is also where the pistol is bought. `mar` is the
+/// separate базар, `^6Ты незнаешь, пока ешё, где находтся базар`, so `bmar`
+/// is a different location, not a bigger one; the Вор class bonus sets this
+/// flag and its menu line calls the bonus `Барыги`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Location {
     Street,
@@ -70,56 +65,18 @@ pub enum Location {
     Dorm,
 }
 
-/// The seven locations tracked by `PLACES.SAV`, in file order.
+/// The seven locations tracked by `PLACES.SAV`, in file order. Loading
+/// prints `^0Загружено из places`.
 ///
-/// **Established from flow.** `places.sav` is read by the routine at
-/// `1000:6c5a`, and it uses `Read`, not `BlockRead` -- seven separate
-/// one-byte reads, each naming its destination flag, so the file's byte
-/// order is read off the disassembly directly:
-///
-/// ```text
-/// 6c5a  mov di,0x3e36 / push ds / push di   ; the file variable
-/// 6c6a  call 0f78:0ae7                      ; build the name from DS:3d32
-/// 6c74  call 0f78:0b66                      ; + cs:0x63f2 = file 0x7CC2, `places.sav`
-/// 6c79  call 0f78:072e                      ; Assign
-/// 6c87  call 0f78:0769                      ; Reset(f, 1)   -- record size 1
-/// 6c8c  call 0f78:028a                      ; IOResult; non-zero -> 1000:6d3b
-/// 6ca2  call 0f78:081e  -> DS:0x3694        ; Read #1  Market
-/// 6cb4  call 0f78:081e  -> DS:0x3695        ; Read #2  Dealers
-/// 6cc6  call 0f78:081e  -> DS:0x3696        ; Read #3  Den
-/// 6cd8  call 0f78:081e  -> DS:0x3697        ; Read #4  Girl
-/// 6cea  call 0f78:081e  -> DS:0x3698        ; Read #5  Vet
-/// 6cfc  call 0f78:081e  -> DS:0x3699        ; Read #6  Club
-/// 6d0e  call 0f78:081e  -> DS:0x369a        ; Read #7  Gym
-/// 6d1b  call 0f78:07ea                      ; Close
-/// 6d20  writes `^0Загружено из places` (file 0x7CCD)
-/// ```
-///
-/// So **file order == flag-address order**, and the array below is that
-/// order. The seven flags are the contiguous bytes at `20ae:3694..369a`
-/// whose gates are disassembled in `docs/re/command-dispatch.md`,
-/// "Discovery gates":
-///
-/// | byte | `20ae:` | verb | location |
-/// |---|---|---|---|
-/// | 0 | `3694` | `mar` | Market |
-/// | 1 | `3695` | `bmar` | Dealers |
-/// | 2 | `3696` | `pr` | Den |
-/// | 3 | `3697` | `girl` | Girl |
-/// | 4 | `3698` | `rep` | Vet |
-/// | 5 | `3699` | `kl` | Club |
-/// | 6 | `369a` | `trn` | Gym |
-///
-/// Earlier revisions carried Den and Vet swapped at slots 2 and 4, on the
-/// order the `mar`/`bmar`/`rep`/`girl`/`pr`/`kl`/`trn` command tokens appear
-/// in `data/strings.json` -- evidence about the *command table*, not about
-/// the file. `orig/PLACES.SAV` is `01` in every slot and cannot arbitrate
-/// (the round-trip test below passes under any permutation), so the
-/// disassembly above is the only thing that settles it, and it does.
-///
-/// The read's own failure arm (`1000:6d3b`, taken when `IOResult` is
-/// non-zero) clears the flags with three `[0x389c]`-keyed exceptions and
-/// leaves via `1000:6da0`; it is described in `docs/re/gaps.md`.
+/// | verb | location |
+/// |---|---|
+/// | `mar` | Market |
+/// | `bmar` | Dealers |
+/// | `pr` | Den |
+/// | `girl` | Girl |
+/// | `rep` | Vet |
+/// | `kl` | Club |
+/// | `trn` | Gym |
 pub const TRACKED: [Location; 7] = [
     Location::Market,
     Location::Dealers,
@@ -153,17 +110,12 @@ impl Places {
         out
     }
 
-    /// `1000:ab96`..`1000:abc9` -- hide the rediscoverable locations again
-    /// on a district promotion, sparing the three the player's class keeps.
-    ///
-    /// `class` is `[20ae:389c]`, compared as a word at `1000:aba0`,
-    /// `1000:abb1` and `1000:abc2`.
+    /// Hides the rediscoverable locations again on a district promotion,
+    /// sparing the three the player's class keeps.
     pub fn reset_for_new_district(&mut self, class: u16) {
         for (i, slot) in self.found.iter_mut().enumerate() {
             let spared = match TRACKED[i] {
-                // 1000:aba0 / 1000:abb1 -- the Club and Girl skips.
                 Location::Club | Location::Girl => class == 3,
-                // 1000:abc2 -- the Den skip.
                 Location::Den => class == 5,
                 _ => false,
             };
@@ -193,10 +145,8 @@ impl Places {
 mod tests {
     use super::*;
 
-    /// `1000:aba0`/`abb1`/`abc2` -- a class-3 player keeps Club and Girl
-    /// across a promotion, a class-5 player keeps the Den, and nobody keeps
-    /// Gym or Dealers: those two are the second store in each guarded pair
-    /// and sit past the `jz`, so the skip never reaches them.
+    /// A class-3 player keeps Club and Girl across a promotion, a class-5
+    /// player keeps the Den, and nobody keeps Gym or Dealers.
     #[test]
     fn a_promotion_spares_the_flags_the_class_keeps() {
         let kept = |class| {
@@ -233,9 +183,7 @@ mod tests {
         assert!(!places.is_found(Location::Market));
     }
 
-    /// The order `1000:6ca2`..`1000:6d0e` reads the seven bytes into
-    /// `DS:0x3694`..`DS:0x369a`. Den is slot 2 and Vet slot 4, not the
-    /// other way round.
+    /// Den is slot 2 and Vet is slot 4, not the other way round.
     #[test]
     fn tracked_is_the_order_the_places_sav_reader_uses() {
         assert_eq!(

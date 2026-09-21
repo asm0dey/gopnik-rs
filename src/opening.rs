@@ -1,37 +1,28 @@
-//! The game's opening and its two other straight-line text dumps --
-//! `docs/re/port-gaps.md` rows 1, 6, 8, 10, 15 and 16.
+//! The game's opening and its two other straight-line text dumps.
 //!
-//! Six rows, all of them text the port printed nothing of before:
+//! | block | what |
+//! |---|---|
+//! | [`SPLASH`] | the title screen |
+//! | [`BACKSTORY`] | the university cold open, before the class menu |
+//! | [`START_ARRIVAL`] / [`TUTORIAL`] | the district line at start-up, and district 1's three-line crib |
+//! | [`ADVANCE_ARRIVAL`] | the same district line when play promotes you |
+//! | [`QUIT_TAIL`] | what `e` / `exit` prints on the way out |
+//! | [`HELP_PLAIN`] / [`HELP_FRAGMENTS`] | the whole `help` verb |
 //!
-//! | block | original | what |
-//! |---|---|---|
-//! | [`SPLASH`] | `FUN_1000_02c2`, `1000:02c2`..`04be` | the title screen, called once from `1000:6a5a` |
-//! | [`BACKSTORY`] | `1000:6de6`..`6f2b` | the university cold open, before the class menu |
-//! | [`START_ARRIVAL`] / [`TUTORIAL`] | `1000:7262`..`7347`, `7369`..`73bb` | the district line at start-up, and district 1's three-line crib |
-//! | [`ADVANCE_ARRIVAL`] | `1000:ad12`..`adbf` | the same district line when play promotes you |
-//! | [`QUIT_TAIL`] | `1000:ee04`..`ee8b` | what `e` / `exit` prints on the way out |
-//! | [`HELP_PLAIN`] / [`HELP_FRAGMENTS`] | `1000:5f64`..`633c` | the whole `help` verb |
-//!
-//! ## The district lines exist twice in the image, so they exist twice here
+//! ## The district lines exist twice
 //!
 //! [`START_ARRIVAL`]'s districts 2/3/4 and all of [`ADVANCE_ARRIVAL`] read
-//! the same on screen and are **separate string copies** -- CS `0x6849`,
-//! `0x6872`, `0x6891`, `0x68b8`, `0x68e0`, `0x68fb` against CS `0x8346`,
-//! `0x836f`, `0x838e`, `0x83b5`, `0x83dd`, `0x83f8`. Folding them into one
-//! constant would make `tools/difftest.py` compare one copy twice and stop
-//! being able to see a difference between them, so both are transcribed.
-//! This is the same decision [`crate::game::Game::announce_district`] and
-//! [`crate::game::Game::enter_district_5`] already make for the district-5
-//! line (CS `0x6925` vs `0x9CF2`).
+//! the same on screen but are kept as **separate string copies**, the same
+//! decision [`crate::game::Game::announce_district`] and
+//! [`crate::game::Game::enter_district_5`] already make for the
+//! district-5 line.
 //!
 //! ## Screen control is dropped, as everywhere else in this port
 //!
-//! `1000:04a2` / `1000:04af` are `TextColor(0)` / `TextColor(15)` around the
-//! splash's `ReadKey`, and `1000:04b7` is the `Crt` `ClrScr`
-//! (`FUN_1f16_01cc`, the same call `1000:6a1c` opens `FUN_1000_6a0d` with).
-//! `crate::term` has no persistent attribute and no screen, so all three go
-//! the way `crate::ending`'s `TextColor` pair and `Delay`/`ClrScr` did. The
-//! `ReadKey` between them is kept.
+//! Colour changes and screen clears around the splash are dropped, since
+//! `crate::term` has no persistent attribute and no screen -- the same way
+//! `crate::ending`'s colour changes and clears were dropped. The `ReadKey`
+//! between them is kept.
 
 use std::io;
 
@@ -39,25 +30,16 @@ use crate::term;
 
 /// What one of these blocks does in the gaps *between* its literal lines.
 ///
-/// Each entry is `(index, events)`: the events the original emits after line
-/// `index - 1` and before line `index`, in address order, with `index ==
-/// len()` meaning "after the last line, before the block ends". `'B'` is a
-/// bare `WriteLn` (`1000:02d1`'s `0f78:05dd` + `0f78:0291` pair, which
-/// writes nothing and ends the line) and `'K'` is a `ReadKey`
-/// (`0f16:031a`). Gaps with no events are **omitted**, so an empty table
-/// means a block that runs straight through.
+/// Each entry is `(index, events)`: the events emitted after line
+/// `index - 1` and before line `index`, with `index == len()` meaning
+/// "after the last line, before the block ends". `'B'` is a bare blank
+/// line and `'K'` is a wait for a keypress. Gaps with no events are
+/// **omitted**, so an empty table means a block that runs straight
+/// through.
 ///
 /// `'C'` is a third shape [`crate::church`] needs and this module's blocks
-/// never use: a line assembled on a stack local out of CS literals and DGROUP
-/// strings (`lea di,[bp-0x100]` / `push ss` / `push di` / `call 0f78:0ae7`,
-/// then appends) and written with a `WriteLn` of `ss:[bp-0x100]`. That
-/// `WriteLn` carries no CS literal, so the plain-`WriteLn` scan cannot see
-/// the line at all; the caller supplies the built string.
-///
-/// `tools/difftest.py` rebuilds exactly this from `orig/g.exe` by scanning
-/// for those three instruction shapes between the literal sites it already
-/// found, which is why the blank-line counts and the `ReadKey` placement
-/// below are compared rather than eyeballed.
+/// never use: a line assembled from pieces at the call site rather than
+/// one fixed literal, so the caller supplies the built string.
 pub type Gaps = &'static [(usize, &'static str)];
 
 /// The blocks that run straight through: no blank line and no `ReadKey`
