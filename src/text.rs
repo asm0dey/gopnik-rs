@@ -261,15 +261,12 @@ mod tests {
         assert_eq!(fill("Сл:# Лв:# Жв:#", &[1, 2]), "Сл:1 Лв:2 Жв:#");
     }
 
-    /// The other direction, and it is not a convenience: every one of the 24
-    /// `call 0eed:01c2` menu-print sites in `entry`'s two shop blocks
-    /// (`1000:b94a`..`1000:bd08`, `1000:c4be`..`1000:c8ce`) pushes exactly
-    /// **five** words -- 97 zeros, 18 price bytes and 5 immediates across the
-    /// 120 -- so a one-`#` row is written with four values it has
-    /// no slot for and Borland's `Write` drops them. Two rows even push a
-    /// real number into the void (`1000:c6df` and `1000:c743`, both a literal
-    /// `5`). `crate::game::Game::row_fill_values` rests on this; the sweep
-    /// that measured it is in that function's doc.
+    /// The other direction, and it is not a convenience: every shop menu row
+    /// is fed exactly **five** values regardless of how many `#`
+    /// placeholders its own text uses, so a one-`#` row is written with four
+    /// values it has no slot for and they are silently dropped -- two rows
+    /// even push a real number into that void.
+    /// `crate::game::Game::row_fill_values` rests on this.
     #[test]
     fn fill_drops_surplus_values() {
         assert_eq!(

@@ -12,8 +12,7 @@ use std::process::{Command, Stdio};
 
 use crate::text;
 
-/// Turbo Pascal `Crt.ReadKey` (`0f16:031a`): wait for ONE keystroke and
-/// throw it away.
+/// Wait for ONE keystroke and throw it away.
 ///
 /// The original returns on a single key. This port used to consume a whole
 /// LINE at every one of these sites, so the splash's own
@@ -25,10 +24,10 @@ use crate::text;
 /// port stays dependency-free; if it is missing or fails, the line read is
 /// the fallback rather than a hang.
 ///
-/// Off a terminal -- every unit test, `tools/difftest.py`, any piped run --
-/// it keeps consuming one line. There is no raw mode to set on a pipe, and a
-/// one-byte read would split scripted input mid-line and desynchronise every
-/// `ReadLn` after it. That is why this takes `lines` at all.
+/// Off a terminal -- any piped run -- it keeps consuming one line. There is
+/// no raw mode to set on a pipe, and a one-byte read would split scripted
+/// input mid-line and desynchronise every `ReadLn` after it. That is why
+/// this takes `lines` at all.
 ///
 /// `None` at EOF is treated as any other keystroke, as before.
 pub fn read_key(lines: &mut dyn Iterator<Item = io::Result<String>>) {
@@ -77,23 +76,17 @@ const EOF_RETRIES_ON_A_TTY: u32 = 1024;
 /// Read one line, ignoring a terminal's end-of-input.
 ///
 /// **Ctrl+D is a Unix key the original cannot see.** DOS has no such
-/// keystroke, and the `Crt` unit this game links runs with
-/// `CheckEof = False` -- set at `1f16:003b` (`xor ax,ax` / `mov
-/// [0x3eb9],al`, DGROUP `0x3eb9`) and never overridden anywhere in the
-/// game's own code -- so not even DOS's own Ctrl+Z ends input there.
-/// Nothing the player types can stop the original this way.
+/// keystroke, so not even DOS's own Ctrl+Z ends input there. Nothing the
+/// player types can stop the original this way.
 ///
-/// (Ctrl+C is the opposite case and is deliberately left alone: the same
-/// init sets `CheckBreak = True` at DGROUP `0x3eb8` -- `inc ax` / `mov
-/// [0x3eb8],al` -- and `xrefs-to 20ae:3eb8` finds no write in the game at
-/// all, so Turbo Pascal's abort-on-Ctrl+C is faithful and this port keeps
-/// it.)
+/// (Ctrl+C is the opposite case and is deliberately left alone: the
+/// original aborts on Ctrl+C, and this port keeps that.)
 ///
 /// On a terminal an end-of-input is therefore not an end of anything: it
-/// is retried, which reads as "Ctrl+D did nothing". Off a terminal --
-/// every test, `tools/difftest.py`, any piped run -- `None` still means
-/// the input is genuinely exhausted and is passed straight through, since
-/// that is what every caller's `else` arm is written to end on.
+/// is retried, which reads as "Ctrl+D did nothing". Off a terminal -- any
+/// piped run -- `None` still means the input is genuinely exhausted and is
+/// passed straight through, since that is what every caller's `else` arm
+/// is written to end on.
 pub fn read_line<I>(lines: &mut I) -> Option<io::Result<String>>
 where
     I: Iterator<Item = io::Result<String>> + ?Sized,
@@ -154,17 +147,6 @@ fn stty(args: &[&str]) -> Option<String> {
 /// (e.g. a legacy `cmd.exe`), which `SHOULD_COLORIZE`'s own tty/CLICOLOR
 /// checks already degrade for by falling back to plain text — there is
 /// nothing else actionable to do with the error.
-///
-/// NOTE: this branch compiles, links and runs — `scripts/check-windows.sh`
-/// cross-builds it for `x86_64-pc-windows-gnu` and exercises it under wine,
-/// where the colour-policy decisions come out byte-identical to the native
-/// build. What is still UNVERIFIED is whether the VT call has its intended
-/// effect: `ENABLE_VIRTUAL_TERMINAL_PROCESSING` changes how a console
-/// *renders* bytes, not which bytes we write, so the same escapes reach a
-/// pipe whether or not `SetConsoleMode` succeeded. No byte-capture test can
-/// settle it — on wine or on real Windows. It needs a human looking at a
-/// `cmd.exe` window on a Windows build that does not enable VT by default
-/// (Windows Terminal does, so a clean run there proves nothing).
 #[cfg(windows)]
 pub fn init() {
     let _ = colored::control::set_virtual_terminal(true);
@@ -220,20 +202,6 @@ pub fn print(src: &str) {
     let _ = io::stdout().flush();
 }
 
-/// Test-only output capture.
-///
-/// `println`/`print` write straight to `io::stdout()`, which is why
-/// `tests/den_reveal_subprocess.rs` had to spawn the real binary to assert
-/// on a *printed line* rather than on game state. That is the right harness
-/// for "what does the shipped binary do", but it cannot reach a branch whose
-/// precondition needs a specific RNG outcome -- and the den's `d` arm
-/// (`1000:dd32`..`1000:decd`) has three such branches. This seam exists so a
-/// unit test can assert the exact lines an arm emits.
-///
-/// It captures the **source** string, before `rendered` applies the colour
-/// policy, so an assertion compares against the literal quoted from
-/// `data/strings.json` and does not change meaning with `NO_COLOR`,
-/// `CLICOLOR_FORCE` or whether stdout is a tty.
 #[cfg(test)]
 pub mod capture {
     use std::cell::RefCell;
@@ -332,14 +300,6 @@ mod tests {
         assert_eq!(rendered("^4x"), text::strip("^4x"));
     }
 
-    /// The capture seam every den-arm line assertion in `crate::game` rests
-    /// on. Three properties it has to have for those to mean what they say:
-    /// a `print` and the `println` after it are ONE line (which is how
-    /// `1000:dc1c`/`1000:dc39`'s two-`print`-then-`println` announcement is
-    /// asserted), an empty `println` is a line and not nothing, and the
-    /// markup survives -- capture takes the SOURCE, so the assertions
-    /// compare against `data/strings.json`'s own bytes whatever the ambient
-    /// colour policy is.
     #[test]
     fn capture_joins_a_print_into_the_line_that_follows_it() {
         let out = capture::lines(|| {

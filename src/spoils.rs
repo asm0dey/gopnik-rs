@@ -1,22 +1,9 @@
-//! The victory block's literal pool -- `1000:523e`..`1000:57ce`.
+//! Text printed after the XP award: the spoils transfer, the post-kill
+//! one-shot rings, and the whole class-keyed item table.
 //!
-//! Everything `FUN_1000_3d11` prints after the XP award: the spoils
-//! transfer, the post-kill one-shot rings, and the whole class-keyed item
-//! table. In the image's ADDRESS order, which is the order
-//! `tools/difftest.py`'s `literal_walk` reads them in.
-//!
-//! The span carries **no composed line, no fragment, no blank `WriteLn` and
-//! no `ReadKey`** -- `gaps_of`'s sweep over it returns an empty table, and
-//! that emptiness is itself compared: one `call 0f16:031a` anywhere in the
-//! block would put a `K` into the reference and this side would have to
-//! gain it.
-//!
-//! Four of these texts appear a second time in `src/game.rs`, in
-//! `Game::church`'s arm 2. That is not duplication to fix: the original
-//! holds two byte-identical copies of the ring block, at `1000:8101` and
-//! `1000:532f` (`docs/re/progression.md` establishes they compare equal),
-//! and only the `532f` one is in this span. The church's arm prints its own
-//! copy and is not routed through this table.
+//! Four of these texts also appear in [`crate::game::Game::church`]'s arm 2.
+//! That is not duplication to fix: the original prints its own copy there,
+//! independent of this table.
 
 /// `(closes, text)` -- `closes` is true for a `WriteLn`. Every literal in
 /// the span closes its line; the tuple keeps the shape the other pools use

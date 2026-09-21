@@ -149,71 +149,65 @@ pub struct Items {
     pub armour: u8,
     /// `^1У тебя есть тёмные очки`.
     pub dark_glasses: bool,
-    /// `0x218` / `20ae:38b4` -- `^1Костюм Abibas(+1) ` (`1000:22a1`).
+    /// `^1Костюм Abibas(+1) `.
     pub suit_abibas: bool,
-    /// `0x219` / `20ae:38b5` -- `^1Бутсы(+1) ` (`1000:1e81`).
+    /// `^1Бутсы(+1) `.
     pub boots: bool,
-    /// `0x21a` / `20ae:38b6` -- `^1Кожанка(+2) ` (`1000:2323`).
+    /// `^1Кожанка(+2) `.
     pub jacket: bool,
-    /// `0x21b` / `20ae:38b7` -- `^1Костюм Adidas(+2) ` (`1000:22fc`).
+    /// `^1Костюм Adidas(+2) `.
     pub suit_adidas: bool,
-    /// `0x21c` / `20ae:38b8` -- `^1Понтовые бутсы(Урон+2) ` (`1000:1ecf`).
+    /// `^1Понтовые бутсы(Урон+2) `.
     pub boots_pontovye: bool,
-    /// `0x21d` / `20ae:38b9` -- `^1Крутая кожанка(+4) ` (`1000:237e`).
+    /// `^1Крутая кожанка(+4) `.
     pub jacket_krutaya: bool,
-    /// `0x21e` / `20ae:38ba` -- `^1Кастет(+2) ` (`1000:1eef`).
+    /// `^1Кастет(+2) `.
     pub kastet: bool,
-    /// `0x21f` / `20ae:38bb` -- `^1У тебя есть мобильник` (`1000:1cd8`).
+    /// `^1У тебя есть мобильник`.
     pub mobile: bool,
-    /// `0x220` / `20ae:38bc` -- `^1На тебе зоновская наколка` (`1000:1d18`).
+    /// `^1На тебе зоновская наколка`.
     pub prison_tattoo: bool,
-    /// `0x221` / `20ae:38bd` -- `^1Крестик(Удача +2) ` (`1000:1be9`).
+    /// `^1Крестик(Удача +2) `.
     pub krestik: bool,
-    /// `0x222` / `20ae:38be` -- `^1Кольцо "Гс"(Удача +1) ` (`1000:1c09`).
+    /// `^1Кольцо "Гс"(Удача +1) `.
     pub ring_gs: bool,
-    /// `0x223` / `20ae:38bf` -- `^1Кольцо "Пг"(Всё +1) ` (`1000:1c69`).
+    /// `^1Кольцо "Пг"(Всё +1) `.
     pub ring_pg: bool,
-    /// `0x224` / `20ae:38c0` -- `^1Мега Кольцо(Всё +4) ` (`1000:1c89`).
+    /// `^1Мега Кольцо(Всё +4) `.
     pub mega_ring: bool,
-    /// `0x225` / `20ae:38c1` -- `^1Кольцо "Гп"(Самолечение) ` (`1000:1ca9`).
-    /// The **fifth** post-kill one-shot: it grants no stat delta, which is
-    /// why `data/xp.json`'s `post_kill_stat_events` stops at `0x224`.
+    /// `^1Кольцо "Гп"(Самолечение) `. The fifth post-kill one-shot: it
+    /// grants no stat delta.
     pub ring_gp: bool,
-    /// `0x226` / `20ae:38c2` -- `^1Нож(+6) ` (`1000:1fb5`).
+    /// `^1Нож(+6) `.
     pub nozh: bool,
-    /// `0x227` / `20ae:38c3` -- `Пиво #.#л.` (`1000:23d5`), in HALF-litres:
-    /// the sheet prints `value div 2` with a `.5` for the odd half.
+    /// `Пиво #.#л.`, in half-litres: the sheet prints `value div 2` with
+    /// a `.5` for the odd half.
     pub beer_half_litres: i16,
-    /// `0x229` / `20ae:38c5` -- `Косяки #` (`1000:23b4`).
+    /// `Косяки #`.
     pub joints: i16,
-    /// `0x22b` / `20ae:38c7` -- `Бабки #` (`1000:242e`). Every shop row's
-    /// affordability test is `cmp ax,[0x38c7]`; 107 references image-wide.
+    /// `Бабки #`. Every shop row's affordability test compares against
+    /// this value.
     pub money: i16,
-    /// `0x22d` / `20ae:38c9` -- `Хлам #` (`1000:246a`).
+    /// `Хлам #`.
     pub junk: i16,
-    /// `0x22f` / `20ae:38cb` -- понтовость на улице, **not** the level at
-    /// `20ae:38a6`. Gates the hospital rescue (`1000:4fc4`, >= 10) and
-    /// wander draw 2's message (`1000:afdc`, >= 100). The one field of the
+    /// понтовость на улице, not the level. Gates the hospital rescue
+    /// (>= 10) and wander draw 2's message (>= 100). The one field of the
     /// span the character sheet does not print.
     pub street_cred: i16,
-    /// `0x2ae` / `20ae:394a` -- `^1Зубная защита  ` (`1000:2068`).
+    /// `^1Зубная защита  `.
     pub tooth_guard: bool,
-    /// `0x2af` / `20ae:394b` -- `^1Дубинка(+4)  ` (`1000:1f59`).
+    /// `^1Дубинка(+4)  `.
     pub dubinka: bool,
-    /// `0x2b0` / `20ae:394c` -- `^1Тесак(Урон+9) ` (`1000:2003`).
+    /// `^1Тесак(Урон+9) `.
     pub tesak: bool,
-    /// `0x2b1` / `20ae:394d` -- `^1У тебя есть пистолет` (`1000:1d38`).
+    /// `^1У тебя есть пистолет`.
     pub pistol: bool,
-    /// `0x2b2` / `20ae:394e` -- `^1 с гушителем` (`1000:1d6a`).
+    /// `^1 с гушителем`.
     pub silencer: bool,
-    /// `0x2b3` / `20ae:394f` -- `^1! патронов - #` (`1000:1d8a`). A **word**:
-    /// the guard is `cmp word`, `bmar` row 7 adds three with
-    /// `add word [0x394f],3` at `1000:cd0a`, and `20ae:3950` is referenced
-    /// nowhere, so `0x2b4` is this field's high byte and not a 32nd flag.
+    /// `^1! патронов - #`. Stored as a word, not a byte: one menu row's
+    /// purchase adds three rounds at once.
     pub cartridges: i16,
-    /// `0x2b5` / `20ae:3951` -- the church's sermon stage, 0..2. Raised at
-    /// `1000:7dc7` and `1000:7f5b`; read at `1000:7c76`/`7ceb`/`7dcb` and at
-    /// `1000:8247`.
+    /// The church's sermon stage, 0..2.
     pub church_stage: u8,
 }
 
@@ -221,24 +215,19 @@ pub struct Items {
 /// code bytes (`'1'`..`'4'`).
 ///
 /// All three bytes are state, not just the two codes: the writer appends one
-/// code at a time (`1000:2657`/`1000:2661`/`1000:267a`) so the length is 1
-/// mid-level-up, and the flee penalty clears **only** the length byte at
-/// `1000:497d` and leaves the payload behind.
+/// code at a time so the length is 1 mid-level-up, and the flee penalty
+/// clears **only** the length byte and leaves the payload behind.
 pub type GrowthSlot = [u8; GROWTH_SLOT_LEN];
 
 pub struct Save {
     pub magic: String,
     pub name: String,
     /// The eight words at `OFF_STATE`. Named by index rather than split into
-    /// eight struct fields because they are the same 16-byte block
-    /// `tools/capture_combat_vectors.py`'s `FIELDS_U16` reads out of the
-    /// live fighter record (`docs/re/combat.md`, "The fighter record") --
-    /// keeping one array here mirrors that layout instead of inventing a
-    /// second one. Index -> meaning, pinned by Task 9
-    /// (`docs/re/save-format.md`):
+    /// eight struct fields because they mirror the fighter record's own
+    /// layout. Index -> meaning:
     ///
     /// 0. `rank_index` -- the class; the stored word is the creation
-    ///    prompt's answer plus 3 (`1000:71b8`).
+    ///    prompt's answer plus 3.
     /// 1. `strength`
     /// 2. `agility`
     /// 3. `vitality`
@@ -251,13 +240,11 @@ pub struct Save {
     pub hpmax: u16,
     /// `0x214`..`0x230` and `0x2ae`..`0x2b5`.
     pub items: Items,
-    /// `0x231` / `20ae:38cd` -- the joint buff's countdown.
+    /// The joint buff's countdown.
     pub buff_countdown: u8,
-    /// `0x232` / `20ae:38ce`.
     pub xp: u16,
-    /// `0x234` / `20ae:38d0`.
     pub threshold: u16,
-    /// `0x236` / `20ae:38d2` -- `array[1..40] of string[2]`. Slot `i` here
+    /// `array[1..40] of string[2]`. Slot `i` here
     /// is the original's element `i + 1`; there is no element 0.
     pub growth_log: [GrowthSlot; GROWTH_LOG_SLOTS],
     /// The 255 payload bytes of the `magic` slot, exactly as they were.
@@ -306,10 +293,7 @@ fn get_pstring(b: &[u8], off: usize) -> Result<String, SaveError> {
 /// The cap is `>`, not `>=`: a Pascal `string[255]`'s length byte holds
 /// `0..=255`, so **255 payload bytes is legal** -- it is the longest string
 /// the format can express, and rejecting it would refuse a name the original
-/// accepts. Both sides of that boundary are pinned by
-/// `tests/save_roundtrip.rs::the_shortstring_cap_admits_255_bytes_and_refuses_256`;
-/// `cargo mutants` reported the `>` -> `>=` mutant as a survivor before that
-/// test existed.
+/// accepts.
 ///
 /// **No slot can overflow.** The two `pstring` slots are 256 bytes each at
 /// `OFF_MAGIC` = `0x000` and `OFF_NAME` = `0x100`, so the widest possible
@@ -346,14 +330,10 @@ impl Save {
     /// The record a brand-new character starts with, before any field is
     /// filled in.
     ///
-    /// **Observed in the original**, not chosen here:
-    /// `data/probes/saveprobe-fresh-record.json` is a dump of `20ae:369c`
-    /// taken after driving character creation in `orig/g.exe` under qemu,
-    /// and every byte outside the stat words, `magic`, `name` and
-    /// `threshold` is zero -- both shortstring paddings included. So the
-    /// zeroes below are the original's own, and a save this port writes for
-    /// a fresh character can be byte-identical to one the original would
-    /// write.
+    /// Every byte outside the stat words, `magic`, `name` and `threshold`
+    /// is zero -- both shortstring paddings included -- so a save this port
+    /// writes for a fresh character is byte-identical to one the original
+    /// would write.
     pub fn blank() -> Save {
         Save {
             magic: MAGIC.to_string(),
