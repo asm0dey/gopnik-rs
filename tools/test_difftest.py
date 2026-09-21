@@ -173,20 +173,37 @@ class ReferenceEnumerations(unittest.TestCase):
         """Colour MARKUP is `^` followed by a digit -- that, not every caret.
 
         `strip_markup` drops `^0`..`^7` and leaves a bare caret alone, and so
-        does the port's `crate::text::strip`, so the two agree on one record
-        that IS a single caret: `1000:1523` assigns a one-character
-        shortstring holding `^`, which the enemy sheet's health line appends
-        its colour digit to at run time.  This used to read
-        `assertNotIn("^", line)`, which was the same check until that record
-        existed and would have banned a faithful one.  The exemption is
-        bounded: the second assertion names that exact record as the only
-        caret-bearing line in the stream.
+        does the port's `crate::text::strip`, so the two agree on the records
+        that END on a caret the run time completes.  `1000:1523` assigns a
+        one-character shortstring holding `^`, which the enemy sheet's health
+        line appends its colour digit to; the marquee's frame is eleven
+        fragments with ten digits interleaved, so every fragment but the last
+        ends the same way; and the den's two menu rows assign `Напиши ^`
+        before appending the key and its digit.  This used to read
+        `assertNotIn("^", line)`, which was the same check until the first
+        such record existed and would have banned a faithful one.  The
+        exemption is bounded: the second assertion NAMES every caret-bearing
+        record, so a new one anywhere still fails rather than being absorbed
+        by a pattern.
         """
         for line in REFERENCE:
             self.assertIsNone(
                 re.search(r"\^[0-9]", line), line)
-        self.assertEqual([l for l in REFERENCE if "^" in l],
-                         ["enemy_fragment 6 ^"])
+        self.assertEqual(
+            [l for l in REFERENCE if "^" in l],
+            ["marquee_fragment 0 ^",
+             "marquee_fragment 1 Т^",
+             "marquee_fragment 2 Ы ^",
+             "marquee_fragment 3 С^",
+             "marquee_fragment 4 У^",
+             "marquee_fragment 5 П^",
+             "marquee_fragment 6 Е^",
+             "marquee_fragment 7 Р ^",
+             "marquee_fragment 8 Г^",
+             "marquee_fragment 9 О^",
+             "enemy_fragment 6 ^",
+             "den_fragment 0 Напиши ^",
+             "den_fragment 2 Напиши ^"])
 
 
 class TheComparisonCanFail(unittest.TestCase):

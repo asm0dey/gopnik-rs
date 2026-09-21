@@ -136,10 +136,57 @@ def port_lines(path):
     return text[:text.index("#[cfg(test)]")].splitlines()
 
 
-def literals_on(line):
-    """Every game-text literal in the CODE part of one line, unescaped."""
-    return [unescape(m.group(1)) for m in RUST_STR.finditer(code_of(line))
-            if is_game_text(unescape(m.group(1)))]
+#: `EMITTED[12].1` / `CONDITIONS[2]` -- a reference INTO a module's literal
+#: pool, which is where the printers read their text from since the pools
+#: landed.  Resolving it is what keeps this check meaningful across that
+#: indirection: before, a citation next to `EMITTED[12].1` simply found no
+#: literal and the scan reported it missing.
+POOL_REF = re.compile(r"\b(EMITTED|CONDITIONS|COMMAND_LIST)\[(\d+)\](?:\.1)?")
+
+
+def pool_of(lines):
+    """`{name: [text, ...]}` for every literal pool declared in `lines`.
+
+    A pool is `const <NAME>: [...] = [` followed by one entry per line, each
+    holding exactly one game-text literal.  Parsed from the source rather
+    than imported so this checker keeps reading the shipped file and not a
+    build artifact.
+    """
+    pools, name = {}, None
+    for line in lines:
+        if name is None:
+            m = re.search(r"const\s+(EMITTED|CONDITIONS|COMMAND_LIST)\s*:", line)
+            if m and line.rstrip().endswith("["):
+                name, pools[m.group(1)] = m.group(1), []
+            continue
+        if line.startswith("];"):
+            name = None
+            continue
+        # ONE literal per entry, appended as it is seen rather than one per
+        # LINE: rustfmt wraps a long entry across three lines (`(`, `true,`,
+        # `"...",`), and a line-per-entry reading shifts every index after
+        # the first wrapped one -- which is how this first paired a club
+        # citation with a literal four entries away.
+        for lit in [unescape(m.group(1)) for m in RUST_STR.finditer(line)]:
+            pools[name].append(lit)
+    return pools
+
+
+def literals_on(line, pools=None):
+    """Every game-text literal in the CODE part of one line, unescaped.
+
+    A `POOL_REF` counts as the literal it names, so a citation sitting
+    beside `EMITTED[12].1` resolves to that pool entry.
+    """
+    out = [unescape(m.group(1)) for m in RUST_STR.finditer(code_of(line))
+           if is_game_text(unescape(m.group(1)))]
+    if pools:
+        for m in POOL_REF.finditer(code_of(line)):
+            rows = pools.get(m.group(1)) or []
+            i = int(m.group(2))
+            if i < len(rows) and rows[i] is not None and is_game_text(rows[i]):
+                out.append(rows[i])
+    return out
 
 
 def fragments(lit):
@@ -176,11 +223,12 @@ def cited_pairs(lines):
     against its fragments in order. `None` when no literal is in range.
     """
     out = []
+    pools = pool_of(lines)
     for i, line in enumerate(lines):
         for hexoff in CS_CITE.findall(line):
             found, group = None, None
             for j in range(i, min(i + 1 + LOOKAHEAD, len(lines))):
-                lits = literals_on(lines[j])
+                lits = literals_on(lines[j], pools)
                 if lits:
                     found, group = lits[0], j
                     break

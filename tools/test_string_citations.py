@@ -129,17 +129,59 @@ def literals_near(lines, i):
 RUST_LITERAL = re.compile(r'"((?:[^"\\\n]|\\.){2,120})"')
 
 
-def code_literals(line):
+#: `EMITTED[12].1` / `COMMAND_LIST[3].1` -- a reference INTO a module's
+#: literal pool. The printers read their text from those pools, so without
+#: resolving the reference this check finds no code literal beside a
+#: citation and skips the line -- going SILENT rather than failing, which is
+#: what it did when the pools first landed: rewording a pool entry and
+#: leaving its comment alone passed, and that is exactly the half of the
+#: guard `comment_code_pairs` exists to hold.
+POOL_REF = re.compile(r"\b(EMITTED|CONDITIONS|COMMAND_LIST)\[(\d+)\](?:\.1)?")
+
+
+def pools_in(text):
+    """`{name: [literal, ...]}` for every literal pool declared in `text`."""
+    pools, name = {}, None
+    for line in text.splitlines():
+        if name is None:
+            m = re.search(r"const\s+(EMITTED|CONDITIONS|COMMAND_LIST)\s*:", line)
+            if m and line.rstrip().endswith("["):
+                name, pools[m.group(1)] = m.group(1), []
+            continue
+        if line.startswith("];"):
+            name = None
+            continue
+        # ONE literal per entry, appended as it is seen rather than one per
+        # LINE: rustfmt wraps a long entry across three lines (`(`, `true,`,
+        # `"...",`), and a line-per-entry reading shifts every index after
+        # the first wrapped one -- which is how this first paired a club
+        # citation with a literal four entries away.
+        for lit in RUST_LITERAL.findall(line):
+            pools[name].append(lit)
+    return pools
+
+
+def code_literals(line, pools=None):
     """Game-text Rust literals on `line`, ignoring comment and doc lines.
 
     The doc-line exclusion is not cosmetic: `src/game.rs`'s `run_combat`
     prose quotes `"^2\u0422\u044b \u043f\u043e\u0431\u0435\u0434\u0438\u043b."` with straight quotes to say it is
     NOT a per-fight line, which a matcher that read every `"..."` took for a
     literal beside a neighbouring citation.
+
+    A `POOL_REF` resolves to the literal it names, so a citation beside
+    `EMITTED[12].1` is checked against that pool entry.
     """
     if line.lstrip().startswith("//"):
         return []
-    return [t for t in RUST_LITERAL.findall(line) if t.startswith("^")]
+    out = [t for t in RUST_LITERAL.findall(line) if t.startswith("^")]
+    if pools:
+        for m in POOL_REF.finditer(line):
+            rows = pools.get(m.group(1)) or []
+            i = int(m.group(2))
+            if i < len(rows) and rows[i] and rows[i].startswith("^"):
+                out.append(rows[i])
+    return out
 
 
 def comment_code_pairs(text):
@@ -158,6 +200,7 @@ def comment_code_pairs(text):
     prefix of a long line.
     """
     lines = text.splitlines()
+    pools = pools_in(text)
     pairs, bad = 0, []
     for i, line in enumerate(lines):
         if not CITE.search(line):
@@ -165,11 +208,11 @@ def comment_code_pairs(text):
         quoted = [t for t in QUOTED.findall(line) if t.startswith("^")]
         if not quoted:
             continue
-        cand = code_literals(line)
+        cand = code_literals(line, pools)
         for j in range(i + 1, min(len(lines), i + 3)):
             if cand:
                 break
-            cand = code_literals(lines[j])
+            cand = code_literals(lines[j], pools)
         if not cand:
             continue
         pairs += 1
