@@ -1,76 +1,42 @@
-//! The club's key dispatch -- `kl`'s arms, `1000:e065`..`1000:e36b`.
+//! The club's key dispatch -- the arms that handle player input.
 //!
-//! `crate::game` keeps the verb (`Command::Club` -> `Game::enter_shop`), the
-//! two gates in front of it, the two intro lines, the two
-//! [`crate::game::IMM_ROWS`] menu rows, the stake init and the prompt; this
-//! module is only what happens after the `ReadLn` at
-//! `1000:e03e`..`1000:e060`. The map it is written from is `docs/re/club.md`
-//! and `data/club_arms.json`, whose `club.what_the_port_must_change` array is
-//! the work order and which `python3 tools/test_club_arms.py` and
-//! `python3 tools/test_arms_artifacts.py` re-derive from `orig/g.exe`.
+//! The verb, gates, intro lines, menu rows, stake init and prompt live in
+//! `crate::game`; this module is only what happens after the input is read.
 //!
 //! ## Four keys, and only three of them are this module's
 //!
-//! **Established from flow** (`data/club_arms.json`'s `key_set`). Each key is
-//! a `0f78:0bd8` shortstring compare against the club's own buffer
-//! `20ae:3a72`: `p` `1000:e06f`, `1` `1000:e27e`, `2` `1000:e2f3` and the
-//! shared `w` at `1000:e361`. `w` belongs to `Game::shop_turn`'s catch-all
-//! the same way the gym's `1000:e93c` does, so [`key_dispatches`] returns
-//! `false` for it -- that `false` is `1000:e35c`, the fall-through into the
-//! exit compare.
+//! Each key is compared against the club's own buffer: `p`, `1`, `2` and
+//! the shared `w`. `w` belongs to `Game::shop_turn`'s catch-all the same way
+//! the gym's does, so [`key_dispatches`] returns `false` for it.
 //!
 //! ## The menu block and the arm block are not the same code
 //!
-//! `1000:df6f`..`1000:e020` prints the two rows once, on entry;
-//! `1000:e065`..`1000:e36b` is the chain of key compares. Three five-byte
-//! predicates are byte-identical between them -- the two price tests and the
-//! district gate -- and `data/club_arms.json`'s `menu_vs_arm_finding` records
-//! that the longest run the two blocks share is 26 bytes at `1000:dfb0` and
-//! `1000:e2ce`, ending on the `jbe` opcode whose displacement is the first
-//! byte at which they differ. What they DO is different in kind:
+//! The menu prints the two rows once on entry; the arm block is the chain of
+//! key compares. Three five-byte predicates are byte-identical between them
+//! -- the two price tests and the district gate -- but the longest run the two
+//! blocks share is shorter. What they DO is different in kind:
 //!
-//! * in the menu the price test is **cosmetic** -- both arms of `1000:df74`
-//!   and `1000:dfd0` store a colour digit into `20ae:3b7a` and reconverge,
-//!   so no club row is ever hidden by price;
-//! * the menu's district gate skips a PRINT (`1000:dfc9 jbe 0xe020`), the
-//!   arm's skips a key COMPARE (`1000:e2e7 jbe 0xe357`).
+//! * in the menu the price test is **cosmetic** -- both arms store a colour
+//!   digit and reconverge, so no club row is ever hidden by price;
+//! * the menu's district gate skips a PRINT, the arm's skips a key COMPARE.
 //!
-//! So `Game::imm_row_visible` owns the row predicates and nothing here calls
-//! it.
+//! So `Game::imm_row_visible` owns the row predicates.
 //!
 //! ## Three things this module deliberately does not do
 //!
-//! * **No refusal for the key the district hides.** At district 1
-//!   `1000:e2e7` jumps past the `2` compare at `1000:e2f3` entirely, so the
-//!   key is never compared and nothing is printed. [`key_dispatches`]
-//!   evaluates the district before the key for exactly that reason, and
-//!   there is no "wrong district" literal anywhere in the range for a
-//!   refusal to use.
-//! * **No message for an unrecognised key.** `1000:e368` is the loop's back
-//!   edge and it targets the PROMPT at `1000:e025`, not the menu; the
-//!   CS-literal sweep over `1000:df06`..`1000:e390` is a set equality and
-//!   finds no refusal literal for a bad key.
-//! * **No re-print of the menu between turns.** Same back edge.
+//! * **No refusal for the key the district hides.** At district 1 the key is
+//!   never compared and nothing is printed. [`key_dispatches`] evaluates the
+//!   district before the key for exactly that reason, and there is no
+//!   "wrong district" literal for a refusal to use.
+//! * **No message for an unrecognised key.** The loop targets the PROMPT,
+//!   not the menu; no refusal literal exists for a bad key.
+//! * **No re-print of the menu between turns.** Same loop structure.
 //!
 //! ## The stake is per VISIT, not per turn
 //!
-//! `1000:e020 mov byte [0x3c82],0x5` is five bytes before the loop top at
-//! `1000:e025` and is the join point of the menu's district gate, so it runs
-//! once per entry. [`crate::game::Game::club_stake`] is that byte; resetting
-//! it at the top of each prompt iteration would make the whole `p` arm
-//! unreachable past its first hand, and it is deliberately absent from
-//! `data/save_layout.json` because the original never saves it.
-//!
-//! Address convention: `docs/re/METHODOLOGY.md`, "Address convention, and
-//! its range of validity"; `python3 tools/re_query.py resolve <citation>`
-//! converts one and prints the bytes there. Every string literal below is
-//! quoted from `data/strings.json` at the file offset its `mov di,<n>` push
-//! resolves to, markup and trailing spaces included, and each inline
-//! citation is written as ``file `0xNNNN` `^Nthe string``` on one line
-//! directly above the `term::print`/`term::println` that prints it, which is
-//! the shape `tools/test_string_citations.py` can actually resolve (the
-//! shorter spelling reports nothing at all, which is how a whole module once
-//! passed a guard whose entire purpose is to catch a wrong offset).
+//! The stake is set at the top of each entry and is reset per VISIT.
+//! [`crate::game::Game::club_stake`] is that byte; resetting it per turn
+//! would make the whole `p` arm unreachable past its first hand.
 
 use crate::game::Game;
 use crate::progress;
@@ -80,41 +46,33 @@ use std::io;
 
 /// Whether the club's compare chain reaches a compare that `key` matches.
 ///
-/// **Established from flow.** The chain is `p` (`1000:e06f`), `1`
-/// (`1000:e27e`), `2` (`1000:e2f3`) and `w` (`1000:e361`), in that order,
-/// and exactly one of them sits behind a gate that decides whether the
-/// compare happens at all:
+/// The chain is `p`, `1`, `2` and `w`, in that order, and exactly one of
+/// them sits behind a gate that decides whether the compare happens at all:
 ///
 /// | key | gate | branch | sense |
 /// |---|---|---|---|
-/// | `2` | `1000:e2e2` `cmp byte [0x3692],0x1` | `1000:e2e7` `jbe 0xe357` | district > 1 |
+/// | `2` | district check | skip if district <= 1 |
 ///
-/// So at district 1 exactly two keys exist here -- `p` and `1` -- and that
-/// is a fact about the DISPATCHER, not about what the menu printed. `&&`
-/// short-circuits left to right, which is the original's order: gate, then
-/// compare.
+/// So at district 1 exactly two keys exist here and that is a fact about the
+/// DISPATCHER, not about what the menu printed. `&&` short-circuits left to
+/// right, which is the original's order: gate, then compare.
 pub(crate) fn key_dispatches(g: &Game, key: &str) -> bool {
     match key {
-        // 1000:e06f / 1000:e074 -- no gate of its own.
+        // No gate of its own.
         "p" => true,
-        // 1000:e27e / 1000:e283 -- no gate of its own.
+        // No gate of its own.
         "1" => true,
-        // 1000:e2e2 gates the compare at 1000:e2f3; 1000:e2e7 jumps past it
-        // to the `w` compare's own setup at 1000:e357, and 1000:e2f8 is the
-        // compare's own miss to the same place when the district opens it.
+        // District gate; the compare is skipped at district 1.
         "2" => g.district > 1,
-        // 1000:e361: the shared `w` compare, then 1000:e368 back to the
-        // prompt.
+        // The shared `w` compare.
         _ => false,
     }
 }
 
-/// Run the arm `key` selected. Only ever called when [`key_dispatches`] said
-/// the chain reaches that key's compare, which is where the district gate
-/// lives; the arms below carry only their own gates.
+/// Run the arm `key` selected. Only called when [`key_dispatches`] said
+/// the chain reaches that key's compare.
 ///
-/// `lines` is threaded through because the `p` arm can reach a fight
-/// (`1000:e222`), which reads the combat prompt.
+/// `lines` is threaded through because the `p` arm can reach a fight.
 pub(crate) fn run_key(
     g: &mut Game,
     key: &str,
@@ -179,257 +137,153 @@ pub(crate) fn run_key(
 /// credit.
 fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
     let stake = i32::from(g.club_stake);
-    // 1000:e079..1000:e082 -- the operands are the other way round from
-    // every other money gate in the image: the STAKE is in `ax` and `jle`
-    // passes when it is <= money, so equality buys.
+    // The operands are the other way round: STAKE in `ax` and the compare
+    // passes when stake <= money, so equality buys.
     if stake > i32::from(g.player.money) {
-        // 1000:e258 pushes file `0xBBA4` `^6Не хватает денег - надо #.`,
-        // whose `#` is 1000:e25d's read of the stake; printed by 1000:e26f.
+        // `^6Не хватает денег - надо #.`, whose `#` is the stake.
         term::println(&text::fill(EMITTED[12].1, &[i64::from(stake)]));
         return Ok(());
     }
-    // 1000:e087 pushes file `0xBABA` `Ты поставил # рублей`, `#` from
-    // 1000:e08c; printed by 1000:e09e.
+    // `Ты поставил # рублей`, `#` from the stake.
     term::println(&text::fill(EMITTED[4].1, &[i64::from(stake)]));
     g.player.money = g.player.money.wrapping_sub(stake as i16); // 1000:e0a8
 
-    // 1000:e0ac..1000:e0b4 build the `n`; 1000:e0b7 is the draw.
+    // The `n` is built and the draw is made.
     let draw = g.rng.below(u16::from(g.district) * 12);
-    // 1000:e0c6..1000:e0ce -- the WIN is the fall-through, i.e. the
-    // predicate being FALSE. See the doc above.
+    // WIN is the fall-through. Losing writes money and ends.
     if Game::luck_below_random_32(g.player.luck, draw) {
-        // 1000:e129 pushes file `0xBAE6` `^4Ты проиграл # рублей`, `#` from
-        // 1000:e12e; printed by 1000:e140.
+        // `^4Ты проиграл # рублей`, `#` from the stake.
         term::println(&text::fill(EMITTED[7].1, &[i64::from(stake)]));
-        // 1000:e145 -- and nothing else. The money already left at
-        // 1000:e0a8; the lose path 1000:e129..1000:e14a carries zero
-        // instructions that touch `20ae:38c7`.
+        // Nothing else touches money on the loss path.
         g.club_stake = 5;
     } else {
-        // 1000:e0d3/1000:e0d5/1000:e0d7 -- the doubled credit, kept beside
-        // the debit above.
+        // Doubled credit, kept beside the debit.
         g.player.money = g.player.money.wrapping_add((stake * 2) as i16);
-        // 1000:e0db pushes file `0xBACF` `^2Ты выиграл # рублей ` (the
-        // trailing space is the original's), `#` from 1000:e0e0 -- the
-        // stake BEFORE 1000:e0f7 raises it; printed by 1000:e0f2.
+        // `^2Ты выиграл # рублей ` (trailing space is the original's), `#`
+        // from the stake BEFORE it is raised.
         term::println(&text::fill(EMITTED[5].1, &[i64::from(stake)]));
         g.club_stake += 2; // 1000:e0f7
         let xp = u16::from(g.district); // 1000:e101..1000:e104
 
-        // 1000:e0fc pushes file `0xA95B` `^6Ты получаешь # качков опыта`,
-        // printed by 1000:e113 -- BEFORE 1000:e11d credits the same value.
+        // `^6Ты получаешь # качков опыта`, printed BEFORE the experience is credited.
         term::println(&text::fill(EMITTED[6].1, &[i64::from(xp)]));
-        // 1000:e11d `add [0x38ce],ax` is the xp credit and 1000:e124 is the
-        // level-up call. **The two parameters are not the same thing**:
-        // `xp` here is [`progress::apply_levels`]'s `award`, which models the
-        // `add` at 1000:e11d, while the `false` is the original's own
-        // `param_1 = 0` set at 1000:e121 -- the CAPPED form (1000:257a),
-        // not an award of zero. `Game::den_job` pairs 1000:debe with
-        // 1000:dec5 the same way; `crate::gym`'s `3` arm adds first and
-        // passes `award = 0` instead, which is the other faithful spelling.
-        // 1000:e124 has no outer threshold guard of its own.
+        // The xp credit and level-up call. The two parameters are not the same
+        // thing: `xp` here models the credit, while `false` is the original's
+        // own clamped form.
         progress::apply_levels(&mut g.progress, &mut g.player, &mut g.rng, xp, false);
     }
 
-    // 1000:e14a / 1000:e14f then 1000:e151 / 1000:e156 -- both jump to
-    // 1000:e174, so the line prints only while 5 < stake < 17. After a loss
-    // the stake is 5 and the message never announces a stake of 5.
+    // Both jumps target the same place, so the line prints only while
+    // 5 < stake < 17. The message never announces a stake of 5.
     if g.club_stake < 17 && g.club_stake > 5 {
-        // 1000:e158 pushes file `0xBAFD`
-        // `^6Ставки изменились. Теперь ставка - #`, `#` from 1000:e15d;
-        // printed by 1000:e16f.
+        // `^6Ставки изменились. Теперь ставка - #`, `#` from the new stake.
         term::println(&text::fill(EMITTED[8].1, &[i64::from(g.club_stake)]));
     }
-    // 1000:e174 / 1000:e179 -- `jnb`, so 17 exactly is caught.
+    // The cap is 17 exactly.
     if g.club_stake >= 17 {
         caught_cheating(g, lines)?;
     }
     Ok(())
 }
 
-/// `1000:e17e`..`1000:e256` -- six wins in a row and the house calls it.
+/// Six wins in a row and the house calls it.
 ///
-/// The stake ladder is 5 -> 7 -> 9 -> 11 -> 13 -> 15 -> 17 (`1000:e020`
-/// `:= 5`, `1000:e0f7` `+= 2`, `1000:e145` `:= 5`), so this block is not a
-/// random event: it is the punishment for winning six hands without losing
-/// one.
+/// The stake ladder is 5 -> 7 -> 9 -> 11 -> 13 -> 15 -> 17, so this block is
+/// the punishment for winning six hands without losing one.
 ///
-/// **Established from flow:**
+/// The XP is awarded BEFORE the fight, not after it. That is invisible on screen
+/// unless the award crosses a level threshold, which is exactly why it is written
+/// down.
 ///
-/// ```text
-/// e17e  mov al,0x1 / e181 call 0x10d14   ; FUN_1000_0d14(1), clamp-to-7
-/// e184  mov byte [0x3b72],0x1            ; the fight-accepted flag
-/// e189  mov di,0xa254 .. e19d WriteLn    ; `^4Козёл! Да ты мухлевал!`
-/// e1a8  mov di,0x90c0 / e1b2 mov di,[0x3952] / e1c5 mov di,0x90c7
-/// e1cf  push [0x395c] .. e1df WriteLn    ; the opponent announcement
-/// e1e4  mov di,0xa26d / e1e9..e1f4 district*5 .. e203 WriteLn
-/// e208..e215  add [0x38ce],ax            ; xp += district*5
-/// e219  mov al,0x0 / e21c call 0x12526   ; FUN_1000_2526(0)
-/// e21f  mov al,0x2 / e222 call 0x13d11   ; FUN_1000_3d11(2) -- the fight
-/// e225  mov di,0xa29c .. e239 WriteLn
-/// e23e  mov byte [0x3b77],0x5            ; the club ban countdown
-/// e243  mov di,0x848e / e248 mov di,0x3a72 / e251 call 0f78:0b01
-/// ```
+/// This fight never draws a Мент; the class is clamped to 7.
 ///
-/// **The XP is awarded BEFORE the fight, not after it.** `1000:e21c` runs
-/// and `1000:e222` follows it. That is invisible on screen unless the award
-/// crosses a level threshold, which is exactly why it is written down.
-///
-/// **`1000:e181`'s `param_1 = 1` is the clamp-to-class-7 form**
-/// (`1000:0da7`/`1000:0dba`), so this fight never draws a Мент; the den's
-/// `1000:dc0e` is the same reading, and the 66-byte announcement run at
-/// `1000:e1a2` occurs at exactly three addresses image-wide -- `1000:c3f1`,
-/// `1000:dc16` and `1000:e1a2`, the three `param_1 = 1` sites.
-///
-/// **`1000:e23e` is the only writer of `20ae:3b77`** outside the walk
-/// decrement at `1000:b17e` and the district reset at `1000:abd3`, so
-/// landing it made the club's countdown live -- but only because the GATE at
-/// `1000:df1a` landed with it in [`Game::enter_shop`]. Setting the countdown
-/// without the gate would be worse than neither. `crate::market` landed the
-/// market's three the same way (`docs/re/port-gaps.md` rows 9 and 25), which
-/// is what closed `docs/re/gaps.md`'s entry on both halves.
+/// The countdown is set here and is reset per district, so landing it made the
+/// club's countdown live.
 ///
 /// **The block ends the visit without the player typing anything.**
-/// `1000:e251` is `rtl_str_assign_max`, whose SOURCE is the first push
-/// (`0f78:0b06 lds si,[ss:bx+0xa]`) and DESTINATION the second
-/// (`0f78:0b0a les di,[ss:bx+0x6]`) -- the reverse of the argument order
-/// `0f78:0ae7` uses -- so it writes `w` INTO the club's own buffer
-/// `20ae:3a72`. The `1` compare at `1000:e27e` then misses, the `2` compare
-/// at `1000:e2f3` misses or is skipped, and the `w` compare at `1000:e361`
-/// hits. `Game::leave_shop` is that consequence; a message telling the
-/// player to leave would not be.
 fn caught_cheating(
     g: &mut Game,
     lines: &mut dyn Iterator<Item = io::Result<String>>,
 ) -> io::Result<()> {
-    // 1000:e17e / 1000:e181 -- FUN_1000_0d14(1).
+    // Clamp to class 7.
     let enemy = g.roll_enemy(1);
     g.fight_accepted = true; // 1000:e184
 
-    // 1000:e189 pushes file `0xBB24` `^4Козёл! Да ты мухлевал!`, printed by
-    // 1000:e19d.
+    // `^4Козёл! Да ты мухлевал!`
     term::println(EMITTED[9].1);
-    // 1000:e1a8 pushes file `0xA990` `^6Это `, 1000:e1b2..1000:e1ba indexes
-    // the rank table, 1000:e1c5 pushes file `0xA997` ` # уровня.` with
-    // 1000:e1cf's `20ae:395c` as its `#`; one WriteLn at 1000:e1df.
+    // `^6Это ` [rank] ` # уровня.` with the opponent's level as `#`.
     term::print("^6Это ");
     term::print(&Game::rank_name(enemy.class));
     term::println(&text::fill(" # уровня.", &[i64::from(enemy.level)]));
 
-    // 1000:e1e9..1000:e1f4 -- `mov si,ax` / `shl` / `shl` / `add ax,si`.
+    // Build the `n`: `district * 5`.
     let xp = u16::from(g.district) * 5;
-    // 1000:e1e4 pushes file `0xBB3D`
-    // `^6Ты получаешь # качков опыта за победу в игре`, printed by
-    // 1000:e203 -- BEFORE 1000:e215 credits it.
+    // `^6Ты получаешь # качков опыта за победу в игре`, printed BEFORE the
+    // experience is credited.
     term::println(&text::fill(EMITTED[10].1, &[i64::from(xp)]));
-    // 1000:e215 is the credit and 1000:e21c the call; `xp` is
-    // `apply_levels`'s `award` (modelling the `add`) and `false` is the
-    // original's `param_1 = 0` from 1000:e219 -- see `play_cards` above.
+    // The credit and the level-up call.
     progress::apply_levels(&mut g.progress, &mut g.player, &mut g.rng, xp, false);
 
-    // 1000:e21f / 1000:e222 -- FUN_1000_3d11(2), AFTER the level-up.
+    // The fight itself, after the level-up.
     g.run_combat(2, enemy, lines)?;
 
-    // 1000:e225 pushes file `0xBB6C`
-    // `^6Уноси ноги, пока не отобрали деньги другие канадидаты`, printed by
-    // 1000:e239.
+    // `^6Уноси ноги, пока не отобрали деньги другие канадидаты`.
     term::println(EMITTED[11].1);
     g.club_ban_countdown = 5; // 1000:e23e
 
-    // 1000:e243..1000:e251 -- the `w` written into 20ae:3a72.
+    // The `w` written into the buffer.
     g.leave_shop();
     Ok(())
 }
 
-/// `1` -- `1000:e274`..`1000:e2e2`, `потусоваться на дискотеке`, 15 rubles.
+/// `1` -- `потусоваться на дискотеке`, 15 rubles.
 ///
-/// **Established from flow**, same decode:
-///
-/// ```text
-/// e285  cmp word [0x38c7],0xf / e28a jnl 0xe2a7   ; can pay 15, SIGNED
-/// e28c  mov di,0x8e4d (file 0xA71D) .. e2a0 WriteLn / e2a5 jmp short 0xe2e2
-/// e2a7  sub word [0x38c7],0xf
-/// e2ac  mov di,0xa2f1 (file 0xBBC1) .. e2c0 WriteLn
-/// e2c5  inc [0x38a0]                              ; Ловкость +1
-/// e2c9  mov di,0x940d (file 0xACDD) .. e2dd WriteLn
-/// ```
-///
-/// The refusal literal is `^4Не хватает` -- the same one gym arms `1` and
-/// `2` use, and none of the gym's other three. The string says +1 and
-/// `1000:e2c5` is an increment, so string and effect agree; that is checked,
-/// not assumed. Nothing one-shot is consumed, so the arm repeats.
+/// The game subtracts 15 from money, prints a message, and raises
+/// Ловкость by 1. The refusal `^4Не хватает` is shared with gym arms
+/// `1` and `2`.
 fn dance(g: &mut Game) {
-    // 1000:e285 / 1000:e28a -- a signed word compare, and `Fighter::money`
-    // is an `i16` now, so this is the same compare on the same width.
+    // A signed word compare.
     if g.player.money < 15 {
-        // 1000:e28c pushes file `0xA71D` `^4Не хватает`, printed by
-        // 1000:e2a0; 1000:e2a5 leaves.
+        // `^4Не хватает`, then exit.
         term::println(EMITTED[13].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(15_i16); // 1000:e2a7
 
-    // 1000:e2ac pushes file `0xBBC1` `^2Ты прокачиваешь ловкость.`, printed
-    // by 1000:e2c0 -- BEFORE the store.
+    // `^2Ты прокачиваешь ловкость.`, printed BEFORE the store.
     term::println(EMITTED[14].1);
     g.player.agility += 1; // 1000:e2c5
 
-    // 1000:e2c9 pushes file `0xACDD` `^1Ловкость +1 ` (the trailing space is
-    // the original's), printed by 1000:e2dd.
+    // `^1Ловкость +1 ` (trailing space is the original's).
     term::println(EMITTED[15].1);
 }
 
-/// `2` -- `1000:e2e2`..`1000:e357`, `разузнать приемы мухлёжников`,
-/// 22 rubles, behind the district gate.
+/// `2` -- `разузнать приемы мухлёжников`, 22 rubles, behind the district gate.
 ///
-/// **Established from flow**, same decode:
-///
-/// ```text
-/// e2fa  cmp word [0x38c7],0x16 / e2ff jnl 0xe31c
-/// e301  mov di,0x8e4d (file 0xA71D) .. e315 WriteLn / e31a jmp short 0xe357
-/// e31c  sub word [0x38c7],0x16
-/// e321  mov di,0xa30d (file 0xBBDD) .. e335 WriteLn
-/// e33a  inc [0x38a4]                              ; Удача +1
-/// e33e  mov di,0x942c (file 0xACFC) .. e352 WriteLn
-/// ```
-///
-/// **`1000:e33a` raises the very byte the `p` arm's compare reads at
-/// `1000:e0c2`**, so the two arms are coupled: 22 rubles at district 2 or
-/// higher buys a permanently better card game. The gate that stands in front
-/// of this arm is [`key_dispatches`]'s, not this function's, because in the
-/// original it decides whether `1000:e2f3` is reached at all.
+/// The game subtracts 22 from money, prints a message, and raises
+/// Удача by 1. Raising Удача improves the card game odds on the next `p`.
+/// The refusal `^4Не хватает` is shared with gym arms `1` and `2`.
 fn learn_tricks(g: &mut Game) {
-    // 1000:e2fa / 1000:e2ff.
+    // Signed word compare.
     if g.player.money < 22 {
-        // 1000:e301 pushes file `0xA71D` `^4Не хватает`, printed by
-        // 1000:e315; 1000:e31a leaves.
+        // `^4Не хватает`, then exit.
         term::println(EMITTED[16].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(22_i16); // 1000:e31c
 
-    // 1000:e321 pushes file `0xBBDD` `^2Ты прокачиваешь удачу.`, printed by
-    // 1000:e335.
+    // `^2Ты прокачиваешь удачу.`
     term::println(EMITTED[17].1);
     g.player.luck += 1; // 1000:e33a
 
-    // 1000:e33e pushes file `0xACFC` `^1Удача +1 ` (the trailing space is
-    // the original's), printed by 1000:e352.
+    // `^1Удача +1 ` (trailing space is the original's).
     term::println(EMITTED[18].1);
 }
 
-/// The literal pool for the club -- `1000:df06`..`1000:e38b`, in the image's
-/// ADDRESS order, the order `tools/difftest.py`'s `literal_walk` reads them
-/// in. The span's last five bytes are trimmed: they push the NEXT verb's
-/// key literal, which a call past the end consumes, so a walk including
-/// them reports a literal nothing in the span takes.
+/// The literal pool for the club.
 ///
-/// `docs/re/port-gaps.md` recorded that the club and gym rest on their
-/// module-local unit tests, with `difftest` carrying their MENU rows and
-/// nothing else. This pool is the arm bodies' half of that comparison.
-///
-/// `(closes, text)` -- `closes` is true for a `WriteLn`, false for a
-/// `Write` the next literal continues.
+/// `(closes, text)` -- `closes` is true for a line-closing write, false
+/// for a write that continues with the next literal.
 pub(crate) const EMITTED: [(bool, &str); 20] = [
     (true, "^6Тебе не стоит пока туда соваться"), // 1000:df21
     (true, "Ты пришел в клуб напиши  ^6w^7  чтобы уйти"), // 1000:df3d
@@ -482,10 +336,9 @@ mod tests {
         }
     }
 
-    /// A club-ready game: the club discovered (`20ae:3699`), the ban
-    /// countdown clear (`20ae:3b77`), the player standing in it at
-    /// `district` with `money` in the pocket and the stake at its
-    /// entry value.
+    /// A club-ready game: the club discovered, the ban countdown clear,
+    /// the player standing in it at `district` with `money` in the pocket
+    /// and the stake at its entry value.
     fn club(district: u8, money: i16) -> Game {
         let mut g = Game::new(player(), Progress::new(), 12345);
         g.district = district;
@@ -512,8 +365,7 @@ mod tests {
 
     // -- arm `1` ---------------------------------------------------------
 
-    /// `1000:e285` is `cmp ...,0xf` and `1000:e28a` is `jnl`, so 14 refuses
-    /// and 15 buys; `1000:e2c5` is the increment.
+    /// The refusal at 14; equality at 15 passes. The stat increment check.
     #[test]
     fn arm_1_refuses_at_fourteen_and_raises_agility_at_fifteen() {
         let mut g = club(1, 14);
@@ -553,11 +405,9 @@ mod tests {
         assert_eq!(g.player.luck, l0 + 1, "1000:e33a");
     }
 
-    /// At district 1 `1000:e2e7 jbe 0xe357` jumps PAST the `2` compare at
-    /// `1000:e2f3`, so the key is never compared. **Nothing is printed and
-    /// nothing changes** -- there is no "wrong district" literal in
-    /// `1000:df06`..`1000:e390` for a refusal to use, so a port that
-    /// compared the key first and the district second would invent one.
+    /// At district 1 the key is never compared. **Nothing is printed and
+    /// nothing changes** -- there is no "wrong district" literal for a refusal
+    /// to use.
     #[test]
     fn district_one_swallows_the_two_key_in_silence() {
         let mut g = club(1, 1_000);
@@ -571,9 +421,8 @@ mod tests {
 
     // -- arm `p` ---------------------------------------------------------
 
-    /// `1000:e082` is `jle` with the STAKE in `ax`, so `stake <= money`
-    /// passes and equality buys. At the entry stake of 5 that is 4 refusing
-    /// and 5 playing, and the refusal names the stake.
+    /// The STAKE is in `ax` and the compare passes when stake <= money,
+    /// so equality buys. At entry stake of 5 that is 4 refusing and 5 playing.
     #[test]
     fn arm_p_refuses_below_the_stake_and_equality_buys() {
         let mut g = club(1, 4);
@@ -588,10 +437,8 @@ mod tests {
         assert!(!turn(&mut g, "p").is_empty(), "5 <= 5 buys");
     }
 
-    /// **The WIN is the fall-through of `1000:e0ce`, i.e.
-    /// `luck_below_random_32` being FALSE.** With удача far above any
-    /// `Random(district * 12)` the hand must be won, and a port that used
-    /// the predicate the other way round would lose every hand here.
+    /// **The WIN is the fall-through of `luck_below_random_32` being FALSE.**
+    /// With удача far above any `Random(district * 12)` the hand must be won.
     #[test]
     fn arm_p_wins_when_luck_is_not_below_the_draw() {
         let mut g = club(1, 100);
@@ -607,17 +454,15 @@ mod tests {
             ],
             "1000:e09e, 1000:e0f2, 1000:e113, 1000:e16f"
         );
-        // -5 at 1000:e0a8 then +10 at 1000:e0d7 -- a net +5, and both are
+        // -5 at the start then +10 on win -- a net +5, and both are
         // kept because the debit is what the NEXT hand's gate measures.
         assert_eq!(g.player.money, 105, "1000:e0a8 then 1000:e0d7");
         assert_eq!(g.club_stake, 7, "1000:e0f7");
         assert_eq!(g.progress.xp, 1, "1000:e11d, district 1");
     }
 
-    /// The LOSS path is one line and one store: `1000:e145` resets the stake
-    /// and the money already left at `1000:e0a8`. And because the stake is
-    /// back to 5, `1000:e156` suppresses the "stakes changed" line -- the
-    /// message never announces a stake of 5.
+    /// The LOSS path: one line and one store. The stake is back to 5, so
+    /// the "stakes changed" line never prints for a stake of 5.
     #[test]
     fn arm_p_loses_with_zero_further_money_instructions_and_no_stake_line() {
         let mut g = club(3, 100);
@@ -641,9 +486,8 @@ mod tests {
         }
     }
 
-    /// `1000:e14a`/`1000:e14f` and `1000:e151`/`1000:e156` both jump to
-    /// `1000:e174`, so the line prints only while `5 < stake < 17`. Driven
-    /// directly at the two boundaries the ladder reaches.
+    /// The line prints only while `5 < stake < 17`. Driven directly at
+    /// the two boundaries the ladder reaches.
     #[test]
     fn the_stakes_changed_line_prints_only_strictly_between_five_and_seventeen() {
         for (before, printed) in [(5u8, true), (13, true), (15, false)] {
@@ -660,11 +504,8 @@ mod tests {
         }
     }
 
-    /// Six wins in a row walk the stake 5 -> 7 -> 9 -> 11 -> 13 -> 15 -> 17
-    /// (`1000:e020`, six times `1000:e0f7`), and 17 is where `1000:e179`
-    /// `jnb` reaches the caught-cheating block. It sets the ban countdown
-    /// `20ae:3b77` at `1000:e23e` and writes `w` into the buffer at
-    /// `1000:e251`, so the visit ends without the player typing anything.
+    /// Six wins in a row walk the stake to 17, where it is caught. The ban
+    /// countdown is set and the visit ends without player input.
     #[test]
     fn six_wins_reach_the_caught_block_which_bans_and_ejects() {
         let mut g = club(1, 10_000);
@@ -717,10 +558,8 @@ mod tests {
 
     // -- the chain itself ------------------------------------------------
 
-    /// **There is no `не понял` line.** The chain falls off its end at
-    /// `1000:e368`, which jumps to the PROMPT at `1000:e025`; the CS-literal
-    /// sweep over the whole range finds no refusal literal for a bad key.
-    /// The turn must also leave the player in the club.
+    /// **There is no `не понял` line.** The loop falls off its end and
+    /// jumps to the PROMPT; the CS-literal sweep finds no refusal literal.
     #[test]
     fn an_unrecognised_key_prints_nothing_and_stays_in_the_club() {
         for key in ["3", "0", "x", "", "hp"] {
@@ -732,8 +571,8 @@ mod tests {
         }
     }
 
-    /// `w` is the shared exit at `1000:e361`, owned by `Game::shop_turn`'s
-    /// catch-all rather than by this module.
+    /// `w` is the shared exit at the end, owned by `Game::shop_turn`'s
+    /// catch-all.
     #[test]
     fn w_still_leaves_the_club() {
         let mut g = club(5, 1_000);
@@ -757,11 +596,8 @@ mod tests {
         }
     }
 
-    /// The club's own `ReadLn` at `1000:e060` does not trim (`0eed:0216`
-    /// lowercases ASCII `A`..`Z` and compares against no `0x20`), and
-    /// `Game::shop_turn` no longer does either. ` 1` is a MISS, here as
-    /// there: `rtl_str_compare` compares shortstrings whose length byte is
-    /// part of the value.
+    /// The club's own `ReadLn` does not trim, and `Game::shop_turn` no
+    /// longer does either. ` 1` is a MISS.
     #[test]
     fn the_club_prompt_refuses_untrimmed_input_like_the_original() {
         let mut g = club(1, 15);
@@ -769,7 +605,7 @@ mod tests {
         assert_eq!(g.player.money, 15, "and nothing was spent");
     }
 
-    /// And it is case-insensitive in both, because `0eed:0216` lowercases.
+    /// Case-insensitive in both.
     #[test]
     fn the_club_prompt_is_case_insensitive() {
         let mut g = club(5, 1_000);

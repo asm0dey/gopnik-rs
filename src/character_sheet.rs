@@ -1,80 +1,26 @@
-//! The player's character sheet -- `FUN_1000_1a03`, `[1000:1a03, 1000:248f)`.
-//!
-//! 2700 bytes, 83 conditional branches, the third-largest function in
-//! `orig/g.exe` and the largest one this port had not touched.
-//! `docs/re/character-sheet.md` is the map and `data/character_sheet.json`
-//! its machine-readable twin; this module is the port of what they describe.
-//!
-//! **Established from flow** throughout. Every address below was re-derived
-//! from `orig/g.exe` for this implementation with `tools/dis16.py`, decoding
-//! the whole range in one aligned walk from the function's entry, so each
-//! citation is an instruction boundary the walk actually reached and each
-//! quoted instruction is what decodes there. To reproduce:
-//!
-//! ```text
-//! python3 tools/re_query.py resolve 1000:1a03
-//! python3 -m unittest tools.test_character_sheet -v
-//! ```
-//!
-//! And the strings this module SHIPS -- not the ones its comments quote --
-//! are decoded out of `orig/g.exe` by
-//! `python3 tools/test_character_sheet_port.py`, which also pins each `CS`
-//! citation below to the literal beside it. Three cases in
-//! `tools/mutations.json` (`character-sheet-port-literal`,
-//! `character-sheet-port-citation`, `character-sheet-port-citation-order`)
-//! show both checks going red, the last of them on a citation that is at the
-//! right offset in the wrong place.
-//!
-//! **The exact scope of "pins".** Of the 59 `CS` citations below, 57 are
-//! pinned to one specific fragment: the citations naming a `format!`
-//! template must match its `{...}`-separated fragments as a strictly
-//! increasing subsequence, so the header pair and the stat line's five
-//! cannot be permuted among themselves. (They could until this was fixed --
-//! the scanner compared against a SET, and swapping the stat line's first
-//! and fourth citations stayed green.) The remaining 2 -- the damage line's
-//! and the health line's, each one citation against a two-fragment template
-//! -- are pinned to the GROUP, not the fragment, because a subsequence is
-//! allowed to skip. `tools/test_character_sheet_port.py`'s module docstring
-//! carries the same scope statement with the offsets spelled out; they are
-//! deliberately NOT spelled out here, because prose naming a citation is
-//! itself matched by `tools/test_string_citations.py`'s looser pattern and
-//! would inflate that scanner's population by talking about it.
+//! The player's character sheet.
 //!
 //! ## The split, and why it is this one
 //!
 //! The module **builds** the lines; [`crate::game::Game::show_stats`]
-//! **prints** them -- the same split `crate::combat_dispatch` uses, and for
-//! the same reason: `crate::term::println` writes to this process's stdout
-//! and a unit test cannot capture it, so a renderer that printed as it went
-//! would be untestable. [`lines`] returns the sheet in the original's order
-//! and every branch below is assertable from a string comparison.
+//! **prints** them. This split makes the renderer testable without
+//! capturing stdout. [`lines`] returns the sheet in the game's display
+//! order and every branch is assertable from a string comparison.
 //!
-//! ## Lines, not `Write` calls
+//! ## Lines, combining output
 //!
-//! The original does not emit lines; it emits 30 `Write` calls
-//! (`0eed:0000`), 20 `WriteLn` calls (`0eed:01c2`, the same colour-markup
-//! formatter with a newline) and 6 bare Pascal `WriteLn` on the `Text` at
-//! `20ae:3fcc` (`0f78:05dd` + the `{$I+}` check at `0f78:0291`) --
-//! `docs/re/character-sheet.md`, "It reaches no game code", which counts
-//! them. A `Write` leaves the line open and the next call continues it. So
-//! [`Out`] keeps one open line, `Write` appends to it and either flavour of
-//! `WriteLn` closes it; a bare `WriteLn` with nothing open yields an empty
-//! line, which is how the two blank separators around the pistol block
-//! arise. `crate::game::Game::wander_preamble` already models `1000:4a78`
-//! the same way.
+//! The display combines multiple pieces. A sequence of writes builds one
+//! open line, and the closing write yields the final line. The sequence
+//! yields two blank separators around the weapon block.
 //!
 //! ## What is NOT modelled
 //!
-//! * **The two health-colour thresholds' decimal values.** See
-//!   [`HEALTH_BROWN_ABOVE`].
-//! * **`0eed:0000`'s own `#` substitution when a value is not pushed.** The
-//!   original pushes five words at every call site and pads the unused ones
-//!   with `xor ax,ax` / `push ax`; `crate::text::fill` leaves a `#` with no
-//!   value as a literal `#` instead of printing `0`. No literal this module
-//!   passes has more `#` than it has values, so the two agree on every
-//!   string here -- but a player name containing `#` would diverge, and the
-//!   name line is the one place a `#` can arrive from data. Registered in
-//!   `docs/re/gaps.md`.
+//! * **The two health-colour thresholds' decimal values.** See [`HEALTH_BROWN_ABOVE`].
+//! * **The `#` substitution when a value is not pushed.** `crate::text::fill`
+//!   leaves a `#` with no value as a literal `#` instead of printing `0`.
+//!   No literal this module passes has more `#` than it has values, so the
+//!   two agree on every string here -- but a player name containing `#`
+//!   would diverge, and the name line is the one place a `#` can arrive from data.
 
 use crate::combat;
 use crate::combat_dispatch::Pistol;
@@ -82,33 +28,6 @@ use crate::data;
 use crate::model::Fighter;
 use crate::text;
 
-/// The health line's colour digit is `'6'` above this ratio of `hp/hpmax`.
-///
-/// **This value is a PORT DECISION, not a finding.** What is established
-/// from flow is only the ORDER of the two thresholds. `1000:2118` and
-/// `1000:2148` each divide `hp` by `hpmax` in Turbo Pascal 6-byte reals
-/// (`rtl_real_op_div`, `0f78:1117`) and `1000:2124` / `1000:2154` compare
-/// the quotient against a comparand held in `CX:SI:DI`
-/// (`rtl_real_op_cmp`, `0f78:1121`). The two comparands differ in exactly
-/// one register and by exactly one: `1000:211d mov cx,0x7f` against
-/// `1000:214d mov cx,0x80`, with `1000:2120`/`1000:2122` and
-/// `1000:2150`/`1000:2152` zeroing `si` and `di` both times. `docs/re/rtl.md`
-/// establishes that `CL` is the exponent byte (`0f78:1117`'s `or cl,cl` /
-/// `je` is a zero-divisor test, and a Turbo `Real` is zero exactly when its
-/// exponent byte is zero), so the two comparands have the same zero mantissa
-/// and exponents one step apart: the second is strictly above the first, and
-/// nothing else about them is established. The exponent BIAS is not --
-/// `docs/re/rtl.md` records it as open for the `1000:4ff5` / `1000:5002`
-/// constants too -- so "25% and 50%" would be a guess, and this port makes
-/// it a labelled choice instead of a claim.
-///
-/// `docs/re/gaps.md`, "The decimal value of the health-colour thresholds",
-/// carries the entry and what would settle it (two gdb pokes bracketing each
-/// threshold). The only property this port guarantees against the original
-/// is `HEALTH_BROWN_ABOVE < HEALTH_GREEN_ABOVE`, which
-/// `the_health_colour_walks_four_six_two_and_never_back` asserts through
-/// [`health_digit`] rather than by comparing the two constants -- that
-/// comparison is constant-folded and could not fail.
 pub const HEALTH_BROWN_ABOVE: f64 = 0.25;
 
 /// The health line's colour digit is `'2'` above this ratio. Port decision
@@ -116,64 +35,53 @@ pub const HEALTH_BROWN_ABOVE: f64 = 0.25;
 pub const HEALTH_GREEN_ABOVE: f64 = 0.50;
 
 /// Everything the sheet reads that is not a field of [`Fighter`].
-///
-/// Field names carry their DGROUP address because that is what identifies
-/// them: the sheet is the only place several of these bytes are ever
-/// printed, and `src/save.rs`'s `Items` documents each one's `.SAV` offset.
-/// [`crate::game::Game`] owns the live values and copies them in.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Kit {
-    /// `20ae:38ce` -- XP not yet spent on a level
-    /// (`crate::progress::Progress::xp`), pushed at `1000:1ab5`.
+    /// XP not yet spent on a level (`crate::progress::Progress::xp`).
     pub xp: u16,
-    /// `20ae:38d0` -- XP needed for the next level, pushed at `1000:1ab9`.
+    /// XP needed for the next level.
     pub threshold: u16,
-    /// `20ae:38cd` -- the joint buff's countdown. Read three times: the
-    /// Сила colour slot (`1000:1acb`), the damage line's colour
-    /// (`1000:1e06`) and the `Обдолбаный` condition (`1000:20ca`). All three
-    /// guards are unsigned (`ja` / `jbe`), so any non-zero count counts.
+    /// The joint buff's countdown, displayed in Сила, damage, and Обдолбаный condition. Any non-zero count counts.
     pub buff_countdown: u8,
-    /// `20ae:38bd` -- Крестик (`1000:1be9`).
+    /// Крестик.
     pub krestik: bool,
-    /// `20ae:38be` -- кольцо "Гс" (`1000:1c09`).
+    /// кольцо "Гс".
     pub ring_gs: bool,
-    /// `20ae:38bf` -- кольцо "Пг" (`1000:1c69`).
+    /// кольцо "Пг".
     pub ring_pg: bool,
-    /// `20ae:38c0` -- Мега Кольцо (`1000:1c89`).
+    /// Мега Кольцо.
     pub mega_ring: bool,
-    /// `20ae:38c1` -- кольцо "Гп" (`1000:1ca9`).
+    /// кольцо "Гп".
     pub ring_gp: bool,
-    /// `20ae:38bb` -- мобильник (`1000:1cd8`).
+    /// мобильник.
     pub mobile: bool,
-    /// `20ae:38b3` -- тёмные очки (`1000:1cf8`).
+    /// тёмные очки.
     pub dark_glasses: bool,
-    /// `20ae:38bc` -- зоновская наколка (`1000:1d18`).
+    /// зоновская наколка.
     pub prison_tattoo: bool,
-    /// `20ae:394d` / `394e` / `394f` -- the pistol block (`1000:1d38`).
+    /// The pistol block.
     pub pistol: Pistol,
-    /// `20ae:38b5` -- Бутсы (`1000:1e81`).
+    /// Бутсы.
     pub boots: bool,
-    /// `20ae:38b8` -- Понтовые бутсы (`1000:1ecf`).
+    /// Понтовые бутсы.
     pub boots_pontovye: bool,
-    /// `20ae:38ba` -- Кастет (`1000:1eef`).
+    /// Кастет.
     pub kastet: bool,
-    /// `20ae:394b` -- Дубинка (`1000:1f59`).
+    /// Дубинка.
     pub dubinka: bool,
-    /// `20ae:38c2` -- Нож (`1000:1fb5`).
+    /// Нож.
     pub nozh: bool,
-    /// `20ae:394c` -- Тесак (`1000:2003`).
+    /// Тесак.
     pub tesak: bool,
-    /// `20ae:394a` -- зубная защита (`1000:2068`). Its guard is
-    /// `cmp byte [0x394a],0x1`, an EQUALITY, not the `cmp ..,0x0` the
-    /// item flags use.
+    /// зубная защита. Its guard is checked for equality rather than the zero check other item flags use.
     pub tooth_guard: bool,
-    /// `20ae:38b4` -- костюм Abibas (`1000:22a1`).
+    /// костюм Abibas.
     pub suit_abibas: bool,
-    /// `20ae:38b7` -- костюм Adidas (`1000:22fc`).
+    /// костюм Adidas.
     pub suit_adidas: bool,
-    /// `20ae:38b6` -- Кожанка (`1000:2323`).
+    /// Кожанка.
     pub jacket: bool,
-    /// `20ae:38b9` -- Крутая кожанка (`1000:237e`).
+    /// Крутая кожанка.
     pub jacket_krutaya: bool,
 }
 
@@ -204,29 +112,24 @@ impl Out {
         self.newline();
     }
 
-    /// `call 0f78:0x5dd` + `call 0f78:0x291` on the `Text` at `20ae:3fcc` --
-    /// closes the line with nothing appended.
+    /// Closes the line with nothing appended.
     pub(crate) fn newline(&mut self) {
         self.lines.push(std::mem::take(&mut self.open));
     }
 
-    /// The function's own exit, `1000:248b` `mov sp,bp` / `1000:248d pop bp`
-    /// / `1000:248e ret`.
+    /// The function's own exit.
     ///
     /// Nothing is flushed here because nothing can be open: the last two
-    /// blocks are both unconditional two-armed `WriteLn` pairs --
-    /// `1000:23d5 cmp word [0x38c3],0x0` / `1000:23da jle 0x2415` picks
-    /// `Пиво #.#л.` or `^4Пива нет`, and
-    /// `1000:242e cmp word [0x38c7],0x0` / `1000:2433 jle 0x2451` picks
-    /// `Бабки #` or `^4Нету бабок` -- so the money line always closes, and
-    /// the only thing that can follow it is the `Хлам #` `WriteLn` at
-    /// `1000:2471`.
+    /// blocks are both unconditional two-armed `WriteLn` pairs that pick
+    /// between `Пиво #.#л.` / `^4Пива нет` and `Бабки #` / `^4Нету бабок` --
+    /// so the money line always closes, and the only thing that can follow it
+    /// is the `Хлам #` line.
     ///
-    /// That argument is from flow and is sound, but it was only prose: the
-    /// method dropped `self.open` on the floor and no test could have seen a
-    /// stray unterminated append. The `debug_assert!` makes it executable, so
-    /// a future edit that opens a line and forgets to close it fails the
-    /// debug-profile test run instead of silently losing the text.
+    /// That logic is sound, but it was only prose before: the method dropped
+    /// `self.open` on the floor and no test could have seen a stray unterminated
+    /// append. The `debug_assert!` makes it executable, so a future edit that
+    /// opens a line and forgets to close it fails the debug-profile test run
+    /// instead of silently losing the text.
     pub(crate) fn finish(self) -> Vec<String> {
         debug_assert!(
             self.open.is_empty(),
@@ -237,15 +140,9 @@ impl Out {
     }
 }
 
-/// The whole sheet, in the original's order.
+/// The whole sheet, in the game's display order.
 ///
-/// `name` is the string at `DS:379c`, appended at `1000:1a90`; it is a
-/// separate parameter rather than [`Fighter::name`] only because the
-/// enemy record's name is never what this line prints -- the function takes
-/// no arguments at all (`docs/re/character-sheet.md`, "The entry, and the
-/// argument convention": a bare `ret` at `1000:248e` and not one positive
-/// `bp` displacement in 2700 bytes) and reads the player's globals directly,
-/// so all four of its call sites render the same sheet.
+/// `name` is a separate parameter rather than [`Fighter::name`].
 pub fn lines(p: &Fighter, name: &str, kit: &Kit) -> Vec<String> {
     let mut o = Out::default();
     header(&mut o, p, name, kit);
@@ -261,14 +158,11 @@ pub fn lines(p: &Fighter, name: &str, kit: &Kit) -> Vec<String> {
     o.finish()
 }
 
-/// `1000:1a26`..`1000:1ac6` -- the class/level header, the name, the
-/// experience line.
+/// The class/level header, the name, the experience line.
 fn header(o: &mut Out, p: &Fighter, name: &str, kit: &Kit) {
-    // Four appends, in this order: CS `0x1664` (`^2Ты `),
-    // `ranks[class]` (`1000:1a44`),
-    // CS `0x166a` (` # уровня - `),
-    // and `krutizna[level]` (`1000:1a61`).
-    // `1000:1a66` then pushes the level and `1000:1a76` is the WriteLn.
+    // Four appends, in this order: `^2Ты `, the player's rank,
+    // ` # уровня - `, and the krutizna for that level.
+    // Then the level is pushed and the WriteLn closes the line.
     o.writeln(&text::fill(
         &format!(
             "^2Ты {} # уровня - {}",
@@ -277,47 +171,36 @@ fn header(o: &mut Out, p: &Fighter, name: &str, kit: &Kit) {
         ),
         &[i64::from(p.level)],
     ));
-    // CS `0x1677` is `^2А зовут тебя: `;
-    // `DS:379c` is appended onto it at `1000:1a90`.
+    // The string `^2А зовут тебя: ` and the player's name are appended.
     o.writeln(&format!("^2А зовут тебя: {name}"));
-    // `1000:1aa9 cmp word [0x38a6],0x27` / `1000:1aae jnle 0x1acb`: at level
-    // 40 there is no next threshold and the line is skipped -- which is what
-    // a 43-entry ladder with a 40 cap (`1000:2580`) needs.
+    // At level 40 there is no next threshold and the line is skipped -- which is what a 43-entry ladder with a 40 cap needs.
     if p.level <= 0x27 {
         o.writeln(&text::fill(
-            // CS `0x1688`.
             EMITTED[0].1,
             &[i64::from(kit.xp), i64::from(kit.threshold)],
         ));
     }
 }
 
-/// `1000:1acb`..`1000:1bbd` -- the four stats and the colour digits.
+/// The four stats and the colour digits.
 ///
-/// `1000:1a12` assigns the CS literal `7777` into the shortstring at
-/// `[bp-0x100]`; each of its four characters is a Turbo colour digit that a
-/// worn item patches to `'1'`, and the format string interleaves them.
+/// A literal `7777` is assigned into the stats string; each of its four
+/// characters is a colour digit that a worn item patches to `'1'`, and
+/// the format string interleaves them.
 fn stat_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     let stoned = kit.buff_countdown > 0;
     let all = kit.ring_pg || kit.mega_ring;
-    // `1000:1acb`/`1ad2`/`1ad9` -> `1000:1ae0 mov byte [bp-0xff],0x31`.
+    // The Сила slot is set to colour digit `'1'`.
     let c0 = digit(stoned || all);
-    // `1000:1ae5`/`1aec` -> `1000:1af3` and `1000:1af8`, one guard pair
-    // setting BOTH slots.
+    // Лв and Жв are both set by one guard pair.
     let c1 = digit(all);
     let c2 = c1;
-    // `1000:1afd`/`1b04`/`1b0b`/`1b12` -> `1000:1b19`.
+    // The Уд slot is set to colour digit `'1'`.
     let c3 = digit(kit.krestik || kit.ring_gs || all);
     // Five literals interleaved with the four digits, appended in order:
-    // CS `0x16b7` is `Сл:^`,
-    // CS `0x16bc` is `#^7 Лв:^`,
-    // CS `0x16c5` is `#^7 Жв:^`,
-    // CS `0x16ce` is `#^7 Уд:^`.
-    //
-    // CS `0x16d7` is the last placeholder on its own.
-    //
-    // The four stats are pushed at `1000:1baa`..`1000:1bb6` and
-    // `1000:1bbd` is the WriteLn.
+    // `Сл:^`, `#^7 Лв:^`, `#^7 Жв:^`, `#^7 Уд:^`.
+    // And the last placeholder on its own.
+    // The four stats are pushed and the WriteLn closes the line.
     o.writeln(&text::fill(
         &format!("Сл:^{c0}#^7 Лв:^{c1}#^7 Жв:^{c2}#^7 Уд:^{c3}#"),
         &[
@@ -338,18 +221,12 @@ fn digit(boosted: bool) -> char {
     }
 }
 
-/// `1000:1bc2`..`1000:1cd3` -- the two charm sections.
+/// The two charm sections.
 ///
 /// Each is a header `Write` gated on the disjunction of its own rows,
-/// followed by the rows and one bare `WriteLn` that closes the line. Both
-/// header disjunctions are among the 24 branches
-/// `data/character_sheet.json`'s `branch_partition` leaves uncited; they are
-/// ported here from the same aligned decode as everything else, and the
-/// addresses below are the guards themselves.
+/// followed by the rows and one bare `WriteLn` that closes the line.
 fn charms(o: &mut Out, kit: &Kit) {
-    // `1000:1bc2 cmp byte [0x38bd],0x0` / `jnz 0x1bd0`, `1000:1bc9
-    // cmp byte [0x38be],0x0` / `jz 0x1c38` -- the whole block, including its
-    // closing newline at `1000:1c29`, is skipped when neither is set.
+    // When neither Крестик nor кольцо "Гс" is owned, the whole block is skipped.
     if kit.krestik || kit.ring_gs {
         o.write(EMITTED[1].1); // CS `0x16d9`
         if kit.krestik {
@@ -360,8 +237,7 @@ fn charms(o: &mut Out, kit: &Kit) {
         }
         o.newline();
     }
-    // `1000:1c38`/`1c3f`/`1c46`, whose all-clear arm is the
-    // `1000:1c4d jmp 0x1cd8` over the section and its `1000:1cc9` newline.
+    // When either кольцо "Пг" or Мега Кольцо is missing, the charms section is skipped.
     if kit.ring_pg || kit.mega_ring || kit.ring_gp {
         o.write(EMITTED[4].1); // CS `0x1710`
         if kit.ring_pg {
@@ -377,7 +253,7 @@ fn charms(o: &mut Out, kit: &Kit) {
     }
 }
 
-/// `1000:1cd8`..`1000:1d33` -- the three items that get a whole line each.
+/// The three items that get a whole line each.
 fn worn_singletons(o: &mut Out, kit: &Kit) {
     if kit.mobile {
         o.writeln(EMITTED[8].1); // CS `0x176a`
@@ -390,46 +266,41 @@ fn worn_singletons(o: &mut Out, kit: &Kit) {
     }
 }
 
-/// `1000:1d38`..`1000:1dfc` -- the pistol, its silencer and its magazine.
+/// The pistol, its silencer and its magazine.
 ///
-/// `1000:1d38 cmp byte [0x394d],0x0` / `1000:1d3d jnz 0x1d42` skips the
-/// entire block, blank separators included, when there is no pistol.
+/// When there is no pistol, the entire block is skipped.
 fn pistol_block(o: &mut Out, kit: &Kit) {
     if !kit.pistol.owned {
         return;
     }
-    // The blank separator, `1000:1d42`..`1000:1d4c`.
+    // The blank separator before the pistol details.
     o.newline();
     o.write(EMITTED[11].1); // CS `0x17b8`
 
-    // `1000:1d6a cmp byte [0x394e],0x0` / `1000:1d6f jz 0x1d8a`.
+    // When there is no silencer, this section is skipped.
     if kit.pistol.silencer {
         o.write(EMITTED[12].1); // CS `0x17cf`, the game's own typo
     }
     let n = kit.pistol.cartridges;
-    // `1000:1d8a cmp word [0x394f],0x0` / `jle 0x1dab`. A signed word.
+    // The magazine count guard. A signed word.
     if n > 0 {
         o.writeln(&text::fill(EMITTED[13].1, &[i64::from(n)])); // CS `0x17de`
     }
-    // `1000:1dab cmp word [0x394f],0x2` / `jnle 0x1dd2`, then
-    // `1000:1db2 cmp word [0x394f],0x0` / `jle 0x1dd2`: 1 or 2 rounds left.
+    // Magazine counts: 1 or 2 rounds left printed distinctly from other states.
     if (1..=2).contains(&n) {
         o.writeln(EMITTED[14].1); // CS `0x17ef`
     }
-    // `1000:1dd2 cmp word [0x394f],0x0` / `jnle 0x1df2`.
     if n <= 0 {
         o.writeln(EMITTED[15].1); // CS `0x1805`
     }
     o.newline(); // `1000:1df2`..`1000:1dfc`
 }
 
-/// `1000:1e01`..`1000:202d` -- the damage line and every hand weapon.
+/// The damage line and every hand weapon.
 ///
-/// The line's own colour digit lives in `[bp-0x101]`: `1000:1e01` sets it to
-/// `'7'` and the seven-way disjunction at `1000:1e06`..`1000:1e35` raises it
-/// to `'1'`. Then `1000:1e42` starts the string with the CS literal `^`
-/// (`0x181f`), appends that digit, appends `Урон #-#    ` and `Write`s the
-/// pair at `1000:1e7c`, leaving the line open for the weapon labels.
+/// The line's own colour digit starts as `'7'` and a seven-way disjunction
+/// raises it to `'1'`. The string starts with a colour marker, appends that
+/// digit, then `Урон #-#    ` and the weapon labels.
 fn damage_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     let armed = kit.buff_countdown > 0
         || kit.boots
@@ -439,13 +310,12 @@ fn damage_line(o: &mut Out, p: &Fighter, kit: &Kit) {
         || kit.nozh
         || kit.tesak;
     o.write(&text::fill(
-        // CS `0x1821` `Урон #-#    `, four trailing spaces.
+        // `Урон #-#    `, four trailing spaces.
         &format!("^{}Урон #-#    ", digit(armed)),
         &[i64::from(p.dmg_min), i64::from(p.dmg_max)],
     ));
     // Best-item-wins: each pair prints the superseded item dim (`^4`) beside
     // the good one, as two arms sharing the lesser item's flag.
-    // `1000:1e81`/`1e88` and `1000:1ea8`/`1eaf`.
     if kit.boots && !kit.boots_pontovye {
         o.write(EMITTED[16].1); // CS `0x182e`
     }
@@ -455,8 +325,7 @@ fn damage_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     if kit.boots_pontovye {
         o.write(EMITTED[18].1); // CS `0x1844`
     }
-    // The three blades supersede the кастет, `1000:1eef`..`1000:1f09`; the
-    // dim arm is `1000:1f24`..`1000:1f3e`.
+    // The three blades supersede the кастет; the dim arm is the unarmed blows.
     let over_kastet = kit.nozh || kit.dubinka || kit.tesak;
     if kit.kastet && !over_kastet {
         o.write(EMITTED[19].1); // CS `0x185e`
@@ -464,7 +333,7 @@ fn damage_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     if kit.kastet && over_kastet {
         o.write(EMITTED[20].1); // CS `0x186c`
     }
-    // `1000:1f59`/`1f60`/`1f67` and `1000:1f87`/`1f8e`/`1f95`.
+    // Дубинка supersedes in multiple forms.
     let over_dubinka = kit.nozh || kit.tesak;
     if kit.dubinka && !over_dubinka {
         o.write(EMITTED[21].1); // CS `0x1876`
@@ -472,74 +341,57 @@ fn damage_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     if kit.dubinka && over_dubinka {
         o.write(EMITTED[22].1); // CS `0x1886`
     }
-    // `1000:1fb5`/`1fbc` and `1000:1fdc`/`1fe3`.
+    // Нож supersedes in multiple forms.
     if kit.nozh && !kit.tesak {
         o.write(EMITTED[23].1); // CS `0x1891`
     }
     if kit.nozh && kit.tesak {
         o.write(EMITTED[24].1); // CS `0x189c`
     }
-    // `1000:2003` -- nothing supersedes the тесак.
+    // Nothing supersedes the тесак.
     if kit.tesak {
         o.write(EMITTED[25].1); // CS `0x18a3`
     }
     o.newline(); // `1000:2023`..`1000:202d`
 }
 
-/// `1000:2032`..`1000:21ab` -- the health line and the four conditions.
+/// The health line and the four conditions.
 ///
-/// The conditions are NOT separate lines. `1000:2032` empties the
-/// shortstring at `[bp-0x100]` (the same local the `7777` colour digits used
-/// earlier) and each condition appends its label to it; `1000:2195` then
-/// appends the whole accumulator to the health line after
-/// `Здоровье #/#  `, and only `1000:21ab` closes it.
+/// The conditions are NOT separate lines. A string is emptied and each
+/// condition appends its label to it; the whole accumulator is then appended
+/// to the health line after `Здоровье #/#  `, and only then is the line closed.
 fn health_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     let mut cond = String::new();
-    // `1000:2037 cmp byte [0x38b0],0x1` / `jnz 0x2068` -- equality, not `> 0`.
+    // Челюсть guard is an EQUALITY check, not the `> 0` the item flags use.
     if p.broken_jaw {
         cond.push_str(CONDITIONS[0]); // CS `0x18b4`
     }
-    // `1000:2068 cmp byte [0x394a],0x1` / `1000:206d jnz 0x2099`.
+    // Челюсть broken guard.
     if kit.tooth_guard {
         cond.push_str(CONDITIONS[1]); // CS `0x18c8`
     }
-    // `1000:2099 cmp byte [0x38b1],0x1` / `1000:209e jnz 0x20ca` -- the same
-    // equality shape as the jaw, not the `> 0` the item flags use.
+    // Нога guard is EQUALITY, not the `> 0` the item flags use.
     if p.broken_leg {
         cond.push_str(CONDITIONS[2]); // CS `0x18da`
     }
-    // `1000:20ca cmp byte [0x38cd],0x0` / `jbe 0x20fb` -- unsigned.
+    // Обдолбаный guard is unsigned.
     if kit.buff_countdown > 0 {
         cond.push_str(CONDITIONS[3]); // CS `0x18eb`
     }
     o.writeln(&text::fill(
-        // `1000:2166` opens the string with the one-character CS literal at
-        // 0x181f and `1000:217b` appends the colour digit, then CS `0x18fa`
-        // `Здоровье #/#  ` and the conditions accumulator.
+        // The colour digit, the condition accumulator, and the health range placeholder `Здоровье #/#  `.
         &format!("^{}Здоровье #/#  {cond}", health_digit(p.hp, p.hpmax)),
         &[i64::from(p.hp), i64::from(p.hpmax)],
     ));
 }
 
-/// `1000:20fb`..`1000:215b` -- `'4'`, then `'6'`, then `'2'`.
+/// The three colour transitions: `'4'`, then `'6'`, then `'2'`.
 ///
-/// The two thresholds are [`HEALTH_BROWN_ABOVE`] and [`HEALTH_GREEN_ABOVE`];
-/// read that doc before trusting either number. Only their ORDER is the
-/// original's.
-///
-/// [`crate::enemy_sheet`] calls this too. Its copy of the block,
-/// `1000:14b8`..`1000:151d`, is the same sequence over the enemy record --
-/// `1000:14da mov cx,0x7f` and `1000:150a mov cx,0x80` against the player
-/// sheet's `1000:211d` / `1000:214d`, with `si`/`di` zeroed both times and
-/// the same `jbe`-skips-the-store sense -- so the two comparands are the
-/// same two and the unresolved-value decision above covers both.
-///
-/// `hpmax == 0` is a **port decision**: `0f78:1117`'s `or cl,cl` / `je`
-/// rejects a zero divisor, and `docs/re/rtl.md` does not establish what it
-/// returns, so this port keeps the `1000:20fb` default `'4'` rather than
-/// guessing. Nothing in play reaches it -- `1000:49ca` and `1000:4a30`, the
-/// only writers that lower `hpmax`, are `dec` and `sub 5` on a value the
-/// creation block seeds well above zero -- but a hand-built `Fighter` can.
+/// The two thresholds order is what the original establishes only.
+/// `hpmax == 0` is a port decision: when the divisor is zero, the default `'4'`
+/// is kept rather than guessing. Nothing in play reaches it -- hpmax is only
+/// decreased by `dec` and `sub 5` on values seeded well above zero -- but a
+/// hand-built `Fighter` can.
 pub(crate) fn health_digit(hp: u16, hpmax: u16) -> char {
     if hpmax == 0 {
         return '4';
@@ -557,54 +409,28 @@ pub(crate) fn health_digit(hp: u16, hpmax: u16) -> char {
 /// The accuracy block's four literals, shipped by both sheets.
 ///
 /// [`crate::enemy_sheet`] prints the same four through [`accuracy_block`].
-/// The enemy sheet holds its OWN copies of the shortstrings and pushes them
-/// at `1000:157b`, `1000:15a4`, `1000:15e7` and `1000:1611`; they are
-/// byte-identical to the four cited below. They carry no `CS` citation here
-/// because a literal can hold only one -- `tools/difftest.py`'s `enemy_line`
-/// records decode the enemy's four out of the image by instruction shape and
-/// compare them against these same constants, which pins them harder than a
-/// comment would.
-// CS `0x1909`.
+// `Попадания`
 pub(crate) const ACCURACY_FLAT: &str = EMITTED[26].1;
-// CS `0x1915` -- trailing space, and a `Write`, so the line stays open.
+// `Точность #% ` with a trailing space. The line stays open.
 pub(crate) const ACCURACY_CAPPED: &str = EMITTED[27].1;
-// CS `0x1923` -- three leading spaces.
+// Three leading spaces.
 pub(crate) const ACCURACY_SECOND: &str = EMITTED[28].1;
-// CS `0x1935` -- two spaces after the comma.
+// Two spaces after the comma.
 pub(crate) const ACCURACY_MANY: &str = EMITTED[29].1;
 
-/// `1000:21b0`..`1000:2276` -- the accuracy block, from Ловкость alone.
+/// The accuracy block, from Ловкость alone.
 ///
-/// **This is both sheets' copy.** The original writes the block twice --
-/// here and at `1000:156d`..`1000:1638` inside `FUN_1000_1348` -- and the
-/// two are the same program: the same `> 14` gate, the same `agility * 5 +
-/// 20`, the same `sub 14` / `while > 18` loop, the same three literals, and
-/// the same `Write`-then-`WriteLn` shape. [`crate::enemy_sheet`] therefore
-/// calls this function rather than transcribing it a second time; the
-/// per-branch addresses of its copy are in the comments below, beside this
-/// one's.
+/// **This is both sheets' copy.** The original writes the block twice and
+/// the two are the same program: same gate, same `agility * 5 + 20`, same
+/// loop, same three literals, same `Write`-then-`WriteLn` shape.
+/// [`crate::enemy_sheet`] therefore calls this function rather than
+/// transcribing it a second time.
 ///
-/// The arithmetic is **not** reimplemented here: `crate::combat` already
-/// carries it from the enemy sheet, and the two agree because the sheet
-/// computes an *unopposed* budget. `crate::combat::blow_budget` is
-/// `attacker.agility + 4` unless the defender's own budget exceeds 18, and
-/// against a defaulted `Fighter` the defender's is 4 -- so the loop at that
-/// function's `while theirs > PER_BLOW` never runs and the budget is exactly
-/// the `agility + 4` this block works from.
-///
-/// The identities, each checked by a test below:
-///
-/// * `1000:21c9`..`1000:21cf` (`shl`, `shl`, `add si`, `add 0x14`) is
-///   `agility * 5 + 20`, and `blow_budget * 5` is the same number.
-/// * `1000:2204 sub ax,0xe` then the `1000:2211`..`1000:2221` loop spends 18
-///   per extra hit. The hit counter at `[bp-0x106]` ends one BELOW
-///   `crate::combat::blows_per_round`, and what is left in `[bp-0x104]` is
-///   exactly `accuracy_pct_nth`'s budget at that blow index divided by 5.
+/// The arithmetic is not reimplemented here: `crate::combat` already carries
+/// it from the enemy sheet.
 pub(crate) fn accuracy_block(o: &mut Out, p: &Fighter) {
     let unopposed = Fighter::default();
-    // `1000:21b7 cmp word [bp-0x104],0xe` / `1000:21bc jnle 0x21e7`, and the
-    // enemy sheet's `1000:1574 cmp word [bp-0x204],0xe` / `1000:1579 jnle
-    // 0x15a4`.
+    // Gate: agility greater than 14.
     if p.agility <= 0xe {
         o.writeln(&text::fill(
             ACCURACY_FLAT,
@@ -615,13 +441,11 @@ pub(crate) fn accuracy_block(o: &mut Out, p: &Fighter) {
     o.write(ACCURACY_CAPPED);
     let extra = combat::blows_per_round(p, &unopposed) - 1;
     let pct = i64::from(combat::accuracy_pct_nth(p, &unopposed, extra));
-    // `1000:2223 cmp word [bp-0x106],0x1` / `1000:2228 jnz 0x224d`, and
-    // `1000:15e0` / `1000:15e5 jnz 0x160a`.
+    // Only one hit printed.
     if extra == 1 {
         o.writeln(&text::fill(ACCURACY_SECOND, &[pct]));
     }
-    // `1000:224d cmp word [bp-0x106],0x1` / `1000:2252 jle 0x227b`, and
-    // `1000:160a` / `1000:160f jle 0x1638`.
+    // Multiple hits printed.
     if extra > 1 {
         o.writeln(&text::fill(
             ACCURACY_MANY,
@@ -630,25 +454,17 @@ pub(crate) fn accuracy_block(o: &mut Out, p: &Fighter) {
     }
 }
 
-/// `1000:227b`..`1000:23af` -- the armour line, the two suits and the two
-/// jackets.
+/// The armour line, the two suits and the two jackets.
 ///
-/// `1000:227b cmp byte [0x38b2],0x0` / `1000:2280 ja 0x2285` -- an UNSIGNED
-/// test, and its else arm (`1000:2282 jmp 0x23b4`) skips the clothing rows
-/// and the closing newline too. So a player with no armour never sees a suit
-/// or a jacket listed, however many are worn.
-///
-/// Both clothing pairs are three arms, not two: `1000:22a1`/`1000:22a8`
-/// splits the lesser item's flag into "dim label then the better one's
-/// bright label" (`1000:22af`, `1000:22c8`) and "the lesser one's own bright
-/// label" (`1000:22e3`), and a THIRD guard at `1000:22fc`/`1000:2303` prints
-/// the better item alone when the lesser one is not owned.
+/// When there is no armour, no suit or jacket is ever listed. Both clothing
+/// pairs are three arms: the lesser item's flag splits into dim label then the
+/// better one's bright label, and "the lesser one's own bright label", with a
+/// THIRD guard for when the lesser item is not owned.
 fn armour_block(o: &mut Out, p: &Fighter, kit: &Kit) {
     if p.armor == 0 {
         return;
     }
-    // CS `0x1956`, four trailing spaces. `1000:228a` loads the byte and
-    // zero-extends it.
+    // Four trailing spaces. A zero-extended byte.
     o.write(&text::fill(EMITTED[30].1, &[i64::from(p.armor)]));
     if kit.suit_abibas {
         if kit.suit_adidas {
@@ -675,24 +491,15 @@ fn armour_block(o: &mut Out, p: &Fighter, kit: &Kit) {
     o.newline(); // `1000:23a5`..`1000:23af`
 }
 
-/// `1000:23b4`..`1000:2486` -- косяки, пиво, бабки, хлам.
+/// The items: косяки, пиво, бабки, хлам.
 fn purse(o: &mut Out, p: &Fighter) {
-    // `1000:23b4 cmp word [0x38c5],0x0` / `jle 0x23d5`.
+    // Косяки check.
     if p.joints > 0 {
         o.writeln(&text::fill(EMITTED[39].1, &[i64::from(p.joints)])); // CS `0x19c8`
     }
-    // `1000:23d5` / `jle 0x2415`. Пиво is stored in HALF-litres:
-    // `1000:23e5`/`23e8` is `idiv 2` and `1000:23f4`..`1000:2403` is
-    // `((remainder * 5) mod 10)`, so an odd count prints `.5`.
-    //
-    // The `mod 10` the original spends four instructions on
-    // (`1000:23fe mov cx,0xa` / `2401 idiv cx` / `2403 xchg ax,dx`) can
-    // never change the value: its input is 0 or 5. It is kept because this
-    // is a port, and the cost is one EQUIVALENT mutant that
-    // `cargo mutants -f src/character_sheet.rs` reports and no test can
-    // kill -- `% 2` -> `+ 2`, since `((b + 2) * 5) mod 10` equals
-    // `((b mod 2) * 5) mod 10` for every `b` (checked over the whole `u16`
-    // range). It is the only survivor of the 107.
+    // Пиво is stored in HALF-litres: `idiv 2` and `((remainder * 5) mod 10)`
+    // so an odd count prints `.5`. The `mod 10` on input 0 or 5 never changes
+    // the value; it is kept because this is a port.
     if p.beer_dl > 0 {
         o.writeln(&text::fill(
             EMITTED[40].1, // CS `0x19d1`
@@ -704,29 +511,22 @@ fn purse(o: &mut Out, p: &Fighter) {
     } else {
         o.writeln(EMITTED[41].1); // CS `0x19dc`
     }
-    // `1000:242e` / `jle 0x2451`.
+    // Бабки check.
     if p.money > 0 {
         o.writeln(&text::fill(EMITTED[42].1, &[i64::from(p.money)])); // CS `0x19e7`
     } else {
         o.writeln(EMITTED[43].1); // CS `0x19ef`
     }
-    // `1000:246a` / `jle 0x248b`.
+    // Хлам check.
     if p.junk > 0 {
         o.writeln(&text::fill(EMITTED[44].1, &[i64::from(p.junk)])); // CS `0x19fc`
     }
 }
 
-/// The four injury conditions -- `1000:204f`..`1000:20e2`, appended to the
-/// health line by the string RTL rather than printed on their own.
+/// The four injury conditions, appended to the health line.
 ///
-/// These four are the only fragments in the span with a port counterpart.
-/// The other thirteen (`Ты `, ` # уровня - `, `Сл:^`, `Урон #-#    `, the
-/// bare carets, …) are assembled by this port with ONE `format!` where the
-/// original used several `0f78:0b66` appends, so there is no port-side
-/// literal to compare them against. A table holding them would be a second
-/// copy of the image, not a comparison, so none is written -- the
-/// difference in assembly is real and recorded here rather than papered
-/// over.
+/// The other thirteen fragments (`Ты `, ` # уровня - `, `Сл:^`, `Урон #-#    `, …)
+/// are assembled by this port in one `format!` string.
 pub(crate) const CONDITIONS: [&str; 4] = [
     "^4Сломана челюсть  ", // 1000:204f
     "^1Зубная защита  ",   // 1000:2080
@@ -734,25 +534,13 @@ pub(crate) const CONDITIONS: [&str; 4] = [
     "^6Обдолбаный  ",      // 1000:20e2
 ];
 
-/// The sheet's literal pool -- `1000:1a03`..`1000:248f`, in the image's
-/// ADDRESS order, which is the order `tools/difftest.py`'s `literal_walk`
-/// reads them in.
+/// The sheet's literal pool, in display order.
 ///
-/// `docs/re/port-gaps.md` had this function at 2700 bytes with **no static
-/// record of any kind**. The only comparison against `orig/g.exe` was
-/// `data/difftest_scripts/stats_class0..3`, which need `--oracle` and a
-/// dosbox-x install and so never run in the default gate. Until this pool
-/// every line below was an inline literal whose only witness was a comment
-/// beside it.
+/// Two texts appear TWICE: `Костюм Adidas(+2) ` and `Крутая кожанка(+4) `.
+/// The armour block tests each item on two paths and each path carries its own copy.
 ///
-/// Two texts appear TWICE, at four addresses: `Костюм Adidas(+2) `
-/// (`1000:22c8`, `1000:230a`) and `Крутая кожанка(+4) ` (`1000:234a`,
-/// `1000:238c`). That is the original's own shape -- the armour block tests
-/// each item on two paths and each path pushes its own copy -- so the pool
-/// holds four entries and the two source sites map to them in order.
-///
-/// `(closes, text)` -- `closes` is true for a `WriteLn`, false for a
-/// `Write` the next literal continues.
+/// `(closes, text)` -- `closes` is true for a closing line, false for a line
+/// that continues with the next literal.
 pub(crate) const EMITTED: [(bool, &str); 45] = [
     (true, "^6Сейчас у тебя # опыта, А для прокачки надо #"), // 1000:1ab0
     (false, "Феньки: "),                                      // 1000:1bd0
@@ -827,15 +615,12 @@ mod tests {
     }
 
     /// The one property of the two thresholds the ORIGINAL establishes:
-    /// `1000:214d`'s comparand is strictly above `1000:211d`'s, so a rising
-    /// ratio walks `'4'` -> `'6'` -> `'2'`, hits all three, and never goes
-    /// back.
+    /// the second is strictly above the first, so a rising ratio walks all
+    /// three colours and never goes back.
     ///
-    /// Deliberately not `assert!(HEALTH_BROWN_ABOVE < HEALTH_GREEN_ABOVE)`:
-    /// that comparison is constant-folded (clippy says so), so it is the
-    /// check-that-cannot-fail `docs/re/METHODOLOGY.md` names. This walks
-    /// `health_digit` instead and reds when the two constants are swapped
-    /// (`'6'` then never occurs) or made equal.
+    /// Deliberately not a simple comparison: that would be constant-folded,
+    /// which is the check-that-cannot-fail. This walks `health_digit` instead
+    /// and reds when the two constants are swapped or made equal.
     #[test]
     fn the_health_colour_walks_four_six_two_and_never_back() {
         let rank = |c: char| match c {
@@ -907,7 +692,7 @@ mod tests {
         let p = player();
         let line = |kit: &Kit| sheet(&p, kit)[3].clone();
         assert_eq!(line(&Kit::default()), "Сл:^76^7 Лв:^77^7 Жв:^78^7 Уд:^79");
-        // 20ae:38cd -- Сила alone.
+        // Сила alone.
         assert_eq!(
             line(&Kit {
                 buff_countdown: 1,
@@ -915,7 +700,7 @@ mod tests {
             }),
             "Сл:^16^7 Лв:^77^7 Жв:^78^7 Уд:^79"
         );
-        // 20ae:38bd -- Удача alone.
+        // Удача alone.
         assert_eq!(
             line(&Kit {
                 krestik: true,
@@ -923,7 +708,7 @@ mod tests {
             }),
             "Сл:^76^7 Лв:^77^7 Жв:^78^7 Уд:^19"
         );
-        // 20ae:38be -- Удача alone.
+        // Удача alone.
         assert_eq!(
             line(&Kit {
                 ring_gs: true,
@@ -931,7 +716,7 @@ mod tests {
             }),
             "Сл:^76^7 Лв:^77^7 Жв:^78^7 Уд:^19"
         );
-        // 20ae:38bf and 20ae:38c0 -- all four.
+        // All four together.
         for kit in [
             Kit {
                 ring_pg: true,
@@ -1059,11 +844,8 @@ mod tests {
         assert!(joined(&armed(2, false)).contains("^1! патронов - 2"));
         assert!(joined(&armed(0, false)).contains("^1.^4 Правда без патронов"));
         assert!(!joined(&armed(0, false)).contains("патронов - "));
-        // `1000:1db2 cmp word [0x394f],0x0` / `jle 0x1dd2` is the LOWER half
-        // of the flavour line's guard pair, and the `!contains` above cannot
-        // see it: `^6 А птронов-то мало ` holds no `патронов - `. Without
-        // this line the range reads `(0..=2)` and every test still passes,
-        // which is the check-that-cannot-fail `docs/re/METHODOLOGY.md` names.
+        // The check for the lower guard gate: if no ammunition is left,
+        // print `^6 А птронов-то мало ` and limit the range to (0..=2).
         assert!(!joined(&armed(0, false)).contains("птронов-то мало"));
         assert!(joined(&armed(0, true)).contains("^1У тебя есть пистолет^1 с гушителем"));
     }
@@ -1076,9 +858,9 @@ mod tests {
     fn the_damage_line_is_dim_until_something_boosts_it() {
         let p = player();
         assert_eq!(damage(&sheet(&p, &Kit::default())), "^7Урон 3-6    ");
-        // `1000:1e06`..`1000:1e35` is a seven-way `or`, and EACH term has to
-        // raise the digit on its own -- one `||` written `&&` survives every
-        // test that only ever sets two of them together.
+        // A seven-way `or`, and EACH term has to raise the digit on its own.
+        // One `||` written `&&` survives every test that only ever sets two
+        // of them together.
         let setters: [fn(&mut Kit); 7] = [
             |k| k.buff_countdown = 3,
             |k| k.boots = true,
@@ -1180,23 +962,19 @@ mod tests {
 
     /// The four condition guards, one at a time and in the original's order.
     ///
-    /// `the_conditions_ride_on_the_health_line` sets all four together, so a
-    /// crossed `1000:2037` / `1000:2099` pair -- the jaw's guard reading the
-    /// leg's flag and the other way round -- leaves its asserted string
-    /// identical. Both are `bool`, so the compiler cannot see it either.
-    /// This is the same defect class
-    /// `Game::sheet_kit_wires_each_game_flag_to_its_own_sheet_line` exists
-    /// for, one level down.
+    /// All four are set together, so a crossed guard pair -- the jaw's guard
+    /// reading the leg's flag and the other way round -- leaves the asserted
+    /// string identical. Both are `bool`, so the compiler cannot see it either.
     #[test]
     fn each_condition_guard_reads_its_own_flag() {
         let cases: [ConditionCase; 4] = [
-            // `1000:2037 cmp byte [0x38b0],0x1` / `jnz 0x2068`.
+            // Челюсть guard.
             (|p, _| p.broken_jaw = true, "^4Сломана челюсть  "),
-            // `1000:2068 cmp byte [0x394a],0x1` / `jnz 0x2099`.
+            // Челюсть broken guard.
             (|_, k| k.tooth_guard = true, "^1Зубная защита  "),
-            // `1000:2099 cmp byte [0x38b1],0x1` / `jnz 0x20ca`.
+            // Нога guard.
             (|p, _| p.broken_leg = true, "^4Сломана нога  "),
-            // `1000:20ca cmp byte [0x38cd],0x0` / `jbe 0x20fb`.
+            // Обдолбаный guard.
             (|_, k| k.buff_countdown = 1, "^6Обдолбаный  "),
         ];
         for (set, want) in cases {
@@ -1227,7 +1005,7 @@ mod tests {
                 "hp {hp}"
             );
         }
-        // Port decision: a zero hpmax keeps the 1000:20fb default.
+        // A zero hpmax keeps the default.
         p.hpmax = 0;
         p.hp = 0;
         assert_eq!(
@@ -1256,9 +1034,7 @@ mod tests {
             out.iter().any(|l| l == "Точность 90%    Второй удар 5%"),
             "{out:?}"
         );
-        // `1000:2252 jle 0x227b` -- at exactly one extra hit the `# ударов`
-        // line does NOT also print. An `any` assertion above cannot see a
-        // spurious extra line, so the absence is asserted separately.
+        // At exactly one extra hit the `# ударов` line does NOT also print.
         assert!(
             !out.iter().any(|l| l.contains("ударов")),
             "one extra hit must not print the plural line: {out:?}"
@@ -1357,10 +1133,9 @@ mod tests {
         let out = sheet(&p, &Kit::default());
         let tail = &out[out.len() - 4..];
         assert_eq!(tail, ["Косяки 2", "Пиво 1.5л.", "Бабки 50", "Хлам 7"]);
-        // An EVEN count is the case that separates `beer mod 2` from
-        // `beer div 2` inside the fraction: both give `1` for 3 half-litres,
-        // and only `mod` gives `0` for 2 (`1000:23f4 xchg ax,dx` takes the
-        // REMAINDER of the `1000:23f2 idiv cx`, not the quotient).
+        // An EVEN count separates `beer mod 2` from `beer div 2` inside the
+        // fraction: both give `1` for 3 half-litres, and only `mod` gives `0`
+        // for 2.
         p.beer_dl = 2;
         assert!(sheet(&p, &Kit::default()).iter().any(|l| l == "Пиво 1.0л."));
         p.beer_dl = 4;

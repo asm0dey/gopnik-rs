@@ -1,18 +1,3 @@
-//! The den's literal pool -- `1000:d802`..`1000:df01`.
-//!
-//! Every CS literal the den's span hands to `WriteLn` (`0eed:01c2`) or
-//! `Write` (`0eed:0000`), in the image's own ADDRESS order, which is the
-//! order `tools/difftest.py`'s `literal_walk` reads them in. The span ends
-//! at `1000:df01` and not at the den's last instruction: `df01` pushes the
-//! next verb's key literal, consumed by `1000:df06 call 0f78:0bd8`, and a
-//! walk that included it would report a literal nothing in the span takes.
-//!
-//! `docs/re/port-gaps.md` recorded that the den had no oracle -- 44 branches
-//! and not one `difftest` record scoped to its range. These tables are the
-//! port half of that comparison; `difftest.py`'s `den(img)` derives the same
-//! list straight out of `orig/g.exe` and the two are diffed record for
-//! record.
-
 /// `(closes, text)` -- `closes` is true for a `WriteLn` and false for a
 /// `Write` with no newline behind it. Address order, not execution order.
 pub const EMITTED: [(bool, &str); 31] = [
@@ -64,24 +49,6 @@ pub const EMITTED: [(bool, &str); 31] = [
     ), // 1000:dee3
 ];
 
-/// Where the den's `WriteLn`s that carry no CS literal of their own fall
-/// among [`EMITTED`]'s 31, as `(index, events)` -- the line sits BEFORE that
-/// index. `B` is a bare `WriteLn` (a blank line), `C` one assembled on the
-/// stack and printed whole.
-///
-/// **Read off the port, not off the image.** `Game::print_den_menu` prints
-/// `term::println("")` before `EMITTED[5]` and again before `EMITTED[8]`,
-/// then two `format!` lines before `EMITTED[9]`; the `s` arm's composed
-/// `Это <имя> <N> уровня.` falls before `EMITTED[19]`. Generating this from
-/// `orig/g.exe` would have made `difftest`'s comparison circular -- the
-/// table and the reference would share a source and agree by construction.
-/// Written this way the agreement is a finding: `gaps_of`'s sweep of
-/// `1000:d802`..`df01` returns the same four.
-///
-/// The sweep also collects `ReadKey` (`0f16:031a`) as `K`, and there is not
-/// one in the den. The Phase 3 audit established that by reading the span;
-/// this table is what makes it COMPARED -- a `ReadKey` anywhere in the den
-/// would put a `K` into the reference and this side would have to gain it.
 pub const GAPS: &[(usize, &str)] = &[
     (5, "B"),  // 1000:d8be -- the blank above the three status lines
     (8, "B"),  // 1000:d961 -- the blank above `Напиши w чтобы уйти`
@@ -89,8 +56,6 @@ pub const GAPS: &[(usize, &str)] = &[
     (19, "C"), // 1000:dc53 -- the `s` arm's `Это <имя> <N> уровня.`
 ];
 
-/// The CS literals the span hands to the string RTL (`0f78:0ae7` assign,
-/// `0f78:0b66` append) rather than to a `Write`, in address order.
 pub const FRAGMENTS: [&str; 6] = [
     "Напиши ^",                          // 1000:d99d
     "p^7  чтобы угостить пацанов пивом", // 1000:d9bb

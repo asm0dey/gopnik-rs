@@ -26,149 +26,118 @@
 
 use crate::rng::Rng;
 
-/// The player's pistol -- `20ae:394d`, `20ae:394e` and `20ae:394f`.
+/// The player's pistol -- three adjacent bytes that hold the weapon itself,
+/// the silencer, and the cartridge count.
 ///
-/// The three bytes are adjacent in DGROUP and are written by three adjacent
-/// arms of the dealers' menu, which is what identifies them. Those arms are
-/// selected by the key compares `1000:ccce`, `1000:cd6f` and `1000:cdef` --
-/// each a `call 0xf78:0xbd8` against the literals CS `0x9023`, CS `0x9055`
-/// and CS `0x906a`. An earlier revision of this comment named `1000:ccd8`,
-/// `1000:cd76` and `1000:cdf9` instead; all three of those decode to
-/// `cmp byte [0x394d],0x0`, the arms' own pistol gate, not the key compare
-/// (`python3 tools/re_query.py resolve 1000:ccd8`). `docs/re/gaps.md` records
-/// the correction.
+/// * The pistol itself -- set when the `bmar` menu row is chosen.
+///   Read by the fight dispatcher, the entry dispatch, the character sheet,
+///   and the dealers' own menu.
+/// * The silencer -- set by row 9.
+/// * Cartridges -- a word: `+3` with the pistol, `+5` with a box of rounds
+///   (the menu says six), `-1` per shot.
 ///
-/// * `20ae:394d` -- the pistol itself. `1000:cd05` `c6 06 4d 39 01` sets it in
-///   the `bmar` row-7 arm, alongside `1000:cd0a` `83 06 4f 39 03`
-///   (`cartridges += 3`). Read at `1000:4eb2` (this chain), `1000:ec9d`
-///   (`entry`'s own `f`), `1000:1d38` (the character sheet), and three times
-///   more in the dealers' own menu.
-/// * `20ae:394e` -- the silencer, set at `1000:ce34` by row 9.
-/// * `20ae:394f` -- cartridges, a **word**: `+3` with the pistol
-///   (`1000:cd0a`), `+5` with a box of rounds (`1000:cda3`, whose menu line
-///   says six), `-1` per shot (`1000:4eed`).
-///
-/// An earlier revision of this port called `20ae:394d`
-/// `dealer_order_placed`, "a 150-rouble order placed with the dealers". The
-/// price is right and the reading is not: `1000:cd05`'s arm sets the flag and
-/// hands over three cartridges in the same breath, and `1000:cd7b` refuses the
-/// box of rounds without it with `^6Нету пушки. Сначала купи пистолет`
-/// (CS `0x9666`) -- "no gun, buy a pistol first".
+/// An earlier revision of this port called the first byte `dealer_order_placed`.
+/// That was wrong: the price is right and the logic is not. When the menu row
+/// is chosen, it sets the flag and hands over three cartridges in the same
+/// breath. Later, buying a box of rounds refuses without it with
+/// `^6Нету пушки. Сначала купи пистолет`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Pistol {
     /// `20ae:394d`.
     pub owned: bool,
     /// `20ae:394e`.
     pub silencer: bool,
-    /// `20ae:394f`. Signed, because `1000:4ee6` tests it with `jle`.
+    /// Cartridges. Signed, because the decrement test uses `jle`.
     pub cartridges: i16,
 }
 
-/// What one `f` at the fight prompt did -- `[1000:4eb2, 1000:4f82)`.
+/// What one `f` at the fight prompt did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shot {
-    /// `1000:4eb2` `cmp byte [0x394d],0` / `1000:4eb7 jnz 0x4ebc`: without a
-    /// pistol `1000:4eb9` jumps straight to the death test. **An accepted
-    /// verb that prints nothing at all** -- the case
-    /// `docs/re/METHODOLOGY.md` means by "absence of a visible response is not
-    /// absence of dispatch".
+    /// Without a pistol, jump straight to the death test. An accepted
+    /// verb that prints nothing at all.
     NoPistol,
-    /// `1000:4ebc` / `1000:4ec3`: neither `20ae:3693` nor the silencer is set,
-    /// so `1000:4eca` writes `^6Тельзя тут стрелять! Менты накроют!`
-    /// (CS `0x3716`, the game's own typo).
+    /// Neither the district flag nor the silencer is set, so the game
+    /// refuses with `^6Тельзя тут стрелять! Менты накроют!` (the game's
+    /// own typo).
     NotHere,
-    /// `1000:4ee6` `cmp word [0x394f],0` / `jle 0x4f69` -> CS `0x37a5`.
+    /// No cartridges.
     NoCartridges,
-    /// `1000:4f04`..`1000:4f0c` went the other way -> CS `0x3789`.
+    /// Points to the enemy's class in `Swing`.
     Miss,
-    /// `1000:4f18`'s `Random(10) + 0x14`, subtracted from the enemy's hp at
-    /// `1000:4f28` with **no armour term** -- the only damage site in
-    /// `FUN_1000_3d11` that has none.
+    /// Miss.
     Hit { damage: u16 },
 }
 
-/// Fire once -- `[1000:4eb2, 1000:4f82)`.
+/// Fire once.
 ///
-/// `harder_encounters` is `20ae:3693`, [`crate::game::Game::harder_encounters`]. What the flag
-/// *means* is still not established (`docs/re/gaps.md` has it as a wander
-/// toggle flipped in bucket 1, and `docs/re/combat-dispatch.md` records
-/// `1000:4ebc` as a **third** reader where that entry claimed two); the
-/// dealers' own row-7 line calls the safe places bandit districts
-/// (`^0Только помни стреляй в бандитских районах - там менты не накроют`,
-/// CS `0x95db`), which is corroboration and not a flow claim, so the parameter
-/// is named after the address rather than after a guess.
+/// The flag `harder_encounters` at [`crate::game::Game::harder_encounters`]
+/// controls permission. The dealers' row-7 line calls safe places bandit
+/// districts (`^0Только помни стреляй в бандитских районах - там менты не накроют`),
+/// which is corroboration and not a flow claim, so the parameter is named
+/// after permission rather than after a guess.
 ///
-/// **Draws:** none unless the shot is actually taken, and then exactly two --
-/// `1000:4ef5` `Random(0x32)` and, on a hit, `1000:4f18` `Random(0xa)`. A miss
-/// spends one. Nothing before `1000:4eed` draws, so a player with no pistol,
-/// no permission or no cartridges leaves the RNG stream untouched.
+/// **Draws:** exactly two when the shot is taken. A miss spends one. Nothing
+/// before the cartridge decrement draws, so a player with no pistol, no
+/// permission or no cartridges leaves the RNG stream untouched.
 pub fn fire(rng: &mut Rng, pistol: &mut Pistol, harder_encounters: bool, agility: u16) -> Shot {
     if !pistol.owned {
         return Shot::NoPistol;
     }
-    // 1000:4ebc `cmp byte [0x3693],0` / `jnz 0x4ee6`, then 1000:4ec3
-    // `cmp byte [0x394e],0` / `jnz 0x4ee6` -- either one alone is enough.
+    // Either the permission flag or the silencer is alone sufficient.
     if !harder_encounters && !pistol.silencer {
         return Shot::NotHere;
     }
     if pistol.cartridges <= 0 {
         return Shot::NoCartridges;
     }
-    // 1000:4eed `ff 0e 4f 39` -- spent before the roll, so a miss still costs
-    // a cartridge.
+    // Spent before the roll, so a miss still costs a cartridge.
     pistol.cartridges -= 1;
-    // 1000:4ef1 `mov ax,0x32`. The test is Borland's 32-bit pair with the roll
-    // zero-extended (1000:4efa `xor dx,dx`) and the agility sign-extended
-    // (1000:4f03 `cwd`); widening both with `i32::from(u16)` here reproduces
-    // it for every agility the game can reach, exactly as `Game::claim_spoils`
-    // does for the two luck comparisons.
+    // The test is a 32-bit comparison with the agility sign-extended and the
+    // roll zero-extended; it reproduces the original for every agility the
+    // game can reach.
     let roll = rng.below(0x32);
     if i32::from(agility) <= i32::from(roll) {
         return Shot::Miss;
     }
-    // 1000:4f14 `mov ax,0xa`, 1000:4f1d `add ax,0x14`: 20..=29.
+    // 20..=29.
     let damage = rng.below(0xa) + 0x14;
     Shot::Hit { damage }
 }
 
-/// `20ae:3c80` -- the local gopota's countdown, and the whole of what the
-/// original tracks about them.
+/// The local gopota's countdown -- the whole of what the game tracks
+/// about them.
 ///
 /// Zero means nobody has been called; `1..=2` is the wait; `3` is the arrival;
-/// `4..=6` is attrition; `7` is the reset at `1000:4e43`. The value is a
-/// signed word (`1000:4c64` uses `jl`, `1000:4d43` `jle`, `1000:4d4a` `jnl`),
-/// so it is an `i16` here rather than a `u16`.
+/// `4..=6` is attrition; `7` is the reset. The value is a signed word.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Backup(i16);
 
-/// What the `v` arm itself did -- `[1000:4cb4, 1000:4d3e)`. Every arm falls
-/// through to the status line ([`Backup::status`]).
+/// What the `v` arm itself did. Every arm falls through to the status line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Called {
-    /// `1000:4cd5 mov word [0x3c80],1` -- the call is placed and the countdown
-    /// starts. No line of its own; the status line carries it.
+    /// The call is placed and the countdown starts. No line of its own;
+    /// the status line carries it.
     OnTheWay,
-    /// `1000:4ce2 mov word [0x3c80],3` -- the mobile phone (`20ae:38bb`)
-    /// short-circuits the wait, with `^2Подошли пацаны - Ща начнется!.`
-    /// (CS `0x35c8`, the copy WITH the trailing dot; `1000:4c87`'s is
-    /// CS `0x35a6`, without).
+    /// The mobile phone (`мобильник`) short-circuits the wait.
+    /// The game prints `^2Подошли пацаны - Ща начнется!.`
     ByPhone,
-    /// `1000:4d0a` -- the den is known but the street cred is short:
-    /// `^4Ни кто не хочет за тебя впрягаться.` (CS `0x35e9`).
+    /// The district is known but the street cred is short:
+    /// `^4Ни кто не хочет за тебя впрягаться.`
     NobodyWillBackYou,
-    /// `1000:4d25` -- the den flag is clear:
-    /// `^6Сначала надо скорешиться с местной гопотой.` (CS `0x360f`).
+    /// The den flag is clear:
+    /// `^6Сначала надо скорешиться с местной гопотой.`
     NoDen,
 }
 
-/// The line `[1000:4d3e, 1000:4d93)` writes after every `v`.
+/// The line written after every `v`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
-    /// `1000:4d3e` `cmp word [0x3c80],0` / `jle 0x4d93` -- nothing at all.
+    /// Nothing when nobody has been called.
     Nothing,
-    /// `1000:4d4c`, CS `0x363d`, with `1000:4d51`/`1000:4d54`'s `3 - counter`.
+    /// The countdown with `3 - counter`.
     KicksToHold(i16),
-    /// `1000:4d7a`, CS `0x3670`.
+    /// The arrival message.
     TheyAreHere,
 }
 
@@ -179,32 +148,22 @@ impl Backup {
         self.0
     }
 
-    /// `1000:4d9d cmp word [0x3c80],3` / `jnl 0x4da7` -- the gopota are in the
-    /// fight.
+    /// The gopota are in the fight (counter >= 3).
     pub fn is_up(self) -> bool {
         self.0 >= 3
     }
 
-    /// `v` -- `[1000:4cb4, 1000:4d3e)`.
+    /// Calling the gopota.
     ///
-    /// Both gates are `AND`ed: `1000:4cb4 cmp byte [0x3696],1` / `jnz 0x4d03`
-    /// is the den flag, and `1000:4cbb`..`1000:4ccc` computes
-    /// `district * 10 + 10` and compares it against the street cred
-    /// `20ae:38cb` with `cmp ax,[0x38cb]` / `jnle 0x4d03`, so the call needs
-    /// `cred >= district * 10 + 10`.
+    /// Both gates are `AND`ed: the den flag must be set, and street cred must
+    /// be at least `district * 10 + 10`.
     ///
-    /// **Draws:** none. There is no `9a 4b 11 78 0f` in
-    /// `[1000:4cb4, 1000:4d93)`.
-    ///
-    /// Note the counter is raised to 1 **only from 0** (`1000:4cce`
-    /// `cmp word [0x3c80],0` / `jnz 0x4cdb`), so calling again while the
-    /// gopota are already on their way does not reset the countdown -- but
-    /// the phone arm at `1000:4ce2` is unconditional and *does* jump it
-    /// straight to 3 every time.
+    /// Note the counter is raised to 1 **only from 0**, so calling again while
+    /// the gopota are already on their way does not reset the countdown -- but
+    /// the phone arm jumps it straight to 3 every time.
     pub fn call(&mut self, den_found: bool, cred: i16, district: u8, has_mobile: bool) -> Called {
         if !den_found {
-            // 1000:4d03 `cmp byte [0x3696],0` / `jz 0x4d25` splits the two
-            // refusals: the den flag is the one that picks between them.
+            // The den flag splits the two refusals.
             return Called::NoDen;
         }
         if i32::from(district) * 10 + 10 > i32::from(cred) {
@@ -220,13 +179,10 @@ impl Backup {
         Called::OnTheWay
     }
 
-    /// `[1000:4d3e, 1000:4d93)` -- reached from every arm of [`Backup::call`].
+    /// Reached from every arm of [`Backup::call`].
     ///
-    /// The suppression at 3 is the pair `1000:4d6c cmp word [0x3c80],3` /
-    /// `jnz 0x4d7a` and `1000:4d73 cmp byte [0x38bb],0` / `jnz 0x4d93`: with a
-    /// phone the counter is *already* 3 and `1000:4ce8` has just printed the
-    /// arrival, so `^2Они уже здесь.` would be a second line saying the same
-    /// thing.
+    /// With a phone the counter is already 3 and the arrival has just printed,
+    /// so `^2Они уже здесь.` would be a second line saying the same thing.
     pub fn status(self, has_mobile: bool) -> Status {
         if self.0 <= 0 {
             return Status::Nothing;
@@ -240,19 +196,9 @@ impl Backup {
         Status::TheyAreHere
     }
 
-    /// The second `k` compare's arm -- `1000:4c7c inc [0x3c80]`, guarded by
-    /// `1000:4c64 cmp word [0x3c80],1` / `jl 0x4ca0`.
-    ///
-    /// Returns `true` on the transition to exactly 3
-    /// (`1000:4c80` / `1000:4c85`), which is when `^2Подошли пацаны - Ща
-    /// начнется!` (CS `0x35a6`) prints. So the gopota arrive on the third
-    /// attack after the call -- which is what [`Status::KicksToHold`] counts
-    /// down.
-    ///
-    /// The guard is the caller's, not this method's, because it is a compare
-    /// against the counter that sits *before* the `k` token compare in the
-    /// chain: with the counter at 0 the whole compare is skipped and the
-    /// typed line is never looked at.
+    /// Returns `true` on the transition to exactly 3, which is when
+    /// `^2Подошли пацаны - Ща начнется!` prints. So the gopota arrive on the
+    /// third attack after the call.
     pub fn tick_on_attack(&mut self) -> bool {
         self.0 += 1;
         self.0 == 3
@@ -263,15 +209,14 @@ impl Backup {
 /// the block was entered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fought {
-    /// `1000:4dbe`..`1000:4de7`, clamped at zero.
+    /// The rolled damage, floored at zero.
     pub damage: u16,
-    /// The enemy's hp after `1000:4def`. Signed: `20ae:3962` is a signed word
-    /// and this block does not clamp it.
+    /// The enemy's hp after damage. Signed and not clamped.
     pub enemy_hp_after: i32,
     /// `1000:4e43 cmp word [0x3c80],7` fired -- CS `0x36bd`,
     /// `^2Твою подмогу отпинали.`
     pub beaten: bool,
-    /// `1000:4e79` found the street cred at or below zero -- CS `0x36d6`.
+    /// Street cred is at or below zero (can't afford the backup).
     pub gave_up: bool,
 }
 
@@ -325,22 +270,16 @@ pub fn backup_round(
     if enemy_hp <= 0 || !backup.is_up() {
         return None;
     }
-    // 1000:4dad `mov al,[0x3692]` / `xor ah,ah` / two `shl ax,1`.
+    // District shifted left twice to multiply by 4.
     let roll = i32::from(rng.below(u16::from(district) * 4));
     let district = i32::from(district);
-    // 1000:4dcf..4dda: `idiv cx` with cx = 3, a SIGNED divide of the
-    // zero-extended armour byte -- so for every armour the record can hold
-    // this is a truncating `armour / 3`.
+    // Armour divided by 3, truncating, subtracted AFTER the roll.
     let mut damage = district * 3 + roll - i32::from(enemy_armor) / 3;
     if damage < 0 {
         damage = 0;
     }
     let enemy_hp_after = enemy_hp - damage;
-    // 1000:4e12 `mov ax,0x2`: 0 advances the counter, 1 does not. The test
-    // is 1000:4e1b `or ax,ax` / 1000:4e1d `jnz 0x4e43`, and it skips ONLY
-    // the increment at 1000:4e1f (and the dead 1000:4e2a line): its target
-    // 1000:4e43 `cmp word [0x3c80],0x7` is the reset below, which runs
-    // either way -- which is why that `if` sits outside this one.
+    // The roll: 0 advances the counter, 1 does not.
     let mut beaten = false;
     if rng.below(2) == 0 {
         backup.0 += 1;
@@ -349,10 +288,10 @@ pub fn backup_round(
         backup.0 = 0;
         beaten = true;
     }
-    // 1000:4e0a `sub [0x38cb],ax` -- a word subtract, so it wraps.
+    // Street cred is a word subtract, so it wraps.
     *cred = cred.wrapping_sub((district * 5) as i16);
     let mut gave_up = false;
-    // 1000:4e79 `cmp word [0x38cb],0` / `jnle 0x4e9e`.
+    // Cred at or below zero.
     if *cred <= 0 {
         backup.0 = 0;
         gave_up = true;
@@ -369,17 +308,15 @@ pub fn backup_round(
 mod tests {
     use super::*;
 
-    /// Every arm of `[1000:4cb4, 1000:4d3e)`, and what each leaves the
-    /// counter at. The counter is the point: the two refusals must not start
-    /// a countdown, and the phone arm must jump it to 3 rather than to 1.
+    /// Every arm of the v-call chain, and what each leaves the counter at.
     #[test]
     fn the_v_arm_gates_on_the_den_flag_and_on_the_street_cred() {
-        // No den flag (1000:4cb4): 1000:4d03's `jz 0x4d25` arm.
+        // No den flag.
         let mut b = Backup::default();
         assert_eq!(b.call(false, 10_000, 1, false), Called::NoDen);
         assert_eq!(b.count(), 0);
 
-        // Den known, cred one short of `district*10 + 10` (1000:4cc8).
+        // Den known, cred one short of `district*10 + 10`.
         let mut b = Backup::default();
         assert_eq!(b.call(true, 19, 1, false), Called::NobodyWillBackYou);
         assert_eq!(b.count(), 0);
@@ -396,14 +333,13 @@ mod tests {
         let mut b = Backup::default();
         assert_eq!(b.call(true, 30, 2, false), Called::OnTheWay);
 
-        // The phone (1000:4cdb) jumps straight to 3.
+        // The phone jumps straight to 3.
         let mut b = Backup::default();
         assert_eq!(b.call(true, 20, 1, true), Called::ByPhone);
         assert_eq!(b.count(), 3);
     }
 
-    /// `1000:4cce`'s `jnz 0x4cdb`: a second `v` while the countdown is
-    /// running must NOT reset it to 1.
+    /// A second `v` while the countdown is running must NOT reset it to 1.
     #[test]
     fn a_second_call_does_not_restart_the_countdown() {
         let mut b = Backup::default();
@@ -414,8 +350,7 @@ mod tests {
         assert_eq!(b.count(), 2, "1000:4cd5 is guarded by `counter == 0`");
     }
 
-    /// `1000:4c7c`..`1000:4c85`, and the fact that the arrival line fires on
-    /// the transition to 3 and on no other value.
+    /// The arrival line fires on the transition to 3 and on no other value.
     #[test]
     fn the_countdown_announces_arrival_only_on_the_third_tick() {
         let mut b = Backup::default();
@@ -427,8 +362,7 @@ mod tests {
         assert_eq!(b.count(), 4);
     }
 
-    /// `[1000:4d3e, 1000:4d93)` at every value the counter can hold on the
-    /// way up, with and without the phone.
+    /// Entry and exit at every counter value on the way up.
     #[test]
     fn the_status_line_counts_down_and_is_suppressed_once_by_the_phone() {
         let mut b = Backup::default();
@@ -439,7 +373,7 @@ mod tests {
         assert_eq!(b.status(false), Status::KicksToHold(1));
         b.tick_on_attack();
         assert_eq!(b.status(false), Status::TheyAreHere);
-        // 1000:4d6c / 1000:4d73: suppressed at EXACTLY 3, and only then.
+        // Suppressed at EXACTLY 3, and only then.
         assert_eq!(b.status(true), Status::Nothing);
         b.tick_on_attack();
         assert_eq!(b.count(), 4);
@@ -458,10 +392,7 @@ mod tests {
         b
     }
 
-    /// `1000:4db7`'s `n` is `district * 4` and the damage floor is
-    /// `district * 3`, so the whole reachable range is pinned by the district
-    /// alone. Asserted over every district the game has, against bounds
-    /// derived from the formula rather than from a run of this code.
+    /// The damage range is pinned by the district alone.
     #[test]
     fn the_backup_damage_spans_district_times_three_to_seven() {
         for district in 1u8..=5 {
@@ -490,10 +421,7 @@ mod tests {
         }
     }
 
-    /// `1000:4dcf`..`1000:4dda` -- `armour div 3`, truncating, subtracted
-    /// AFTER the roll. Asserted by holding the roll fixed (same seed) and
-    /// moving only the armour, so the difference is the armour term and
-    /// nothing else.
+    /// `armour div 3`, truncating, subtracted AFTER the roll.
     #[test]
     fn the_backup_damage_loses_the_enemy_armour_divided_by_three() {
         let base = {
@@ -521,9 +449,7 @@ mod tests {
         }
     }
 
-    /// `1000:4dde` / `1000:4de5` -- the clamp, and that it clamps to zero
-    /// rather than wrapping. District 1 rolls 3..=6 and armour 60 takes 20,
-    /// so every roll is deep underwater.
+    /// The clamp to zero. District 1 rolls 3..=6 and armour 60 takes 20.
     #[test]
     fn the_backup_damage_clamps_at_zero_instead_of_healing_the_enemy() {
         for seed in 0..200u32 {
@@ -537,10 +463,10 @@ mod tests {
     }
 
     /// The attrition tick, the reset at exactly 7, and the fact that the
-    /// counter can pass 7 without resetting -- `1000:4e43`'s `jnz`.
+    /// counter can pass 7 without resetting.
     #[test]
     fn the_attrition_resets_the_counter_at_exactly_seven() {
-        // Find a seed whose 1000:4e16 roll is 0 (the tick fires).
+        // Find a seed whose tick roll is 0.
         let ticks = |seed: u32, start: i16| {
             let mut rng = Rng::new(seed);
             let mut b = backup_at(start);
@@ -557,9 +483,7 @@ mod tests {
 
         assert_eq!(ticks(quiet_seed, 6), (6, false), "a 1 leaves 6 alone");
         assert_eq!(ticks(tick_seed, 6), (0, true), "6 -> 7 resets and reports");
-        // Started at 7 -- which `1000:4c7c` can do on a `k` -- the tick makes
-        // it 8 and `cmp word [0x3c80],7` / `jnz 0x4e68` misses it entirely,
-        // while a quiet round leaves the 7 for the test to find.
+        // Started at 7, the tick makes it 8 and the test for 7 misses it.
         assert_eq!(ticks(quiet_seed, 7), (0, true), "7 stays 7 and resets");
         assert_eq!(
             ticks(tick_seed, 7),
@@ -569,8 +493,8 @@ mod tests {
         assert_eq!(ticks(tick_seed, 8), (9, false));
     }
 
-    /// `1000:4e68`..`1000:4e82`: `district * 5` off the cred every round, and
-    /// the backup gives up the moment the cred is not positive.
+    /// `district * 5` off the cred every round, and the backup gives up
+    /// the moment the cred is not positive.
     #[test]
     fn the_backup_eats_street_cred_and_leaves_when_it_runs_out() {
         let mut rng = Rng::new(3);
@@ -590,9 +514,7 @@ mod tests {
         assert_eq!(b.count(), 0);
     }
 
-    /// `1000:4ebc` / `1000:4ec3` is an OR: either the flag or the silencer
-    /// opens the shot, and the silencer is what makes it work with the flag
-    /// clear.
+    /// Either the flag or the silencer opens the shot.
     #[test]
     fn either_the_flag_or_the_silencer_permits_the_shot() {
         for (harder_encounters, silencer, permitted) in [
@@ -616,9 +538,7 @@ mod tests {
         }
     }
 
-    /// `1000:4f04`..`1000:4f0c` -- **hit iff `agility > Random(50)`** -- on
-    /// both sides of the comparison, using the roll the RNG actually
-    /// produced rather than a bound chosen to match.
+    /// **hit iff `agility > Random(50)`** on both sides of the comparison.
     #[test]
     fn the_hit_test_is_strictly_agility_above_the_roll() {
         let mut checked_hit = 0;
@@ -649,8 +569,7 @@ mod tests {
         assert!(checked_hit > 0 && checked_miss > 0 && checked_equal > 0);
     }
 
-    /// `1000:4f18`'s `Random(10) + 0x14` -- 20..=29 and no armour term. Both
-    /// ends of the range have to actually occur.
+    /// `Random(10) + 20` -- 20..=29 range, no armour term.
     #[test]
     fn the_pistol_damage_is_twenty_to_twenty_nine_whatever_the_armour() {
         let mut seen = [false; 10];

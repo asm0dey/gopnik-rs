@@ -86,36 +86,12 @@ use crate::vet;
 use crate::wander;
 use std::io::{self, BufRead};
 
-/// What the main loop is currently doing. Only [`Mode::Street`] dispatches
-/// the full verb table (`crate::commands::parse`'s whole vocabulary);
-/// [`Mode::Shop`] reads its own restricted key set at the location's own
-/// prompt and ignores everything else, matching the per-location
-/// `ReadLn DS:3a72` loops cited in the module doc.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Mode {
     Street,
     Shop(Location),
 }
 
-/// One priced menu row whose price is an **instruction immediate**, not a
-/// byte of the `20ae:0b2e` price array `data/shops.json` records.
-///
-/// The vet, the club and the gym build their rows with the same fixed
-/// instruction shape the market rows use, with one substitution: the
-/// affordability test is `cmp word [20ae:38c7],imm8` against a literal
-/// instead of `mov al,[20ae:0bNN] / xor ah,ah / cmp ax,[20ae:38c7]`. That is
-/// why `tools/extract_tables.py`'s price-array scan never saw them and why
-/// `data/shops.json` carries only `mar` and `bmar`.
-///
-/// `site` is the address of that `cmp`, i.e. where `price` is written down in
-/// the image. `prefix` and `text` are the two shortstrings the row is
-/// assembled from, in that order, with the affordability colour digit
-/// between them -- the same three-part shape [`Game::print_priced_rows`]
-/// uses. Both are quoted verbatim, markup included.
-///
-/// `tools/difftest.py` re-derives this whole table out of `orig/g.exe` by
-/// scanning for that instruction shape (nine hits, no more) and compares it
-/// against what the port emits; `docs/re/difftest.md` has the enumeration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImmRow {
     /// The verb whose handler contains the row: `rep`, `kl` or `trn`.
@@ -124,26 +100,11 @@ pub struct ImmRow {
     pub key: &'static str,
     /// The immediate at `site`, in rubles.
     pub price: i32,
-    /// Address of the `cmp word [20ae:38c7],imm8` that carries `price`.
     pub site: &'static str,
-    /// The prefix shortstring, ending in the bare `^` the colour digit
-    /// completes.
     pub prefix: &'static str,
-    /// The row's own shortstring. For these nine rows the price is part of
-    /// the text as literal digits, not a `#` placeholder.
     pub text: &'static str,
 }
 
-/// Every immediate-priced menu row in the image, in address order.
-///
-/// Nine rows: two for the vet (`1000:d410`, `1000:d465`), two for the club
-/// (`1000:df6f`, `1000:dfcb`) and five for the gym (`1000:e400`,
-/// `1000:e455`, `1000:e4c4`, `1000:e521`, `1000:e58f`). Which handler a row
-/// belongs to is decided by the verb-dispatch span it falls in: `rep`'s
-/// token compare is at `1000:d3a6`, `girl`'s at `1000:d6ed`, `kl`'s at
-/// `1000:df06`, `trn`'s at `1000:e390` and `kos`'s at `1000:e973`, each with
-/// its own token string pushed five bytes earlier
-/// (`docs/re/command-dispatch.md`).
 pub const IMM_ROWS: [ImmRow; 9] = [
     ImmRow {
         shop: "rep",
@@ -219,21 +180,10 @@ pub const IMM_ROWS: [ImmRow; 9] = [
     },
 ];
 
-/// The wandering mage's four lines, `1000:7538`..`75c7` -- `docs/re/port-
-/// gaps.md` row 23. Index 2 is filled with `district * 25` at print time
-/// (`1000:7583`..`7590`, `mov dx,0x19` / `mul dx`); the other three are
-/// plain `WriteLn`s. `crate::trace`'s `mage_line` records read this table
-/// directly so the two can never drift apart, and `tools/difftest.py`'s
-/// `mage(img)` re-derives all four out of `orig/g.exe` by a `literal_walk`
-/// over the same span.
 pub const MAGE_LINES: [&str; 4] = [
-    // 1000:7547, cs 0x73ee.
     "Бродя по окрестностям с самыми грязными намериниями...",
-    // 1000:7565, cs 0x7425.
     "Ты встретил великого мага и экстрасенса - Рушеля Блаво.",
-    // 1000:7583, cs 0x745d.
     "За # рублей он может сделать сохранение прямо здесь.",
-    // 1000:75a9, cs 0x7492.
     "Ты хочешь сохраниться?",
 ];
 
@@ -244,151 +194,23 @@ pub struct Game {
     pub district: u8,
     pub rng: Rng,
     pub location: Location,
-    /// `20ae:38bb` -- the player owns a mobile phone. Gates draws 3 and 4 of
-    /// the wander preamble and every phone-call message in it.
     pub has_mobile: bool,
-    /// `20ae:3693` -- the flag wander bucket 1 toggles at `1000:b3c4`
-    /// (`80 3e 93 36 00` / `b0 00` / `75 01` / `40` / `a2 93 36`: a plain
-    /// boolean flip, read then written back inverted).
-    ///
-    /// **It is not flavour.** `FUN_1000_0d14` reads it twice -- at
-    /// `1000:0d86` to decide whether to spend an extra `Random(4)` on the
-    /// opponent's class (`1000:0d91`), and at `1000:0e54` to multiply the
-    /// opponent's level by 1.5 (`1000:0e6c`). So the toggle changes both the
-    /// draw count and the draw values of every later encounter, which is why
-    /// this port has to carry it even though bucket 1 itself prints only
-    /// flavour text.
     pub harder_encounters: bool,
-    /// `20ae:38b3` / `.SAV 0x217` -- тёмные очки, listed in the stat block by
-    /// `1000:1cf8`/`1000:1cff` (`^1У тебя есть тёмные очки`). On the cop
-    /// encounter's losing roll they are what stops the fight
-    /// (`1000:b7c6` `cmp byte [0x38b3],1`).
     pub dark_glasses: bool,
-    /// `20ae:38bc` / `.SAV 0x220` -- зоновская наколка, listed by
-    /// `1000:1d18`/`1000:1d1f` (`^1На тебе зоновская наколка`) and bought at
-    /// `1000:cb05` (`^2Чистый зек.`). It **halves** the ordinary encounter's
-    /// notice roll at `1000:b5da`..`1000:b5ea`, and only that one: the cop
-    /// encounter's roll at `1000:b784` has no such branch.
     pub prison_tattoo: bool,
-    /// `20ae:38bf` / `.SAV 0x223` -- the first one-shot gift, granted by the
-    /// church's `Random(5) == 2` arm (`1000:8134`) as well as the post-kill
-    /// block `docs/re/progression.md` documents.
     pub oneshot_gift_1: bool,
-    /// `20ae:38c0` / `.SAV 0x224` -- the second one-shot gift (`1000:8184`).
     pub oneshot_gift_2: bool,
-    /// `20ae:38c1` / `.SAV 0x225` -- the ring "Господи помилуй"
-    /// (`1000:81c4`). Gates the wander's +3 HP regen and draw 9.
     pub ring_gospodi_pomilui: bool,
     /// `20ae:38cb` / `.SAV 0x22f` -- понтовость на улице, the street-cred
     /// counter that is **not** the level at `20ae:38a6`. Gates draw 2's
     /// message (`>= 100`) and is topped up by the church's arm 4.
     pub pontovost_street: i16,
-    /// `20ae:38cd` / `.SAV 0x231` -- the joint buff's countdown. Decremented
-    /// at the top of every walk (`1000:aea8`); reaching zero takes the buff
-    /// back. `crate::model::Fighter::stoned` is the same event as a bool;
-    /// this is the counter the original actually keeps.
     pub buff_countdown: u8,
-    /// `20ae:3b74` -- the theft amount -- is a global in the original, but it
-    /// needs no field here, because **every** reader writes it immediately
-    /// before reading it: no path carries a value in it across a turn
-    /// boundary, so it is a local at each of its two use sites.
-    ///
-    /// **Established from flow**, both blocks re-derived from `orig/g.exe`
-    /// from an aligned instruction start:
-    ///
-    /// * `1000:b313`..`1000:b346`, wander draw 11. `1000:b321` is the
-    ///   `Random(district * 5)`; `1000:b326` `inc ax`, `1000:b327`
-    ///   `a3 74 3b` stores, `1000:b32a` `a1 74 3b` reads back for
-    ///   `1000:b32d` `add [0x38c7],ax` (money), and `1000:b336`
-    ///   `ff 36 74 3b` pushes it into the message written at `1000:b346`.
-    /// * `1000:c333`..`1000:c396`, a **second** pickpocket block in the
-    ///   market, entered from the `0f78:0bd8` token compare at `1000:c329`
-    ///   (`jz 0xc333`). Same shape, different gates: `Random(district*5 + 5)`
-    ///   at `1000:c344` checked against luck `[0x38a4]` (`1000:c353`..
-    ///   `1000:c35b`), then `Random(10)` at `1000:c361` with `cmp ax,9` /
-    ///   `jnc 0xc3cd` at `1000:c366`, then `Random(luck * 2)` at
-    ///   `1000:c371`; `1000:c376` `inc ax`, `1000:c377` `a3 74 3b` stores,
-    ///   `1000:c37a` `a1 74 3b` reads back for `1000:c37d`
-    ///   `add [0x38c7],ax`, `1000:c386` `ff 36 74 3b` pushes it.
-    ///
-    /// An earlier revision of this comment said "nothing outside
-    /// `1000:b321`..`1000:b346` reads it". That was **false**, and it is the
-    /// "scan whose completeness claim stopped the next search" failure
-    /// `docs/re/METHODOLOGY.md` exists to stop. Scanning the whole image for
-    /// the operand bytes `74 3b` returns **7** hits: `1000:b328`,
-    /// `1000:b32b`, `1000:b338` (first block), `1000:c378`, `1000:c37b`,
-    /// `1000:c388` (second block) -- and `1000:c358`, which is *not* an
-    /// operand at all but the straddle of `1000:c357` `7c 74` (`jl 0xc3cd`)
-    /// and `1000:c359` `3b c1` (`cmp ax,cx`). Six real references, two
-    /// blocks. The *conclusion* above survives; the evidence first given for
-    /// it did not.
-    ///
-    /// The second block's **three** draws (`1000:c344`, `1000:c361`,
-    /// `1000:c371` -- the three enumerated above) are modelled by
-    /// [`crate::market::pickpocket`] as of `docs/re/port-gaps.md` row 9.
-    /// They are the first draws this port spends inside a shop submenu, and
-    /// no capture under `data/` observes any of them.
-    ///
-    /// `20ae:3b76` -- the market ban's countdown, set to 5 at `1000:c465`
-    /// (`c6 06 76 3b 05`), gated on at `1000:b95e`, cleared by `girl` at
-    /// `1000:d793`, and decremented once per walk at `1000:b173`.
-    ///
-    /// **All five sites are implemented**, as of rows 9 and 25: the setter
-    /// and the gate in [`crate::market`] and [`Game::enter_shop`], the clear
-    /// in [`Game::visit_girl`], the decrement in [`Game::wander_preamble`]
-    /// and the district-advance clear at `1000:abce`. So the `== 1` phone
-    /// message at `1000:b11e` is reachable too.
     pub market_ban_countdown: u8,
-    /// `20ae:3b77` -- the club ban's countdown: set to 5 at `1000:e23e`
-    /// (`c6 06 77 3b 05`) by [`crate::club`]'s caught-cheating block, gated
-    /// on at `1000:df1a` in [`Game::enter_shop`], decremented at
-    /// `1000:b17e`, cleared by the district reset at `1000:abd3`.
-    ///
-    /// All four sites are implemented, and so are
-    /// [`Game::market_ban_countdown`]'s five: `docs/re/gaps.md`'s "The two ban
-    /// countdowns" entry is closed on both halves as of
-    /// `docs/re/port-gaps.md` rows 9 and 25.
     pub club_ban_countdown: u8,
-    /// `20ae:3c82` -- the club card game's stake, in rubles.
-    ///
-    /// **Established from flow.** `python3 tools/re_query.py xrefs-to
-    /// 20ae:3c82` reports 14 references, every one of them between
-    /// `1000:e020` and `1000:e25d`, so the byte is club-local exactly as
-    /// `20ae:3e34` is gym-local and `data/save_layout.json` has no field for
-    /// it. Three of the fourteen are writes: `1000:e020` `:= 5` on entry,
-    /// `1000:e0f7` `+= 2` after a win, `1000:e145` `:= 5` after a loss.
-    ///
-    /// `1000:e020` is FIVE bytes before the loop top at `1000:e025` and is
-    /// the join point of the menu's district gate, so the stake resets once
-    /// per VISIT and carries across keys within one visit. Resetting it per
-    /// prompt iteration would make the whole `p` arm unreachable past its
-    /// first hand.
     pub club_stake: u8,
-    /// `20ae:3b78` -- den errand one. Set by draw 1 at `1000:af71`, and set
-    /// there **unconditionally**, before the flags that decide whether
-    /// anything prints.
     pub den_errand_1_pending: bool,
-    /// `20ae:3b79` -- den errand two (`1000:afd0`, same shape).
     pub den_errand_2_pending: bool,
-    /// `20ae:3b72` -- the fight-accepted flag. Eight of its nine accepted
-    /// references are stores and exactly one is a load, `1000:b81f`
-    /// (`data/den_arms.json`'s `globals[]` census, recomputed by
-    /// `python3 tools/re_query.py xrefs-to 20ae:3b72`).
-    ///
-    /// **Three of the eight stores are carried, one per submenu that starts
-    /// a fight of its own:** `1000:dc11` in [`Game::den_beat_up`],
-    /// `1000:e184` in `crate::club`'s caught-cheating block and `1000:c3d3`
-    /// in [`crate::market`]'s bust. An earlier revision of this line called
-    /// the den's the only one; the club's landed with Task 34 and the
-    /// market's with `docs/re/port-gaps.md` row 9, and neither updated it.
-    /// The wander's own five stores (`1000:b5bb`, `1000:b698`, `1000:b71a`,
-    /// `1000:b747`, `1000:b81a`) are modelled by [`Game::walk`] as CONTROL
-    /// FLOW instead -- it calls `run_combat` where the original sets the
-    /// flag and lets `1000:b81f` read it -- so nothing in this port reads
-    /// this field. Carried anyway, per the brief's "add whatever state the
-    /// arms need ... on `Game` when it is a standalone global", and
-    /// registered in `docs/re/gaps.md`, "The den's `hp` arm sets
-    /// `20ae:3b72` and nothing in this port reads it".
     pub fight_accepted: bool,
     /// `20ae:394d` / `.SAV 0x2b1`, `20ae:394e`, `20ae:394f` -- the pistol, its
     /// silencer and its magazine. See [`crate::combat_dispatch::Pistol`],

@@ -1,58 +1,9 @@
-//! The last opponent's stat block -- `FUN_1000_1348`, `[1000:1348,
-//! 1000:165f)`.
-//!
-//! `sv` at the fight prompt (`1000:4c49 call 0x1348`) is the only caller.
-//! The function reads **nothing** in `[20ae:3690, 20ae:3951]` -- the player's
-//! record -- so it renders the enemy record at `20ae:3952` and nothing else;
-//! that is what settles `sv` against `s`, which calls the player's sheet
-//! (`crate::character_sheet`) instead.
-//!
-//! ## The split, and the sharing
-//!
-//! Same split as [`crate::character_sheet`]: this module **builds** the
-//! lines and [`crate::game::Game::inspect_enemy`] prints them, because
-//! `crate::term::println` writes to this process's stdout and a unit test
-//! cannot capture it.
-//!
-//! Two pieces are literally the same program in the two sheets and are
-//! **shared, not transcribed twice**:
-//!
-//! * [`crate::character_sheet::Out`] -- the `Write` / `WriteLn` open-line
-//!   model. The accuracy block below opens a line with a `Write`
-//!   (`1000:15a4 call 0eed:0000`) that a later `WriteLn` closes, so this
-//!   sheet needs it for the same reason the player's does.
-//! * [`crate::character_sheet::accuracy_block`] -- `1000:156d`..`1000:1638`
-//!   here, `1000:21b0`..`1000:2276` there, identical gate, identical
-//!   arithmetic, identical three literals. Read that function's doc for the
-//!   correspondence.
-//!
-//! ## What is NOT modelled
-//!
-//! The two health-colour thresholds' decimal values. `1000:14da mov cx,0x7f`
-//! and `1000:150a mov cx,0x80` are the *same two comparands* the player
-//! sheet's `1000:211d` / `1000:214d` load, so
-//! [`crate::character_sheet::HEALTH_BROWN_ABOVE`]'s recorded gap covers this
-//! copy too and this module reuses
-//! [`crate::character_sheet::health_digit`] rather than guessing a second
-//! time. `docs/re/gaps.md` carries the entry.
-//!
-//! ## Where the strings are pinned
-//!
-//! `tools/test_character_sheet_port.py` decodes every literal below out of
-//! `orig/g.exe` and pins each `CS 0x....` citation to the literal beside it,
-//! and `tools/difftest.py`'s `enemy_line` / `enemy_gap` / `enemy_fragment`
-//! records re-find all fifteen of the span's literals by walking
-//! `1000:135c`..`165e` instruction by instruction -- never from a hardcoded
-//! offset list -- and compare them against the constants here.
-
 use crate::character_sheet::{accuracy_block, health_digit, Out};
 use crate::data;
 use crate::model::Fighter;
 use crate::text;
 
-// CS `0x1289` -- the header's opener, where the player's sheet has its own.
 pub const HEADER_OPEN: &str = "^2Это ";
-// CS `0x1290`.
 pub const HEADER_LEVEL: &str = " # уровня";
 // CS `0x1274` -- what stands in for the крутизна word above the ladder.
 pub const NOT_IN_THIS_LIFE: &str = "Не в этой жизни.";
@@ -63,22 +14,12 @@ pub const NOT_IN_THIS_LIFE: &str = "Не в этой жизни.";
 /// to the wrong literal; `difftest`'s `enemy_fragment 1` record pins it
 /// instead.
 pub const KRUTIZNA_SEP: &str = " - ";
-// CS `0x129a`.
 pub const STATS: &str = "Сл:# Лв:# Жв:# Уд:#";
-// CS `0x12ae`.
 pub const DAMAGE: &str = "Урон #-#";
-// CS `0x12b7` -- two trailing spaces.
 pub const BROKEN_JAW: &str = "^4Сломана челюсть  ";
-// CS `0x12cb` -- two trailing spaces.
 pub const BROKEN_LEG: &str = "^4Сломана нога  ";
-/// The one-character CS literal at 0x12dc, assigned at `1000:1523`, that the
-/// health line's colour digit is appended to. Uncited for the same reason as
-/// [`KRUTIZNA_SEP`], and the player sheet's copy (0x181f) is in the same
-/// state; `difftest`'s `enemy_fragment 6` record is what pins it.
 pub const COLOUR_PREFIX: &str = "^";
-// CS `0x12de` -- two trailing spaces.
 pub const HEALTH: &str = "Здоровье #/#  ";
-// CS `0x133a` -- four trailing spaces.
 pub const ARMOUR: &str = "^2Броня #    ";
 
 /// The eight CS literals the sheet ASSEMBLES into its two composed lines,
@@ -103,15 +44,6 @@ pub const FRAGMENTS: [&str; 8] = [
     HEALTH,           // 1000:1542
 ];
 
-/// The seven CS literals the sheet passes STRAIGHT to `Write`/`WriteLn`, in
-/// the image's address order, each with whether the call closes the line.
-///
-/// `false` is `call 0eed:0000` (`Write`) and `true` is `call 0eed:01c2`
-/// (`WriteLn`). Only one entry is a `Write`: `1000:15a4`'s `Точность 90% `,
-/// which the accuracy block's own `WriteLn` two branches later closes.
-///
-/// Indices 2..5 are [`crate::character_sheet`]'s four accuracy constants --
-/// the shared block's, not a second transcription; see this module's doc.
 pub const EMITTED: [(bool, &str); 7] = [
     (true, STATS),                                    // 1000:1419
     (true, DAMAGE),                                   // 1000:1436
@@ -122,29 +54,8 @@ pub const EMITTED: [(bool, &str); 7] = [
     (true, ARMOUR),                                   // 1000:163f
 ];
 
-/// Where the two composed lines fall among [`EMITTED`]'s seven, in the
-/// `(index, events)` shape `crate::opening`'s gap tables use: the header's
-/// `WriteLn` at `1000:1404` is before [`EMITTED`] index 0, and the health
-/// line's at `1000:1568` between index 1 and index 2.
-///
-/// Neither composed `WriteLn` carries a CS literal of its own -- both print
-/// `ss:[bp-...]` -- so nothing that scans for literals can see them, and
-/// this is the only place a comparison can put them. `'C'` is the same
-/// event code `church_gap` and `wander_gap` already use.
-///
-/// **The `'B'` and `'K'` codes are absent here because the span has none,
-/// and that is compared, not assumed.** `difftest.py`'s `enemy` sweeps
-/// `1000:135c`..`165e` for bare `WriteLn`s and `ReadKey`s in the same pass
-/// that finds the composed lines, through the same `gaps_of` every other
-/// span uses; either one appearing would put a `'B'` or a `'K'` into a
-/// record and this table would stop matching. So "`sv` blocks on nothing and
-/// prints no blank line" is a claim with a way to fail.
 pub const GAPS: [(usize, &str); 2] = [(0, "C"), (2, "C")];
 
-/// The fifteen CS literals of `1000:135c`..`165e`, split eight assembled and
-/// seven emitted. `difftest.py`'s walk asserts the same total against the
-/// image, so a scan that found fewer raises rather than comparing a short
-/// list; this constant is the port's half of that number.
 pub const LITERAL_COUNT: usize = FRAGMENTS.len() + EMITTED.len();
 
 /// The whole block, in the original's order.
@@ -226,19 +137,6 @@ fn header(o: &mut Out, e: &Fighter) {
     ));
 }
 
-/// `1000:1451`..`1000:1568` -- the health line and the two injuries.
-///
-/// The injuries are **not** separate lines. `1000:1451` empties the
-/// shortstring at `[bp-0x100]`, each flag appends its label to it, and
-/// `1000:154c` appends the whole accumulator onto the health line after
-/// `Здоровье #/#  `; only `1000:1568` closes it. Same shape as the player
-/// sheet's four conditions.
-///
-/// Both guards are `cmp byte [...],0x1` / `jnz` -- an EQUALITY, not the
-/// `> 0` the item flags elsewhere use: `1000:1456` for the jaw
-/// (`20ae:3966`) and `1000:1487` for the leg (`20ae:3967`). A `bool` holds
-/// only 0 and 1, so the port cannot tell the two senses apart here; the
-/// equality is what the record's writers (`1000:45be`, `1000:45e5`) store.
 fn health_line(o: &mut Out, e: &Fighter) {
     let mut cond = String::new();
     if e.broken_jaw {
@@ -256,19 +154,8 @@ fn health_line(o: &mut Out, e: &Fighter) {
     ));
 }
 
-/// `1000:1638`..`1000:1656` -- the armour line, and its gate.
-///
-/// `1000:1638 cmp byte [0x3968],0x0` / `1000:163d jbe 0x165b`: an UNSIGNED
-/// test on a byte, so the line prints for any non-zero armour and is skipped
-/// entirely at zero. This port used to print it unconditionally, which gave
-/// every unarmoured opponent a spurious `^2Броня 0` line.
-///
-/// Unlike the player sheet's `1000:228a`, which is a `Write` that the
-/// clothing rows continue, this one is a `WriteLn` (`1000:1656`) and nothing
-/// follows it: `1000:165b` is the epilogue.
 fn armour_line(o: &mut Out, e: &Fighter) {
     if e.armor != 0 {
-        // 1000:1644 `mov al,[0x3968]` / `xor ah,ah` -- a byte, zero-extended.
         o.writeln(&text::fill(ARMOUR, &[i64::from(e.armor)]));
     }
 }
@@ -318,9 +205,6 @@ mod tests {
             l[0]
         );
         assert!(l[0].contains("7 уровня"), "{:?}", l[0]);
-        // The two tables are different tables, indexed differently. A port
-        // that took `docs/re/port-gaps.md`'s old mislabel would print the
-        // rank name twice.
         assert_ne!(data::krutizna(7), data::rank_name(7));
     }
 
@@ -341,8 +225,6 @@ mod tests {
         }
     }
 
-    /// `1000:135c` passes 41 of the ladder's 43 rows. 41 and 42 exist and
-    /// are still unreachable.
     #[test]
     fn level_forty_one_falls_back_although_a_krutizna_row_exists() {
         let mut e = enemy();
@@ -406,8 +288,6 @@ mod tests {
         assert_eq!(digit(90, &mut e), '2');
     }
 
-    /// `1000:1638`'s gate. The line used to print unconditionally, so an
-    /// unarmoured opponent got a `^2Броня 0` line the original never shows.
     #[test]
     fn the_armour_line_is_gated_on_a_non_zero_byte() {
         let mut e = enemy();
@@ -420,9 +300,6 @@ mod tests {
         assert_eq!(armoured.last().unwrap(), "^2Броня 3    ");
     }
 
-    /// The three shapes of `1000:156d`..`1638`. The middle two are the
-    /// oracle-confirmed captures quoted in `crate::combat`'s docs:
-    /// `SAVE_R2` (agility 15) and `SAVE_R5` (agility 120).
     #[test]
     fn the_accuracy_block_has_three_shapes() {
         let mut e = enemy();

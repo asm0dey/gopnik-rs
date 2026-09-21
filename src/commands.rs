@@ -140,17 +140,8 @@ pub enum Command {
     Club,
     Gym,
     Stats,
-    /// `w` or `run` (confirmed synonyms, same jump target `1000:aea1`).
-    /// Rolls for a random encounter; `crate::game::Game::walk` is the
-    /// reconstruction and documents exactly what is proven vs. simplified.
     Walk,
-    /// `k`. Dispatcher entry confirmed at `1000:ecc7`; "fight" is
-    /// corroboration (adjacent refusal string), not a traced handler body.
     Fight,
-    /// `f`. Dispatcher entry confirmed at `1000:ec96`, and "shoot" is no
-    /// longer corroboration: `1000:ec9d cmp byte [0x394d],0` gates the
-    /// street refusal on the pistol flag, and the fight prompt's own arm at
-    /// `1000:4eb2` fires it ([`crate::combat_dispatch::fire`]).
     Shoot,
     /// `sv`. Not in `entry`'s `DS:3972` chain, because it is a **combat**
     /// verb: `FUN_1000_3d11` compares it at `1000:4c42` against its own
@@ -171,36 +162,14 @@ pub enum Command {
     /// arm is traced in `docs/re/combat-dispatch.md` and implemented in
     /// [`crate::combat_dispatch::Backup`].
     Backup,
-    /// `i`. Confirmed at `1000:ea94`: prints the command list --
-    /// **seventeen** lines, seven of them gated on the discovery flags
-    /// (`docs/re/club.md`, Part 2). The thirteen an earlier revision of this
-    /// line named came from an oracle screen, which
-    /// `docs/re/METHODOLOGY.md` forbids as an establishing source.
     CommandList,
-    /// `kos`. Confirmed at `1000:e973`.
     Joint,
-    /// `h`, drink one half-litre. **Confirmed**: `entry` passes the typed
-    /// line to `FUN_1000_29c4` at `1000:e966`, which compares it against the
-    /// token at file `0x4197` at `1000:29f0`. See the module doc.
     Drink,
-    /// `mh`, drink until full. **Confirmed** the same way: token file
-    /// `0x4199`, compared at `1000:2a02`.
     BingeDrink,
-    /// `name`. Confirmed at `1000:ecf1`.
     Name,
-    /// `help`. Dispatched at `1000:edd5`, and its content IS traced:
-    /// `1000:eddc call 0x5f55` enters `FUN_1000_5f55`, whose 985 bytes are
-    /// `docs/re/port-gaps.md` row 1, ported in `61f0f1c`. `difftest.py`'s
-    /// `help_fragments` / `help_weight_lines` / `help_district_line` records
-    /// re-derive it from the image.
     Help,
-    /// `version`. Confirmed at `1000:edab`; not in the help text at all.
     Version,
-    /// `e` (confirmed `1000:edfa`) or `exit` (confirmed `1000:ede9`, not in
-    /// the help text) -- both quit.
     Quit,
-    /// `fight`. Confirmed dispatcher entry at `1000:d7d8` whose handler
-    /// prints a deprecation message pointing at `w`, not a fight action.
     LegacyFight,
     /// `x` at the dealers (sell junk). Not in `entry`'s `DS:3972` chain --
     /// **established from flow**, at `1000:ce80`, where the `bmar` handler
@@ -215,29 +184,10 @@ pub enum Command {
     /// Command::SellItems' src/game.rs`), because the original's street
     /// dispatcher never compares the token at all.
     SellJunk,
-    /// `wes` at the dealers (sell items). Same tier and same shape as
-    /// [`Command::SellJunk`]: **established from flow** at `1000:ced8`, the
-    /// `FUN_1f78_0bd8` call on `DS:3a72` against token CS `0x970a`, with
-    /// `1000:cedd jz 0xcee2` entering the six sequential offers and
-    /// `1000:cedf jmp 0xd36d` leaving on a miss. Submenu text file `0xAA8A`
-    /// corroborates. Reached only through `Game::shop_turn`, never from the
-    /// street.
     SellItems,
-    /// Any line the dispatcher's compare chain does not match. The original
-    /// writes nothing for these (`1000:ee01` `jmp 0xab75`, straight back to
-    /// the prompt), and it draws no distinction between a stray single
-    /// character and a stray word -- so neither does this.
     Unknown(String),
 }
 
-/// Parse one line of typed input into a [`Command`].
-///
-/// Matches the dispatcher's own behaviour as traced: exact whole-line
-/// comparison (`FUN_1f78_0bd8` compares the two shortstrings' full content,
-/// not a prefix), case handled by lowercasing here (the original's own
-/// case-fold is `FUN_1eed_0216`, called on the input right after `ReadLn` at
-/// `1000:ae72`, before any comparison -- this reproduces its effect without
-/// having decompiled that routine's internals).
 pub fn parse(input: &str) -> Command {
     let v = input.to_lowercase();
     match v.as_str() {
@@ -261,11 +211,6 @@ pub fn parse(input: &str) -> Command {
         "exit" | "e" => Command::Quit,
         "sv" => Command::Inspect,
         "v" => Command::Backup,
-        // `FUN_1000_29c4`'s own two token compares, hoisted here: the routine
-        // is reached through nothing else, so these arms ARE 1000:29fa and
-        // 1000:2a0c. Neither token -> `Command::Unknown`, which writes
-        // nothing, exactly as 1000:2a0e's `jmp 0x2c58` returns without a
-        // store or a line.
         "h" => Command::Drink,       // 1000:29fa
         "mh" => Command::BingeDrink, // 1000:2a0c
         "x" => Command::SellJunk,
@@ -328,10 +273,6 @@ mod tests {
         assert_eq!(parse("wes"), Command::SellItems);
     }
 
-    /// `0eed:0216` lowercases ASCII `A`..`Z` and strips nothing, so the fold
-    /// is case only. `rtl_str_compare` (`0f78:0bd8`) compares Pascal
-    /// shortstrings whose LENGTH BYTE is part of the value, so `" bmar"`
-    /// (length 5) can never equal `bmar` (length 4).
     #[test]
     fn is_case_insensitive_but_does_not_trim() {
         assert_eq!(parse("BMAR"), Command::Dealers);
@@ -349,11 +290,6 @@ mod tests {
         assert_eq!(parse("s"), Command::Stats);
     }
 
-    /// A single character the table does not claim is no more dispatched
-    /// than a stray word is. Location submenu keys (`h`/`r` at the vet,
-    /// the digits at `mar`) never reach `parse`: `Game::shop_turn` matches
-    /// them on the raw line first, because the original reads them through
-    /// its own `ReadLn DS:3a72` that never enters `entry`'s dispatch chain.
     #[test]
     fn unclaimed_single_letters_are_unknown_like_any_other_line() {
         for c in ['a', 'd', 'p', 'r', 't', '7'] {
@@ -371,8 +307,6 @@ mod tests {
 
     #[test]
     fn hp_is_unknown_not_a_command() {
-        // hp's only occurrence anywhere in data/strings.json is inside pr's
-        // own submenu text, not this dispatch chain.
         match parse("hp") {
             Command::Unknown(s) => assert_eq!(s, "hp"),
             other => panic!("expected Unknown, got {other:?}"),

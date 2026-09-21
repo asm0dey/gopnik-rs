@@ -1,40 +1,7 @@
-//! The end screen and the victory marquee -- `FUN_1000_074b`
-//! (`1000:074b`..`1000:0aca`) and `FUN_1000_0aec`
-//! (`1000:0aec`..`1000:0d13`).
-//!
-//! Every path that ends the game reaches [`end_screen`]: the two deaths in
-//! `FUN_1000_3d11` (`1000:4fb4` and `1000:5074`, both `FUN_1000_074b(0)`)
-//! and the victory, which gets there the long way -- `1000:5133 call 0xaec`
-//! runs [`marquee`] first and `1000:0d0a` calls `FUN_1000_074b(1)` from
-//! inside it. `src/game.rs` used to say `1000:5133` *was* `074b(1)`; it is
-//! not, and the marquee is the difference.
-//!
-//! ## Halting is the caller's job
-//!
-//! `1000:0ac0 call 0f78:0116` is `Halt(0)` -- the RTL restores the interrupt
-//! vectors and ends the process, so the `mov sp,bp` / `pop bp` / `ret 2`
-//! epilogue at `1000:0ac5` is unreachable. This port has no process-level
-//! halt inside the game loop; the convention already used for the `e` verb
-//! and for the plain death is `self.running = false`, so these two functions
-//! print and return and [`crate::game::Game`] clears `running`.
-//!
-//! ## `FUN_1000_0acc` is data, not a function
-//!
-//! The eleven Pascal shortstrings at `1000:0acb`..`1000:0aeb` -- `^`, `Т^`,
-//! `Ы ^`, `С^`, `У^`, `П^`, `Е^`, `Р ^`, `Г^`, `О^`, `П` -- are the marquee's
-//! literal pool, and `FUN_1000_0aec` references exactly those eleven offsets
-//! and no others. Ghidra's `FUN_1000_0acc` is its 16-bit-wrap phantom over
-//! them. Interleaved with the rotating digit they spell `ТЫ СУПЕР ГОП`.
-
 use crate::term;
 
-/// `1000:3e8d`'s arm -- the market pickpocket's opener, CS `0x2cfa`,
-/// printed at `1000:3ea5`. One line and no `ReadKey`.
 pub const OPENER_1: [&str; 1] = ["^4Отдай кошелёк урод!"];
 
-/// `1000:3ead`'s arm -- the first rector fight. CS `0x2d10`, `0x2d31`,
-/// `0x2d46`, `0x2d5c`, printed at `1000:3ec5`, `3ee3`, `3f01`, `3f1f`, each
-/// followed by a `ReadKey` (`1000:3eca`, `3ee8`, `3f06`, `3f24`).
 pub const OPENER_3: [&str; 4] = [
     "^2Ну вот мы и встретились мудак!",
     "^4Чё те нада козёл?!",
@@ -42,8 +9,6 @@ pub const OPENER_3: [&str; 4] = [
     "^4Ну ты меня достал ща урою!",
 ];
 
-/// `1000:3f2b`'s arm -- the second. CS `0x2d79`, `0x2d99`, `0x2dc5`,
-/// `0x2dda`; `ReadKey`s at `1000:3f48`, `3f66`, `3f84`, `3fa2`.
 pub const OPENER_4: [&str; 4] = [
     "^6Тут заходит настоящий ректор.",
     "^4Мудак! ты тупой дебил, думал что я идиот?",
@@ -51,10 +16,6 @@ pub const OPENER_4: [&str; 4] = [
     "^4Ну тада сдохни!",
 ];
 
-/// `1000:5085`'s arm -- the victory ending's five lines. CS `0x3862`,
-/// `0x3894`, `0x38bd`, `0x38f6`, `0x3915`. The first four carry a `ReadKey`
-/// (`1000:50b3`, `50d1`, `50ef`, `510d`); the fifth is followed by the
-/// character sheet instead.
 pub const ENDING_4: [&str; 5] = [
     "^1Ты замочил самого ректора!!! ТЫ САМЫЙ КРУТОЙ!!!",
     "^1Вновь сила торжествует над интелектом.",
@@ -63,15 +24,11 @@ pub const ENDING_4: [&str; 5] = [
     "^1А результат:",
 ];
 
-/// `1000:5139`'s arm -- the fake-out. CS `0x3924` and `0x3965`, `ReadKey`s
-/// at `1000:5164` and `5182`.
 pub const ENDING_3: [&str; 2] = [
     "^1Ты замочил самого ректора!!!^6 о чёрт! да это ж не ректор был.",
     "^6Это был проректор СУНЦа!",
 ];
 
-/// `1000:57ce`'s two reward lines -- CS `0x3c99` filled with `district * 20`
-/// (`1000:57e7`) and CS `0x3ce9` filled with `district * 10` (`1000:5808`).
 pub const ERRAND_AWARDS: [(i32, &str); 2] = [
     (
         20,
@@ -80,14 +37,6 @@ pub const ERRAND_AWARDS: [(i32, &str); 2] = [
     (10, "^6Ты получаешь # качков опыта за помощь"),
 ];
 
-/// The eight rows of the block-drawing banner, CS `0x052d`, `0x056a`,
-/// `0x05a7`, `0x05e4`, `0x0621`, `0x065e`, `0x069b`, `0x06d8` -- each a
-/// 60-byte shortstring, printed at `1000:0831`, `0873`, `08b5`, `08f7`,
-/// `0939`, `097b`, `09bd`, `09ff`.
-///
-/// Each row is written as `CS 0x0521` (ten spaces and a bare `^`) plus the
-/// verdict colour digit plus the row itself, assembled at
-/// `1000:07ff`..`1000:081d` and the seven repeats of that shape below it.
 pub const BANNER: [&str; 8] = [
     "│    │ ┌────┐ ┌────┐  ┌────┐     │    │ ┌────┐ │    │ ┌────┐",
     "│    │ │      │    │  │          │    │ │    │ │    │ │    │",
@@ -99,113 +48,41 @@ pub const BANNER: [&str; 8] = [
     "│    │ │      │       └────┘     │    │ │    │ │    │ │    │",
 ];
 
-/// The banner's indent-and-colour prefix, CS `0x0521`, without its colour
-/// digit -- that is `1000:0765`'s `0x34` or `1000:076b`'s `0x32`.
 pub const BANNER_INDENT: &str = "          ^";
 
-/// CS `0x04be`, printed at `1000:07a7` when `param_1 == 0`.
 pub const DEATH_LINE: &str = "                                      ^4Ты сдох.";
 
-/// CS `0x04ef`, printed at `1000:07c2` when `param_1 != 0`.
 pub const VICTORY_LINE: &str = "                                    ^2Ты победил.";
 
-/// CS `0x0715`, printed at `1000:0a63`.
 pub const ANY_KEY: &str = "                          ^6Нажми какую-нибудь кнопку";
 
-/// The shape of [`end_screen`] between its three full-width lines, as
-/// `(index, events)` over the span's emitted literals in ADDRESS order --
-/// `DEATH_LINE` (0), `VICTORY_LINE` (1), `ANY_KEY` (2). `B` is a bare
-/// `WriteLn`, `C` a line assembled on the stack, `K` a `ReadKey`.
-///
-/// **This is what the Phase 3 audit said nothing compared.** Its own words:
-/// "The 14 blank `WriteLn`s, the `ReadKey` at `0aac` ... are read off the
-/// disassembly here but are compared by no oracle", and "a regression that
-/// deleted one blank `WriteLn` from `end_screen` would pass `difftest` and
-/// every test in `tests/`". `src/ending.rs`'s own tests closed the second
-/// half; this table closes the first.
-///
-/// **Read off the port, not the image.** [`end_screen`] prints two blanks
-/// before the verdict, three after it, then the eight banner rows (each
-/// assembled from `BANNER_INDENT` + the colour digit + its row, so each is
-/// a `C`), then five blanks, [`ANY_KEY`], four blanks and the `ReadKey`.
-/// Generating this from `orig/g.exe` would make `difftest`'s comparison
-/// circular. `gaps_of`'s sweep of `1000:074b`..`0acb` returns the same
-/// three entries, and that agreement is the finding.
-pub const END_SCREEN_GAPS: &[(usize, &str)] = &[
-    // 1000:0774, 1000:0783 -- before the verdict line.
-    (0, "BB"),
-    // 1000:07cc/07db/07ea, the eight banner rows, then
-    // 1000:0a09/0a18/0a27/0a36/0a45 -- all between the verdict and ANY_KEY.
-    // Index 2 and not 1 because both verdict lines are emitted slots: the
-    // original holds them as alternatives at 1000:0793 and 1000:07ae.
-    (2, "BBBCCCCCCCCBBBBB"),
-    // 1000:0a6d/0a7c/0a8b/0a9a, then 1000:0aac's ReadKey.
-    (3, "BBBBK"),
-];
+pub const END_SCREEN_GAPS: &[(usize, &str)] = &[(0, "BB"), (2, "BBBCCCCCCCCBBBBB"), (3, "BBBBK")];
 
-/// `FUN_1000_074b` -- the end screen both endings reach.
-///
-/// `victory` is `param_1 != 0`. It picks the verdict line (`1000:078d`) and
-/// the colour digit the eight banner rows carry (`1000:075f`), and nothing
-/// else in the function reads it.
-///
-/// `1000:0aa4` `TextColor(0)` and `1000:0ab1` `TextColor(15)` are dropped:
-/// this port carries no persistent text attribute (`crate::term` renders the
-/// `^N` markup of one line and resets), so the pair has no state to move.
-/// `1000:075a` and `1000:0ab9` `ClrScr` are dropped for the same reason --
-/// there is no screen to clear in a line-based port. The `1000:0aac`
-/// `ReadKey` between them is NOT dropped: it consumes a line, the same
-/// stand-in `Game::enter_district_5` and `persist::choose_slot` use.
 pub fn end_screen(victory: bool, lines: &mut dyn Iterator<Item = std::io::Result<String>>) {
-    // 1000:0774 and 1000:0783 -- two bare WriteLns before the verdict.
     term::println("");
     term::println("");
-    // 1000:07a7 / 1000:07c2.
     term::println(if victory { VICTORY_LINE } else { DEATH_LINE });
-    // 1000:07cc, 07db, 07ea.
     for _ in 0..3 {
         term::println("");
     }
-    // 1000:0765 `mov byte [bp-0x1],0x34` / 1000:076b `mov byte [bp-0x1],0x32`
-    // (`c6 46 ff 34` / `c6 46 ff 32`) -- '4' on death, '2' on victory. It is a
-    // store to a stack local, not to `ah`: `mov ah,0x34` would encode `b4 34`,
-    // two bytes, and would put the second site at a different offset.
-    // `difftest.py`'s `DEATH_COLOUR_SITE` compares the same three bytes.
     let digit = if victory { '2' } else { '4' };
     for row in BANNER {
         term::println(&format!("{BANNER_INDENT}{digit}{row}"));
     }
-    // 1000:0a09, 0a18, 0a27, 0a36, 0a45.
     for _ in 0..5 {
         term::println("");
     }
     term::println(ANY_KEY);
-    // 1000:0a6d, 0a7c, 0a8b, 0a9a.
     for _ in 0..4 {
         term::println("");
     }
-    // 1000:0aac -- ReadKey, value discarded.
     term::read_key(lines);
 }
 
-/// `1000:0b8f cmp byte [bp-0xb],0x20` -- the marquee's indent, written one
-/// space at a time by `1000:0b80` with no newline behind it.
 pub const MARQUEE_INDENT: usize = 32;
 
-/// The number of distinct phases `1000:0ce5`..`1000:0cf0` cycles the digit
-/// string through: `if e < 8 then e := e + 1 else e := 0`, so `e` takes 0..8
-/// before wrapping. `e = 8` and `e = 0` draw the same frame, because the
-/// digit is `(i + e - 1) mod 8`.
 pub const MARQUEE_PHASES: u16 = 9;
 
-/// One frame of the marquee: the eleven literals of the `FUN_1000_0acc` pool
-/// with the ten rotating digits interleaved, assembled at
-/// `1000:0ba0`..`1000:0ccc` and written at `1000:0ce0`.
-///
-/// `1000:0b36`..`1000:0b5c` is the Pascal `for i := 1 to 10 do
-/// s[i] := chr((i + e - 1) mod 8 + 48)` that fills the digit string; the
-/// `1000:0b07` loop above it is the same thing with `e` implicitly 0 and is
-/// overwritten before it is read.
 pub fn marquee_frame(phase: u16) -> String {
     let d = |i: u16| char::from(b'0' + ((i + phase - 1) % 8) as u8);
     let mut out = String::new();
@@ -223,16 +100,6 @@ pub fn marquee_frame(phase: u16) -> String {
     out
 }
 
-/// The eleven literals of the `1000:0acb` pool, in the image's address
-/// order -- `1000:0b9b`, `0bb9`, `0bd7`, `0bf5`, `0c13`, `0c31`, `0c4f`,
-/// `0c6d`, `0c8b`, `0ca9`, `0cc7`. Interleaved with the ten rotating digits
-/// they spell `ТЫ СУПЕР ГОП`.
-///
-/// **Held as a table so `difftest` can compare them one by one.** They used
-/// to be a single `format!` template, which meant the `marquee word` record
-/// -- the only one that touched them -- compared the assembled result and
-/// could not tell which fragment was wrong, or notice a `^` moving between
-/// two of them.
 pub const MARQUEE_FRAGMENTS: [&str; 11] = [
     "^",   // 1000:0b9b
     "Т^",  // 1000:0bb9
@@ -247,40 +114,15 @@ pub const MARQUEE_FRAGMENTS: [&str; 11] = [
     "П",   // 1000:0cc7
 ];
 
-/// What the marquee's span holds between its frames, as `(index, events)`
-/// over its emitted literals -- of which there are NONE, so everything
-/// lands at index 0. `C` is the assembled frame `WriteLn` at `1000:0ce0`,
-/// and the two `K`s are the `ReadKey`s at `1000:0d00` and `1000:0d05`.
-///
-/// Read off the port: [`marquee`] prints one composed line per frame and
-/// then reads two keys before handing over to [`end_screen`].
 pub const MARQUEE_GAPS: &[(usize, &str)] = &[(0, "CKK")];
 
-/// `FUN_1000_0aec` -- the victory marquee, then the end screen.
-///
-/// **The loop bound is a port decision.** The original is
-/// `repeat ... until KeyPressed` (`1000:0cf4 call 0xf16:0x308`), redrawing
-/// one frame per pass behind `1000:0b62 Delay(5000)` and `1000:0b67 ClrScr`.
-/// This port reads whole lines and has no non-blocking key poll, so a
-/// faithful `KeyPressed` is not available: it draws exactly one full phase
-/// cycle ([`MARQUEE_PHASES`] frames) and stops. `Delay` and `ClrScr` are
-/// dropped with the rest of the screen control, so the frames scroll rather
-/// than replace each other. Recorded in `docs/re/gaps.md`.
-///
-/// `1000:0b6c`..`1000:0b93` writes 32 spaces with no newline before each
-/// frame -- `rtl_text_write_char(Output, ' ')` thirty-two times, the loop
-/// bound being `1000:0b8f cmp byte [bp-0xb],0x20`. It is the marquee's
-/// indent, so it is kept.
 pub fn marquee(lines: &mut dyn Iterator<Item = std::io::Result<String>>) {
     for phase in 0..MARQUEE_PHASES {
-        // 1000:0b6c..0b93 -- the 32-space indent, then the frame.
         term::print(&" ".repeat(MARQUEE_INDENT));
         term::println(&marquee_frame(phase));
     }
-    // 1000:0d00 and 1000:0d05 -- two ReadKeys.
     term::read_key(lines);
     term::read_key(lines);
-    // 1000:0d0a -- FUN_1000_074b(1).
     end_screen(true, lines);
 }
 
@@ -292,9 +134,6 @@ mod tests {
         Vec::new().into_iter()
     }
 
-    /// Phase 0 is the string `1000:0b07`'s prologue loop builds, and the
-    /// digits are `(i - 1) mod 8` for `i` in 1..=10 -- so the ninth and
-    /// tenth wrap back to `0` and `1`.
     #[test]
     fn phase_zero_restarts_the_digit_run_after_eight() {
         assert_eq!(marquee_frame(0), "^0Т^1Ы ^2С^3У^4П^5Е^6Р ^7Г^0О^1П");
@@ -309,8 +148,6 @@ mod tests {
         assert_eq!(MARQUEE_PHASES, 9);
     }
 
-    /// Every frame spells `ТЫ СУПЕР ГОП` once the markup is stripped -- the
-    /// eleven literals of the `1000:0acb` pool, in order.
     #[test]
     fn every_frame_spells_the_same_words() {
         for phase in 0..MARQUEE_PHASES {
@@ -341,14 +178,6 @@ mod tests {
         }
     }
 
-    /// The four blank-`WriteLn` runs of `FUN_1000_074b` are 2 / 3 / 5 / 4 --
-    /// `1000:0774`/`0783`, `07cc`/`07db`/`07ea`, `0a09`/`0a18`/`0a27`/`0a36`/
-    /// `0a45`, and `0a6d`/`0a7c`/`0a8b`/`0a9a`, fourteen `call 0f78:05dd` in
-    /// all. Nothing else in this repo compares them: `difftest` carries three
-    /// `endscreen` records, `end_banner` indent and both colours, and
-    /// `banner_row 0..7`, none of which is a blank line, and `tests/` holds no
-    /// end-screen case. Until this test a port that dropped one blank `WriteLn`
-    /// passed every check in the repo.
     #[test]
     fn the_four_blank_runs_are_two_three_five_four() {
         for victory in [false, true] {
@@ -362,10 +191,6 @@ mod tests {
         }
     }
 
-    /// `1000:0aac` is the end screen's only `ReadKey`, and `1000:0d00` /
-    /// `1000:0d05` are the marquee's two before it calls the end screen --
-    /// three consumed lines on the victory path, one on the death path. Like
-    /// the blank runs, no oracle compares them.
     #[test]
     fn the_readkeys_consume_one_line_each() {
         for (run, want) in [(0usize, 1usize), (1, 3)] {
@@ -384,9 +209,6 @@ mod tests {
         }
     }
 
-    /// The marquee runs the end screen itself -- `1000:0d0a`. A victory that
-    /// printed the banner without the marquee would mean `1000:5133` had
-    /// been read as `FUN_1000_074b(1)` again.
     #[test]
     fn the_marquee_ends_with_the_end_screen() {
         let out = term::capture::lines(|| marquee(&mut no_lines()));
