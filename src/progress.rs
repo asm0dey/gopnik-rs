@@ -330,7 +330,7 @@ pub fn apply_levels(
     p.xp = p.xp.wrapping_add(award);
     let mut ups = Vec::new();
     if p.xp < p.threshold {
-        return ups; // 1000:2536..1000:253c
+        return ups;
     }
     let mut levels = 0u32;
     while p.xp >= p.threshold {

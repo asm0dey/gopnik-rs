@@ -53,7 +53,6 @@ pub struct ImmRow {
     pub key: &'static str,
     /// The immediate at `site`, in rubles.
     pub price: i32,
-    pub site: &'static str,
     pub prefix: &'static str,
     pub text: &'static str,
 }
@@ -63,7 +62,6 @@ pub const IMM_ROWS: [ImmRow; 9] = [
         shop: "rep",
         key: "h",
         price: 3,
-        site: "1000:d410",
         prefix: "  ^2h^7 - за ^",
         text: "3^7 рубля тебя залатают",
     },
@@ -71,7 +69,6 @@ pub const IMM_ROWS: [ImmRow; 9] = [
         shop: "rep",
         key: "r",
         price: 7,
-        site: "1000:d465",
         prefix: "  ^2r^7 - за ^",
         text: "7^7 рублей починят переломы",
     },
@@ -79,7 +76,6 @@ pub const IMM_ROWS: [ImmRow; 9] = [
         shop: "kl",
         key: "1",
         price: 15,
-        site: "1000:df6f",
         prefix: " 1 -  ^",
         text: "15^7  потусоваться на дискотеке(Ловкость +1)",
     },
@@ -87,7 +83,6 @@ pub const IMM_ROWS: [ImmRow; 9] = [
         shop: "kl",
         key: "2",
         price: 22,
-        site: "1000:dfcb",
         prefix: " 2 -  ^",
         text: "22^7  разузнать приемы мухлёжников(Удача +1)",
     },
@@ -95,7 +90,6 @@ pub const IMM_ROWS: [ImmRow; 9] = [
         shop: "trn",
         key: "1",
         price: 20,
-        site: "1000:e400",
         prefix: " 1 -  ^",
         text: "20^7  качаться гателями и шгангой(Сила +1)",
     },
@@ -103,7 +97,6 @@ pub const IMM_ROWS: [ImmRow; 9] = [
         shop: "trn",
         key: "2",
         price: 20,
-        site: "1000:e455",
         prefix: " 2 -  ^",
         text: "20^7  качаться на тренажерах(Выносливость +1)",
     },
@@ -111,7 +104,6 @@ pub const IMM_ROWS: [ImmRow; 9] = [
         shop: "trn",
         key: "3",
         price: 10,
-        site: "1000:e4c4",
         prefix: " 3 -  ^",
         text: "10^7  прокачать # качков опыта",
     },
@@ -119,7 +111,6 @@ pub const IMM_ROWS: [ImmRow; 9] = [
         shop: "trn",
         key: "4",
         price: 30,
-        site: "1000:e521",
         prefix: " 4 -  ^",
         text: "30^7  купить зубную защиту боксёров(-75% что сломают челюсть)",
     },
@@ -127,7 +118,6 @@ pub const IMM_ROWS: [ImmRow; 9] = [
         shop: "trn",
         key: "5",
         price: 20,
-        site: "1000:e58f",
         prefix: " 5 -  ^",
         text: "20^7  прокачать пресс(Броня +1)",
     },
@@ -471,10 +461,10 @@ impl Game {
         if self.district >= 5 {
             return Ok(());
         }
-        self.district += 1; // 1000:ab92
+        self.district += 1;
         self.places.reset_for_new_district(self.player.class);
-        self.market_ban_countdown = 0; // 1000:abce
-        self.club_ban_countdown = 0; // 1000:abd3
+        self.market_ban_countdown = 0;
+        self.club_ban_countdown = 0;
         term::println("^1Ты доказал, что ты самый крутой в этом районе - отправляйся в следующий");
         term::println("^0Хочешь сохранить свои достижения?");
         term::print("\\");
@@ -708,9 +698,9 @@ impl Game {
         }
         term::println("^6Ты купил ей чё-то, потратив 12 рублей.");
         term::println("^2Ты расслабился, отдохнул и снова можешь творить свои гоповские дела.");
-        self.player.hp = self.player.hpmax; // 1000:d788
-        self.player.money = self.player.money.wrapping_sub(12_i16); // 1000:d78e
-        self.market_ban_countdown = 0; // 1000:d793
+        self.player.hp = self.player.hpmax;
+        self.player.money = self.player.money.wrapping_sub(12_i16);
+        self.market_ban_countdown = 0;
     }
 
     /// The colour digit the original appends to a price row's prefix.
@@ -868,8 +858,8 @@ impl Game {
     fn row_fill_values(row: &data::ShopEntry) -> Vec<i64> {
         let mut values = vec![row.displayed_price as i64];
         match (row.shop, row.key) {
-            ("mar", "2") => values.push(5),           // 1000:ba5a, file 0xD32A
-            ("bmar", "7") => values.extend([20, 30]), // 1000:c7a7, 1000:c7ab
+            ("mar", "2") => values.push(5), // File 0xD32A
+            ("bmar", "7") => values.extend([20, 30]),
             _ => {}
         }
         values
@@ -943,16 +933,16 @@ impl Game {
     pub(crate) fn trained_armour(&self) -> u8 {
         let mut abs = self.player.armor;
         if self.wear_suit_abibas && !self.wear_suit_adidas {
-            abs = abs.wrapping_sub(1); // 1000:e3b8
+            abs = abs.wrapping_sub(1);
         }
         if self.wear_suit_adidas {
-            abs = abs.wrapping_sub(2); // 1000:e3c3
+            abs = abs.wrapping_sub(2);
         }
         if self.wear_jacket && !self.wear_jacket_krutaya {
-            abs = abs.wrapping_sub(2); // 1000:e3d6
+            abs = abs.wrapping_sub(2);
         }
         if self.wear_jacket_krutaya {
-            abs = abs.wrapping_sub(4); // 1000:e3e2
+            abs = abs.wrapping_sub(4);
         }
         abs
     }
@@ -1288,9 +1278,9 @@ impl Game {
         let luck_high: i16 = if (luck as i16) < 0 { -1 } else { 0 };
         let random_high: i16 = 0;
         if luck_high != random_high {
-            return luck_high < random_high; // 1000:dda8 / 1000:ddac, signed
+            return luck_high < random_high; // Signed
         }
-        luck < random // 1000:ddb1 / 1000:ddf1, unsigned
+        luck < random // Unsigned
     }
 
     /// `d` at the den prompt -- go on the job. The largest arm, and the
@@ -1335,9 +1325,9 @@ impl Game {
                 // This roll forces the enemy to be a `Мент` (class 8).
                 let cop = self.roll_enemy(2);
                 self.run_combat(5, cop, lines)?;
-                term::println(den::EMITTED[26].1); // 1000:ddff, CS 0xa075
+                term::println(den::EMITTED[26].1); // CS 0xa075
             } else {
-                term::println(den::EMITTED[27].1); // 1000:de1a, CS 0xa084
+                term::println(den::EMITTED[27].1); // CS 0xa084
             }
         } else {
             term::println(den::EMITTED[28].1);
@@ -1830,13 +1820,13 @@ impl Game {
             // messages paced one keystroke at a time.
             if self.rng.below(200) == 0 {
                 term::println("Телефон:^6Алё Вася?");
-                term::read_key(lines); // 1000:b055
+                term::read_key(lines);
                 term::print("^2Нет это ");
                 term::print(&self.player.name);
                 term::println(".");
-                term::read_key(lines); // 1000:b092
+                term::read_key(lines);
                 term::println("Телефон:^6А Васю можно?");
-                term::read_key(lines); // 1000:b0b0
+                term::read_key(lines);
                 term::println("^2Нет, он будет в больнице в ближайшие 2 месяца.");
             }
             // Draw 4 -- 1-in-100; prints only with a girl.
@@ -1868,19 +1858,19 @@ impl Game {
         // The four discovery rolls: 1-in-10 for the vet, 1-in-10 for the
         // market, 1-in-100 for the club, 1-in-100 for the gym.
         if self.rng.below(10) == 0 && !self.places.is_found(Location::Vet) {
-            self.places.mark_found(Location::Vet); // 1000:b196
+            self.places.mark_found(Location::Vet);
             term::println("^1Ты спросил у прохожего где больница.");
         }
         if self.rng.below(10) == 0 && !self.places.is_found(Location::Market) {
-            self.places.mark_found(Location::Market); // 1000:b1c8
+            self.places.mark_found(Location::Market);
             term::println("^1Ты нашел базар.");
         }
         if self.rng.below(100) == 0 && !self.places.is_found(Location::Club) {
-            self.places.mark_found(Location::Club); // 1000:b1fa
+            self.places.mark_found(Location::Club);
             term::println("^1Ты увидел объявление \"Типа заходи в наш понтовый клуб\".");
         }
         if self.rng.below(100) == 0 && !self.places.is_found(Location::Gym) {
-            self.places.mark_found(Location::Gym); // 1000:b22c
+            self.places.mark_found(Location::Gym);
             term::println("^1На стене реклама \"Жизнь тяжела. Если не хочешь сдохнуть качайся!\".");
         }
 
@@ -2025,7 +2015,7 @@ impl Game {
                 }
                 1 => {
                     term::println("^1Да уменьшиться твоя корявость!");
-                    self.player.agility += 1; // 1000:8067
+                    self.player.agility += 1;
                 }
                 2 => {
                     term::println("^1Да возрастут твой силы жизненные!");
@@ -2035,7 +2025,7 @@ impl Game {
                 }
                 _ => {
                     term::println("^1Да снизойдет на тебя удача!");
-                    self.player.luck += 1; // 1000:80b9
+                    self.player.luck += 1;
                 }
             },
             // The first unfired one-shot gift. These are the same three
@@ -2053,7 +2043,7 @@ impl Game {
                     self.player.hp += 6;
                     self.player.dmg_max += 1;
                     if self.player.strength.is_multiple_of(2) {
-                        self.player.dmg_min += 1; // 1000:811f..1000:8130
+                        self.player.dmg_min += 1;
                     }
                     self.oneshot_gift_1 = true;
                 } else if !self.oneshot_gift_2 {
@@ -2114,11 +2104,11 @@ impl Game {
     /// reported to the player and the turn continues.
     pub fn mage(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
         term::println(MAGE_LINES[0]);
-        term::read_key(lines); // 1000:7560
+        term::read_key(lines);
         term::println(MAGE_LINES[1]);
-        term::read_key(lines); // 1000:757e
+        term::read_key(lines);
         term::println(&text::fill(MAGE_LINES[2], &[i64::from(self.district) * 25]));
-        term::read_key(lines); // 1000:75a4
+        term::read_key(lines);
         term::println(MAGE_LINES[3]);
         let Some(line) = term::read_line(lines) else {
             self.running = false;
@@ -2602,8 +2592,8 @@ impl Game {
             };
             // Declining just moves on to the next arm.
             if yes {
-                self.wear_suit_abibas = false; // 1000:cf74
-                self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:cf79 / 1000:cf7c / 1000:cf7d
+                self.wear_suit_abibas = false;
+                self.player.money = self.player.money.wrapping_add(refund as i16);
                 term::println(&text::fill(
                     "^2Ты продал костюм за #.",
                     &[i64::from(refund)],
@@ -2620,8 +2610,8 @@ impl Game {
                 return Ok(());
             };
             if yes {
-                self.wear_boots = false; // 1000:d029
-                self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d032
+                self.wear_boots = false;
+                self.player.money = self.player.money.wrapping_add(refund as i16);
                 term::println(&text::fill(
                     "^2Ты продал кроссовки за #.",
                     &[i64::from(refund)],
@@ -2638,8 +2628,8 @@ impl Game {
                 return Ok(());
             };
             if yes {
-                self.wear_jacket = false; // 1000:d0de
-                self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d0e7
+                self.wear_jacket = false;
+                self.player.money = self.player.money.wrapping_add(refund as i16);
                 term::println(&text::fill(
                     "^2Ты продал кожанку за #.",
                     &[i64::from(refund)],
@@ -2656,8 +2646,8 @@ impl Game {
                 return Ok(());
             };
             if yes {
-                self.weapon_kastet = false; // 1000:d1a1
-                self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d1aa
+                self.weapon_kastet = false;
+                self.player.money = self.player.money.wrapping_add(refund as i16);
                 term::println(&text::fill(
                     "^2Ты продал кастет за #.",
                     &[i64::from(refund)],
@@ -2674,8 +2664,8 @@ impl Game {
                 return Ok(());
             };
             if yes {
-                self.weapon_dubinka = false; // 1000:d25d
-                self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d266
+                self.weapon_dubinka = false;
+                self.player.money = self.player.money.wrapping_add(refund as i16);
                 term::println(&text::fill(
                     "^2Ты продал дубинку за #.",
                     &[i64::from(refund)],
@@ -2694,8 +2684,8 @@ impl Game {
                 return Ok(());
             };
             if yes {
-                self.weapon_nozhik = false; // 1000:d312
-                self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d31b
+                self.weapon_nozhik = false;
+                self.player.money = self.player.money.wrapping_add(refund as i16);
                 term::println(&text::fill("^2Ты продал ножик за #.", &[i64::from(refund)]));
             }
         }
@@ -2855,7 +2845,7 @@ impl Game {
             // the row is repeatable.
             "1" => {
                 self.buy_after_gates(
-                    price, // 20ae:0b38 = 15
+                    price,
                     &[],
                     // `^4Чёрт, бабок не хватает.` -- row 1's own refusal line.
                     "^4Чёрт, бабок не хватает.",
@@ -2873,7 +2863,7 @@ impl Game {
             "2" => {
                 let owned = self.has_mobile;
                 self.buy_after_gates(
-                    price, // 20ae:0b39 = 30
+                    price,
                     // `^6У тебя уже есть мобила.`
                     &[(owned, Some("^6У тебя уже есть мобила."))],
                     "^4Нету денег", // CS 0x93b0 `^4Нету денег`, 1000:c94e
@@ -2891,7 +2881,7 @@ impl Game {
             // rolls again.
             "3" => {
                 self.buy_after_gates(
-                    price, // 20ae:0b3a = 20
+                    price,
                     &[],
                     "^4Не хватает", // CS 0x8e4d `^4Не хватает`, 1000:c9ca
                     |g| {
@@ -2900,30 +2890,30 @@ impl Game {
 
                         match g.rng.below(4) {
                             0 => {
-                                g.player.strength += 1; // 1000:ca16 inc [0x389e]
+                                g.player.strength += 1; // Inc [0x389e]
                                 term::println("^1Сила +1 "); // CS 0x9402 `^1Сила +1 `, 1000:ca1a
-                                g.player.dmg_max += 1; // 1000:ca33 inc [0x38aa]
+                                g.player.dmg_max += 1; // Inc [0x38aa]
 
                                 // The dmg-min half runs only when the NEW Сила is even -- the mirror of the
                                 // in-combat stat-loss arm, which takes its dmg-min half when Сила is odd.
                                 if g.player.strength % 2 == 0 {
-                                    g.player.dmg_min += 1; // 1000:ca45 inc [0x38a8]
+                                    g.player.dmg_min += 1; // Inc [0x38a8]
                                 }
-                                g.player.hpmax += 1; // 1000:ca49 inc [0x38ae]
-                                g.player.hp += 1; // 1000:ca4d inc [0x38ac]
+                                g.player.hpmax += 1; // Inc [0x38ae]
+                                g.player.hp += 1; // Inc [0x38ac]
                             }
                             1 => {
-                                g.player.agility += 1; // 1000:ca58 inc [0x38a0]
+                                g.player.agility += 1; // Inc [0x38a0]
                                 term::println("^1Ловкость +1 "); // CS 0x940d `^1Ловкость +1 `, 1000:ca5c
                             }
                             2 => {
-                                g.player.vitality += 1; // 1000:ca7c inc [0x38a2]
+                                g.player.vitality += 1; // Inc [0x38a2]
                                 term::println("^1Живучесть +1 "); // CS 0x941c `^1Живучесть +1 `, 1000:ca80
-                                g.player.hpmax += 5; // 1000:ca99 add word [0x38ae],0x5
-                                g.player.hp += 5; // 1000:ca9e add word [0x38ac],0x5
+                                g.player.hpmax += 5; // Add word [0x38ae],0x5
+                                g.player.hp += 5; // Add word [0x38ac],0x5
                             }
                             _ => {
-                                g.player.luck += 1; // 1000:caaa inc [0x38a4]
+                                g.player.luck += 1; // Inc [0x38a4]
                                 term::println("^1Удача +1 "); // CS 0x942c `^1Удача +1 `, 1000:caae
                             }
                         }
@@ -2935,7 +2925,7 @@ impl Game {
             "4" => {
                 let owned = self.prison_tattoo;
                 self.buy_after_gates(
-                    price, // 20ae:0b3b = 10
+                    price,
                     // `^6Сделать, конечно, можно но толку не будет.`
                     &[(owned, Some("^6Сделать, конечно, можно но толку не будет."))],
                     "^4Нету денег", // CS 0x93b0 `^4Нету денег`, 1000:caea -- row 2's literal
@@ -2961,7 +2951,7 @@ impl Game {
                 let better = self.weapon_dubinka && self.weapon_nozhik && self.weapon_tesak;
                 let owned = self.weapon_kastet;
                 self.buy_after_gates(
-                    price, // 20ae:0b3c = 25
+                    price,
                     &[
                         // `^6Нафиг тебе он нужен, когда есть более мощное оружие.`
                         (
@@ -2973,11 +2963,11 @@ impl Game {
                     ],
                     "^4Не хватает деньжат", // CS 0x9473 `^4Не хватает деньжат`, 1000:cb82
                     |g| {
-                        g.weapon_kastet = true; // 1000:cb9d mov byte [0x38ba],0x1
+                        g.weapon_kastet = true; // Mov byte [0x38ba],0x1
 
                         // The +2/+2 is unconditional here.
-                        g.player.dmg_min += 2; // 1000:cbab add word [0x38a8],0x2
-                        g.player.dmg_max += 2; // 1000:cbb0 add word [0x38aa],0x2
+                        g.player.dmg_min += 2; // Add word [0x38a8],0x2
+                        g.player.dmg_max += 2; // Add word [0x38aa],0x2
 
                         // `^2Ты купил кастет смотри чтоб менты с ним не запалили.`
                         term::println("^2Ты купил кастет смотри чтоб менты с ним не запалили.");
@@ -2993,7 +2983,7 @@ impl Game {
                 let owned = self.weapon_dubinka;
                 let kastet = self.weapon_kastet;
                 self.buy_after_gates(
-                    price, // 20ae:0b3d = 50
+                    price,
                     &[
                         // `^6Да нафиг она нужна, когда есть более мощное оружие.`
                         (
@@ -3005,7 +2995,7 @@ impl Game {
                     ],
                     "^4Не хватает на дубинку деньжат", // CS 0x9511 `^4Не хватает на дубинку деньжат`, 1000:cc3b
                     |g| {
-                        g.weapon_dubinka = true; // 1000:cc56 mov byte [0x394b],0x1
+                        g.weapon_dubinka = true; // Mov byte [0x394b],0x1
 
                         // ORIGINAL BUG, reproduced: the menu line advertises `урон+4`, but buying the
                         // club skips BOTH damage adds when the knuckles are not already owned -- there
@@ -3014,8 +3004,8 @@ impl Game {
                         // The loot arm granting the same club has both halves (+2/+2 and +4/+4); the
                         // shop arm is missing the +4 branch.
                         if kastet {
-                            g.player.dmg_min += 2; // 1000:cc6b add word [0x38a8],0x2
-                            g.player.dmg_max += 2; // 1000:cc70 add word [0x38aa],0x2
+                            g.player.dmg_min += 2; // Add word [0x38a8],0x2
+                            g.player.dmg_max += 2; // Add word [0x38aa],0x2
                         }
                         // `^2Ты купил дубинку - похоже задумал чё-то нехорошее.`
                         term::println("^2Ты купил дубинку - похоже задумал чё-то нехорошее.");
@@ -3027,13 +3017,13 @@ impl Game {
             "7" => {
                 let owned = self.pistol.owned;
                 self.buy_after_gates(
-                    price, // 20ae:0b3e = 150
+                    price,
                     // `^6Ну.. ты.. ВАЩЕ ОФИГЕЛ!`
                     &[(owned, Some("^6Ну.. ты.. ВАЩЕ ОФИГЕЛ!"))],
                     "^4Дорогая штука!", // CS 0x95b2 `^4Дорогая штука!`, 1000:ccea
                     |g| {
-                        g.pistol.owned = true; // 1000:cd05 mov byte [0x394d],0x1
-                        g.pistol.cartridges += 3; // 1000:cd0a add word [0x394f],0x3
+                        g.pistol.owned = true; // Mov byte [0x394d],0x1
+                        g.pistol.cartridges += 3; // Add word [0x394f],0x3
 
                         // `^2Спасайся кто может!!!`
                         term::println("^2Спасайся кто может!!!");
@@ -3049,7 +3039,7 @@ impl Game {
             "8" => {
                 let no_gun = !self.pistol.owned;
                 self.buy_after_gates(
-                    price, // 20ae:0b3f = 70
+                    price,
                     // `^6Нету пушки. Сначала купи пистолет`
                     &[(no_gun, Some("^6Нету пушки. Сначала купи пистолет"))],
                     "^4Нехватка денег.", // CS 0x9637 `^4Нехватка денег.`, 1000:cd88
@@ -3082,7 +3072,7 @@ impl Game {
                     ],
                     "^4Подкопи бабла.", // CS 0x968a `^4Подкопи бабла.`, 1000:ce19
                     |g| {
-                        g.pistol.silencer = true; // 1000:ce34 mov byte [0x394e],0x1
+                        g.pistol.silencer = true; // Mov byte [0x394e],0x1
 
                         // `^2Теперь стреляй где хочешь!`
                         term::println("^2Теперь стреляй где хочешь!");
@@ -3141,7 +3131,7 @@ impl Game {
                 // Refuse when hp is already at max.
                 let healthy = self.player.hp >= self.player.hpmax;
                 self.buy_after_gates(
-                    price, // 20ae:0b2e = 2
+                    price,
                     &[
                         // `^4Ты не можешь хавать из-за сломаной челюсти.`
                         (jaw, Some("^4Ты не можешь хавать из-за сломаной челюсти.")),
@@ -3165,7 +3155,7 @@ impl Game {
             // Row 2, Пиво. One gate, repeatable.
             "2" => {
                 self.buy_after_gates(
-                    price, // 20ae:0b2f = 5
+                    price,
                     &[],
                     "^4Не хватает", // CS 0x8e4d `^4Не хватает`, 1000:be29
                     |g| {
@@ -3190,7 +3180,7 @@ impl Game {
             "3" => {
                 let owned = self.dark_glasses;
                 self.buy_after_gates(
-                    price, // 20ae:0b30 = 10
+                    price,
                     // `^6У тебя есть очки от солнца.`
                     &[(owned, Some("^6У тебя есть очки от солнца."))],
                     "^4Не хватает бабок", // CS 0x8ea7 `^4Не хватает бабок`, 1000:bedb
@@ -3210,7 +3200,7 @@ impl Game {
                 let better = self.wear_suit_adidas;
                 let owned = self.wear_suit_abibas;
                 self.buy_after_gates(
-                    price, // 20ae:0b31 = 15
+                    price,
                     &[
                         // `^6У тебя есть более крутой костюм.`
                         (better, Some("^6У тебя есть более крутой костюм.")),
@@ -3219,7 +3209,7 @@ impl Game {
                     ],
                     "^4Не хватает денег", // CS 0x8ef9 `^4Не хватает денег`, 1000:bf65
                     |g| {
-                        g.wear_suit_abibas = true; // 1000:bf80
+                        g.wear_suit_abibas = true;
                         term::println("^2Теперь ты больше похож на гопа."); // CS 0x8f0c `^2Теперь ты больше похож на гопа.`, 1000:bf8e
                                                                             // ARMOUR +1, unconditionally. The menu line's `Смягчает пинок на 1` agrees.
                                                                             // Read outside this arm by the kick's damage reduction and the gym's
@@ -3234,7 +3224,7 @@ impl Game {
                 let better = self.wear_boots_pontovye;
                 let owned = self.wear_boots;
                 self.buy_after_gates(
-                    price, // 20ae:0b32 = 15
+                    price,
                     &[
                         // `^6У тебя бутсы по круче.`
                         (better, Some("^6У тебя бутсы по круче.")),
@@ -3243,7 +3233,7 @@ impl Game {
                     ],
                     "^4Нету на них денег", // CS 0x8f6d `^4Нету на них денег`, 1000:c00e
                     |g| {
-                        g.wear_boots = true; // 1000:c029
+                        g.wear_boots = true;
                         term::println("^2Зацени красовки."); // CS 0x8f81 `^2Зацени красовки.`, 1000:c037
                                                              // The damage range, +1/+1, unconditionally. The menu says only `Увеличивают
                                                              // урон`.
@@ -3261,7 +3251,7 @@ impl Game {
                 let better = self.wear_jacket_krutaya;
                 let owned = self.wear_jacket;
                 self.buy_after_gates(
-                    price, // 20ae:0b33 = 25
+                    price,
                     &[
                         (below_district, None),
                         // `^6Утебя есть кожанка круче.` -- the missing space after `У` is the
@@ -3272,7 +3262,7 @@ impl Game {
                     ],
                     "^4Не достаточно бабла", // CS 0x8fc8 `^4Не достаточно бабла`, 1000:c0c5
                     |g| {
-                        g.wear_jacket = true; // 1000:c0e0
+                        g.wear_jacket = true;
                         term::println("^2Ну весь на понтах."); // CS 0x8fde `^2Ну весь на понтах.`, 1000:c0ee
                                                                // A byte add, so it wraps at 255 rather than widening.
                         g.player.armor = g.player.armor.wrapping_add(2);
@@ -3292,12 +3282,12 @@ impl Game {
                 // as already bought.
                 let has_abibas = self.wear_suit_abibas;
                 self.buy_after_gates(
-                    price, // 20ae:0b34 = 30
+                    price,
                     // Prints `^6У тебя уже есть этот костюм.`
                     &[(owned, Some("^6У тебя уже есть этот костюм."))],
                     "^4Не хватает денег", // CS 0x8ef9 `^4Не хватает денег`, 1000:c168 -- row 4's literal
                     |g| {
-                        g.wear_suit_adidas = true; // 1000:c183
+                        g.wear_suit_adidas = true;
                         term::println("^2Чистый гопник."); // CS 0x9025 `^2Чистый гопник.`, 1000:c191
                                                            // The upgrade split: buying this while the lesser
                                                            // suit is already owned adds only +1 armour (it
@@ -3318,7 +3308,7 @@ impl Game {
                 let owned = self.wear_boots_pontovye;
                 let has_boots = self.wear_boots;
                 self.buy_after_gates(
-                    price, // 20ae:0b35 = 30
+                    price,
                     &[
                         (below_district, None),
                         // Prints `^6У тебя такие уже есть.` -- the same line row 5 uses.
@@ -3326,7 +3316,7 @@ impl Game {
                     ],
                     "^4Нету на них денег", // CS 0x8f6d `^4Нету на них денег`, 1000:c207 -- row 5's too
                     |g| {
-                        g.wear_boots_pontovye = true; // 1000:c222
+                        g.wear_boots_pontovye = true;
                         term::println("^2Офигенные бутцы."); // CS 0x9057 `^2Офигенные бутцы.`, 1000:c230
                                                              // The upgrade split on the damage range: with the
                                                              // lesser boots already owned, this only adds +1 to
@@ -3348,7 +3338,7 @@ impl Game {
                 let owned = self.wear_jacket_krutaya;
                 let has_jacket = self.wear_jacket;
                 self.buy_after_gates(
-                    price, // 20ae:0b36 = 50
+                    price,
                     &[
                         (below_district, None),
                         // Prints `^6Ты уже купил это.` -- the same line row 6 uses.
@@ -3356,7 +3346,7 @@ impl Game {
                     ],
                     "^4Не достаточно бабла", // CS 0x8fc8 `^4Не достаточно бабла`, 1000:c2af -- row 6's too
                     |g| {
-                        g.wear_jacket_krutaya = true; // 1000:c2ca
+                        g.wear_jacket_krutaya = true;
                         term::println("^2Ну крутой, сдохнуть можно!"); // CS 0x906c `^2Ну крутой, сдохнуть можно!`, 1000:c2d8
                                                                        // The upgrade split: buying this while the lesser
                                                                        // jacket is already owned adds +2 more armour (on
@@ -4133,7 +4123,7 @@ impl Game {
             self.player.hp += 6;
             self.player.dmg_max += 1;
             if self.player.strength.is_multiple_of(2) {
-                self.player.dmg_min += 1; // 1000:534d..1000:5361
+                self.player.dmg_min += 1;
             }
             self.oneshot_gift_1 = true;
         } else if !self.oneshot_gift_2 {
@@ -4195,11 +4185,11 @@ impl Game {
                 if self.weapon_kastet {
                     return;
                 }
-                self.weapon_kastet = true; // 1000:5541
+                self.weapon_kastet = true;
                 term::println(spoils::EMITTED[11].1);
                 // The "better" set here: ножик, дубинка, тесак.
                 if !self.weapon_nozhik && !self.weapon_dubinka && !self.weapon_tesak {
-                    self.player.dmg_min += 2; // 1000:5574
+                    self.player.dmg_min += 2;
                     self.player.dmg_max += 2;
                 } else {
                     term::println(spoils::EMITTED[12].1);
@@ -4209,16 +4199,16 @@ impl Game {
                 if self.weapon_dubinka {
                     return;
                 }
-                self.weapon_dubinka = true; // 1000:55a7
+                self.weapon_dubinka = true;
                 term::println(spoils::EMITTED[13].1);
                 // The "better" set here: ножик, тесак.
                 if self.weapon_nozhik || self.weapon_tesak {
                     term::println(spoils::EMITTED[14].1);
                 } else if self.weapon_kastet {
-                    self.player.dmg_min += 2; // 1000:55da
+                    self.player.dmg_min += 2;
                     self.player.dmg_max += 2;
                 } else {
-                    self.player.dmg_min += 4; // 1000:55e6
+                    self.player.dmg_min += 4;
                     self.player.dmg_max += 4;
                 }
             }
@@ -4255,18 +4245,18 @@ impl Game {
                 if self.weapon_nozhik {
                     return;
                 }
-                self.weapon_nozhik = true; // 1000:5698
+                self.weapon_nozhik = true;
                 term::println(spoils::EMITTED[17].1);
                 if !self.weapon_dubinka == self.weapon_kastet {
-                    self.player.dmg_min += 4; // 1000:56cf
+                    self.player.dmg_min += 4;
                     self.player.dmg_max += 4;
                 }
                 if self.weapon_dubinka {
-                    self.player.dmg_min += 2; // 1000:56e0
+                    self.player.dmg_min += 2;
                     self.player.dmg_max += 2;
                 }
                 if !self.weapon_kastet && !self.weapon_dubinka && !self.weapon_tesak {
-                    self.player.dmg_min += 6; // 1000:56ff
+                    self.player.dmg_min += 6;
                     self.player.dmg_max += 6;
                 }
                 if self.weapon_tesak {
@@ -4277,22 +4267,22 @@ impl Game {
                 if self.weapon_tesak {
                     return;
                 }
-                self.weapon_tesak = true; // 1000:573e
+                self.weapon_tesak = true;
                 term::println(spoils::EMITTED[19].1);
                 if (!self.weapon_dubinka && !self.weapon_nozhik) == self.weapon_kastet {
-                    self.player.dmg_min += 7; // 1000:577c
+                    self.player.dmg_min += 7;
                     self.player.dmg_max += 7;
                 }
                 if self.weapon_dubinka && !self.weapon_nozhik {
-                    self.player.dmg_min += 5; // 1000:5794
+                    self.player.dmg_min += 5;
                     self.player.dmg_max += 5;
                 }
                 if self.weapon_nozhik {
-                    self.player.dmg_min += 3; // 1000:57a5
+                    self.player.dmg_min += 3;
                     self.player.dmg_max += 3;
                 }
                 if !self.weapon_kastet && !self.weapon_dubinka && !self.weapon_nozhik {
-                    self.player.dmg_min += 9; // 1000:57c4
+                    self.player.dmg_min += 9;
                     self.player.dmg_max += 9;
                 }
             }
@@ -4584,35 +4574,35 @@ pub const COMMAND_LIST: [(bool, &str); 17] = [
     (
         true,
         "Напиши: ^6w^7    чтобы шататься по окрестностям - искать на свою жопу приключения",
-    ), // 1000:ea9e
-    (true, "Напиши: ^6mar^7  чтобы идти на рынок"), // 1000:eabe
-    (true, "Напиши: ^6bmar^7 чтобы идти к барыгам"), // 1000:eade
-    (true, "Напиши: ^6rep^7  чтобы идти к ветеринару"), // 1000:eafe
-    (true, "Напиши: ^6girl^7 чтобы завалиться к своей девчонке"), // 1000:eb1e
-    (true, "Напиши: ^6pr^7   чтобы идти в местный притон гопоты"), // 1000:eb3e
-    (true, "Напиши: ^6kl^7   чтобы идти в клуб"),   // 1000:eb5e
-    (true, "Напиши: ^6trn^7  чтобы идти в качалку"), // 1000:eb7e
+    ),
+    (true, "Напиши: ^6mar^7  чтобы идти на рынок"),
+    (true, "Напиши: ^6bmar^7 чтобы идти к барыгам"),
+    (true, "Напиши: ^6rep^7  чтобы идти к ветеринару"),
+    (true, "Напиши: ^6girl^7 чтобы завалиться к своей девчонке"),
+    (true, "Напиши: ^6pr^7   чтобы идти в местный притон гопоты"),
+    (true, "Напиши: ^6kl^7   чтобы идти в клуб"),
+    (true, "Напиши: ^6trn^7  чтобы идти в качалку"),
     (
         true,
         "Напиши: ^6s^7    чтобы посмотреть в лужу на свою уродскую рожу",
-    ), // 1000:eb97
+    ),
     (
         true,
         "Напиши: ^6sv^7   чтобы приглядеться к пинаемому мудаку",
-    ), // 1000:ebb0
+    ),
     (
         true,
         "Напиши: ^6k^7    чтобы гасить мудака который тебе попался на дороге",
-    ), // 1000:ebc9
-    (true, "Напиши: ^6v^7    чтобы позвать подкрепление"), // 1000:ebe2
-    (true, "Напиши: ^6kos^7  чтобы схавать косяк"), // 1000:ebfb
+    ),
+    (true, "Напиши: ^6v^7    чтобы позвать подкрепление"),
+    (true, "Напиши: ^6kos^7  чтобы схавать косяк"),
     (
         true,
         "Напиши: ^6h^7    чтобы выпить пиво (если не охото к ветеринару)",
-    ), // 1000:ec14
-    (true, "Напиши: ^6mh^7   чтобы набухаться до чёртиков"), // 1000:ec2d
-    (true, "Напиши: ^6name^7 чтобы сменить погоняло"), // 1000:ec46
-    (true, "Напиши: ^6e^7    если захочешь выйти"), // 1000:ec5f
+    ),
+    (true, "Напиши: ^6mh^7   чтобы набухаться до чёртиков"),
+    (true, "Напиши: ^6name^7 чтобы сменить погоняло"),
+    (true, "Напиши: ^6e^7    если захочешь выйти"),
 ];
 
 #[cfg(test)]
@@ -4728,7 +4718,7 @@ mod tests {
     fn the_class_keyed_opener_runs_only_for_param_1_zero_and_six() {
         let greeted = |kind: u8| {
             let mut g = game();
-            g.player.level = 0; // 1000:4ade: `run` leaves with no penalty.
+            g.player.level = 0; // `run` leaves with no penalty.
             term::capture::lines(|| {
                 g.run_combat(kind, punchbag(), &mut input(&["run"]))
                     .unwrap();
@@ -5146,7 +5136,7 @@ mod tests {
         g.places.mark_found(Location::Vet);
         g.location = Location::Vet;
         g.mode = Mode::Shop(Location::Vet);
-        g.player.hp = 1; // 1000:d4ba ejects a whole player after every turn
+        g.player.hp = 1; // Ejects a whole player after every turn
         g.shop_turn(Location::Vet, "mar", &mut no_input()).unwrap(); // must not teleport
         assert_eq!(g.location, Location::Vet);
         g.shop_turn(Location::Vet, "w", &mut no_input()).unwrap();
@@ -5168,7 +5158,7 @@ mod tests {
         g.places.mark_found(Location::Vet);
         g.location = Location::Vet;
         g.mode = Mode::Shop(Location::Vet);
-        g.player.hp = g.player.hpmax - 6; // 1000:d5c3 needs hp < hpmax
+        g.player.hp = g.player.hpmax - 6; // Needs hp < hpmax
         g.player.money = 10;
         g.player.beer_dl = 4;
         let hp0 = g.player.hp;
@@ -5578,7 +5568,7 @@ mod tests {
         let mut g = game();
         g.location = Location::Market;
         g.player.money = 1000;
-        g.district = 1; // 1000:c08e is `cmp byte [0x3692],0x1`
+        g.district = 1; // Is `cmp byte [0x3692],0x1`
         g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 1000, "gated row must not be sellable yet");
         assert!(!g.wear_jacket, "1000:c0e0 must not have run");
@@ -5885,7 +5875,7 @@ mod tests {
     fn the_silencer_row_is_listed_only_with_a_pistol_and_a_full_counter() {
         let listed = |pistol: bool, counter: u8| {
             let mut g = game();
-            g.district = 4; // 1000:c81d, satisfied throughout
+            g.district = 4; // Satisfied throughout
             g.pistol.owned = pistol;
             g.dealer_delivery_counter = counter;
             g.listed_rows("bmar").iter().any(|r| r.key == "9")
@@ -6049,7 +6039,7 @@ mod tests {
         let (base_min, base_max) = (game().player.dmg_min, game().player.dmg_max);
 
         let mut g = market(100);
-        g.district = 3; // 1000:c1d7 is `cmp byte [0x3692],0x2`
+        g.district = 3; // Is `cmp byte [0x3692],0x2`
         g.shop_turn(Location::Market, "5", &mut no_input()).unwrap();
         assert!(g.wear_boots, "1000:c029");
         assert_eq!(
@@ -6100,7 +6090,7 @@ mod tests {
     #[test]
     fn the_market_jackets_end_on_four_armour_in_either_purchase_order() {
         let mut g = market(100);
-        g.district = 4; // 1000:c27f is `cmp byte [0x3692],0x3`
+        g.district = 4; // Is `cmp byte [0x3692],0x3`
         g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
         assert!(g.wear_jacket, "1000:c0e0");
         assert_eq!(g.player.armor, 2, "1000:c107");
@@ -6368,16 +6358,16 @@ mod tests {
 
     /// Every flag the six `wes` arms gate on, set -- so all six are offered.
     fn all_sellable(g: &mut Game) {
-        g.wear_suit_abibas = true; // 20ae:38b4
-        g.wear_suit_adidas = true; // 20ae:38b7
-        g.wear_boots = true; // 20ae:38b5
-        g.wear_boots_pontovye = true; // 20ae:38b8
-        g.wear_jacket = true; // 20ae:38b6
-        g.wear_jacket_krutaya = true; // 20ae:38b9
-        g.weapon_kastet = true; // 20ae:38ba
-        g.weapon_dubinka = true; // 20ae:394b
-        g.weapon_nozhik = true; // 20ae:38c2
-        g.weapon_tesak = true; // 20ae:394c
+        g.wear_suit_abibas = true;
+        g.wear_suit_adidas = true;
+        g.wear_boots = true;
+        g.wear_boots_pontovye = true;
+        g.wear_jacket = true;
+        g.wear_jacket_krutaya = true;
+        g.weapon_kastet = true;
+        g.weapon_dubinka = true;
+        g.weapon_nozhik = true;
+        g.weapon_tesak = true;
     }
 
     #[test]
@@ -6655,11 +6645,11 @@ mod tests {
         // Nothing owned: the scratch is the armour byte.
         assert_eq!(abs(10, false, false, false, false), 10);
         // One of each, alone.
-        assert_eq!(abs(10, true, false, false, false), 9); // 1000:e3b8, -1
-        assert_eq!(abs(10, false, true, false, false), 8); // 1000:e3c3, -2
-        assert_eq!(abs(10, false, false, true, false), 8); // 1000:e3d6, -2
-        assert_eq!(abs(10, false, false, false, true), 6); // 1000:e3e2, -4
-                                                           // Both of a pair: the lesser is skipped, not added.
+        assert_eq!(abs(10, true, false, false, false), 9);
+        assert_eq!(abs(10, false, true, false, false), 8);
+        assert_eq!(abs(10, false, false, true, false), 8);
+        assert_eq!(abs(10, false, false, false, true), 6);
+        // Both of a pair: the lesser is skipped, not added.
         assert_eq!(abs(10, true, true, false, false), 8);
         assert_eq!(abs(10, false, false, true, true), 6);
         // Everything: 10 - 2 - 4.
@@ -7030,8 +7020,8 @@ mod tests {
     fn walk_tail(phone: bool) -> Vec<(u16, Option<u16>)> {
         let mut v = Vec::new();
         if phone {
-            v.push((200, None)); // 1000:b030, the wrong-number gag
-            v.push((100, None)); // 1000:b0dc, the girl's call
+            v.push((200, None)); // The wrong-number gag
+            v.push((100, None)); // The girl's call
         }
         v.extend([(10, None), (10, None), (100, None), (100, None)]);
         v.extend([(25, None), (200, None), (100, None)]);
@@ -7551,18 +7541,18 @@ mod tests {
         assert_eq!(
             out,
             vec![
-                "",                                                              // 1000:d8be
-                "^6На одного пацана наехал какой-то урод",                       // CS 0x9d46
-                "^6Ты пацан нормальный. Есть дело.",                             // CS 0x9d6e
-                "^6Пацаны хотят тебе кое-чё сказать",                            // CS 0x9d90
-                "",                                                              // 1000:d961
-                "Напиши ^6w^7 чтобы уйти",                                       // CS 0x9db3
+                "",
+                "^6На одного пацана наехал какой-то урод",
+                "^6Ты пацан нормальный. Есть дело.",
+                "^6Пацаны хотят тебе кое-чё сказать",
+                "",
+                "Напиши ^6w^7 чтобы уйти",
                 "Напиши ^0p^7  чтобы угостить пацанов пивом", // CS 0x9dcb + 0x9dd4
                 "Напиши ^0r^7  чтобы занять 2 рубля",         // CS 0x9dcb + 0x9df6
-                "Напиши ^6hp^7 чтобы отпинать мудака который наезжал на пацана", // CS 0x9e10
-                "Напиши ^6s^7  чтобы узнать отношение",       // CS 0x9e4e
-                "Напиши ^6a^7  чтобы спросить чё-то",         // CS 0x9e73
-                "Напиши ^6d^7 чтобы пойти на дело",           // CS 0x9e96
+                "Напиши ^6hp^7 чтобы отпинать мудака который наезжал на пацана",
+                "Напиши ^6s^7  чтобы узнать отношение",
+                "Напиши ^6a^7  чтобы спросить чё-то",
+                "Напиши ^6d^7 чтобы пойти на дело",
             ]
         );
     }
@@ -7983,7 +7973,7 @@ mod tests {
                 if [10u16, 10, 100, 100].iter().any(|&b| r.below(b) == 0) {
                     return false;
                 }
-                let roll = r.below(25); // 1000:b353
+                let roll = r.below(25);
                 if bucket.is_some_and(|w| roll != w) {
                     return false;
                 }
@@ -8020,9 +8010,9 @@ mod tests {
             (true, true, true, 24, 25, true),
             // The phone gates only the MESSAGE; the counter still moves.
             (true, true, false, 24, 25, false),
-            (true, true, true, 25, 25, false), // 1000:af2b, the < 25 gate
-            (false, true, true, 0, 0, false),  // 1000:af1d, dealers unknown
-            (true, false, true, 0, 0, false),  // 1000:af24, no pistol
+            (true, true, true, 25, 25, false), // The < 25 gate
+            (false, true, true, 0, 0, false),  // Dealers unknown
+            (true, false, true, 0, 0, false),  // No pistol
         ] {
             let mut g = quiet_walker();
             if found {
@@ -8263,14 +8253,14 @@ mod tests {
             // Draw 0 -- the кастет, "урон+2".
             (0, (false, false, false, false), 2),
             (0, (true, false, false, false), 0), // already owned: 1000:553a
-            (0, (false, true, false, false), 0), // 1000:555f, better weapon
-            (0, (false, false, true, false), 0), // 1000:5566
-            (0, (false, false, false, true), 0), // 1000:556d
+            (0, (false, true, false, false), 0), // Better weapon
+            (0, (false, false, true, false), 0),
+            (0, (false, false, false, true), 0),
             // Draw 1 -- the дубинка, "урон+4".
-            (1, (false, false, false, false), 4), // 1000:55e6
-            (1, (true, false, false, false), 2),  // 1000:55da
-            (1, (false, true, false, false), 0),  // 1000:55c5
-            (1, (false, false, false, true), 0),  // 1000:55cc
+            (1, (false, false, false, false), 4),
+            (1, (true, false, false, false), 2),
+            (1, (false, true, false, false), 0),
+            (1, (false, false, false, true), 0),
         ];
         for (draw, owned, want) in club {
             let mut g = game();

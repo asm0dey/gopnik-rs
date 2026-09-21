@@ -80,11 +80,7 @@ pub const PICKPOCKET_GAPS: Gaps = &[(3, "C")];
 
 /// The three strings assembled rather than written directly: the two
 /// halves of the announcement, and the forced exit token.
-pub const PICKPOCKET_FRAGMENTS: [&str; 3] = [
-    ANNOUNCE_OPEN,  // 1000:c3f7, 0f78:0ae7 at 1000:c3fc
-    ANNOUNCE_LEVEL, // 1000:c414, 0f78:0b66 at 1000:c419
-    EXIT_TOKEN,     // 1000:c452, 0f78:0b01 at 1000:c460
-];
+pub const PICKPOCKET_FRAGMENTS: [&str; 3] = [ANNOUNCE_OPEN, ANNOUNCE_LEVEL, EXIT_TOKEN];
 
 /// The whole of the ban's refusal arm: one literal, printed once, then
 /// out.
@@ -152,7 +148,7 @@ fn busted(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>) -> 
     // Uses the clamp-to-class-7 form, so no Мент ever answers a
     // pickpocket.
     let enemy = g.roll_enemy(1);
-    g.fight_accepted = true; // 1000:c3d3
+    g.fight_accepted = true;
 
     // Prints `^4Корявый! ты попался!`.
     term::println(CAUGHT);
@@ -170,7 +166,7 @@ fn busted(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>) -> 
     // `crate::club` uses elsewhere. The exit compare then hits and the
     // visit ends with no further input.
     g.leave_shop();
-    g.market_ban_countdown = BAN_TURNS; // 1000:c465
+    g.market_ban_countdown = BAN_TURNS;
     Ok(())
 }
 

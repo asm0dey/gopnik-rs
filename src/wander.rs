@@ -63,17 +63,11 @@ pub const BUCKET4: [&str; 4] = [
     "^6Чё за ботва? ни кого нет.. глюки какие-то...",
     // Not stoned, OR stoned with the second Random(7) != 0.
     "Ничё не происходит.",
-    // 1000:b92a cs 0x8b48 -- the SAME text, a second site: the outer
-    // dispatch's mismatch arm ("bucket 0").
+    // The same text again, for the outer dispatch's mismatch arm
+    // ("bucket 0").
     "Ничё не происходит.",
 ];
 
-/// `1000:b886`..`b8cf`'s composed line: `[0] + rank_name(roll) + [1]`,
-/// filled with `district * 10 + 1` -- see
-/// `crate::game::Game::wander_flavor`.
-pub const BUCKET4_FRAGMENTS: [&str; 2] = [
-    // 1000:b888 cs 0x8997
-    "^6Идет ",
-    // 1000:b8ac cs 0x899f
-    " # уровня. Хочешь наехать?",
-];
+/// The composed line `[0] + rank_name(roll) + [1]`, filled with
+/// `district * 10 + 1` -- see `crate::game::Game::wander_flavor`.
+pub const BUCKET4_FRAGMENTS: [&str; 2] = ["^6Идет ", " # уровня. Хочешь наехать?"];

@@ -85,8 +85,8 @@ pub fn parse(input: &str) -> Command {
         "exit" | "e" => Command::Quit,
         "sv" => Command::Inspect,
         "v" => Command::Backup,
-        "h" => Command::Drink,       // 1000:29fa
-        "mh" => Command::BingeDrink, // 1000:2a0c
+        "h" => Command::Drink,
+        "mh" => Command::BingeDrink,
         "x" => Command::SellJunk,
         "wes" => Command::SellItems,
         _ => Command::Unknown(v),

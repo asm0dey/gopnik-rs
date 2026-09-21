@@ -19,24 +19,24 @@ pub const ARMOUR: &str = "^2Броня #    ";
 /// Eight literal strings the sheet assembles into its two composed lines.
 /// Indices 0..3 build the header, 4..7 the health line.
 pub const FRAGMENTS: [&str; 8] = [
-    NOT_IN_THIS_LIFE, // 1000:1382
-    KRUTIZNA_SEP,     // 1000:139c
-    HEADER_OPEN,      // 1000:13d2
-    HEADER_LEVEL,     // 1000:13ef
-    BROKEN_JAW,       // 1000:146e
-    BROKEN_LEG,       // 1000:149f
-    COLOUR_PREFIX,    // 1000:1523
-    HEALTH,           // 1000:1542
+    NOT_IN_THIS_LIFE,
+    KRUTIZNA_SEP,
+    HEADER_OPEN,
+    HEADER_LEVEL,
+    BROKEN_JAW,
+    BROKEN_LEG,
+    COLOUR_PREFIX,
+    HEALTH,
 ];
 
 pub const EMITTED: [(bool, &str); 7] = [
-    (true, STATS),                                    // 1000:1419
-    (true, DAMAGE),                                   // 1000:1436
-    (true, crate::character_sheet::ACCURACY_FLAT),    // 1000:157b
-    (false, crate::character_sheet::ACCURACY_CAPPED), // 1000:15a4
-    (true, crate::character_sheet::ACCURACY_SECOND),  // 1000:15e7
-    (true, crate::character_sheet::ACCURACY_MANY),    // 1000:1611
-    (true, ARMOUR),                                   // 1000:163f
+    (true, STATS),
+    (true, DAMAGE),
+    (true, crate::character_sheet::ACCURACY_FLAT),
+    (false, crate::character_sheet::ACCURACY_CAPPED),
+    (true, crate::character_sheet::ACCURACY_SECOND),
+    (true, crate::character_sheet::ACCURACY_MANY),
+    (true, ARMOUR),
 ];
 
 pub const GAPS: [(usize, &str); 2] = [(0, "C"), (2, "C")];

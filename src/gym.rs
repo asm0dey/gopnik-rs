@@ -102,19 +102,19 @@ fn train_strength(g: &mut Game) {
         term::println(EMITTED[2].1);
         return;
     }
-    g.player.money = g.player.money.wrapping_sub(20_i16); // 1000:e657
+    g.player.money = g.player.money.wrapping_sub(20_i16);
 
     // Prints `^2Ты прокачиваешь силу.` BEFORE the six stat changes.
     term::println(EMITTED[3].1);
-    g.player.strength += 1; // 1000:e675
-    g.player.hpmax += 1; // 1000:e679
-    g.player.hp += 1; // 1000:e67d
+    g.player.strength += 1;
+    g.player.hpmax += 1;
+    g.player.hp += 1;
 
     // The remainder of the NEW strength div 2.
     if g.player.strength.is_multiple_of(2) {
-        g.player.dmg_min += 1; // 1000:e68f
+        g.player.dmg_min += 1;
     }
-    g.player.dmg_max += 1; // 1000:e693 -- outside the branch, every time.
+    g.player.dmg_max += 1; // Outside the branch, every time.
 
     // Prints `^1Сила +1 ` (the trailing space is intentional).
     term::println(EMITTED[4].1);
@@ -132,13 +132,13 @@ fn train_stamina(g: &mut Game) {
         term::println(EMITTED[5].1);
         return;
     }
-    g.player.money = g.player.money.wrapping_sub(20_i16); // 1000:e6e3
+    g.player.money = g.player.money.wrapping_sub(20_i16);
 
     // Prints `^2Ты прокачиваешь выносливость.`
     term::println(EMITTED[6].1);
     g.player.vitality += 1; // 1000:e701 -- 20ae:38a2 is `+0x06`, живучесть
-    g.player.hpmax += 5; // 1000:e705
-    g.player.hp += 5; // 1000:e70a
+    g.player.hpmax += 5;
+    g.player.hp += 5;
 
     // Prints `^1Выносливость +1 ` (the trailing space is intentional).
     term::println(EMITTED[7].1);
@@ -181,11 +181,11 @@ fn train_xp(g: &mut Game) {
         term::println(EMITTED[9].1);
         return;
     }
-    g.player.money = g.player.money.wrapping_sub(10_i16); // 1000:e796
+    g.player.money = g.player.money.wrapping_sub(10_i16);
 
     // Prints `^2Ты тренируешься.`
     term::println(EMITTED[10].1);
-    g.progress.xp += 10; // 1000:e7b4
+    g.progress.xp += 10;
 
     // The `#` is a fixed immediate, not the xp total. Prints
     // `^1 +# качков опыта `.
@@ -224,8 +224,8 @@ fn buy_tooth_guard(g: &mut Game) {
         term::println(EMITTED[12].1);
         return;
     }
-    g.player.money = g.player.money.wrapping_sub(30_i16); // 1000:e823
-    g.tooth_guard = true; // 1000:e828
+    g.player.money = g.player.money.wrapping_sub(30_i16);
+    g.tooth_guard = true;
 
     // Prints `^2Ты купил защиту.`
     term::println(EMITTED[13].1);
@@ -274,7 +274,7 @@ fn train_abs(g: &mut Game) {
         term::println(EMITTED[15].1);
         return;
     }
-    g.player.money = g.player.money.wrapping_sub(20_i16); // 1000:e8b8
+    g.player.money = g.player.money.wrapping_sub(20_i16);
 
     // Prints `^2Ты прокачиваешь пресс.`
     term::println(EMITTED[16].1);
@@ -291,37 +291,37 @@ fn train_abs(g: &mut Game) {
 /// `(closes, text)` -- `closes` is true for a `WriteLn`, false for a
 /// `Write` the next literal continues.
 pub(crate) const EMITTED: [(bool, &str); 28] = [
-    (true, "Ты пришел в качалку напиши  ^6w^7  чтобы уйти"), // 1000:e3e7
-    (false, "^0Качалка\\"),                                  // 1000:e5e4
-    (true, "^4Не хватает"),                                  // 1000:e63c
-    (true, "^2Ты прокачиваешь силу."),                       // 1000:e65c
-    (true, "^1Сила +1 "),                                    // 1000:e697
-    (true, "^4Не хватает"),                                  // 1000:e6c8
-    (true, "^2Ты прокачиваешь выносливость."),               // 1000:e6e8
-    (true, "^1Выносливость +1 "),                            // 1000:e70f
-    (true, "^6Ты слишком крутой чтобы тренироваться здесь."), // 1000:e759
-    (true, "^4Не хватает деньжат"),                          // 1000:e77b
-    (true, "^2Ты тренируешься."),                            // 1000:e79b
-    (true, "^1 +# качков опыта "),                           // 1000:e7b9
-    (true, "^4А не хватает рубликов"),                       // 1000:e808
-    (true, "^2Ты купил защиту."),                            // 1000:e82d
-    (true, "^6У тебя есть эта штучка."),                     // 1000:e848
-    (true, "^4Не хватает рубликов"),                         // 1000:e89d
-    (true, "^2Ты прокачиваешь пресс."),                      // 1000:e8bd
-    (true, "^1Броня +1"),                                    // 1000:e8de
-    (true, "^6Ты максимально прокачал пресс для своего уровня"), // 1000:e8f9
-    (true, "^6Качай дальше в следующем районе"),             // 1000:e919
-    (true, "^6Ты пока незнаешь где в этом районе качалка"),  // 1000:e948
-    (true, "^4Ты не схавать колёса из-за сломаной челюсти."), // 1000:e984
-    (false, "^2Колёса прибавляют #з. "),                     // 1000:e9d7
-    (true, "^2Здоровья:#/#. Осталось # косяков"),            // 1000:e9fb
+    (true, "Ты пришел в качалку напиши  ^6w^7  чтобы уйти"),
+    (false, "^0Качалка\\"),
+    (true, "^4Не хватает"),
+    (true, "^2Ты прокачиваешь силу."),
+    (true, "^1Сила +1 "),
+    (true, "^4Не хватает"),
+    (true, "^2Ты прокачиваешь выносливость."),
+    (true, "^1Выносливость +1 "),
+    (true, "^6Ты слишком крутой чтобы тренироваться здесь."),
+    (true, "^4Не хватает деньжат"),
+    (true, "^2Ты тренируешься."),
+    (true, "^1 +# качков опыта "),
+    (true, "^4А не хватает рубликов"),
+    (true, "^2Ты купил защиту."),
+    (true, "^6У тебя есть эта штучка."),
+    (true, "^4Не хватает рубликов"),
+    (true, "^2Ты прокачиваешь пресс."),
+    (true, "^1Броня +1"),
+    (true, "^6Ты максимально прокачал пресс для своего уровня"),
+    (true, "^6Качай дальше в следующем районе"),
+    (true, "^6Ты пока незнаешь где в этом районе качалка"),
+    (true, "^4Ты не схавать колёса из-за сломаной челюсти."),
+    (false, "^2Колёса прибавляют #з. "),
+    (true, "^2Здоровья:#/#. Осталось # косяков"),
     (
         true,
         "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косякова",
-    ), // 1000:ea1e
-    (true, "^2Сила +2."),                                    // 1000:ea3b
-    (true, "^4У тебя нет косяков"),                          // 1000:ea56
-    (true, "^6Ты неможешь схавать ещё один косяк."),         // 1000:ea71
+    ),
+    (true, "^2Сила +2."),
+    (true, "^4У тебя нет косяков"),
+    (true, "^6Ты неможешь схавать ещё один косяк."),
 ];
 
 #[cfg(test)]
@@ -356,7 +356,7 @@ mod tests {
         let mut g = Game::new(player(), Progress::new(), 12345);
         g.district = district;
         g.player.money = money;
-        g.places.mark_found(Location::Gym); // 20ae:369a, gate 1000:e39a
+        g.places.mark_found(Location::Gym);
         g.location = Location::Gym;
         g
     }

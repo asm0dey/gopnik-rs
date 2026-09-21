@@ -102,7 +102,7 @@ fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>)
     }
     // `Ты поставил # рублей`, `#` from the stake.
     term::println(&text::fill(EMITTED[4].1, &[i64::from(stake)]));
-    g.player.money = g.player.money.wrapping_sub(stake as i16); // 1000:e0a8
+    g.player.money = g.player.money.wrapping_sub(stake as i16);
 
     // The `n` is built and the draw is made.
     let draw = g.rng.below(u16::from(g.district) * 12);
@@ -118,8 +118,8 @@ fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>)
         // `^2Ты выиграл # рублей ` (trailing space is the original's), `#`
         // from the stake BEFORE it is raised.
         term::println(&text::fill(EMITTED[5].1, &[i64::from(stake)]));
-        g.club_stake += 2; // 1000:e0f7
-        let xp = u16::from(g.district); // 1000:e101..1000:e104
+        g.club_stake += 2;
+        let xp = u16::from(g.district);
 
         // `^6Ты получаешь # качков опыта`, printed BEFORE the experience is credited.
         term::println(&text::fill(EMITTED[6].1, &[i64::from(xp)]));
@@ -163,7 +163,7 @@ fn caught_cheating(
 ) -> io::Result<()> {
     // Clamp to class 7.
     let enemy = g.roll_enemy(1);
-    g.fight_accepted = true; // 1000:e184
+    g.fight_accepted = true;
 
     // `^4Козёл! Да ты мухлевал!`
     term::println(EMITTED[9].1);
@@ -185,7 +185,7 @@ fn caught_cheating(
 
     // `^6Уноси ноги, пока не отобрали деньги другие канадидаты`.
     term::println(EMITTED[11].1);
-    g.club_ban_countdown = 5; // 1000:e23e
+    g.club_ban_countdown = 5;
 
     // The `w` written into the buffer.
     g.leave_shop();
@@ -204,11 +204,11 @@ fn dance(g: &mut Game) {
         term::println(EMITTED[13].1);
         return;
     }
-    g.player.money = g.player.money.wrapping_sub(15_i16); // 1000:e2a7
+    g.player.money = g.player.money.wrapping_sub(15_i16);
 
     // `^2Ты прокачиваешь ловкость.`, printed BEFORE the store.
     term::println(EMITTED[14].1);
-    g.player.agility += 1; // 1000:e2c5
+    g.player.agility += 1;
 
     // `^1Ловкость +1 ` (trailing space is the original's).
     term::println(EMITTED[15].1);
@@ -226,11 +226,11 @@ fn learn_tricks(g: &mut Game) {
         term::println(EMITTED[16].1);
         return;
     }
-    g.player.money = g.player.money.wrapping_sub(22_i16); // 1000:e31c
+    g.player.money = g.player.money.wrapping_sub(22_i16);
 
     // `^2Ты прокачиваешь удачу.`
     term::println(EMITTED[17].1);
-    g.player.luck += 1; // 1000:e33a
+    g.player.luck += 1;
 
     // `^1Удача +1 ` (trailing space is the original's).
     term::println(EMITTED[18].1);
@@ -241,32 +241,32 @@ fn learn_tricks(g: &mut Game) {
 /// `(closes, text)` -- `closes` is true for a line-closing write, false
 /// for a write that continues with the next literal.
 pub(crate) const EMITTED: [(bool, &str); 20] = [
-    (true, "^6Тебе не стоит пока туда соваться"), // 1000:df21
-    (true, "Ты пришел в клуб напиши  ^6w^7  чтобы уйти"), // 1000:df3d
+    (true, "^6Тебе не стоит пока туда соваться"),
+    (true, "Ты пришел в клуб напиши  ^6w^7  чтобы уйти"),
     (
         true,
         " Здесь можно сыграть в карты (^6p^7 Минимальная ставка- 5р.)",
-    ), // 1000:df56
-    (false, "^0Клуб\\"),                          // 1000:e025
-    (true, "Ты поставил # рублей"),               // 1000:e087
-    (true, "^2Ты выиграл # рублей "),             // 1000:e0db
-    (true, "^6Ты получаешь # качков опыта"),      // 1000:e0fc
-    (true, "^4Ты проиграл # рублей"),             // 1000:e129
-    (true, "^6Ставки изменились. Теперь ставка - #"), // 1000:e158
-    (true, "^4Козёл! Да ты мухлевал!"),           // 1000:e189
-    (true, "^6Ты получаешь # качков опыта за победу в игре"), // 1000:e1e4
+    ),
+    (false, "^0Клуб\\"),
+    (true, "Ты поставил # рублей"),
+    (true, "^2Ты выиграл # рублей "),
+    (true, "^6Ты получаешь # качков опыта"),
+    (true, "^4Ты проиграл # рублей"),
+    (true, "^6Ставки изменились. Теперь ставка - #"),
+    (true, "^4Козёл! Да ты мухлевал!"),
+    (true, "^6Ты получаешь # качков опыта за победу в игре"),
     (
         true,
         "^6Уноси ноги, пока не отобрали деньги другие канадидаты",
-    ), // 1000:e225
-    (true, "^6Не хватает денег - надо #."),       // 1000:e258
-    (true, "^4Не хватает"),                       // 1000:e28c
-    (true, "^2Ты прокачиваешь ловкость."),        // 1000:e2ac
-    (true, "^1Ловкость +1 "),                     // 1000:e2c9
-    (true, "^4Не хватает"),                       // 1000:e301
-    (true, "^2Ты прокачиваешь удачу."),           // 1000:e321
-    (true, "^1Удача +1 "),                        // 1000:e33e
-    (true, "^6Ты пока что неузнал где в этом районе клуб"), // 1000:e36d
+    ),
+    (true, "^6Не хватает денег - надо #."),
+    (true, "^4Не хватает"),
+    (true, "^2Ты прокачиваешь ловкость."),
+    (true, "^1Ловкость +1 "),
+    (true, "^4Не хватает"),
+    (true, "^2Ты прокачиваешь удачу."),
+    (true, "^1Удача +1 "),
+    (true, "^6Ты пока что неузнал где в этом районе клуб"),
 ];
 
 #[cfg(test)]
@@ -299,9 +299,9 @@ mod tests {
         let mut g = Game::new(player(), Progress::new(), 12345);
         g.district = district;
         g.player.money = money;
-        g.places.mark_found(Location::Club); // 20ae:3699, gate 1000:df10
+        g.places.mark_found(Location::Club);
         g.location = Location::Club;
-        g.club_stake = 5; // 1000:e020
+        g.club_stake = 5;
         g.progress.threshold = u16::MAX; // keeps 1000:e124 from levelling
         g
     }
