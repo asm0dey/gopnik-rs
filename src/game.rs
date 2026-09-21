@@ -557,15 +557,9 @@ impl Game {
         lines: &mut dyn Iterator<Item = io::Result<String>>,
     ) -> io::Result<()> {
         match cmd {
-            // 1000:ee04..1000:ee8b, reached from BOTH spellings' compares
-            // (`exit` at 1000:ede9, `e` at 1000:edfa) -- two lines, the full
-            // character sheet (1000:ee36 `call 0x1a03`) and a `ReadKey`
-            // (1000:ee39), then the Pascal teardown and `Halt`.
-            // `docs/re/port-gaps.md` row 16; the teardown gets no port.
-            //
-            // The `e` typed at the FIGHT prompt is a different address
-            // (1000:4c5d, a bare `Halt(0)`) and deliberately prints none of
-            // this -- see `Game::run_combat`.
+            // Both `exit` and `e` print two lines and the full character sheet before
+            // quitting. The `e` typed at the FIGHT prompt is different -- it quits without
+            // printing any of this. See `Game::run_combat`.
             Command::Quit => {
                 for line in opening::QUIT_TAIL {
                     term::println(line);
@@ -2081,14 +2075,8 @@ impl Game {
                     self.ring_gospodi_pomilui = true;
                 }
             }
-            // 1000:81cb's `cmp ax,3` -- `inc byte [0x38b2]` at 1000:81e9.
-            // 20ae:38b2 is fighter-record offset +0x16, which
-            // `crate::model` and `docs/re/combat.md` already establish as
-            // ARMOUR (subtracted from damage at 1000:4769, printed as
-            // `^2Броня #` at 1000:163f) -- and "накладываю защиту" is
-            // exactly that. Corroborated by state: `SAVE_R3.SAV` holds 4 at
-            // `.SAV 0x216` and run E's guest reports 4 there (the probe
-            // captures still spell that column `unk_38b2`).
+            // Increments ARMOUR, printed as `^2Броня #` -- "накладываю защиту" is exactly
+            // that.
             3 => {
                 term::println("^1Накладываю на тебя защиту!");
                 self.player.armor = self.player.armor.wrapping_add(1);
@@ -2107,8 +2095,8 @@ impl Game {
         // lines ever prints, which is why `PARTING` is indexed here rather
         // than played through `opening::play`.
         term::println(church::PARTING[usize::from(self.church_visits >= 2)]);
-        // A blank line separates the two parting lines; the bucket is
-        // zeroed between them, as noted at the call site.
+        // A blank line separates the two parting lines; the bucket is zeroed between
+        // them, as noted at the call site.
         term::println("");
         term::println(church::PARTING[2]);
     }
@@ -2706,33 +2694,21 @@ impl Game {
                 return Ok(());
             };
             if yes {
-                // CS 0x98c6, file 0xB196; pushed 1000:d31f, printed
-                // 1000:d335; the `#` is 1000:d324.
                 self.weapon_nozhik = false; // 1000:d312
                 self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d31b
                 term::println(&text::fill("^2Ты продал ножик за #.", &[i64::from(refund)]));
             }
         }
 
-        // 1000:d33a `cmp byte [0x3e33],0xff` / 1000:d33f `jnz 0xd35a`. The
-        // line means "nothing was OFFERED", not "nothing was sold":
-        // declining every offer leaves the scratch byte holding that arm's
-        // roll and suppresses it.
+        // The line means "nothing was OFFERED", not "nothing was sold": declining
+        // every offer leaves the scratch byte holding that arm's roll and suppresses
+        // it.
         if !offered {
-            // CS 0x98de, file 0xB1AE; pushed 1000:d341, printed 1000:d355.
             term::println("^6У тебя нет неужных вещей.");
         }
 
-        // 1000:d35a..1000:d368 assigns the one-character literal CS 0x98fa
-        // (file 0xB1CA) over the shared buffer 20ae:3a72 through
-        // `0f78:0b01`. The handler's own exit compare at 1000:d377 reads
-        // that same buffer against the shared exit token `w` (CS 0x848e),
-        // so it can never match on the `wes` path.
-        // 1000:d37c therefore falls to `1000:d37e jmp 0xc88e`, the dealers'
-        // PROMPT push -- not the menu, and not the way out. Answering `w`
-        // to a sell offer does NOT leave the dealers. This port reaches the
-        // same place structurally: the answer is consumed by
-        // [`Game::sell_offer`] and never reaches `Game::shop_turn`'s exit
+        // Answering `w` to a sell offer does NOT leave the dealers -- the answer is
+        // consumed by [`Game::sell_offer`] and never reaches `Game::shop_turn`'s exit
         // arm, so `self.mode` is untouched on every path out of here.
         Ok(())
     }
@@ -2748,69 +2724,33 @@ impl Game {
         }
     }
 
-    /// Buy row `key` (a shop-row digit `'1'..'9'`) at the current market.
-    /// Only `Market`/`Dealers` have a row table (`data/shops.json` covers
-    /// just `mar`/`bmar`).
+    /// Buy row `key` (a shop-row digit `'1'..'9'`) at the current market. Only
+    /// `Market`/`Dealers` have a row table.
     ///
     /// ## At the dealers the district gate is a MENU gate, not a buy gate
     ///
-    /// **Established from flow** (`docs/re/shop-arms.md`, Task 23). The
-    /// `bmar` handler holds five `cmp byte [0x3692]` tests -- `1000:c68d`
-    /// (row 5, `jbe 0xc6f1`), `1000:c6f1` (row 6, `jbe 0xc755`),
-    /// `1000:c755` (row 7, `jbe 0xc7ba`), `1000:c7ba` (row 8,
-    /// `jbe 0xc81d`) and `1000:c81d` (row 9, `jbe 0xc88e`) -- and every one
-    /// of them sits in the menu-print block, deciding which lines are
-    /// LISTED. The arms reached when the player types a key carry no
-    /// district test at all: an aligned decode of
-    /// `1000:c8ce`..`1000:ccc4` (rows 1-6) and `1000:ccc4`..`1000:ce80`
-    /// (rows 7-9) finds no operand equal to `0x3692`, and the byte pair
-    /// `92 36` does not occur in either span, so there is not even a
-    /// byte-scan candidate to discard. Typing `5` at district 1 buys the
-    /// Кастет off a menu that never listed it.
+    /// The `bmar` handler's five district-gate checks sit in the menu-print block,
+    /// deciding which lines are LISTED. The arms reached when the player types a
+    /// key carry no district test at all. Typing `5` at district 1 buys the Кастет
+    /// off a menu that never listed it.
     ///
-    /// So [`Game::print_priced_rows`] keeps its gate and the buy path below
-    /// drops it -- **for `bmar` only**.
+    /// So [`Game::print_priced_rows`] keeps its gate and the buy path below drops
+    /// it -- **for `bmar` only**.
     ///
     /// ## At the market it is BOTH, for three rows out of four
     ///
-    /// **Established from flow** (`docs/re/shop-arms.md`'s `mar` half and
-    /// `data/shop_arms.json`'s `mar` key, Task 25, re-derived from
-    /// `orig/g.exe` by `python3 tools/test_shop_arms.py`). Symmetry with
-    /// `bmar` would have been the wrong answer here, which is why the two
-    /// shops were measured over their own ranges: `mar`'s buy path DOES read
-    /// `20ae:3692`, at three sites. `1000:c08e cmp byte [0x3692],0x1`
-    /// (`1000:c093 ja 0xc098`), `1000:c1d7 cmp byte [0x3692],0x2`
-    /// (`1000:c1dc ja 0xc1e1`) and `1000:c27f cmp byte [0x3692],0x3`
-    /// (`1000:c284 ja 0xc289`) stand in front of rows 6, 8 and 9, so those
-    /// three really are unbuyable below their district. Each prints
-    /// **nothing**: the gate sits ahead of the row's key compare, so
-    /// `1000:c095`, `1000:c1de` and `1000:c286` jump straight to the row's
-    /// span end and the line falls through to the handler's own re-prompt at
-    /// `1000:c47b` exactly as an unrecognised key does.
+    /// Symmetry with `bmar` would have been the wrong answer here: `mar`'s buy path
+    /// DOES gate three rows -- 6, 8 and 9 -- on district, so those three really are
+    /// unbuyable below their district. Each prints **nothing**: the gate sits ahead
+    /// of the row's key compare, so the line falls through to the handler's own
+    /// re-prompt exactly as an unrecognised key does.
     ///
-    /// **Row 7 is menu-gated and NOT buy-gated -- a divergence reproduced,
-    /// not fixed.** The menu gate `1000:bb80` covers two lines, rows 6 and 7
-    /// (`20ae:0b33` loaded at `1000:bb8a` and `20ae:0b34` at `1000:bbe6`,
-    /// both inside `1000:bb8a`..`1000:bc42`), while the buy path gates only
-    /// row 6: `1000:c095 jmp 0xc142` lands on row 7's `mov di,0x3a72` setup
-    /// itself, with nothing between it and the key compare at `1000:c14c`.
-    /// So at district 1 the market lists rows 1-5, typing `6` prints not a
-    /// word, and typing `7` buys the adidas suit for 30 руб. and applies its
-    /// armour. `data/shops.json` keeps `district>1` on row 7 because that is
-    /// the MENU gate, and [`Game::buy_market_row`] deliberately does not
-    /// consult `row.gate` at all -- it carries the three buy-path
-    /// immediates itself.
-    ///
-    /// Which is why [`Game::gate_open`] has exactly **one** caller now, the
-    /// menu filter [`Game::listed_rows`]:
-    /// `grep -c 'self[.]gate_open(' src/game.rs` returns **1**, against **2**
-    /// for the same pattern at `fef8c9c`. **Count calls, not mentions.** The
-    /// looser `grep -c 'self.gate_open'` returns 2 at both revisions --
-    /// this very sentence moved into the deleted call's place -- and
-    /// `data/shop_arms.json` shipped that unfalsifiable form until the final
-    /// whole-branch review caught it: a count invariant across the change it
-    /// existed to witness. No buy path consults `row.gate` any more, in
-    /// either shop -- for opposite reasons.
+    /// **Row 7 is menu-gated and NOT buy-gated -- a divergence reproduced, not
+    /// fixed.** The menu gate covers rows 6 and 7 together, while the buy path
+    /// gates only row 6. So at district 1 the market lists rows 1-5, typing `6`
+    /// prints not a word, and typing `7` buys the adidas suit for 30 руб. and
+    /// applies its armour. [`Game::buy_market_row`] deliberately does not consult
+    /// `row.gate` at all -- it carries the three buy-path checks itself.
     fn shop_action(&mut self, k: char) {
         let tag = match self.location {
             Location::Market => "mar",
@@ -2821,16 +2761,9 @@ impl Game {
         let Some(row) = data::shops().iter().find(|r| r.shop == tag && r.key == key) else {
             return;
         };
-        // Every row of both shops has an arm of its own -- its own gates, its
-        // own refusal lines, its own confirmation and its own effect. See
+        // Every row of both shops has an arm of its own -- its own gates, its own
+        // refusal lines, its own confirmation and its own effect. See
         // [`Game::buy_dealer_row`] and [`Game::buy_market_row`].
-        //
-        // There is no generic "debit the price and echo the menu line" path
-        // left: the original has none, that echo was this port's invention,
-        // and both functions cover all nine keys of their shop. The two
-        // `#[test]`s `every_dealers_row_has_an_arm_of_its_own` and
-        // `every_market_row_has_an_arm_of_its_own` are what keep that true if
-        // `data/shops.json` ever grows a row.
         let handled = match tag {
             "mar" => self.buy_market_row(row.key, row.price),
             _ => self.buy_dealer_row(row.key, row.price),
@@ -2839,93 +2772,32 @@ impl Game {
     }
 
     /// The shape all **eighteen** purchase arms share -- `bmar` rows 1..9
-    /// ([`Game::buy_dealer_row`]) and `mar` rows 1..9
-    /// ([`Game::buy_market_row`]) -- applied in the order the original tests
-    /// it: the prerequisite / better-item gate where the row has one, then
-    /// the already-own gate, then affordability, then the debit, then the
-    /// effect.
+    /// ([`Game::buy_dealer_row`]) and `mar` rows 1..9 ([`Game::buy_market_row`]):
+    /// the prerequisite / better-item gate where the row has one, then the
+    /// already-own gate, then affordability, then the debit, then the effect.
     ///
-    /// `gates` is `(refuse, line)` in image order. `line` is `None` for a
-    /// gate that prints nothing at all. There are five such gates across the
-    /// two shops: `bmar` row 9's first two, whose branches `1000:cdfe` and
-    /// `1000:ce05` both land on `1000:ce76`, the six-instruction SETUP for
-    /// the next compare (`1000:ce80`, the `x` verb) rather than the compare
-    /// itself; and `mar`'s three district gates `1000:c08e`, `1000:c1d7` and
-    /// `1000:c27f`, whose skips `1000:c095`, `1000:c1de` and `1000:c286` land
-    /// on the next row's span start with nothing printed.
+    /// `gates` is `(refuse, line)` in order. `line` is `None` for a gate that
+    /// prints nothing at all -- true for five of the eighteen: `bmar` row 9's first
+    /// two gates, and `mar`'s three district gates.
     ///
-    /// The `mar` district gates are the one place a gate here does NOT sit
-    /// where the original's does: all three stand in front of their row's key
-    /// compare, not behind it. The behaviour is the same either way, because
-    /// no compare the skip can reach matches the skipped row's digit again:
+    /// The money test is last in every one of the eighteen arms: the sale goes
+    /// through when `price <= money`, and refusal is the fall-through -- only the
+    /// wording differs between rows.
     ///
-    /// * `1000:c095` lands on row 7's setup `1000:c142`, whose compare
-    ///   `1000:c14c` tests `7`.
-    /// * `1000:c1de` lands on row 9's own **district gate** `1000:c27f
-    ///   cmp byte [0x3692],0x3` -- not its setup `1000:c289` and not its
-    ///   compare -- whose two exits are `1000:c289` (reaching the compare
-    ///   against `9` at `1000:c293`) and `1000:c31f`. Neither compares `8`.
-    /// * `1000:c286` lands on `1000:c31f`, the setup for the pickpocket verb
-    ///   `t` at `1000:c329`.
+    /// **The write-before-debit order is not observable, in either shop.** At `mar`
+    /// rows 3-9 all set their ownership flag ahead of the debit, and rows 1 and 2
+    /// write no flag at all; none of the seven reads the money or the byte it just
+    /// wrote between the write and the debit, and the three upgrade guards each
+    /// read a different flag from the one their own arm sets. So the effect closure
+    /// runs after the debit for all eighteen.
     ///
-    /// So the typed line reaches the re-prompt at `1000:c47b` in silence,
-    /// which is what a leading silent gate produces here. An earlier revision
-    /// of this comment said `1000:c1de` lands on "row 9's compare against
-    /// `9` (`1000:c293`)"; the conclusion was right and the instruction named
-    /// was not.
-    ///
-    /// The money test is last in every one of the eighteen and is the same
-    /// three instructions each time (`mov al,[price]` / `xor ah,ah` /
-    /// `cmp ax,[0x38c7]`) followed by a `jle` to the buy. At `bmar`:
-    /// `1000:c8e8`, `1000:c94c`, `1000:c9c8`, `1000:cae8`, `1000:cb80`,
-    /// `1000:cc39`, `1000:cce8`, `1000:cd86` and `1000:ce17`. At `mar`:
-    /// `1000:bd91`, `1000:be27`, `1000:bed9`, `1000:bf63`, `1000:c00c`,
-    /// `1000:c0c3`, `1000:c166`, `1000:c205` and `1000:c2ad`. Every one of
-    /// those eighteen branch bytes is `7e`, checked per row rather than
-    /// assumed, so the sale goes through when `price <= money` and the
-    /// *refusal* is the fall-through; only the wording differs between rows.
-    ///
-    /// The debit itself is `sub [0x38c7],ax` at `1000:c90a`, `1000:c973`,
-    /// `1000:c9eb`, `1000:cb0f`, `1000:cba7`, `1000:cc60`, `1000:cd14`,
-    /// `1000:cdad` and `1000:ce3e` (`bmar`), and at `1000:bdb3`,
-    /// `1000:be49`, `1000:bf00`, `1000:bf8a`, `1000:c033`, `1000:c0ea`,
-    /// `1000:c18d`, `1000:c22c` and `1000:c2d4` (`mar`).
-    ///
-    /// **The write-before-debit order is not observable, in either shop.**
-    /// At `mar` rows 3-9 all set their ownership flag ahead of the debit
-    /// (`1000:bef6`, `1000:bf80`, `1000:c029`, `1000:c0e0`, `1000:c183`,
-    /// `1000:c222`, `1000:c2ca`) and rows 1 and 2 write no flag at all; none
-    /// of the seven reads the money or the byte it just wrote between the
-    /// write and the `sub`, and the three upgrade guards read a *different*
-    /// flag from the one their arm sets (`1000:c1aa` reads `20ae:38b4` while
-    /// `1000:c183` wrote `20ae:38b7`; `1000:c249` reads `20ae:38b5` while
-    /// `1000:c222` wrote `20ae:38b8`; `1000:c2f1` reads `20ae:38b6` while
-    /// `1000:c2ca` wrote `20ae:38b9`). So the effect closure runs after the
-    /// debit for all eighteen.
-    ///
-    /// At `bmar`, **only rows 1 and 3 debit before they write anything
-    /// else.** The other seven write first, and this comment said "three
-    /// arms" until a review
-    /// recounted them -- the inventory-that-stopped-early defect
-    /// `docs/re/METHODOLOGY.md` names, sitting inside the justification for a
-    /// deliberate divergence. Six of the seven set an ownership FLAG ahead of
-    /// the debit:
-    ///
-    /// | row | write | debit |
-    /// |---|---|---|
-    /// | 2 | `1000:c969` `mov byte [0x38bb],0x1` | `1000:c973` |
-    /// | 4 | `1000:cb05` `mov byte [0x38bc],0x1` | `1000:cb0f` |
-    /// | 5 | `1000:cb9d` `mov byte [0x38ba],0x1` | `1000:cba7` |
-    /// | 6 | `1000:cc56` `mov byte [0x394b],0x1` | `1000:cc60` |
-    /// | 7 | `1000:cd05` `mov byte [0x394d],0x1` | `1000:cd14` |
-    /// | 9 | `1000:ce34` `mov byte [0x394e],0x1` | `1000:ce3e` |
-    ///
-    /// The seventh is row 8's `1000:cda3 add word [0x394f],0x5`, a COUNT
-    /// rather than a flag, ahead of `1000:cdad`; row 7 adds to that same
-    /// count at `1000:cd0a`, also before its debit. In every one of the seven
-    /// the instructions between the write and the `sub` read neither the
-    /// money nor the thing written, so the order is not observable and the
-    /// effect closure runs after the debit here.
+    /// At `bmar`, only rows 1 and 3 debit before they write anything else; the
+    /// other seven write first. Six of the seven set an ownership flag ahead of the
+    /// debit; the seventh, row 8, increments a COUNT instead of a flag, ahead of
+    /// its debit, and row 7 adds to that same count before its own debit too. In
+    /// every one of the seven nothing between the write and the debit reads the
+    /// money or the thing just written, so the effect closure runs after the debit
+    /// here as well.
     fn buy_after_gates(
         &mut self,
         price: i32,
@@ -2949,130 +2821,91 @@ impl Game {
         effect(self);
     }
 
-    /// The dealers' nine purchase arms -- `bmar` rows 1..9. Returns `true`
-    /// when the key was one of the nine and the arm has run. The caller has
-    /// no fall-through left for a `false` to reach: Task 26 deleted the
-    /// generic "debit and echo the menu line" path, so a `false` here means a
-    /// row of `data/shops.json` with no arm, which
-    /// [`Game::shop_action`]'s `debug_assert!` catches in debug and
-    /// `every_dealers_row_has_an_arm_of_its_own` catches in either profile.
+    /// The dealers' nine purchase arms -- `bmar` rows 1..9. Returns `true` when the
+    /// key was one of the nine and the arm has run. A `false` here means a row with
+    /// no arm, which [`Game::shop_action`]'s `debug_assert!` catches in debug.
     ///
-    /// **Established from flow.** Rows 7-9 are Task 18's; rows 1-6 are
-    /// Task 24's, off the map `docs/re/shop-arms.md` / `data/shop_arms.json`
-    /// (which `python3 tools/test_shop_arms.py` re-derives from
-    /// `orig/g.exe`). One line is read by the `ReadLn` at `1000:c8c9` after
-    /// the prompt `^0Барыги\` (CS `0x937b`), and each row then compares that
-    /// one buffer at `20ae:3a72` against its own one-character literal with
-    /// `0f78:0bd8`. Each miss branch targets the *next* row's setup and each
-    /// arm's tail rejoins there, so the nine are a chain of independent
-    /// `if`s over one buffer, not an `if`/`else` -- the same shape
-    /// `docs/re/combat-dispatch.md` records for the combat prompt.
+    /// Each row compares the same one-character buffer -- read after the
+    /// `^0Барыги\` prompt -- against its own key; a miss falls to the next row's
+    /// compare, so the nine are a chain of independent `if`s over one buffer, not
+    /// an `if`/`else`.
     ///
-    /// | row | key compare | key literal | price | debit |
-    /// |---|---|---|---|---|
-    /// | 1 Косяк | `1000:c8d8` | CS `0x8dca` | `20ae:0b38` = 15 | `1000:c90a` |
-    /// | 2 Краденый мобильник | `1000:c935` | CS `0x8e4b` | `20ae:0b39` = 30 | `1000:c973` |
-    /// | 3 Офигенный косяк | `1000:c9b5` | CS `0x8ea5` | `20ae:0b3a` = 20 | `1000:c9eb` |
-    /// | 4 зоновская наколка | `1000:cad1` | CS `0x8ef7` | `20ae:0b3b` = 10 | `1000:cb0f` |
-    /// | 5 Кастет | `1000:cb51` | CS `0x8f6b` | `20ae:0b3c` = 25 | `1000:cba7` |
-    /// | 6 Дубинка | `1000:cc0e` | CS `0x8fc6` | `20ae:0b3d` = 50 | `1000:cc60` |
-    /// | 7 пистолет | `1000:ccce` | CS `0x9023` | `20ae:0b3e` = 150 | `1000:cd14` |
-    /// | 8 патроны | `1000:cd6f` | CS `0x9055` | `20ae:0b3f` = 70 | `1000:cdad` |
-    /// | 9 глушитель | `1000:cdef` | CS `0x906a` | `20ae:0b40` = 60 | `1000:ce3e` |
+    /// | row | item | price |
+    /// |---|---|---|
+    /// | 1 | Косяк | 15 |
+    /// | 2 | Краденый мобильник | 30 |
+    /// | 3 | Офигенный косяк | 20 |
+    /// | 4 | зоновская наколка | 10 |
+    /// | 5 | Кастет | 25 |
+    /// | 6 | Дубинка | 50 |
+    /// | 7 | пистолет | 150 |
+    /// | 8 | патроны | 70 |
+    /// | 9 | глушитель | 60 |
     ///
-    /// **A label correction this carries.** Earlier revisions of this comment
-    /// and of [`crate::combat_dispatch::Pistol`] called `1000:ccd8`,
-    /// `1000:cd76` and `1000:cdf9` the three key compares. They are not: each
-    /// decodes to `cmp byte [0x394d],0x0`, the arm's own pistol gate. The key
-    /// compares are `1000:ccce`, `1000:cd6f` and `1000:cdef` (each
-    /// `call 0xf78:0xbd8`), and the addresses in the table above are the ones
-    /// `python3 tools/re_query.py resolve <citation>` decodes. `docs/re/gaps.md`
-    /// records the correction.
+    /// **No arm of the nine tests the district** -- see [`Game::shop_action`]. Rows
+    /// 1 and 3 have no already-own test and are **repeatable**; rows 2, 4, 5, 6, 7
+    /// and 9 are one-shot through their own already-own test, and row 8 through
+    /// none at all.
     ///
-    /// **No arm of the nine tests the district** -- see [`Game::shop_action`].
-    /// Rows 1 and 3 have no already-own test and are **repeatable**; rows 2,
-    /// 4, 5, 6, 7 and 9 are one-shot through their own already-own test, and
-    /// row 8 through none at all.
-    ///
-    /// Row 3 is the only one that draws (`Random(4)` at `1000:ca0c`), so a
-    /// purchase there advances the RNG stream.
+    /// Row 3 is the only one that draws, so a purchase there advances the RNG
+    /// stream.
     fn buy_dealer_row(&mut self, key: &str, price: i32) -> bool {
         match key {
-            // Row 1, Косяк. Key compare `1000:c8d8`, miss
-            // `1000:c8dd jnz 0xc92b`. One gate only -- no already-own test
-            // and no prerequisite, so the row is repeatable.
+            // Row 1, Косяк. One gate only -- no already-own test and no prerequisite, so
+            // the row is repeatable.
             "1" => {
                 self.buy_after_gates(
                     price, // 20ae:0b38 = 15
                     &[],
-                    // CS 0x9385 `^4Чёрт, бабок не хватает.`, pushed at 1000:c8ea. This literal is row 1's
-                    // own; the port used to print it for every dealers' row.
+                    // `^4Чёрт, бабок не хватает.` -- row 1's own refusal line.
                     "^4Чёрт, бабок не хватает.",
                     |g| {
-                        // 1000:c90a `sub [0x38c7],ax`, then 1000:c90e
-                        // `inc [0x38c5]` -- a word COUNT of joints, not a
-                        // flag. Read by the sheet at 1000:23b4 and by `kos`
-                        // at 1000:4b44 (in a fight) and 1000:e9aa (at the
-                        // street prompt), so the effect is fully consumed.
+                        // Increments a word COUNT of joints, not a flag. Read by the character sheet,
+                        // by `kos` in a fight, and at the street prompt -- the effect is fully
+                        // consumed.
                         g.player.joints += 1;
                         term::println("^2Ты купил косяк"); // CS 0x939f `^2Ты купил косяк`, 1000:c912
                     },
                 );
                 true
             }
-            // Row 2, Краденый мобильник. Key compare `1000:c935`, miss
-            // `1000:c93a jnz 0xc9ab`.
+            // Row 2, Краденый мобильник.
             "2" => {
-                // 1000:c93c `cmp byte [0x38bb],0x0` / 1000:c941 `jnz 0xc992`.
                 let owned = self.has_mobile;
                 self.buy_after_gates(
                     price, // 20ae:0b39 = 30
-                    // CS 0x93d6 `^6У тебя уже есть мобила.`, pushed at 1000:c992.
+                    // `^6У тебя уже есть мобила.`
                     &[(owned, Some("^6У тебя уже есть мобила."))],
                     "^4Нету денег", // CS 0x93b0 `^4Нету денег`, 1000:c94e
                     |g| {
-                        // 1000:c969 `mov byte [0x38bb],0x1`; debit 1000:c973.
-                        // Read by the sheet at 1000:1cd8, by the in-combat
-                        // backup countdown at 1000:4cdb -- which is what the
-                        // menu line's "подмога быстрее приходит" actually is
-                        // -- and by five wander sites (1000:af3d, 1000:af7d,
-                        // 1000:afe3, 1000:b022, 1000:b0ce).
+                        // Sets the ownership flag. Read by the character sheet, by the in-combat
+                        // backup countdown -- which is what the menu line's "подмога быстрее приходит"
+                        // actually is -- and by wander encounters.
                         g.has_mobile = true;
                         term::println("^2Чё ты модный типа да?."); // CS 0x93bd `^2Чё ты модный типа да?.`, 1000:c977
                     },
                 );
                 true
             }
-            // Row 3, Офигенный косяк. Key compare `1000:c9b5`; the miss is an
-            // inverted pair, `1000:c9ba jz 0xc9bf` over `1000:c9bc jmp
-            // 0xcac7`, because the arm is too long for a short branch. One
-            // gate, so the row is repeatable and each purchase rolls again.
+            // Row 3, Офигенный косяк. One gate, so the row is repeatable and each purchase
+            // rolls again.
             "3" => {
                 self.buy_after_gates(
                     price, // 20ae:0b3a = 20
                     &[],
                     "^4Не хватает", // CS 0x8e4d `^4Не хватает`, 1000:c9ca
                     |g| {
-                        // Debit 1000:c9eb, then the line, then the draw.
+                        // Debit, then the line, then the draw.
                         term::println("^2Пошли стероиды!"); // CS 0x93f0 `^2Пошли стероиды!`, 1000:c9ef
 
-                        // 1000:ca0c `call 0f78:114b` with `mov ax,0x4` at
-                        // 1000:ca08, dispatched over four compares at
-                        // 1000:ca11, 1000:ca53, 1000:ca77 and 1000:caa5.
                         match g.rng.below(4) {
                             0 => {
                                 g.player.strength += 1; // 1000:ca16 inc [0x389e]
                                 term::println("^1Сила +1 "); // CS 0x9402 `^1Сила +1 `, 1000:ca1a
                                 g.player.dmg_max += 1; // 1000:ca33 inc [0x38aa]
 
-                                // 1000:ca37..1000:ca43 -- `mov ax,[0x389e]` /
-                                // `cwd` / `mov cx,0x2` / `idiv cx` /
-                                // `xchg ax,dx` / `or ax,ax` /
-                                // `jnz 0xca49`, so the dmg-min half runs only
-                                // when the NEW Сила is even. It is the mirror
-                                // of the in-combat stat-loss arm at
-                                // 1000:498f, which takes its dmg-min half
-                                // when Сила is odd.
+                                // The dmg-min half runs only when the NEW Сила is even -- the mirror of the
+                                // in-combat stat-loss arm, which takes its dmg-min half when Сила is odd.
                                 if g.player.strength % 2 == 0 {
                                     g.player.dmg_min += 1; // 1000:ca45 inc [0x38a8]
                                 }
@@ -3098,32 +2931,25 @@ impl Game {
                 );
                 true
             }
-            // Row 4, зоновская наколка. Key compare `1000:cad1`, miss
-            // `1000:cad6 jnz 0xcb47`.
+            // Row 4, зоновская наколка.
             "4" => {
-                // 1000:cad8 `cmp byte [0x38bc],0x0` / 1000:cadd `jnz 0xcb2e`.
                 let owned = self.prison_tattoo;
                 self.buy_after_gates(
                     price, // 20ae:0b3b = 10
-                    // CS 0x9446 `^6Сделать, конечно, можно но толку не будет.`, pushed at 1000:cb2e.
+                    // `^6Сделать, конечно, можно но толку не будет.`
                     &[(owned, Some("^6Сделать, конечно, можно но толку не будет."))],
                     "^4Нету денег", // CS 0x93b0 `^4Нету денег`, 1000:caea -- row 2's literal
                     |g| {
-                        // 1000:cb05 `mov byte [0x38bc],0x1`; debit 1000:cb0f.
-                        // The flag has four references image-wide, two
-                        // outside this arm: the sheet at 1000:1d18 and
-                        // 1000:b5da, the wander mugging roll, which halves
-                        // the chance when it is set. That single branch is
-                        // the row's entire gameplay effect.
+                        // Sets the ownership flag. Read outside this arm by the character sheet and by
+                        // the wander mugging roll, which halves the chance when it is set -- that
+                        // single branch is the row's entire gameplay effect.
                         g.prison_tattoo = true;
                         term::println("^2Чистый зек."); // CS 0x9438 `^2Чистый зек.`, 1000:cb13
                     },
                 );
                 true
             }
-            // Row 5, Кастет. Key compare `1000:cb51`; the miss is the
-            // inverted pair `1000:cb56 jz 0xcb5b` over `1000:cb58 jmp
-            // 0xcc04`.
+            // Row 5, Кастет.
             "5" => {
                 // The better-weapon gate is a short-circuit conjunction:
                 // 1000:cb5b `cmp byte [0x394b],0x0` / 1000:cb60 `jz 0xcb70`,
@@ -3140,160 +2966,132 @@ impl Game {
                 // `jnz <refusal>`), so a player holding a knife can buy the
                 // knuckles here but cannot loot them.
                 let better = self.weapon_dubinka && self.weapon_nozhik && self.weapon_tesak;
-                // 1000:cb70 `cmp byte [0x38ba],0x0` / 1000:cb75 `jnz 0xcbd0`.
                 let owned = self.weapon_kastet;
                 self.buy_after_gates(
                     price, // 20ae:0b3c = 25
                     &[
-                        // CS 0x94da `^6Нафиг тебе он нужен, когда есть более мощное оружие.`, pushed at 1000:cbeb.
+                        // `^6Нафиг тебе он нужен, когда есть более мощное оружие.`
                         (
                             better,
                             Some("^6Нафиг тебе он нужен, когда есть более мощное оружие."),
                         ),
-                        // CS 0x94bf `^6У тебя есть эта железка.`, pushed at 1000:cbd0.
+                        // `^6У тебя есть эта железка.`
                         (owned, Some("^6У тебя есть эта железка.")),
                     ],
                     "^4Не хватает деньжат", // CS 0x9473 `^4Не хватает деньжат`, 1000:cb82
                     |g| {
                         g.weapon_kastet = true; // 1000:cb9d mov byte [0x38ba],0x1
 
-                        // Debit 1000:cba7. The +2/+2 is unconditional here.
+                        // The +2/+2 is unconditional here.
                         g.player.dmg_min += 2; // 1000:cbab add word [0x38a8],0x2
                         g.player.dmg_max += 2; // 1000:cbb0 add word [0x38aa],0x2
 
-                        // CS 0x9488 `^2Ты купил кастет смотри чтоб менты с ним не запалили.`, pushed at 1000:cbb5.
+                        // `^2Ты купил кастет смотри чтоб менты с ним не запалили.`
                         term::println("^2Ты купил кастет смотри чтоб менты с ним не запалили.");
                     },
                 );
                 true
             }
-            // Row 6, Дубинка. Key compare `1000:cc0e`; miss
-            // `1000:cc13 jz 0xcc18` over `1000:cc15 jmp 0xccc4`.
+            // Row 6, Дубинка.
             "6" => {
-                // Two conjuncts this time -- 1000:cc18 `cmp byte [0x38c2],0x0`
-                // / 1000:cc1d `jz 0xcc29` and 1000:cc1f
-                // `cmp byte [0x394c],0x0` / 1000:cc24 `jz 0xcc29`, falling to
-                // 1000:cc26 `jmp 0xccab` only when
-                // both are set. Same AND/OR mismatch with the loot arm
-                // (1000:55c5, 1000:55cc) as row 5.
+                // Two conjuncts this time; refuses only when both are set. Same AND/OR
+                // mismatch with the loot arm as row 5.
                 let better = self.weapon_nozhik && self.weapon_tesak;
-                // 1000:cc29 `cmp byte [0x394b],0x0` / 1000:cc2e `jnz 0xcc90`.
                 let owned = self.weapon_dubinka;
-                // 1000:cc64 `cmp byte [0x38ba],0x0` / 1000:cc69 `jz 0xcc75`.
                 let kastet = self.weapon_kastet;
                 self.buy_after_gates(
                     price, // 20ae:0b3d = 50
                     &[
-                        // CS 0x957c `^6Да нафиг она нужна, когда есть более мощное оружие.`, pushed at 1000:ccab.
+                        // `^6Да нафиг она нужна, когда есть более мощное оружие.`
                         (
                             better,
                             Some("^6Да нафиг она нужна, когда есть более мощное оружие."),
                         ),
-                        // CS 0x9566 `^6У тебя есть дубина.`, pushed at 1000:cc90.
+                        // `^6У тебя есть дубина.`
                         (owned, Some("^6У тебя есть дубина.")),
                     ],
                     "^4Не хватает на дубинку деньжат", // CS 0x9511 `^4Не хватает на дубинку деньжат`, 1000:cc3b
                     |g| {
                         g.weapon_dubinka = true; // 1000:cc56 mov byte [0x394b],0x1
 
-                        // Debit 1000:cc60.
-                        //
-                        // ORIGINAL BUG, reproduced: the menu line advertises
-                        // `урон+4`, and 1000:cc69 `jz 0xcc75` skips BOTH adds
-                        // when the knuckles are not owned -- its target is the
-                        // confirmation push, and there is no other add on that
-                        // path. So buying the club first costs 50 руб., sets
-                        // the flag, prints the confirmation and changes the
-                        // damage range by nothing. The loot arm granting the
-                        // same club tests the same flag and has both halves:
-                        // 1000:55d3 / `jz 0x55e6`, +2/+2 at 1000:55da and
-                        // 1000:55df, +4/+4 at 1000:55e6 and 1000:55eb. The
-                        // shop arm is the loot arm with the `+4` branch
-                        // missing.
+                        // ORIGINAL BUG, reproduced: the menu line advertises `урон+4`, but buying the
+                        // club skips BOTH damage adds when the knuckles are not already owned -- there
+                        // is no other add on that path. So buying the club first costs 50 руб., sets
+                        // the flag, prints the confirmation, and changes the damage range by nothing.
+                        // The loot arm granting the same club has both halves (+2/+2 and +4/+4); the
+                        // shop arm is missing the +4 branch.
                         if kastet {
                             g.player.dmg_min += 2; // 1000:cc6b add word [0x38a8],0x2
                             g.player.dmg_max += 2; // 1000:cc70 add word [0x38aa],0x2
                         }
-                        // CS 0x9531 `^2Ты купил дубинку - похоже задумал чё-то нехорошее.`, pushed at 1000:cc75 -- exactly where
-                        // 1000:cc69 jumps.
+                        // `^2Ты купил дубинку - похоже задумал чё-то нехорошее.`
                         term::println("^2Ты купил дубинку - похоже задумал чё-то нехорошее.");
                     },
                 );
                 true
             }
-            // Row 7, самопальный пистолет. Key compare `1000:ccce`, with
-            // `1000:ccd3 jz 0xccd8` in front of it.
+            // Row 7, самопальный пистолет.
             "7" => {
-                // 1000:ccd8 `cmp byte [0x394d],0x0` / 1000:ccdd `jnz 0xcd4c`.
                 let owned = self.pistol.owned;
                 self.buy_after_gates(
                     price, // 20ae:0b3e = 150
-                    // CS 0x961e `^6Ну.. ты.. ВАЩЕ ОФИГЕЛ!`, pushed at 1000:cd4c.
+                    // `^6Ну.. ты.. ВАЩЕ ОФИГЕЛ!`
                     &[(owned, Some("^6Ну.. ты.. ВАЩЕ ОФИГЕЛ!"))],
                     "^4Дорогая штука!", // CS 0x95b2 `^4Дорогая штука!`, 1000:ccea
                     |g| {
                         g.pistol.owned = true; // 1000:cd05 mov byte [0x394d],0x1
                         g.pistol.cartridges += 3; // 1000:cd0a add word [0x394f],0x3
 
-                        // CS 0x95c3 `^2Спасайся кто может!!!`, pushed at 1000:cd18.
+                        // `^2Спасайся кто может!!!`
                         term::println("^2Спасайся кто может!!!");
                         term::println(
-                            // CS 0x95db `^0Только помни стреляй в бандитских районах - там менты не накроют`, pushed at 1000:cd31.
+                            // `^0Только помни стреляй в бандитских районах - там менты не накроют`
                             "^0Только помни стреляй в бандитских районах - там менты не накроют",
                         );
                     },
                 );
                 true
             }
-            // Row 8, патроны. Key compare `1000:cd6f`, miss
-            // `1000:cd74 jnz 0xcde5`.
+            // Row 8, патроны.
             "8" => {
-                // 1000:cd76 `cmp byte [0x394d],0x0` / 1000:cd7b `jz 0xcdcc`.
                 let no_gun = !self.pistol.owned;
                 self.buy_after_gates(
                     price, // 20ae:0b3f = 70
-                    // CS 0x9666 `^6Нету пушки. Сначала купи пистолет`, pushed at 1000:cdcc.
+                    // `^6Нету пушки. Сначала купи пистолет`
                     &[(no_gun, Some("^6Нету пушки. Сначала купи пистолет"))],
                     "^4Нехватка денег.", // CS 0x9637 `^4Нехватка денег.`, 1000:cd88
                     |g| {
-                        // 1000:cda3 adds FIVE, though the menu line says six.
+                        // Adds FIVE, though the menu line says six.
                         g.pistol.cartridges += 5;
-                        // CS 0x9649 `^2Получи пять пуль.. на руки`, pushed at 1000:cdb1.
+                        // `^2Получи пять пуль.. на руки`
                         term::println("^2Получи пять пуль.. на руки");
                     },
                 );
                 true
             }
-            // Row 9, глушитель. Key compare `1000:cdef`, with
-            // `1000:cdf4 jz 0xcdf9` in front of it.
+            // Row 9, глушитель.
             "9" => {
-                // 1000:cdf9 `cmp byte [0x394d],0x0` / 1000:cdfe `jz 0xce76`,
-                // and 1000:ce00 `cmp byte [0x3e32],0x19` / 1000:ce05
-                // `jnz 0xce76`. Both land on 1000:ce76, the setup for the
-                // `x` compare at 1000:ce80, and print nothing at all -- the
-                // only silent gates among the nine.
+                // Both gates print nothing at all -- the only silent gates among the nine.
                 let no_gun = !self.pistol.owned;
                 let not_delivered = self.dealer_delivery_counter != 25;
-                // 1000:ce07 `cmp byte [0x394e],0x0` / 1000:ce0c `jnz 0xce5d`.
                 let owned = self.pistol.silencer;
-                // Row 9 is the only reader of `20ae:3e32` besides the walk
-                // counter that feeds it, so the dealers' 25-walk delivery is
-                // the silencer's and nothing else's.
+                // Nothing else reads the walk counter that gates this row, so the dealers'
+                // 25-walk delivery is the silencer's and nothing else's.
                 self.buy_after_gates(
-                    // 20ae:0b40 = 60, though the menu line prints 70 --
-                    // `docs/re/tables.md` §2's split, reproduced.
+                    // Price is 60, though the menu line prints 70 -- reproduced as in the
+                    // original.
                     price,
                     &[
                         (no_gun, None),
                         (not_delivered, None),
-                        // CS 0x96b8 `^6Да купил уже, купил`, pushed at 1000:ce5d.
+                        // `^6Да купил уже, купил`
                         (owned, Some("^6Да купил уже, купил")),
                     ],
                     "^4Подкопи бабла.", // CS 0x968a `^4Подкопи бабла.`, 1000:ce19
                     |g| {
                         g.pistol.silencer = true; // 1000:ce34 mov byte [0x394e],0x1
 
-                        // CS 0x969b `^2Теперь стреляй где хочешь!`, pushed at 1000:ce42.
+                        // `^2Теперь стреляй где хочешь!`
                         term::println("^2Теперь стреляй где хочешь!");
                     },
                 );
@@ -3303,91 +3101,66 @@ impl Game {
         }
     }
 
-    /// The market's nine purchase arms -- `mar` rows 1..9. Returns `true`
-    /// when the key was one of the nine and the arm has run.
+    /// The market's nine purchase arms -- `mar` rows 1..9. Returns `true` when the
+    /// key was one of the nine and the arm has run.
     ///
-    /// **Established from flow.** The map is `docs/re/shop-arms.md`'s `mar`
-    /// half and `data/shop_arms.json`'s `mar` key (Task 25), both re-derived
-    /// from `orig/g.exe` by `python3 tools/test_shop_arms.py`; the `src/`
-    /// half is Task 26's. One line is read by the `ReadLn` at `1000:bd43`
-    /// after the prompt `^0Базар\` (CS `0x8dc1`, pushed at `1000:bd08`), and
-    /// each row then compares that one buffer at `20ae:3a72` against its own
-    /// one-character literal with `0f78:0bd8`. Each miss branch targets the
-    /// next row's span start and each arm's tail rejoins there, so the nine
-    /// are a chain of independent `if`s over one buffer. Row 9's miss lands
-    /// on `1000:c31f`, whose compare at `1000:c329` is the market pickpocket
-    /// verb `t` -- which is what bounds the nine on the right.
+    /// Each row compares the same one-character buffer -- read after the `^0Базар\`
+    /// prompt -- against its own key; a miss falls to the next row's compare, so
+    /// the nine are a chain of independent `if`s over one buffer. Row 9's miss
+    /// reaches the market pickpocket verb `t`, which is what bounds the nine on the
+    /// right.
     ///
-    /// | row | key compare | key literal | price | debit |
-    /// |---|---|---|---|---|
-    /// | 1 Хотдог | `1000:bd52` | CS `0x8dca` | `20ae:0b2e` = 2 | `1000:bdb3` |
-    /// | 2 Пиво | `1000:be14` | CS `0x8e4b` | `20ae:0b2f` = 5 | `1000:be49` |
-    /// | 3 Затемнённые очки | `1000:bec2` | CS `0x8ea5` | `20ae:0b30` = 10 | `1000:bf00` |
-    /// | 4 abibas | `1000:bf42` | CS `0x8ef7` | `20ae:0b31` = 15 | `1000:bf8a` |
-    /// | 5 Понтовые бутсы | `1000:bfeb` | CS `0x8f6b` | `20ae:0b32` = 15 | `1000:c033` |
-    /// | 6 Реальную кожанку | `1000:c0a2` | CS `0x8fc6` | `20ae:0b33` = 25 | `1000:c0ea` |
-    /// | 7 adidas | `1000:c14c` | CS `0x9023` | `20ae:0b34` = 30 | `1000:c18d` |
-    /// | 8 Понтовёйшие бутсы | `1000:c1eb` | CS `0x9055` | `20ae:0b35` = 30 | `1000:c22c` |
-    /// | 9 Ваще крутую кожанку | `1000:c293` | CS `0x906a` | `20ae:0b36` = 50 | `1000:c2d4` |
+    /// | row | item | price |
+    /// |---|---|---|
+    /// | 1 | Хотдог | 2 |
+    /// | 2 | Пиво | 5 |
+    /// | 3 | Затемнённые очки | 10 |
+    /// | 4 | abibas | 15 |
+    /// | 5 | Понтовые бутсы | 15 |
+    /// | 6 | Реальную кожанку | 25 |
+    /// | 7 | adidas | 30 |
+    /// | 8 | Понтовёйшие бутсы | 30 |
+    /// | 9 | Ваще крутую кожанку | 50 |
     ///
     /// **Three arms test the district and one that should does not** -- see
-    /// [`Game::shop_action`] for the measurement and for why row 7 is sold at
-    /// district 1 off a menu that never listed it.
+    /// [`Game::shop_action`] for why row 7 is sold at district 1 off a menu that
+    /// never listed it.
     ///
-    /// Rows 1 and 2 have no already-own test and are **repeatable**; rows 3-9
-    /// are one-shot through their own.
+    /// Rows 1 and 2 have no already-own test and are **repeatable**; rows 3-9 are
+    /// one-shot through their own.
     ///
-    /// **Two arms draw.** Row 1's `Random(2)` at `1000:bdbb` is consumed
-    /// arithmetically (`1000:bdc0 add ax,0x3`); row 2's `Random(3)` at
-    /// `1000:be51` picks one of three confirmation lines and **changes no
-    /// state at all**. Skipping the second because nothing depends on its
-    /// result would desynchronise every draw after the first beer, so it is
-    /// drawn here too.
+    /// **Two arms draw.** Row 1's draw is consumed arithmetically; row 2's draw
+    /// picks one of three confirmation lines and **changes no state at all** -- it
+    /// is drawn anyway, since skipping it would desynchronise every draw after the
+    /// first beer.
     ///
-    /// **Rows 7, 8 and 9 grant the upgrade DELTA, not the advertised bonus**
-    /// (`1000:c1af`, `1000:c24e`, `1000:c2f6`). Applying the full bonus
-    /// unconditionally would double-count whenever the lesser item is already
-    /// owned; the totals come out the same in either purchase order, which is
-    /// what the gym's recompute at `1000:e3a4`..`1000:e3e2` subtracts back
-    /// out (`docs/re/gaps.md`; corroboration, not part of this decode).
+    /// **Rows 7, 8 and 9 grant the upgrade DELTA, not the advertised bonus.**
+    /// Applying the full bonus unconditionally would double-count whenever the
+    /// lesser item is already owned; the totals come out the same in either
+    /// purchase order -- which the gym's recompute subtracts back out.
     fn buy_market_row(&mut self, key: &str, price: i32) -> bool {
         match key {
-            // Row 1, Хотдог. Setup 1000:bd48, key compare 1000:bd52; the miss
-            // is an inverted pair, 1000:bd57 `jz 0xbd5c` over 1000:bd59
-            // `jmp 0xbe0a`. Three gates, no already-own test, repeatable.
+            // Row 1, Хотдог. Three gates, no already-own test, repeatable.
             "1" => {
-                // 1000:bd5c `cmp byte [0x38b0],0x1` / 1000:bd61 `jnz 0xbd7f`.
-                // The branch jumps PAST the refusal, so this gate refuses on
-                // the FALL-THROUGH -- the opposite sense to every other
+                // This gate refuses on the FALL-THROUGH -- the opposite sense to every other
                 // already-own/prerequisite gate in either shop.
                 let jaw = self.player.broken_jaw;
-                // 1000:bd7f `mov ax,[0x38ac]` / 1000:bd82 `cmp ax,[0x38ae]` /
-                // 1000:bd86 `jnl 0xbdf1` -- refuse when hp is already at max.
+                // Refuse when hp is already at max.
                 let healthy = self.player.hp >= self.player.hpmax;
                 self.buy_after_gates(
                     price, // 20ae:0b2e = 2
                     &[
-                        // CS 0x8dcc `^4Ты не можешь хавать из-за сломаной челюсти.`, pushed at 1000:bd63.
+                        // `^4Ты не можешь хавать из-за сломаной челюсти.`
                         (jaw, Some("^4Ты не можешь хавать из-за сломаной челюсти.")),
-                        // CS 0x8e37 `^6Да неохота хавать`, pushed at 1000:bdf1.
+                        // `^6Да неохота хавать`
                         (healthy, Some("^6Да неохота хавать")),
                     ],
-                    // CS 0x8dfa `^4Чёрт, бабок даже на жратву не хватает.`, pushed at 1000:bd93. This is the literal the
-                    // port's now-deleted generic path used to print for every
-                    // `mar` row; it belongs to row 1 alone.
+                    // `^4Чёрт, бабок даже на жратву не хватает.` -- belongs to row 1 alone.
                     "^4Чёрт, бабок даже на жратву не хватает.",
                     |g| {
-                        // Debit 1000:bdb3, then 1000:bdb7 `mov ax,0x2` /
-                        // 1000:bdbb `call 0f78:114b` (the `n` recovered with
-                        // `python3 tools/re_query.py pushed-n 1000:bdbb`),
-                        // 1000:bdc0 `add ax,0x3`, 1000:bdc3
-                        // `add [0x38ac],ax`. The hot dog heals 3 or 4, and
-                        // nothing stands between the draw and the add.
+                        // The hot dog heals 3 or 4, and nothing stands between the draw and the add.
                         g.player.hp += 3 + g.rng.below(2);
-                        // 1000:bdc7 `mov ax,[0x38ac]` / 1000:bdca
-                        // `cmp ax,[0x38ae]` / 1000:bdce `jle 0xbdd6`, else
-                        // 1000:bdd0 `mov ax,[0x38ae]` / 1000:bdd3
-                        // `mov [0x38ac],ax` writes hp max back into hp.
+                        // Clamps hp to its maximum afterward.
                         if g.player.hp > g.player.hpmax {
                             g.player.hp = g.player.hpmax;
                         }
@@ -3396,160 +3169,119 @@ impl Game {
                 );
                 true
             }
-            // Row 2, Пиво. Setup 1000:be0a, key compare 1000:be14, miss
-            // 1000:be19 `jz 0xbe1e` over 1000:be1b `jmp 0xbeb8`. One gate,
-            // repeatable.
+            // Row 2, Пиво. One gate, repeatable.
             "2" => {
                 self.buy_after_gates(
                     price, // 20ae:0b2f = 5
                     &[],
                     "^4Не хватает", // CS 0x8e4d `^4Не хватает`, 1000:be29
                     |g| {
-                        // Debit 1000:be49, then 1000:be4d `mov ax,0x3` /
-                        // 1000:be51 `call 0f78:114b`, dispatched over three
-                        // compares. All three arms converge on 1000:beb4 and
-                        // the roll changes NO state -- it is purely cosmetic,
-                        // and it is still a draw.
+                        // Dispatches over three compares; all three converge and the roll changes NO
+                        // state -- it is purely cosmetic, and it is still a draw.
                         match g.rng.below(3) {
-                            // 1000:be56 `cmp ax,0x0` / 1000:be59 `jnz 0xbe76`.
                             0 => term::println("^2Глинское? Чё за нафиг? А ладно."), // CS 0x8e5a `^2Глинское? Чё за нафиг? А ладно.`, 1000:be5b
-                            // 1000:be76 `cmp ax,0x1` / 1000:be79 `jnz 0xbe96`.
                             1 => term::println("^2Пивко. Холодненькое."), // CS 0x8e7c `^2Пивко. Холодненькое.`, 1000:be7b
-                            // 1000:be96 `cmp ax,0x2` / 1000:be99 `jnz 0xbeb4`.
                             2 => term::println("^2Ну чё по пиву?."), // CS 0x8e93 `^2Ну чё по пиву?.`, 1000:be9b
-                            // 1000:be99's own target: no line, and the
-                            // increment still runs. Unreachable from a
-                            // `Random(3)`, and present because the original's
-                            // dispatch is three equality tests, not an
-                            // exhaustive three-way split.
+                            // Unreachable in practice: no line prints here, though the increment still
+                            // runs on this arm too.
                             _ => {}
                         }
-                        // 1000:beb4 `inc [0x38c3]` -- a WORD count of
-                        // half-litres, not a flag. The refusal path rejoins
-                        // at 1000:be42 `jmp short 0xbeb8`, past this, so a
-                        // failed purchase adds no beer.
+                        // Increments a WORD count of half-litres, not a flag. A failed purchase adds
+                        // no beer.
                         g.player.beer_dl += 1;
                     },
                 );
                 true
             }
-            // Row 3, Затемнённые очки. Setup 1000:beb8, key compare
-            // 1000:bec2, miss 1000:bec7 `jnz 0xbf38`. Two gates.
+            // Row 3, Затемнённые очки. Two gates.
             "3" => {
-                // 1000:bec9 `cmp byte [0x38b3],0x0` / 1000:bece `jnz 0xbf1f`.
                 let owned = self.dark_glasses;
                 self.buy_after_gates(
                     price, // 20ae:0b30 = 10
-                    // CS 0x8ed9 `^6У тебя есть очки от солнца.`, pushed at 1000:bf1f.
+                    // `^6У тебя есть очки от солнца.`
                     &[(owned, Some("^6У тебя есть очки от солнца."))],
                     "^4Не хватает бабок", // CS 0x8ea7 `^4Не хватает бабок`, 1000:bedb
                     |g| {
-                        // 1000:bef6 `mov byte [0x38b3],0x1`; debit 1000:bf00.
-                        // The flag is read outside this arm at the sheet's
-                        // 1000:1cf8 and at the wander cop encounter's
-                        // 1000:b7c6 `cmp byte [0x38b3],0x1`, which is where
-                        // the glasses actually stop a fight.
+                        // Sets the ownership flag. Read outside this arm by the character sheet and by
+                        // the wander cop encounter, which is where the glasses actually stop a fight.
                         g.dark_glasses = true;
                         term::println("^2Модные такие очки от солнца."); // CS 0x8eba `^2Модные такие очки от солнца.`, 1000:bf04
                     },
                 );
                 true
             }
-            // Row 4, костюм abibas. Setup 1000:bf38, key compare 1000:bf42,
-            // miss 1000:bf47 `jz 0xbf4c` over 1000:bf49 `jmp 0xbfe1`.
+            // Row 4, костюм abibas.
             "4" => {
-                // 1000:bf4c `cmp byte [0x38b7],0x0` / 1000:bf51 `jnz 0xbfc8`.
-                // ONE conjunct -- unlike `bmar` rows 5 and 6, whose
-                // better-weapon gates AND three and two flags together.
+                // ONE conjunct -- unlike `bmar` rows 5 and 6, whose better-weapon gates AND
+                // three and two flags together.
                 let better = self.wear_suit_adidas;
-                // 1000:bf53 `cmp byte [0x38b4],0x0` / 1000:bf58 `jnz 0xbfad`.
                 let owned = self.wear_suit_abibas;
                 self.buy_after_gates(
                     price, // 20ae:0b31 = 15
                     &[
-                        // CS 0x8f48 `^6У тебя есть более крутой костюм.`, pushed at 1000:bfc8.
+                        // `^6У тебя есть более крутой костюм.`
                         (better, Some("^6У тебя есть более крутой костюм.")),
-                        // CS 0x8f2e `^6У тебя уже есть костюм.`, pushed at 1000:bfad.
+                        // `^6У тебя уже есть костюм.`
                         (owned, Some("^6У тебя уже есть костюм.")),
                     ],
                     "^4Не хватает денег", // CS 0x8ef9 `^4Не хватает денег`, 1000:bf65
                     |g| {
                         g.wear_suit_abibas = true; // 1000:bf80
-                                                   // Debit 1000:bf8a.
                         term::println("^2Теперь ты больше похож на гопа."); // CS 0x8f0c `^2Теперь ты больше похож на гопа.`, 1000:bf8e
-                                                                            // 1000:bfa7 `inc [0x38b2]` -- the armour byte, +1,
-                                                                            // unconditionally. The menu line's `Смягчает пинок
-                                                                            // на 1` agrees; the number comes from the
-                                                                            // instruction. Read outside this arm by the kick's
-                                                                            // damage reduction at 1000:4769 and the gym's
-                                                                            // recompute at 1000:e3a4.
+                                                                            // ARMOUR +1, unconditionally. The menu line's `Смягчает пинок на 1` agrees.
+                                                                            // Read outside this arm by the kick's damage reduction and the gym's
+                                                                            // recompute.
                         g.player.armor = g.player.armor.wrapping_add(1);
                     },
                 );
                 true
             }
-            // Row 5, Понтовые бутсы. Setup 1000:bfe1, key compare 1000:bfeb,
-            // miss 1000:bff0 `jz 0xbff5` over 1000:bff2 `jmp 0xc08e` -- and
-            // 1000:c08e is row 6's DISTRICT GATE, not its setup.
+            // Row 5, Понтовые бутсы.
             "5" => {
-                // 1000:bff5 `cmp byte [0x38b8],0x0` / 1000:bffa `jnz 0xc075`.
                 let better = self.wear_boots_pontovye;
-                // 1000:bffc `cmp byte [0x38b5],0x0` / 1000:c001 `jnz 0xc05a`.
                 let owned = self.wear_boots;
                 self.buy_after_gates(
                     price, // 20ae:0b32 = 15
                     &[
-                        // CS 0x8fad `^6У тебя бутсы по круче.`, pushed at 1000:c075.
+                        // `^6У тебя бутсы по круче.`
                         (better, Some("^6У тебя бутсы по круче.")),
-                        // CS 0x8f94 `^6У тебя такие уже есть.`, pushed at 1000:c05a.
+                        // `^6У тебя такие уже есть.`
                         (owned, Some("^6У тебя такие уже есть.")),
                     ],
                     "^4Нету на них денег", // CS 0x8f6d `^4Нету на них денег`, 1000:c00e
                     |g| {
                         g.wear_boots = true; // 1000:c029
-                                             // Debit 1000:c033.
                         term::println("^2Зацени красовки."); // CS 0x8f81 `^2Зацени красовки.`, 1000:c037
-                                                             // 1000:c050 `inc [0x38a8]` and 1000:c054
-                                                             // `inc [0x38aa]` -- the damage range, +1/+1,
-                                                             // unconditionally. The menu says only `Увеличивают
-                                                             // урон`; the number comes from those two
-                                                             // instructions.
+                                                             // The damage range, +1/+1, unconditionally. The menu says only `Увеличивают
+                                                             // урон`.
                         g.player.dmg_min += 1;
                         g.player.dmg_max += 1;
                     },
                 );
                 true
             }
-            // Row 6, Реальную кожанку. Span starts at the district gate
-            // 1000:c08e; setup 1000:c098, key compare 1000:c0a2, miss
-            // 1000:c0a7 `jz 0xc0ac` over 1000:c0a9 `jmp 0xc142`.
+            // Row 6, Реальную кожанку.
             "6" => {
-                // 1000:c08e `cmp byte [0x3692],0x1` / 1000:c093 `ja 0xc098` /
-                // 1000:c095 `jmp 0xc142`. A BUY-path district test, which no
-                // `bmar` row has, and it prints nothing: 1000:c095 lands on
-                // row 7's setup and the line falls through to the re-prompt.
+                // A buy-path district test, which no `bmar` row has, and it prints nothing --
+                // the line falls through to the re-prompt.
                 let below_district = self.district <= 1;
-                // 1000:c0ac `cmp byte [0x38b9],0x0` / 1000:c0b1 `jnz 0xc129`.
                 let better = self.wear_jacket_krutaya;
-                // 1000:c0b3 `cmp byte [0x38b6],0x0` / 1000:c0b8 `jnz 0xc10e`.
                 let owned = self.wear_jacket;
                 self.buy_after_gates(
                     price, // 20ae:0b33 = 25
                     &[
                         (below_district, None),
-                        // CS 0x9007 `^6Утебя есть кожанка круче.`, pushed at 1000:c129. The missing space
-                        // after `У` is the original's.
+                        // `^6Утебя есть кожанка круче.` -- the missing space after `У` is the
+                        // original's, kept as-is.
                         (better, Some("^6Утебя есть кожанка круче.")),
-                        // CS 0x8ff3 `^6Ты уже купил это.`, pushed at 1000:c10e.
+                        // `^6Ты уже купил это.`
                         (owned, Some("^6Ты уже купил это.")),
                     ],
                     "^4Не достаточно бабла", // CS 0x8fc8 `^4Не достаточно бабла`, 1000:c0c5
                     |g| {
                         g.wear_jacket = true; // 1000:c0e0
-                                              // Debit 1000:c0ea.
                         term::println("^2Ну весь на понтах."); // CS 0x8fde `^2Ну весь на понтах.`, 1000:c0ee
-                                                               // 1000:c107 `add byte [0x38b2],0x2` -- a byte add, so it
-                                                               // wraps at 255 rather than widening.
+                                                               // A byte add, so it wraps at 255 rather than widening.
                         g.player.armor = g.player.armor.wrapping_add(2);
                     },
                 );
