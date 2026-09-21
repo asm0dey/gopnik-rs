@@ -1,81 +1,45 @@
 //! Saving and loading: [`Game`] <-> [`Save`], and the two files on disk.
 //!
-//! Its own module rather than more of `src/game.rs` for the same reason
-//! `src/combat_dispatch.rs` is: it is one coherent unit -- the record
-//! conversion, the slot scan, and the two writers -- and `game.rs` is
-//! already large enough that adding it there would bury it.
+//! ## Where the game saves, and where it does not
 //!
-//! ## Where the original saves, and where it does not
+//! There is no typed save command; saving happens at exactly two places:
 //!
-//! There is **no typed save verb**. `sv` sizes up the enemy
-//! (`crate::commands`), and no compare in `entry` or in `FUN_1000_3d11`
-//! reaches a file write. Saving happens at exactly two places, both
-//! established from flow:
-//!
-//! * **The mage's paid save**, `1000:75f6`..`1000:773d`. `Рушель Блаво`
-//!   asks `Ты хочешь сохраниться?`, and on `y` charges `district * 50`
-//!   (`1000:761d`), writes the 694-byte record into the hard-coded name
-//!   `save_r0.sav` (`1000:764e` `Rewrite(f, 694)`, `1000:765d`
-//!   `BlockWrite` from `DS:369c`), writes the seven discovery flags one
-//!   byte at a time into `places.sav` (`1000:766f`..`1000:7724`), and prints
-//!   `^0Сохранено! ^1Можешь беспредельничать дальше.` (file `0x8D92`).
-//!   [`Game::mage`](crate::game::Game) is the port of that arm.
-//! * **The district-advance autosave**, `1000:ab92`..`1000:ad12`. After
-//!   `inc [0x3692]` and the discovery-flag resets it prints
-//!   `^0Хочешь сохранить свои достижения?` (file `0x9BCD`), reads a line at
-//!   its own `\` prompt (`1000:ac31`), compares it against `y` (file
-//!   `0x9BF3`) at `1000:ac54`, and on a match writes `save_r<district>.sav`
-//!   -- the district *after* the increment, which is why the shipped corpus
-//!   is `SAVE_R2`..`SAVE_R5` and has no `SAVE_R1` -- then prints
-//!   `^1Сохранено в save_r` + the digit + `.sav` (files `0x9C01`, `0x9BFC`).
-//!   **Wired up by Task 21**, as `Game::district_advance`, called at the top
-//!   of `Game::run`'s loop where the original's own `1000:ab75` sits: the
-//!   `1000:ee01 jmp 0xab75` back edge closes each turn ahead of the street
-//!   prompt at `1000:ae3c`/`1000:ae55`, so the block runs before the turn's
-//!   input, which is where the port now runs it too.
-//!
-//!   `write_save_as` is the whole of the write: `1000:ab75`..`1000:ad12`
-//!   contains exactly one `Rewrite` (`1000:acb9`, record size `0x2b6` = 694),
-//!   one `BlockWrite` (`1000:acc8`, from `DS:369c`) and one `Close`
-//!   (`1000:acd5`) -- no `places.sav` pass, unlike the mage's
-//!   `1000:766f`..`1000:7724`. **So this port now produces slots 2..5 in
-//!   ordinary play**, not only slot 0; the earlier note that it "can only
-//!   ever produce slot 0" is no longer true. `tools/savegen.py` still writes
-//!   arbitrary records for tests.
-//!
-//! `docs/re/gaps.md` used to say "there is no 'saved OK' / 'save failed'
-//! string anywhere in `data/strings.json`, so a wrapper could only print
-//! composed text". That is **false**, and it is why this port printed
-//! nothing on a save: both strings above are in `data/strings.json`, at
-//! decimal offsets 36242 and 39937.
+//! * **The mage's paid save.** `Рушель Блаво` asks
+//!   `Ты хочешь сохраниться?`, and on `y` charges `district * 50`, writes
+//!   the save into the fixed slot `save_r0.sav`, writes the seven
+//!   discovery flags into `places.sav`, and prints
+//!   `^0Сохранено! ^1Можешь беспредельничать дальше.`
+//!   ([`Game::mage`](crate::game::Game)).
+//! * **The district-advance autosave.** After the discovery-flag resets it
+//!   prints `^0Хочешь сохранить свои достижения?`, and on a `y` writes
+//!   `save_r<district>.sav` -- the district *after* the increment, which
+//!   is why the shipped corpus is `SAVE_R2`..`SAVE_R5` and has no
+//!   `SAVE_R1` -- then prints `^1Сохранено в save_r` + the digit + `.sav`
+//!   ([`Game::district_advance`]). This save does not touch `places.sav`,
+//!   so slots 2..5 start with their discovery flags clear and only the
+//!   class bonus restores any of them.
 //!
 //! ## The load path
 //!
-//! `FUN_1000_6a0d`, `1000:6a62`..`1000:6da0`. `FindFirst` on
-//! `<dir>\save_r?.sav` (`1000:6a81`/`1000:6a8a`) counts the slots present,
-//! printing one line per slot -- `^1Можно начать с ` + digit + ` района`,
-//! or `^1Можно начать с того места где ты сохранился` for slot `0` --
-//! separated by `^1или`. With none found (`1000:6b33`) it jumps straight to
-//! the new-character block. Otherwise it prints
-//! `^0Нажми цифру с какого района начать. 1-начать сначала` (file `0x7C69`)
-//! and takes a **`ReadKey`** (`1000:6b56`); `1000:6b5e`..`1000:6b7f` accepts
-//! `'2'`, `'3'`, `'4'`, `'5'` and `'0'` and sends anything else -- `1`
-//! included, which is what the prompt tells the player to press -- to the
-//! new-character block.
+//! On start, the game scans for save files and prints one line per slot
+//! found -- `^1Можно начать с ` + digit + ` района`, or
+//! `^1Можно начать с того места где ты сохранился` for slot `0` --
+//! separated by `^1или`. With none found it goes straight to new-character
+//! creation. Otherwise it prints
+//! `^0Нажми цифру с какого района начать. 1-начать сначала` and waits for
+//! a keypress; only `'2'`, `'3'`, `'4'`, `'5'` and `'0'` are accepted --
+//! anything else, `1` included even though the prompt suggests it, starts
+//! a new character.
 //!
-//! On an accepted digit it opens `save_r<digit>.sav`, and a non-zero
-//! `IOResult` (`1000:6bd4`/`1000:6bdb`) prints
-//! `^6Чё-то глюкануло - нaверно нет такого сейва, Default:1` and falls
-//! through to creation as well. On success it `BlockRead`s the record,
-//! prints `^0Загружено из save_r` + the digit, and sets the district from
-//! the digit itself (`1000:6bf9`) -- **the district is not in the record**.
+//! An accepted digit opens the matching save file; a read failure prints
+//! `^6Чё-то глюкануло - нaверно нет такого сейва, Default:1` and also
+//! falls through to creation. On success it prints
+//! `^0Загружено из save_r` + the digit, and sets the district from the
+//! digit itself -- **the district is not stored in the save record**.
 //!
-//! Slot `0` is the odd one out, and this port reproduces both halves:
-//! `1000:6c50` `cmp byte [0x3692],0` sends only slot 0 on to read
-//! `places.sav`, and `1000:6d8c`..`1000:6d9d` then derives its district as
-//! `level div 10 + 1`. Slots 2..5 never touch `places.sav` at all, so their
-//! discovery flags start clear and only `1000:73bb`'s class bonus puts any
-//! back.
+//! Slot `0` is the odd one out: only it reads `places.sav` back, and
+//! derives its district as `level div 10 + 1`. Slots 2..5 never touch
+//! `places.sav`.
 
 use crate::game::Game;
 use crate::locations::Places;
@@ -86,51 +50,38 @@ use crate::term;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// The `^7 ` the original prefixes onto every stored name.
-///
-/// **Established from flow.** `1000:723a`..`1000:725d` assigns the CS
-/// literal at image `0x67f2` (file `0x80C2`) into a temp, appends the
-/// just-typed name from `DS:379c`, and writes the result back over
-/// `DS:379c`; `1000:ed79` does the same after a `rename`. All five shipped
-/// saves carry it (`^7 adg`, `^7 vor`, `^7 Mudila`) and so does a freshly
-/// created character's `DS:379c`
-/// (`data/probes/saveprobe-fresh-record.json`).
+/// The `^7 ` the original prefixes onto every stored name, both on
+/// creation and after a rename.
 ///
 /// This port keeps [`Fighter::name`](crate::model::Fighter) *without* the
-/// prefix and applies it here, at the format boundary, rather than changing
-/// what every combat line renders -- a divergence in where the prefix lives,
-/// not in what reaches the disk. `docs/re/gaps.md` records it.
+/// prefix and applies it only here, at the save-format boundary, rather
+/// than changing what every combat line renders.
 pub const NAME_PREFIX: &str = "^7 ";
 
-/// The slot keys `1000:6b5e`..`1000:6b7f` accepts, in the order it compares
-/// them. Anything else -- `'1'` included, which is the key the prompt itself
+/// The slot keys accepted for loading, in the order they're compared.
+/// Anything else -- `'1'` included, which is the key the prompt itself
 /// suggests -- starts a new character.
 ///
-/// **This is the KEY test and nothing else.** The menu's own scan is a
-/// different mechanism with a different alphabet -- see [`present_slots`] --
-/// and using this constant for both was the defect the Task 19 review
-/// caught. It is the same shape as the `exit`/`e` fold the previous branch
-/// shipped as a Critical: one constant standing in for two mechanisms of the
-/// original that happen to agree on the common case.
+/// **This is the load-key test and nothing else.** [`present_slots`]'s own
+/// scan is a different mechanism with a different alphabet; do not reuse
+/// this constant for both.
 pub const SLOT_KEYS: [char; 5] = ['2', '3', '4', '5', '0'];
 
-/// The `FindFirst` mask, CS `0x633f` / file `0x7C0F`: `save_r?.sav`.
+/// The save-file search mask: `save_r?.sav`.
 const SLOT_MASK_PREFIX: &str = "save_r";
 const SLOT_MASK_SUFFIX: &str = ".sav";
 
-/// The mage's fixed filename `save_r0.sav`, CS `0x74ab` / file `0x8D7B`.
+/// The mage's fixed filename: `save_r0.sav`.
 pub const MAGE_SAVE: &str = "save_r0.sav";
-/// `places.sav`: CS `0x63f2` / file `0x7CC2` on the load side,
-/// CS `0x74b7` / file `0x8D87` on the mage's.
+/// The discovery-flags filename: `places.sav`.
 pub const PLACES_SAVE: &str = "places.sav";
 
-/// Seven one-byte reads at `1000:6ca2`..`1000:6d0e`, seven one-byte writes
-/// at `1000:76ab`..`1000:7717`; `crate::locations::TRACKED` is the order.
+/// Seven one-byte reads and seven one-byte writes; [`crate::locations::TRACKED`]
+/// is the order.
 pub const PLACES_BYTES: usize = 7;
 
-/// `save_r<slot>.sav`, the name both the load scan and the autosave build
-/// (`save_r` + `Str(digit)` + `.sav`; CS `0x63d0`/`0x63d7` and
-/// `0x8325`/`0x832c`).
+/// `save_r<slot>.sav`, the name both the load scan and the autosave
+/// build.
 pub fn slot_filename(slot: char) -> String {
     format!("save_r{slot}.sav")
 }
