@@ -2096,7 +2096,7 @@ impl Game {
         // than played through `opening::play`.
         term::println(church::PARTING[usize::from(self.church_visits >= 2)]);
         // A blank line separates the two parting lines; the bucket is zeroed between
-        // them, as noted at the call site.
+        // them.
         term::println("");
         term::println(church::PARTING[2]);
     }
@@ -2951,20 +2951,13 @@ impl Game {
             }
             // Row 5, Кастет.
             "5" => {
-                // The better-weapon gate is a short-circuit conjunction:
-                // 1000:cb5b `cmp byte [0x394b],0x0` / 1000:cb60 `jz 0xcb70`,
-                // 1000:cb62 `cmp byte [0x38c2],0x0` / 1000:cb67 `jz 0xcb70`,
-                // 1000:cb69 `cmp byte [0x394c],0x0` / 1000:cb6e
-                // `jnz 0xcbeb`. It
+                // The better-weapon gate is a short-circuit conjunction: it
                 // refuses only when the club AND the knife AND the cleaver
-                // are ALL owned -- any one missing falls through to
-                // 1000:cb70 and the sale proceeds.
+                // are ALL owned -- any one missing and the sale proceeds.
                 //
-                // ORIGINAL BEHAVIOUR, reproduced rather than reconciled: the
-                // combat loot arm granting the same knuckles refuses when ANY
-                // one is set (1000:555f, 1000:5566, 1000:556d are each a
-                // `jnz <refusal>`), so a player holding a knife can buy the
-                // knuckles here but cannot loot them.
+                // Intentional: the combat loot arm granting the same
+                // knuckles refuses when ANY one is set, so a player holding
+                // a knife can buy the knuckles here but cannot loot them.
                 let better = self.weapon_dubinka && self.weapon_nozhik && self.weapon_tesak;
                 let owned = self.weapon_kastet;
                 self.buy_after_gates(
@@ -3499,13 +3492,11 @@ impl Game {
             }
             _ => {}
         }
-        // 1000:3fa7..1000:40e5 -- the two blow budgets and the two lines that
-        // report the reduction. Both run whatever `param_1` was: the opener's
-        // exit 1000:3e8a `jmp 0x3fa7` and the chain's own misses all land
-        // here. `crate::combat::budget_report` carries the gates.
+        // The two blow budgets and the two lines that report the reduction.
+        // `crate::combat::budget_report` carries the gates.
         //
-        // The enemy's budget first (1000:3fa7, `[0x3956] + 4` cut down by the
-        // player's `[0x38a0] + 4`), then the player's (1000:404a, the mirror).
+        // The enemy's budget is computed first, cut down by the player's;
+        // then the player's is computed the same way (the mirror).
         if let Some((reduced, unreduced)) = combat::budget_report(&enemy, &self.player) {
             term::println(&text::fill(
                 "^2Из-за твоей хорошей ловкости враг сможет пнуть тебя раз # вместо #",
@@ -3566,24 +3557,14 @@ impl Game {
                 _ => {}
             }
 
-            // 1000:4c56, token CS 0x35a4 -> 1000:4c5d `xor ax,ax` /
-            // `call 0f78:0116`, which is `System.Halt(0)`: the RTL restores
-            // the saved interrupt vectors and ends the process with
-            // `mov ah,0x4c` / `int 0x21`. So `e` at the fight prompt does not
-            // leave the fight -- it leaves the GAME, without writing a save
-            // and without the end screen `FUN_1000_074b` draws on death.
+            // `e` at the fight prompt does not leave the fight -- it leaves
+            // the GAME entirely, without writing a save and without the end
+            // screen shown on death.
             //
-            // Matched on the LITERAL, not on `Command::Quit`, for the same
-            // reason the `run` arm above is: `parse` folds `e` and `exit`
-            // into one verb because `entry` dispatches both (`1000:edfa` and
-            // `1000:ede9`), and the fight prompt compares only `e`. The
-            // shortstring `exit` exists at exactly one image offset,
-            // CS `0xab1e`, and `1000:ede9` is its only reference -- it is
-            // never materialised inside `FUN_1000_3d11`, so `exit` typed
-            // here falls through the whole chain and prints nothing, like
-            // any other unmatched line.
-            // 1000:4c5b `jnz 0x4c64` is the miss; the hit falls through to
-            // 1000:4c5d.
+            // Matched on the literal `e`, not a general quit command: at the
+            // top level `e` and `exit` are folded into one verb, but the
+            // fight prompt recognizes only `e` -- typing `exit` here falls
+            // through and prints nothing, like any other unmatched line.
             if line.eq_ignore_ascii_case("e") {
                 self.last_enemy = Some(enemy);
                 self.running = false;
@@ -3634,17 +3615,13 @@ impl Game {
 
         self.last_enemy = Some(enemy.clone());
         if self.player.hp == 0 {
-            // 1000:4f82 `cmp word [0x38ac],0` / `jle 0x4f8c` -- the death
-            // test, and it runs BEFORE the victory test at 1000:507b.
+            // The death test runs BEFORE the victory test.
             //
-            // 1000:4f8c `cmp byte [0x3c83],1` / `jnz 0x4fba` -- the rector's
-            // own death line (CS 0x37cc), ahead of the hospital and with no
-            // rescue behind it: 1000:4fac is `ReadKey` and 1000:4fb4 calls
-            // FUN_1000_074b with `al = 0`, the end screen, which halts. So
-            // dying to the rector is final however much cred and whatever
-            // flags the player is carrying. [`Game::enter_district_5`]
-            // (Task 20) sets [`Game::rector_showdown`] once `self.district`
-            // reaches 5.
+            // The rector fight has no rescue behind it -- no hospital, no
+            // second chance. Dying to the rector is final however much cred
+            // and whatever flags the player is carrying.
+            // [`Game::enter_district_5`] sets [`Game::rector_showdown`] once
+            // `self.district` reaches 5.
             if self.rector_showdown {
                 term::println("^4Ты сдох. Ректор тебя замочил. Ты так и не доказал свою крутизну.");
                 term::read_key(lines);
@@ -4477,9 +4454,8 @@ impl Game {
                 term::println("^2Из-за большой ловкости ты можешь пнуть ещё раз");
             }
         }
-        // 1000:4675 `cmp word [0x3962],0` / `jg 0x467f` -- the enemy swings
-        // only if it is still up; anything else jumps straight to the verb
-        // dispatch at 1000:48d7.
+        // The enemy swings only if it is still up; otherwise the turn skips
+        // straight to command dispatch.
         if ehp <= 0 {
             return;
         }
@@ -4500,16 +4476,9 @@ impl Game {
                 term::println("^2Враг промазал");
                 continue;
             }
-            // 1000:4710/1000:4730/1000:4750 -- the enemy's copy of the crit
-            // lines (files 0x4B52, 0x4B67, 0x4B7F). This port printed nothing
-            // at all for an enemy crit.
             match blow.taunt {
-                // 1000:470b `cmp ax,0x0` / 1000:470e `jnz 0x472b`
                 Some(0) => term::println("^4Враг:Сдохни урод!!"),
-                // 1000:472b `cmp ax,0x1` / 1000:472e `jnz 0x474b`
                 Some(1) => term::println("^4Тебе не хило врезали!"),
-                // 1000:474b `cmp ax,0x2` / 1000:474e `jnz 0x4769` -- the
-                // same last-link widening as the player's copy above.
                 Some(_) => term::println("^4Враг:Получи гнида!!"),
                 None => {}
             }
@@ -4520,18 +4489,15 @@ impl Game {
                 &[blow.damage as i64, php as i64],
             ));
             match blow.broke {
-                // 1000:47c7..1000:4840. Without the зубная защита this is
-                // the plain `cmp byte [0x38b0],0` gate at 1000:47c7 plus the
-                // set at 1000:47ee; with it, the `Random(4)` at 1000:47fe has
-                // already been drawn inside `resolve_blow_nth` and its result
-                // is what picks between the two lines here.
+                // Without зубная защита this is a plain gate; with it, the
+                // Random(4) draw already made inside `resolve_blow_nth`
+                // picks between the two lines here.
                 Some(Break::Jaw) => match blow.jaw_guard {
                     Some(true) => {
-                        // 1000:4807, file 0x4BB1, then 1000:4820 sets it.
                         self.player.broken_jaw = true;
                         term::println("^4Враг сломал тебе челюсть, даже защита не помогла.");
                     }
-                    // 1000:4827, file 0x4BE5 -- the jaw is NOT broken.
+                    // The jaw is NOT broken.
                     Some(false) => term::println("^2Защита спасла твои кривые клыки."),
                     None => {
                         if !self.player.broken_jaw {
@@ -4540,20 +4506,19 @@ impl Game {
                         }
                     }
                 },
-                // 1000:4842 `cmp byte [0x38b1],0` / `jnz 0x4867`: same
-                // suppression as the jaw's.
+                // Same suppression as the jaw's: no repeat message once
+                // broken.
                 Some(Break::Leg) if !self.player.broken_leg => {
                     self.player.broken_leg = true;
                     term::println("^4Враг сломал тебе ногу.");
                 }
                 _ => {}
             }
-            // 1000:48a1 subtracts 18 and 1000:48a6 `cmp [bp-0x10e],0` /
-            // `jle 0x48c6` guards file 0x4C59 -- and that is ALL it guards.
-            // The player half has a defender-is-down test ahead of its
-            // message (1000:4629) and this one does not, so the two "mirror"
-            // halves really do differ here: the enemy announces another blow
-            // even on the swing that finished the player.
+            // Intentional asymmetry: the player's side checks whether the
+            // enemy is already down before printing its "another blow"
+            // message, but the enemy's side does not -- so the enemy
+            // announces another blow even on the swing that finished the
+            // player.
             if i + 1 < enemy_blows {
                 term::println("^4Из-за большой ловкости враг может пнуть ещё раз");
             }
@@ -4569,40 +4534,30 @@ enum Beer {
     Binge,
 }
 
-/// Which of the game's **two** `kos` handlers is running.
+/// Which of the game's **two** `kos` handlers is running: one reached from
+/// the street prompt, and a second copy reached mid-fight, which lets `kos`
+/// work during combat without going through the top-level command table.
 ///
-/// The image carries the joint handler twice: once at `1000:e97d`, dispatched
-/// by `entry`'s compare at `1000:e973` against its input buffer `DS:3972`,
-/// and once at `1000:4b17`, dispatched by `FUN_1000_3d11`'s own compare at
-/// `1000:4b0d` against the combat buffer `DS:3a72`. That second copy is why
-/// `kos` works mid-fight without going through `crate::commands::parse`'s
-/// street table.
+/// Every guard, every stat grant and the whole heal split are the identical
+/// instruction sequence between the two; only the string pool used and the
+/// stoned-countdown value differ, and both are modelled here.
 ///
-/// **Established from flow.** Both bodies are 269 bytes -- `1000:4b17` and
-/// `1000:e97d`, each ending in its own `call 0eed:01c2` (`1000:4c1f` and
-/// `1000:ea85`) -- and compared byte for byte they differ in exactly **15**
-/// places: seven `mov di,imm16` string operands pointing at the
-/// combat string pool instead of the top-level one, and one immediate --
-/// `1000:4b52` `c6 06 cd 38 03` against `1000:e9b8` `c6 06 cd 38 0a`. Every
-/// guard, every stat grant and the whole heal split are the identical
-/// instruction sequence, so the only two things that vary are modelled here.
-///
-/// Six of the seven strings are byte-identical between the pools. The seventh
-/// is not, and the difference is one letter: the combat copy at file `0x4DF0`
-/// ends "косяков", the top-level copy at file `0xBF5E` ends "косякова". Both
-/// are quoted verbatim -- a typo in the original is not this port's to fix,
-/// and neither is a typo the original made only once.
+/// Six of the seven strings are identical between the two copies. The
+/// seventh is not, by one letter: the combat copy ends "косяков", the
+/// street copy ends "косякова". Both are quoted verbatim -- a typo in the
+/// original is not this port's to fix, and neither is a typo the original
+/// made only once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Joint {
-    /// `1000:e97d`, reached from the street prompt.
+    /// Reached from the street prompt.
     Street,
-    /// `1000:4b17`, reached from `^0Битва\`.
+    /// Reached from `^0Битва\`.
     Fight,
 }
 
 impl Joint {
-    /// The value written to the stoned countdown `20ae:38cd`: `1000:e9b8`
-    /// stores 10, `1000:4b52` stores 3.
+    /// The value written to the stoned countdown: 10 for the street copy,
+    /// 3 for the fight copy.
     fn buff_turns(self) -> u8 {
         match self {
             Joint::Street => 10,
@@ -4615,23 +4570,13 @@ impl Joint {
     /// this handler prints are identical and are written inline.
     fn long_heal_line(self) -> &'static str {
         match self {
-            // file 0xBF5E, loaded by `bf 8e a6` at 1000:ea1e.
             Joint::Street => crate::gym::EMITTED[24].1,
-            // file 0x4DF0, loaded by `bf 20 35` at 1000:4bb8.
             Joint::Fight => "^2Колёса прибавляют #з. Здоровья:#/#. Осталось # косяков",
         }
     }
 }
 
-/// The literal pool for the street command list -- `1000:ea94`..`1000:ec7d`, in the image's
-/// ADDRESS order, the order `tools/difftest.py`'s `literal_walk` reads them
-/// in. The span's last five bytes are trimmed: they push the NEXT verb's
-/// key literal, which a call past the end consumes, so a walk including
-/// them reports a literal nothing in the span takes.
-///
-/// `docs/re/port-gaps.md` recorded that the club and gym rest on their
-/// module-local unit tests, with `difftest` carrying their MENU rows and
-/// nothing else. This pool is the arm bodies' half of that comparison.
+/// The street command list's literal pool, in output order.
 ///
 /// `(closes, text)` -- `closes` is true for a `WriteLn`, false for a
 /// `Write` the next literal continues.
@@ -4713,10 +4658,9 @@ mod tests {
         assert_eq!(g.mode, Mode::Street);
         assert_eq!(g.district, 1);
         assert!(g.places.is_found(Location::Street));
-        // 1000:6dc3 and 1000:6dc8.
         assert!(g.places.is_found(Location::Vet));
         assert!(g.places.is_found(Location::Market));
-        // Nothing else: 1000:6dbe writes exactly those two flags.
+        // Nothing else: only those two flags are set.
         for loc in crate::locations::TRACKED {
             if matches!(loc, Location::Vet | Location::Market) {
                 continue;
@@ -4728,9 +4672,9 @@ mod tests {
         }
     }
 
-    /// The two flags a fresh character gets are exactly the ones
-    /// `1000:6dbe`'s block writes, and reaching them needs no `Random` draw:
-    /// a brand-new game can walk straight into `mar` and `rep`.
+    /// The two flags a fresh character gets are exactly the ones that let
+    /// a brand-new game walk straight into `mar` and `rep`, with no `Random`
+    /// draw needed.
     #[test]
     fn new_game_can_enter_the_market_and_the_vet_without_discovering_them() {
         let mut g = game();
@@ -4738,10 +4682,9 @@ mod tests {
         assert_eq!(g.location, Location::Market);
         assert_eq!(g.mode, Mode::Shop(Location::Market));
 
-        // A WOUNDED character, because the vet's loop top at `1000:d4ba`
-        // ejects a whole one on entry (`crate::vet::loop_top`). What is
-        // under test here is the discovery gate at `1000:d3b0`, not the
-        // health test behind it.
+        // A WOUNDED character, because a full-health character is ejected
+        // on entry (`crate::vet::loop_top`). What is under test here is the
+        // discovery gate, not the health check behind it.
         let mut g = game();
         g.player.hp = 1;
         g.dispatch(Command::Vet, &mut no_input()).unwrap();
@@ -4758,12 +4701,11 @@ mod tests {
         assert_eq!(g.mode, Mode::Shop(Location::Market));
     }
 
-    /// I6: a refused entry must NOT discover the place. The original sets
-    /// the seven flags at `20ae:3694`..`369a` from character creation
-    /// (`1000:6dc3`/`1000:6dc8`), the wander path, `girl` (`1000:d751`) and
-    /// the progression reveals (`1000:73c3`..`1000:73e0`) -- never from a
-    /// failed entry. The gym is used here because it is one of the five
-    /// flags `1000:6dbe` leaves clear.
+    /// A refused entry must NOT discover the place. The "found" flags are
+    /// set only by character creation, the wander path, `girl` and the
+    /// progression reveals -- never by a failed entry. The gym is used here
+    /// because it is one of the places left undiscovered at character
+    /// creation.
     #[test]
     fn entering_an_undiscovered_place_does_not_discover_it() {
         let mut g = game();
@@ -4778,11 +4720,10 @@ mod tests {
         }
     }
 
-    /// The opener runs on `param_1` 0 and 6 and on nothing else --
-    /// `1000:3d27`/`1000:3d29` and `1000:3d2b`/`1000:3d2d` against
-    /// `1000:3d2f jmp 0x3e8d`. The arm's own contents are
-    /// `crate::combat_opener`'s tests; what this one pins is the GATE, and
-    /// the position of the greeting in the fight's output.
+    /// The class-keyed opener only runs for enemy classes 0 and 6, greeting
+    /// with `crate::combat_opener`'s lines; every other class skips straight
+    /// to the fight. What this pins is the gate, and the position of the
+    /// greeting in the fight's output.
     #[test]
     fn the_class_keyed_opener_runs_only_for_param_1_zero_and_six() {
         let greeted = |kind: u8| {
@@ -4793,7 +4734,7 @@ mod tests {
                     .unwrap();
             })
         };
-        // punchbag() is class 0, so the arm at 1000:3d44 is the one that runs.
+        // punchbag() is class 0, so the greeting arm is the one that runs.
         for kind in [0u8, 6] {
             assert_eq!(
                 &greeted(kind)[..2],
@@ -4801,8 +4742,8 @@ mod tests {
                 "param_1 {kind} takes 1000:3d32 and greets first"
             );
         }
-        // The five values the outer chain sends to 1000:3e8d and beyond.
-        // 2 is the club's (`1000:e222`) and 5 the den job's (`1000:ddfc`).
+        // The five other class values that skip the opener: 2 is the
+        // club's and 5 the den job's.
         for kind in [1u8, 2, 3, 4, 5] {
             let out = greeted(kind);
             assert!(
@@ -4812,15 +4753,13 @@ mod tests {
         }
     }
 
-    /// The two agility-reduction lines, at the position `1000:3ff5` and
-    /// `1000:4098` put them: after the opener and before the first
-    /// `^0Битва\` prompt.
+    /// The two agility-reduction lines print after the opener and before
+    /// the first `^0Битва\` prompt.
     ///
-    /// The pair of numbers is `crate::combat::budget_report`'s test; what
-    /// this one pins is that `run_combat` prints them at all, with the
-    /// records the right way round -- the ENEMY's line is the one that reads
-    /// `[0x3956] + 4` (`1000:3fec`), so a swap would put the player's
-    /// numbers on the enemy's string.
+    /// `crate::combat::budget_report` computes the numbers; what this pins
+    /// is that `run_combat` prints them at all, in the right order -- the
+    /// ENEMY's line reports the enemy's own budget, so a swap would put the
+    /// player's numbers on the enemy's string.
     #[test]
     fn the_agility_reduction_lines_print_before_the_first_prompt() {
         let mut g = game();
@@ -4833,15 +4772,15 @@ mod tests {
         let out = term::capture::lines(|| {
             g.run_combat(0, enemy, &mut input(&["run"])).unwrap();
         });
-        // Class 0, so the opener's two lines come first (1000:3d44).
+        // Class 0, so the opener's two lines come first.
         assert_eq!(&out[..2], ["Слышь Вась..", "^4А чё ваще?"]);
-        // 1000:4013, CS 0x2dec -- the enemy's budget, cut by the player's
-        // agility: 50 -> 1 blow instead of 3.
+        // The enemy's budget, cut by the player's agility: 50 agility
+        // reduces it to 1 blow instead of 3.
         assert_eq!(
             out[2],
             "^2Из-за твоей хорошей ловкости враг сможет пнуть тебя раз 1 вместо 3"
         );
-        // 1000:40b6, CS 0x2e31 -- the mirror: 120 -> 5 instead of 7.
+        // The mirror: 120 agility cuts the budget to 5 blows, not 7.
         assert_eq!(
             out[3],
             "^4Из-за хорошей ловкости врага ты сможешь пнуть его раз 5 вместо 7"
@@ -4863,8 +4802,6 @@ mod tests {
         );
     }
 
-    // --- Task 18: the rest of the in-combat dispatcher ---------------------
-
     /// A fight the player can stand in indefinitely: the enemy has a lot of
     /// hp and no agility, so nothing but the verb under test moves the
     /// numbers these tests read.
@@ -4877,8 +4814,8 @@ mod tests {
         }
     }
 
-    /// A game whose player can actually call for backup: `1000:4cb4` wants
-    /// the den flag and `1000:4cc8` wants `cred >= district * 10 + 10`.
+    /// A game whose player can actually call for backup: it needs the den
+    /// flag, and `cred >= district * 10 + 10`.
     fn game_with_gopota() -> Game {
         let mut g = game();
         g.places.mark_found(Location::Den);
@@ -4888,9 +4825,9 @@ mod tests {
         g
     }
 
-    /// The shot lands on the enemy record, and its 20..=29 is subtracted with
-    /// no armour term (`1000:4f28`) -- so an enemy in full armour loses
-    /// exactly as much as a naked one from the same seed.
+    /// The shot lands on the enemy record: 20..=29 damage, deliberately
+    /// with no armour term -- an enemy in full armour loses exactly as much
+    /// as a naked one from the same seed.
     #[test]
     fn the_pistol_ignores_the_enemy_armour() {
         let hit = |armor: u8| {
@@ -4916,14 +4853,14 @@ mod tests {
         assert_eq!(hit(60), bare, "1000:4f28 has no `armour div 3` term");
     }
 
-    /// The flee penalty end to end -- `1000:493b`..`1000:4adc`. The growth
-    /// log is spent, the level and the threshold come back down, and the
-    /// stats the level granted go with them.
+    /// The flee penalty end to end: the growth log is spent, the level and
+    /// the threshold come back down, and the stats that level granted go
+    /// with them.
     ///
-    /// [`crate::progress::undo_growth`]'s own round trip against
-    /// `data/xp.json` is in `tests/progression.rs`; what this adds is that
-    /// `run` at the fight prompt is wired to it at all, and that a level-0
-    /// player still gets `1000:4931`'s free exit.
+    /// [`crate::progress::undo_growth`]'s own round trip is tested in
+    /// `tests/progression.rs`; what this adds is that `run` at the fight
+    /// prompt is wired to it at all, and that a level-0 player still gets a
+    /// free exit.
     #[test]
     fn fleeing_above_level_zero_gives_a_level_back() {
         let mut g = game();
@@ -4957,7 +4894,7 @@ mod tests {
             "two stats were taken back"
         );
 
-        // Level 0 is `1000:4931`'s other arm: nothing to take, nothing taken.
+        // Level 0: nothing to take, nothing taken.
         let mut g = game();
         let before = g.player.clone();
         let before_p = g.progress.clone();
@@ -4966,15 +4903,14 @@ mod tests {
         assert_eq!(g.progress, before_p);
     }
 
-    /// `1000:4a87`..`1000:4abe` -- the den block inside the flee penalty.
-    /// `1000:4aa0 cmp ax,3` / `jnz` is **equality** on
-    /// `level - (district - 1) * 10`, unlike the post-kill twin at
-    /// `1000:52ae` which uses `jl`; and `1000:4a87` lets class 5 out of the
-    /// whole thing.
+    /// The den block inside the flee penalty tests **equality** on
+    /// `level - (district - 1) * 10 == 3`, unlike the post-kill twin, which
+    /// uses less-than; and class 5 is exempt from the whole check.
     ///
-    /// The store at `1000:4aa5` SETS the den flag while announcing that the
-    /// player is too shabby for the den. That is the original's, and it is
-    /// asserted here as written rather than corrected.
+    /// Intentional: the store that runs here SETS the den flag while
+    /// announcing that the player is too shabby for the den. That is the
+    /// original's behaviour, asserted here as written rather than
+    /// corrected.
     #[test]
     fn the_flee_penalty_opens_the_den_on_the_exact_measured_level() {
         let cases = [
@@ -4997,8 +4933,8 @@ mod tests {
             );
         }
 
-        // 1000:4a87 `cmp word [0x389c],5` / `jz 0x4ac3` -- class 5 skips the
-        // block even on the level that would otherwise open the den.
+        // Class 5 skips the block even on the level that would otherwise
+        // open the den.
         let mut g = game();
         g.district = 1;
         g.player.level = 3;
@@ -5008,9 +4944,9 @@ mod tests {
         assert_eq!(g.player.level, 2, "but still pays the level");
     }
 
-    /// `1000:48eb` and `1000:4f8c` -- the rector refuses the flee and, when
-    /// he wins, there is no hospital behind the death message however much
-    /// cred and whatever den flag the player is carrying.
+    /// The rector refuses the flee, and when he wins there is no hospital
+    /// behind the death message, however much cred and whatever den flag
+    /// the player is carrying.
     #[test]
     fn the_rector_refuses_the_flee_and_leaves_no_hospital() {
         let mut g = game();
@@ -5035,9 +4971,8 @@ mod tests {
         assert_eq!(g.pontovost_street, 500, "1000:4fe7's -10 is not reached");
     }
 
-    /// `1000:4b0d`'s arm, reached through the combat prompt rather than
-    /// through `Game::dispatch`: `kos` is one of the nine tokens
-    /// `FUN_1000_3d11` compares, and its arm sets the 3-turn buff.
+    /// `kos` reached through the combat prompt (rather than through
+    /// `Game::dispatch`) sets the 3-turn buff.
     #[test]
     fn kos_typed_at_the_combat_prompt_smokes_a_joint() {
         let enemy = || Fighter {
@@ -5058,19 +4993,14 @@ mod tests {
         assert!(g.player.stoned);
     }
 
-    /// The seventeen lines of `i`, in the order `1000:ea9e`..`1000:ec73`
-    /// prints them, with every discovery flag set.
+    /// The seventeen lines of `i` (the help command), in print order, with
+    /// every discovery flag set.
     ///
     /// **This is the test that fails if the array literal is re-sorted.**
-    /// `data/club_arms.json`'s `command_list.what_the_port_must_change[2]`
-    /// carries a `do_not_fix`: the seven gates run `3694`, `3695`, **`3698`**,
-    /// `3697`, **`3696`**, `3699`, `369a` -- Vet before Girl before Den, where
-    /// the flag ADDRESSES go Den, Girl, Vet. Read as flow that confirms the
-    /// PLACES.SAV read order; read as an ordering it would reintroduce the
-    /// swap `src/locations.rs` records earlier revisions of this port
-    /// carrying. Asserting the whole sequence is what makes "do not tidy it"
-    /// executable: any re-sort of the seven tuples moves `rep`, `girl` or
-    /// `pr` and reds this.
+    /// The seven gates run Vet before Girl before Den, deliberately not in
+    /// address order -- do not "tidy" the list into that order, or it moves
+    /// `rep`, `girl` or `pr` and silently swaps which gated line each one
+    /// prints.
     #[test]
     fn the_command_list_prints_seventeen_lines_in_the_originals_gate_order() {
         let mut g = game();
@@ -5107,13 +5037,9 @@ mod tests {
         assert_eq!(out.len(), 17);
     }
 
-    /// The gate order really is not the flag-address order, spelled out so a
-    /// reader of the assertion above does not have to hold both sequences in
-    /// their head. Printing the two gated lines whose flags are `20ae:3698`
-    /// (Vet) and `20ae:3696` (Den) and nothing else, the VET line must come
-    /// first -- `1000:eaf7` precedes `1000:eb37` -- while
-    /// `crate::locations::TRACKED`, which is the flag-ADDRESS order, has Den
-    /// at slot 2 and Vet at slot 4.
+    /// The gate print order is not the flag order: printing only the Vet
+    /// and Den gated lines, the VET line must come first, even though
+    /// `crate::locations::TRACKED` lists Den before Vet.
     #[test]
     fn the_i_lists_gate_order_is_not_the_flag_address_order() {
         let mut g = game();
@@ -5150,13 +5076,10 @@ mod tests {
         );
     }
 
-    /// `data/club_arms.json`'s `command_list.what_the_port_must_change[0]`
-    /// `falsifiable_as`, made executable: **with only Market and Vet found
-    /// the list must be TWELVE lines** -- the ungated head, the two gated
-    /// lines whose flags are set, and the nine ungated tail lines. That is
-    /// the state `Game::new` leaves a fresh character in (`1000:6dc3` sets
-    /// `20ae:3698`, `1000:6dc8` sets `20ae:3694`), so it is also what a
-    /// player sees on turn one.
+    /// With only Market and Vet found, the `i` list must be TWELVE lines --
+    /// the ungated head, the two gated lines whose flags are set, and the
+    /// nine ungated tail lines. That is the state a fresh character starts
+    /// in, so it is also what a player sees on turn one.
     #[test]
     fn the_command_list_is_twelve_lines_with_only_market_and_vet_found() {
         let mut g = game();
@@ -5231,12 +5154,12 @@ mod tests {
         assert_eq!(g.mode, Mode::Street);
     }
 
-    /// I5: `h` is the beer verb at the top level (`entry` -> `FUN_1000_29c4`,
-    /// `1000:e966`) *and* a vet key, because the vet reads its own input at
-    /// its own prompt. Both must work, through the same public path the
-    /// player uses -- not by calling a handler directly.
+    /// `h` is the beer verb at the top level *and* a separate vet key,
+    /// because the vet reads its own input at its own prompt. Both must
+    /// work, through the same public path the player uses -- not by calling
+    /// a handler directly.
     ///
-    /// The vet's `h` is the five-point HEAL (`1000:d5de`), not a jaw: see
+    /// The vet's `h` is the five-point HEAL command, not the beer verb: see
     /// [`crate::vet`], whose own tests carry the arm. This one is only
     /// about the two `h`s not being the same `h`.
     #[test]
@@ -5271,7 +5194,7 @@ mod tests {
         g.player.broken_jaw = true;
         g.player.money = 10;
         g.shop_turn(Location::Vet, "r", &mut no_input()).unwrap();
-        // 1000:d558 AND 1000:d55d, behind the one price test at 1000:d54c.
+        // Both the leg and the jaw are fixed behind the one price test.
         assert!(!g.player.broken_leg);
         assert!(!g.player.broken_jaw);
         assert_eq!(g.player.money, 3);
@@ -5326,14 +5249,10 @@ mod tests {
         assert_eq!(g.player.hp, 5);
     }
 
-    /// The Task 41 divergence, closed by Task 42.
-    ///
-    /// `1000:2a1d` missed prints the refusal and then `1000:2a38 jmp 0x2baa`
-    /// lands in the `mh` TAIL, not at the return `1000:2c58`. The snapshot
-    /// `1000:2a11` / `1000:2a14` was already taken, so hp == hp0 there:
-    /// `1000:2bc6` and `1000:2c0d` both take, `1000:2c36` does not, and
-    /// `1000:2c3d` falls through whenever `20ae:38c3` is at or below zero.
-    /// `h` is unaffected -- `1000:2bba` misses for it and `1000:2bbc` returns.
+    /// With a broken jaw, `mh` still prints the refusal and then falls
+    /// through into the tail logic -- since no healing happened, hp equals
+    /// its starting value there -- it does not simply return. `h` is
+    /// unaffected: it prints the refusal and returns.
     #[test]
     fn a_broken_jaw_still_runs_the_tail_for_mh_and_returns_for_h() {
         let refusal = "^4Ты не можешь пить пиво из-за сломаной челюсти.";
@@ -5352,7 +5271,7 @@ mod tests {
         assert_eq!(g.player.hp, 5, "the tail writes no hp");
         assert_eq!(g.player.beer_dl, 0);
 
-        // Beer in hand: the tail runs, but `1000:2c3d` takes and it is silent.
+        // Beer in hand: the tail runs, but it is silent.
         let mut g = game();
         g.player.hp = 5;
         g.player.beer_dl = 4;
@@ -5378,14 +5297,12 @@ mod tests {
         );
     }
 
-    /// Gate ORDER, which no state assertion can see.
-    ///
-    /// `1000:2a18` is reached before `1000:2a3e`, and `1000:2a3e` before
-    /// `1000:2a47`. Swap either pair and the state is identical while a
-    /// different line is written.
+    /// Gate ORDER, which no state assertion can see: the jaw check, the
+    /// full-health check, and the no-beer check run in that order. Swap any
+    /// pair and the state is identical while a different line is written.
     #[test]
     fn the_beer_gates_run_in_the_originals_order() {
-        // Jaw before full-health: 1000:2a18 precedes 1000:2a3e.
+        // Jaw before full-health.
         let mut g = game();
         g.player.hp = g.player.hpmax;
         g.player.beer_dl = 4;
@@ -5398,8 +5315,8 @@ mod tests {
              broken jaw hears about the jaw"
         );
 
-        // Full-health before no-beer: 1000:2a3e precedes 1000:2a47. And
-        // 1000:2b80 returns, so `mh` does not reach the tail's 0x4240 either.
+        // Full-health before no-beer, and this arm never reaches the tail's
+        // "no beer" message either.
         let mut g = game();
         g.player.hp = g.player.hpmax;
         g.player.beer_dl = 0;
@@ -5412,16 +5329,11 @@ mod tests {
         );
     }
 
-    /// Message TEXT, literal for literal, against the nine-string pool
-    /// `docs/re/beer.md` tiles at file `0x4197`..`0x4294`.
-    ///
-    /// The partial arm's two strings are one physical line: `1000:2a8f` is
-    /// `call 0eed:0000` (`Write`, no newline) and `1000:2ae0` is
-    /// `call 0eed:01c2` (`WriteLn`), so file `0x41CD` and file `0x41E4`
-    /// arrive joined.
+    /// The partial arm's two strings print as one physical line: the first
+    /// has no trailing newline, so the two arrive joined.
     #[test]
     fn the_h_arms_write_the_literals_the_pool_holds() {
-        // Partial arm, 1000:2a64: shortfall 3 -> file 0x41CD + file 0x41E4.
+        // Partial arm: hp shortfall of 3.
         let mut g = game();
         g.player.hp = 17;
         g.player.beer_dl = 3;
@@ -5433,7 +5345,7 @@ mod tests {
         );
         assert_eq!(g.player.hp, 20, "1000:2a97 tops hp up to hpmax");
 
-        // Flat arm, 1000:2ae7: shortfall 5 is NOT under 5 -> file 0x4208.
+        // Flat arm: shortfall of exactly 5 is not "under 5".
         let mut g = game();
         g.player.hp = 15;
         g.player.beer_dl = 10;
@@ -5444,7 +5356,7 @@ mod tests {
             "1000:2a5f is `jl 5`, so a shortfall of exactly 5 takes the flat arm"
         );
 
-        // No-beer arm, 1000:2b3a -> file 0x4240.
+        // No-beer arm.
         let mut g = game();
         g.player.hp = 5;
         g.player.beer_dl = 0;
@@ -5452,11 +5364,11 @@ mod tests {
         assert_eq!(out, vec!["^4Пива нету".to_string()]);
     }
 
-    /// Loop TERMINATION: the two ways out of `1000:2a3b`'s loop, and what
+    /// Loop termination: the two ways out of the loop, and what
     /// the tail writes for each.
     #[test]
     fn mh_stops_at_hpmax_and_at_the_last_half_litre() {
-        // Out through 1000:2b9e -- hp reached hpmax with beer left over.
+        // Out because hp reached hpmax with beer left over.
         let mut g = game();
         g.player.hp = 5;
         g.player.beer_dl = 10;
@@ -5470,7 +5382,7 @@ mod tests {
              takes while beer remains"
         );
 
-        // Out through 1000:2ba5 -- the beer ran out first.
+        // Out because the beer ran out first.
         let mut g = game();
         g.player.hp = 5;
         g.player.beer_dl = 2;
@@ -5486,8 +5398,8 @@ mod tests {
             "1000:2c14 misses when the drink emptied it, so file 0x4283 follows"
         );
 
-        // Never entered: 1000:2a4c misses on the first pass, and the tail's
-        // 1000:2c36 / 1000:2c3d pair writes file 0x4240.
+        // Never entered: the loop misses on the first pass, and the tail
+        // writes the "no beer" message.
         let mut g = game();
         g.player.hp = 5;
         g.player.beer_dl = 0;
@@ -5496,8 +5408,8 @@ mod tests {
         assert_eq!(g.player.hp, 5);
     }
 
-    /// `1000:e9b4`: one joint, +10 hp capped at hpmax, Сила +2, урон +1/+2,
-    /// and the stoned flag blocks a second one.
+    /// One joint: +10 hp capped at hpmax, Сила +2, урон +1/+2, and the
+    /// stoned flag blocks a second one.
     #[test]
     fn kos_smokes_exactly_one_joint_and_buffs_strength() {
         let mut g = game();
@@ -5515,11 +5427,10 @@ mod tests {
         assert_eq!(g.player.joints, 1, "already stoned: no second joint");
     }
 
-    /// The combat copy of the handler (`1000:4b17`) grants the identical
-    /// stats and spends one joint the same way -- the only thing it does
-    /// differently is `1000:4b52` `c6 06 cd 38 03` where `1000:e9b8` stores
-    /// `0a`. Both are asserted here, because "same except one immediate" is
-    /// only worth writing down if the "same" half is checked too.
+    /// The combat copy of the handler grants the identical stats and
+    /// spends one joint the same way -- the only difference is the stoned
+    /// countdown value. Both are asserted here, because "same except one
+    /// value" is only worth writing down if the "same" half is checked too.
     #[test]
     fn kos_in_a_fight_is_the_same_handler_with_a_three_turn_buff() {
         let mut street = game();
@@ -5563,11 +5474,10 @@ mod tests {
         assert!(street.starts_with(fight));
     }
 
-    /// `1000:ed5f` / `1000:ed74`: an empty rename does not keep the old
-    /// name, it installs the default -- the same substitution character
-    /// creation already makes at `1000:7220` / `1000:7227`. Both then get
-    /// the `^7 ` prefix at `1000:ed79`, which is AFTER the substitution, so
-    /// the default carries it too.
+    /// An empty rename does not keep the old name, it installs the default
+    /// name -- the same substitution character creation already makes. The
+    /// `^7 ` prefix is applied AFTER the substitution, so the default name
+    /// carries it too.
     #[test]
     fn an_empty_rename_installs_the_default_name() {
         let mut g = game();
@@ -5584,14 +5494,12 @@ mod tests {
     }
 
     /// The point of carrying `^7 ` in the name rather than adding it at the
-    /// save boundary: `20ae:379c` holds it, so everything that renders the
-    /// name renders it. The character sheet is the visible one --
-    /// `1000:1a03` reads the same variable the save does.
+    /// save boundary: everything that renders the name renders it,
+    /// including the character sheet.
     ///
-    /// This is the half that was NOT modelled while `persist` added the
-    /// prefix on the way out and stripped it on the way in; the record
-    /// matched the original's bytes and every line on screen was missing a
-    /// colour reset and a leading space.
+    /// Earlier, `persist` added the prefix on the way out and stripped it
+    /// on the way in; the saved record matched, but every line on screen
+    /// was missing a colour reset and a leading space.
     #[test]
     fn the_name_prefix_reaches_the_character_sheet() {
         let mut g = game();
@@ -5606,8 +5514,7 @@ mod tests {
 
     /// And it survives the record in both directions, because the prefix is
     /// now part of the value rather than something the boundary adds:
-    /// `to_save` copies `20ae:379c` (`1000:761d`) and the load reads it
-    /// straight back (`1000:6dd7`).
+    /// saving copies it and loading reads it straight back.
     #[test]
     fn the_name_prefix_round_trips_through_a_save() {
         let mut g = game();
@@ -5621,26 +5528,24 @@ mod tests {
         );
     }
 
-    /// `1000:ed5f` `cmp byte [0x379c],0` tests the shortstring's LENGTH
-    /// BYTE, not whether its content is all whitespace. A line of three
-    /// spaces has length 3, so `jnz 0xed79` is taken and `1000:ed74`'s
-    /// substitution never runs -- the typed spaces are kept verbatim. Before
-    /// `Game::rename` stopped `.trim()`-ing the line, this case wrongly
-    /// installed the default name instead.
+    /// The empty-name check tests the LENGTH of the input, not whether its
+    /// content is all whitespace. A line of three spaces has length 3, so
+    /// the substitution never runs -- the typed spaces are kept verbatim.
+    /// `Game::rename` must not `.trim()` the line, or this case would
+    /// wrongly install the default name instead.
     #[test]
     fn a_whitespace_only_rename_is_kept_not_substituted() {
         let mut g = game();
         g.player.name = "Вася".to_string();
         let mut lines = input(&["   "]);
         g.rename(&mut lines).unwrap();
-        // `1000:ed79`'s prefix still applies -- it is unconditional.
+        // The prefix still applies -- it is unconditional.
         assert_eq!(g.player.name, "^7    ");
     }
 
-    /// `mar` row 1, price 2 (`20ae:0b2e`), debited at `1000:bdb3`. The hp
-    /// has to be below max or `1000:bd86 jnl 0xbdf1` refuses the sale before
-    /// the money is ever tested -- which is why this reads 19/20 and not the
-    /// 20/20 `player()` ships.
+    /// `mar` row 1, price 2. The hp has to be below max, or the sale is
+    /// refused before the money is ever tested -- which is why this reads
+    /// 19/20 and not the 20/20 `player()` ships.
     #[test]
     fn shop_action_buys_an_affordable_row_and_debits_price() {
         let mut g = game();
@@ -5651,7 +5556,7 @@ mod tests {
         assert_eq!(g.player.money, 8);
     }
 
-    /// `1000:bd91` is a `jle`, so 2 exactly is enough and 1 is not.
+    /// 2 exactly is enough, and 1 is not.
     #[test]
     fn shop_action_refuses_when_too_poor() {
         for (money, want) in [(1i16, 1i16), (2, 0)] {
@@ -5664,10 +5569,10 @@ mod tests {
         }
     }
 
-    /// The market's district gates DO sit on the buy path -- `1000:c08e`
-    /// (row 6), `1000:c1d7` (row 8) and `1000:c27f` (row 9) -- unlike the
-    /// dealers', which are all menu gates. Below the district the row is not
-    /// refused, it is unreachable, so nothing is spent and no flag moves.
+    /// The market's district gates DO sit on the buy path (rows 6, 8 and 9)
+    /// -- unlike the dealers', which are all menu gates. Below the district
+    /// the row is not refused, it is unreachable, so nothing is spent and
+    /// no flag moves.
     #[test]
     fn shop_action_respects_the_district_gate() {
         let mut g = game();
@@ -5697,22 +5602,20 @@ mod tests {
             g
         };
 
-        // Row 7: the pistol, 150 roubles, and three cartridges with it
-        // (1000:cd0a `add word [0x394f],3`).
+        // Row 7: the pistol, 150 roubles, and three cartridges with it.
         let mut g = shop();
         g.shop_turn(Location::Dealers, "7", &mut no_input())
             .unwrap();
         assert!(g.pistol.owned, "1000:cd05");
         assert_eq!(g.pistol.cartridges, 3);
         assert_eq!(g.player.money, 850);
-        // 1000:ccdd -- buying it twice is refused and costs nothing.
+        // Buying it twice is refused and costs nothing.
         g.shop_turn(Location::Dealers, "7", &mut no_input())
             .unwrap();
         assert_eq!(g.player.money, 850, "1000:cd4c is a refusal, not a sale");
         assert_eq!(g.pistol.cartridges, 3);
 
-        // ... and 1000:cce8's `jle` means 150 exactly is enough while 149 is
-        // not.
+        // ... and 150 exactly is enough, while 149 is not.
         for (money, want) in [(149i16, false), (150, true)] {
             let mut g = shop();
             g.player.money = money;
@@ -5721,8 +5624,8 @@ mod tests {
             assert_eq!(g.pistol.owned, want, "money {money}");
         }
 
-        // Row 8: five cartridges (1000:cda3), though the menu line says six,
-        // and refused outright without a pistol (1000:cd7b).
+        // Row 8: five cartridges, though the menu line promises six --
+        // deliberate. Refused outright without a pistol.
         let mut g = shop();
         g.shop_turn(Location::Dealers, "8", &mut no_input())
             .unwrap();
@@ -5737,8 +5640,8 @@ mod tests {
         );
         assert_eq!(g.player.money, 930);
 
-        // Row 9: the silencer, gated on the pistol AND on `20ae:3e32`
-        // reaching exactly 25 (1000:ce00).
+        // Row 9: the silencer, gated on owning the pistol AND a delivery
+        // counter reaching exactly 25.
         for (owned, walks, want) in [(false, 25u8, false), (true, 24, false), (true, 25, true)] {
             let mut g = shop();
             g.pistol.owned = owned;
@@ -5768,8 +5671,8 @@ mod tests {
         g
     }
 
-    /// `bmar` row 1, Косяк -- `20ae:38c5` is a word COUNT (`1000:c90e`
-    /// `inc [0x38c5]`), so the row is repeatable and each purchase adds one.
+    /// `bmar` row 1, Косяк -- the count is a word, so the row is repeatable
+    /// and each purchase adds one.
     #[test]
     fn the_dealers_sell_a_joint_every_time_it_is_asked_for() {
         let mut g = dealers(40);
@@ -5782,7 +5685,7 @@ mod tests {
             .unwrap();
         assert_eq!(g.player.joints, 2, "the row is repeatable");
         assert_eq!(g.player.money, 10);
-        // 1000:c8e8 is `jle`, so 15 exactly buys and 14 does not.
+        // 15 exactly buys, and 14 does not.
         for (money, want) in [(14i16, 0i16), (15, 1)] {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "1", &mut no_input())
@@ -5792,8 +5695,8 @@ mod tests {
         }
     }
 
-    /// `bmar` row 2, Краденый мобильник -- and the number the effect moves is
-    /// the in-combat backup countdown at `1000:4cdb`, not the flag alone.
+    /// `bmar` row 2, Краденый мобильник -- the number the effect moves is
+    /// the in-combat backup countdown, not just a flag.
     #[test]
     fn the_dealers_sell_the_stolen_mobile_once() {
         let mut g = dealers(40);
@@ -5801,21 +5704,21 @@ mod tests {
             .unwrap();
         assert!(g.has_mobile, "1000:c969");
         assert_eq!(g.player.money, 10, "20ae:0b39 = 30, debit 1000:c973");
-        // 1000:c93c / 1000:c941 -- the already-own refusal costs nothing.
+        // The already-own refusal costs nothing.
         g.player.money = 40;
         g.shop_turn(Location::Dealers, "2", &mut no_input())
             .unwrap();
         assert_eq!(g.player.money, 40, "1000:c992 is a refusal, not a sale");
-        // Too poor: 1000:c94c is `jle`, so 29 is short and 30 is enough.
+        // Too poor: 29 is short and 30 is enough.
         for (money, want) in [(29i16, false), (30, true)] {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "2", &mut no_input())
                 .unwrap();
             assert_eq!(g.has_mobile, want, "money {money}");
         }
-        // The effect's NUMBER, not just the flag: `1000:4ce2` puts the
-        // gopota countdown straight at 3 -- the arrival -- where `1000:4cd5`
-        // only starts it at 1 without a phone.
+        // The effect's NUMBER, not just the flag: buying the phone puts
+        // the gopota countdown straight at 3 -- their arrival -- where
+        // without it, it only starts at 1.
         let counter = |has_mobile| {
             let mut b = crate::combat_dispatch::Backup::default();
             b.call(true, 100, 1, has_mobile);
@@ -5825,9 +5728,8 @@ mod tests {
         assert_eq!(counter(true), 3, "1000:4ce2 -- the menu line's promise");
     }
 
-    /// `bmar` row 4, зоновская наколка -- and the number is the wander
-    /// mugging roll's ceiling at `1000:b5da`, this row's entire gameplay
-    /// effect.
+    /// `bmar` row 4, зоновская наколка -- the number is the wander mugging
+    /// roll's ceiling, this row's entire gameplay effect.
     #[test]
     fn the_dealers_ink_a_prison_tattoo_once() {
         let mut g = dealers(20);
@@ -5835,11 +5737,11 @@ mod tests {
             .unwrap();
         assert!(g.prison_tattoo, "1000:cb05");
         assert_eq!(g.player.money, 10, "20ae:0b3b = 10, debit 1000:cb0f");
-        // 1000:cad8 / 1000:cadd -- the already-own refusal costs nothing.
+        // The already-own refusal costs nothing.
         g.shop_turn(Location::Dealers, "4", &mut no_input())
             .unwrap();
         assert_eq!(g.player.money, 10, "1000:cb2e is a refusal, not a sale");
-        // Too poor: 1000:cae8 is `jle`.
+        // Too poor.
         for (money, want) in [(9i16, false), (10, true)] {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "4", &mut no_input())
@@ -5848,8 +5750,8 @@ mod tests {
         }
     }
 
-    /// `bmar` row 5, Кастет -- +2/+2 unconditionally (`1000:cbab`,
-    /// `1000:cbb0`), and a better-weapon gate that is an AND.
+    /// `bmar` row 5, Кастет -- +2/+2 unconditionally, and a better-weapon
+    /// gate that is an AND.
     #[test]
     fn the_dealers_sell_the_knuckles_and_the_damage_moves_by_two() {
         let mut g = dealers(40);
@@ -5860,17 +5762,17 @@ mod tests {
         assert_eq!(g.player.money, 15, "20ae:0b3c = 25, debit 1000:cba7");
         assert_eq!(g.player.dmg_min, min + 2, "1000:cbab");
         assert_eq!(g.player.dmg_max, max + 2, "1000:cbb0");
-        // 1000:cb70 / 1000:cb75 -- the already-own refusal costs nothing and
-        // does not add the damage a second time.
+        // The already-own refusal costs nothing and does not add the
+        // damage a second time.
         g.player.money = 40;
         g.shop_turn(Location::Dealers, "5", &mut no_input())
             .unwrap();
         assert_eq!(g.player.money, 40, "1000:cbd0 is a refusal, not a sale");
         assert_eq!(g.player.dmg_max, max + 2);
-        // The better-weapon gate is a short-circuit AND over 1000:cb5b,
-        // 1000:cb62 and 1000:cb69, so only ALL THREE refuse. The loot arm
-        // granting the same item refuses on ANY of them (1000:555f,
-        // 1000:5566, 1000:556d) -- reproduced, not reconciled.
+        // The better-weapon gate is a short-circuit AND over all three
+        // better weapons, so only owning ALL THREE refuses. Intentional:
+        // the loot arm granting the same item refuses on ANY of them,
+        // reproduced rather than reconciled.
         for (club, knife, cleaver, want) in [
             (true, false, false, true),
             (true, true, false, true),
@@ -5888,7 +5790,7 @@ mod tests {
                 "club {club} knife {knife} cleaver {cleaver}"
             );
         }
-        // Too poor: 1000:cb80 is `jle`.
+        // Too poor.
         for (money, want) in [(24i16, false), (25, true)] {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "5", &mut no_input())
@@ -5897,10 +5799,9 @@ mod tests {
         }
     }
 
-    /// `bmar` row 6, Дубинка -- including the original bug: the menu line
-    /// promises `урон+4` and the arm grants **nothing** without the knuckles,
-    /// because `1000:cc69 jz 0xcc75` skips both adds and lands on the
-    /// confirmation push.
+    /// `bmar` row 6, Дубинка -- including the original's bug: the menu
+    /// line promises `урон+4` but the arm grants **nothing** without the
+    /// knuckles already owned.
     #[test]
     fn the_dealers_club_adds_no_damage_at_all_without_the_knuckles() {
         let mut g = dealers(60);
@@ -5912,8 +5813,8 @@ mod tests {
         assert_eq!(g.player.dmg_min, min, "1000:cc69 skips 1000:cc6b");
         assert_eq!(g.player.dmg_max, max, "1000:cc69 skips 1000:cc70");
 
-        // With the knuckles it is +2/+2 -- never the +4/+4 the loot arm has
-        // at 1000:55e6.
+        // With the knuckles it is +2/+2 -- never the +4/+4 the loot arm
+        // grants.
         let mut g = dealers(60);
         g.weapon_kastet = true;
         g.shop_turn(Location::Dealers, "6", &mut no_input())
@@ -5921,15 +5822,15 @@ mod tests {
         assert_eq!(g.player.dmg_min, min + 2, "1000:cc6b");
         assert_eq!(g.player.dmg_max, max + 2, "1000:cc70");
 
-        // 1000:cc29 / 1000:cc2e -- the already-own refusal costs nothing.
+        // The already-own refusal costs nothing.
         g.player.money = 60;
         g.shop_turn(Location::Dealers, "6", &mut no_input())
             .unwrap();
         assert_eq!(g.player.money, 60, "1000:cc90 is a refusal, not a sale");
         assert_eq!(g.player.dmg_max, max + 2);
 
-        // The better-weapon gate has TWO conjuncts here (1000:cc18,
-        // 1000:cc1f) and the club's own flag is not one of them.
+        // The better-weapon gate has TWO conjuncts here, and the club's
+        // own flag is not one of them.
         for (knife, cleaver, want) in [
             (true, false, true),
             (false, true, true),
@@ -5942,7 +5843,7 @@ mod tests {
                 .unwrap();
             assert_eq!(g.weapon_dubinka, want, "knife {knife} cleaver {cleaver}");
         }
-        // Too poor: 1000:cc39 is `jle`.
+        // Too poor.
         for (money, want) in [(49i16, false), (50, true)] {
             let mut g = dealers(money);
             g.shop_turn(Location::Dealers, "6", &mut no_input())
@@ -5953,16 +5854,14 @@ mod tests {
 
     /// Every `bmar` row in `data::shops()` is consumed by
     /// [`Game::buy_dealer_row`], so [`Game::shop_action`] has no
-    /// fall-through to reach from the dealers -- and since Task 26 it has
-    /// none to reach at all: the generic "debit and echo the menu line" path
-    /// is deleted, and a keyless row now trips a `debug_assert!` that is a
-    /// no-op in release.
+    /// fall-through to reach from the dealers: the generic "debit and echo
+    /// the menu line" path is deleted, and a keyless row now trips a
+    /// `debug_assert!` that is a no-op in release.
     ///
-    /// So this is the guard that works in both profiles. Task 24's reason for
-    /// it still holds and is why it is per-row rather than a count: file
-    /// `0xAC55` / CS `0x9385` is row 1's OWN refusal (`1000:c8ea`), not a
-    /// shop-wide literal, so a tenth `bmar` row added to the table without an
-    /// arm would not fall back to anything -- it would silently do nothing.
+    /// So this is the guard that works in both profiles, and it is per-row
+    /// rather than a count: a row's own refusal is not a shop-wide literal,
+    /// so a tenth `bmar` row added to the table without an arm would not
+    /// fall back to anything -- it would silently do nothing.
     #[test]
     fn every_dealers_row_has_an_arm_of_its_own() {
         for row in data::shops().iter().filter(|r| r.shop == "bmar") {
@@ -5976,15 +5875,12 @@ mod tests {
     }
 
     /// The district gates the dealers' MENU, never the sale. Five rows are
-    /// gated -- 5 (`1000:c68d`), 6 (`1000:c6f1`), 7 (`1000:c755`), 8
-    /// (`1000:c7ba`) and 9 (`1000:c81d`) -- and every one of them is in the
-    /// menu-print block. At district 1 none of the five is listed and all
+    /// gated -- 5, 6, 7, 8 and 9 -- and every one of them is only in the
+    /// menu-print block. At district 1 none of the five is listed, and all
     /// five are still buyable.
     ///
-    /// `1000:c824`/`1000:c82b` -- the silencer needs a pistol AND the
-    /// delivery counter at exactly 25, on top of `district > 3`. All three
-    /// jump to `0xc88e`, past the row's print block, so a miss prints
-    /// nothing.
+    /// The silencer needs a pistol AND the delivery counter at exactly 25,
+    /// on top of `district > 3`. Missing any of the three prints nothing.
     #[test]
     fn the_silencer_row_is_listed_only_with_a_pistol_and_a_full_counter() {
         let listed = |pistol: bool, counter: u8| {
@@ -6020,8 +5916,8 @@ mod tests {
 
     /// `Game::extra_gates_open` panics on a gate string it does not model,
     /// so this is what keeps that panic unreachable: every `extra_gates`
-    /// entry `build.rs` generates out of `data/shops.json` must be one of
-    /// the two modelled predicates.
+    /// entry `build.rs` generates from the shop data must be one of the two
+    /// modelled predicates.
     #[test]
     fn every_extra_gate_in_the_table_is_modelled() {
         let modelled = ["byte[20ae:394d]!=0", "byte[20ae:3e32]==25"];
@@ -6037,9 +5933,8 @@ mod tests {
     }
 
     /// The district gates the dealers' MENU, never the sale. Five rows are
-    /// gated -- 5 (`1000:c68d`), 6 (`1000:c6f1`), 7 (`1000:c755`), 8
-    /// (`1000:c7ba`) and 9 (`1000:c81d`) -- and every one of them is in the
-    /// menu-print block. At district 1 none of the five is listed and all
+    /// gated -- 5, 6, 7, 8 and 9 -- and every one of them is only in the
+    /// menu-print block. At district 1 none of the five is listed, and all
     /// five are still buyable.
     #[test]
     fn a_gated_dealers_row_is_bought_below_its_district() {
@@ -6056,10 +5951,8 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(listed(1), ["1", "2", "3", "4"], "the menu keeps its gate");
-        // Row 9 is NOT here: `1000:c824`/`1000:c82b` also want a pistol and
-        // a delivery counter of 25, and a fresh game has neither. This
-        // assertion used to read `..,"8","9"` and encoded the missing gates
-        // as expected behaviour.
+        // Row 9 is NOT here: it also wants a pistol and a delivery counter
+        // of 25, and a fresh game has neither.
         assert_eq!(
             listed(4),
             ["1", "2", "3", "4", "5", "6", "7", "8"],
@@ -6095,8 +5988,7 @@ mod tests {
         g
     }
 
-    /// `mar` row 3, Затемнённые очки -- `1000:bef6 mov byte [0x38b3],0x1`,
-    /// one-shot through `1000:bece jnz 0xbf1f`.
+    /// `mar` row 3, Затемнённые очки -- a one-shot purchase.
     #[test]
     fn the_market_sells_the_dark_glasses_exactly_once() {
         let mut g = market(25);
