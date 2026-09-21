@@ -1931,14 +1931,9 @@ impl Game {
             6 => {
                 // Draw 10 -- the roll's `n` is `district * 20`.
                 let r = self.rng.below(u16::from(self.district) * 20);
-                // 1000:b305..1000:b311: luck is sign-extended (`cwd`) and
-                // the result zero-extended, and the theft succeeds when
-                // luck >= result.
+                // The theft succeeds when luck >= result.
                 if i32::from(self.player.luck) >= i32::from(r) {
-                    // Draw 11, 1000:b321. `n` is district * 5, built at
-                    // 1000:b313..1000:b31e as (district << 2) + district.
                     let amount = self.rng.below(u16::from(self.district) * 5) + 1;
-                    // 1000:b326/1000:b32d: [0x3b74] := r + 1, money += it.
                     self.player.money = self.player.money.wrapping_add(amount as i16);
                     term::println(&text::fill(
                         "^2Опа бабки! # рублей на пиво!",
@@ -1949,10 +1944,7 @@ impl Game {
             _ => {}
         }
 
-        // Draw 12, 1000:b353 -- the bucket roll. `n` is built at 1000:b34d
-        // as `mov ax,5` / `imul ax`, i.e. AX*AX = 25, and 1000:b358 stores
-        // r+1 (so 1..25) into 20ae:3971. The chain at 1000:b35c..1000:b393
-        // tests the highest boundary first.
+        // The bucket roll, 1..25, sets the wander encounter bucket.
         let roll = self.rng.below(25) + 1;
         let mut bucket = if roll >= 10 {
             4
@@ -1964,19 +1956,16 @@ impl Game {
             1
         };
 
-        // Draw 13, 1000:b39e -- Random(200); a zero calls the church at
-        // 1000:b3a7.
+        // A 1-in-200 chance calls the church.
         if self.rng.below(200) == 0 {
             self.church(lines);
-            // 1000:8282 `c6 06 70 39 00` is the routine's last act before
-            // its single epilogue and no jump inside it targets an address
-            // above that, so EVERY path zeroes the bucket: a church turn
-            // produces no encounter even though the roll already happened.
+            // Every path through the church zeroes the bucket: a church
+            // turn produces no further encounter even though the roll
+            // already happened.
             bucket = 0;
         }
 
-        // Draw 14, 1000:b3ae -- Random(100); a zero calls the mage at
-        // 1000:b3b7. It spends no draw but does block on a ReadLn.
+        // A 1-in-100 chance calls the mage.
         if self.rng.below(100) == 0 {
             self.mage(lines)?;
         }
@@ -1984,37 +1973,28 @@ impl Game {
         Ok(bucket)
     }
 
-    /// The church, `1000:7c67`..`1000:82af` -- one procedure, one prologue,
-    /// one epilogue (`89 ec 5d c3` at `1000:82af`), called from exactly one
-    /// site (`1000:b3a7`).
+    /// Three sermon arms are selected by the church-visit stage (2, 1, or
+    /// 0) and all converge afterward, so the gift roll always happens once
+    /// the church fires. The two lower arms raise the stage on their way
+    /// out, which is why it saturates at 2.
     ///
-    /// Three sermon arms are selected by `20ae:3951` (`== 2` at `1000:7c76`,
-    /// `== 1` at `1000:7ceb`, `== 0` at `1000:7dcb`) and all converge on
-    /// `1000:7f5f`, so draw 15 is unconditional once the church fires. The
-    /// two lower arms raise the stage on their way out (`1000:7dc7`,
-    /// `1000:7f5b`), which is why it saturates at 2.
-    ///
-    /// All three sermons, their `ReadKey`s, the forced level-up's composed
-    /// line and the parting lines are [`crate::church`]
-    /// (`docs/re/port-gaps.md` rows 3, 18, 20 and row 19's share). Nothing
-    /// in any of them costs a draw, so the draw sequence this routine makes
-    /// is exactly what it was before they landed.
+    /// The three sermons, their key-presses, the forced level-up's
+    /// composed line, and the parting lines live in [`crate::church`].
     fn church(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) {
         let stage = self.church_visits;
-        // The sermon reads the stage BEFORE 1000:7dc7 / 1000:7f5b raise it.
+        // The sermon reads the stage before it is raised.
         church::sermon(lines, stage, &self.player);
         if stage <= 1 {
             self.church_visits += 1;
         }
 
-        // Draw 15, 1000:7f63 -- Random(5). Five equally likely arms.
+        // Five equally likely arms decide the church's gift.
         match self.rng.below(5) {
-            // 1000:7f68's zero arm: a forced level-up.
+            // The zero arm forces a level-up.
             0 => {
-                // 1000:7f84's line, 1000:7f89's `ReadKey` and 1000:7f8e's
-                // composed `Был ты X а стал Y`. Both halves of that line
-                // read `[0x38a6]` BEFORE the call below moves it, so the
-                // level is captured here.
+                // The composed `Был ты X а стал Y` line reads the level
+                // BEFORE the call below changes it, so the old level is
+                // captured here.
                 let level = self.player.level;
                 opening::play(
                     lines,
@@ -2022,14 +2002,9 @@ impl Game {
                     church::FORCED_LEVEL_GAPS,
                     Some(&church::forced_level_composed(level)),
                 );
-                // 1000:7fe4/1000:7fe7 `mov ax,[0x38d0]` / `mov [0x38ce],ax`
-                // -- xp := threshold -- then `mov al,0` / `call 0x2526`.
-                // 1000:2526's entry test (1000:2535..1000:253c) therefore
-                // passes by construction, its xp loop runs exactly once, and
-                // the per-level body spends draws 17 and 18 at 1000:25fe
-                // (loop bound `cmp word [bp-0x8],0x2` at 1000:287d). At
-                // level 40 (1000:2580) it spends no draw and grants nothing,
-                // but the xp rewrite above has already happened.
+                // xp is set to the threshold, so the level-up runs exactly
+                // once. At level 40 it grants nothing, but the xp rewrite
+                // still happens.
                 self.progress.xp = self.progress.threshold;
                 progress::apply_levels(
                     &mut self.progress,
@@ -2039,12 +2014,11 @@ impl Game {
                     false,
                 );
             }
-            // 1000:7ff3 `cmp ax,1` / 1000:7ff6 `jz 0x7ffb` -- a stat
-            // blessing. (1000:7f68 is the ZERO arm above, not this one.)
+            // A stat blessing.
             1 => match self.rng.below(4) {
-                // 1000:8022..1000:8043. The dmg_min term reads the
-                // ALREADY-incremented strength, so it is +1 when the new
-                // strength is even -- the same rule as a level-up's.
+                // dmg_min reads the ALREADY-incremented strength, so it
+                // gains +1 when the new strength is even -- the same rule
+                // as a level-up's.
                 0 => {
                     term::println("^1Да увеличиться твоя сила!");
                     self.player.strength += 1;
@@ -2061,7 +2035,6 @@ impl Game {
                 }
                 2 => {
                     term::println("^1Да возрастут твой силы жизненные!");
-                    // 1000:808b..1000:8094
                     self.player.vitality += 1;
                     self.player.hpmax += 5;
                     self.player.hp += 5;
@@ -2071,13 +2044,12 @@ impl Game {
                     self.player.luck += 1; // 1000:80b9
                 }
             },
-            // 1000:80c0's `cmp ax,2` -- the first unfired one-shot gift.
-            // These are the same three flags the post-kill block grants
-            // (`docs/re/progression.md`); this is a second grant site.
+            // The first unfired one-shot gift. These are the same three
+            // flags the post-kill block grants -- this is a second grant
+            // site.
             2 => {
                 term::println("^1Дарю тебе феньку!");
                 if !self.oneshot_gift_1 {
-                    // 1000:80e1 gate, 1000:8101..1000:8134.
                     term::println("^1Кольцо \"Помоги Господи\"");
                     self.player.strength += 1;
                     self.player.agility += 1;
@@ -2091,7 +2063,6 @@ impl Game {
                     }
                     self.oneshot_gift_1 = true;
                 } else if !self.oneshot_gift_2 {
-                    // 1000:813c gate, 1000:815c..1000:8184.
                     term::println("^1\"Мега Кольцо\"! со своего, можно сказать, пальца");
                     self.player.strength += 4;
                     self.player.agility += 4;
@@ -2103,8 +2074,8 @@ impl Game {
                     self.player.dmg_min += 2;
                     self.oneshot_gift_2 = true;
                 } else if !self.ring_gospodi_pomilui {
-                    // 1000:818b gate, 1000:81c4. Text only here -- the
-                    // ring's effect is the wander regen and draw 9 above.
+                    // Text only here -- the ring's effect (the wander hp
+                    // regen and fracture-heal chance) is applied above.
                     term::println("^1Ваще полезное кольцо \"Господи помилуй\"");
                     term::println("^1Восст. жизни - 3, 5% - самозарост переломов");
                     self.ring_gospodi_pomilui = true;
@@ -2122,7 +2093,6 @@ impl Game {
                 term::println("^1Накладываю на тебя защиту!");
                 self.player.armor = self.player.armor.wrapping_add(1);
             }
-            // 1000:81ef's `cmp ax,4` -- 1000:820d..1000:821a.
             _ => {
                 term::println("^1Да увеличится, офигенно, твоя понтовость среди гопоты!");
                 let gain = i16::from(self.district) * 50 + 50;
@@ -2131,60 +2101,29 @@ impl Game {
             }
         }
 
-        // 1000:8242 -- the `ReadKey` every draw-15 arm converges on, which
-        // is `church::PARTING_GAPS`' gap 0.
+        // Every arm converges on the same key-press prompt.
         term::read_key(lines);
-        // 1000:8247 `cmp byte [0x3951],0x2` / `jnc 0x8269`, read AFTER the
-        // stage was raised. Only one of the two arms ever prints, which is
-        // why `PARTING` is indexed here rather than played through
-        // `opening::play`.
+        // Reads the stage AFTER it was raised. Only one of the two parting
+        // lines ever prints, which is why `PARTING` is indexed here rather
+        // than played through `opening::play`.
         term::println(church::PARTING[usize::from(self.church_visits >= 2)]);
-        // 1000:828c's bare `WriteLn` -- gap 2 -- then 1000:82aa. The
-        // `[0x3970] := 0` at 1000:8282 between them is the bucket the caller
-        // zeroes.
+        // A blank line separates the two parting lines; the bucket is
+        // zeroed between them, as noted at the call site.
         term::println("");
         term::println(church::PARTING[2]);
     }
 
-    /// The wandering mage Рушель Блаво, `1000:7538`..`1000:7778`, called
-    /// only from `1000:b3b7`. **It contains no `Random` call** -- it spends
-    /// no draw, but it does block on a `ReadLn`, so it consumes a line.
+    /// The wandering mage Рушель Блаво. Spends no random draw of its own,
+    /// but blocks on a line of input.
     ///
-    /// `1000:75c7`..`1000:75d1` reads into a **stack local** `[bp-0x100]`,
-    /// neither `DS:3972` nor `DS:3a72` -- a third input buffer -- then
-    /// `1000:75e6` case-folds it through `0eed:0216` and `1000:75f6`
-    /// compares it against the token `y` (file `0x8D79`, `01 79`).
+    /// **A divergence in the original, reproduced here.** The price it
+    /// PRINTS is `district * 25`; the price it CHECKS and CHARGES is
+    /// `district * 50`.
     ///
-    /// **A divergence inside the original, reproduced here.** The price it
-    /// PRINTS is `district * 25` (`1000:758d`, `ba 19 00`); the price it
-    /// CHECKS and CHARGES is `district * 50` (`1000:7605` and `1000:7618`,
-    /// both `ba 32 00`, debit at `1000:761d`).
-    ///
-    /// **The two file writes on the paid path are reproduced** (Task 19):
-    /// the 694-byte record into `save_r0.sav` (`1000:764e`/`1000:765d`), the
-    /// seven discovery flags into `places.sav` (`1000:766f`..`1000:7724`),
-    /// and `^0Сохранено! ^1Можешь беспредельничать дальше.` (`1000:7729`,
-    /// file `0x8D92`) -- see [`Game::mage_save`](crate::persist). They used
-    /// to be out of reach because `Save::parse` was the only constructor and
-    /// `.SAV` `0x214`/`0x2ae` were unknown; both spans are established now.
-    ///
-    /// **`docs/re/port-gaps.md` row 23.** The first three of the four
-    /// `WriteLn`s are spaced with `0f16:031a` `ReadKey`s, the same
-    /// discarded-line-read trick as [`Game::wander_preamble`]'s phone gag
-    /// (row 24): `1000:7560`, `1000:757e`, `1000:75a4`. The fourth line
-    /// (`1000:75bd`) has no `ReadKey` after it -- it falls straight into the
-    /// `ReadLn`.
-    ///
-    /// A write that fails is reported and the turn continues. The original
-    /// has no failure message on this path at all: `1000:761d` debits before
-    /// the file is opened and nothing after it tests `IOResult`, so the
-    /// money leaves either way. Printing the host error is a PORT DECISION
-    /// -- silently swallowing an I/O failure would be worse than one line
-    /// the original never prints.
-    /// `pub` for the same reason [`Game::walk`] is: it is the only way a
-    /// test can reach this arm. Wander bucket 14 is what dispatches it in
-    /// play (`1000:b3b7`), and forcing that bucket needs a seed the binary
-    /// does not take.
+    /// On the paid path the game is saved and discovery progress written,
+    /// printing `^0Сохранено! ^1Можешь беспредельничать дальше.` Money is
+    /// spent either way, even if the save write fails; a failed save is
+    /// reported to the player and the turn continues.
     pub fn mage(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
         term::println(MAGE_LINES[0]);
         term::read_key(lines); // 1000:7560
@@ -2199,60 +2138,35 @@ impl Game {
         };
         let answer = line?;
         if !answer.eq_ignore_ascii_case("y") {
-            // 1000:775f, file 0x8DDC.
             term::println("^6Нехотите как хотите - мое дело предложить");
             return Ok(());
         }
         let price = i32::from(self.district) * 50;
         if i32::from(self.player.money) < price {
-            // 1000:7744, file 0x8DC1.
             term::println("^6Парень, все стоит бабок!");
             return Ok(());
         }
         self.player.money = self.player.money.wrapping_sub(price as i16);
-        // 1000:7621..1000:773d. The debit above is 1000:761d, and it happens
-        // BEFORE the file is opened in the original too.
+        // The debit happens before the save is attempted, so money is
+        // spent even if the write fails.
         if let Err(e) = self.mage_save() {
             term::println(&format!("^6{e}"));
         }
         Ok(())
     }
 
-    /// Wander bucket 2 -- **the girl discovery event**, and the only
-    /// discovery path this port implements. Established from flow, every
-    /// instruction of `1000:b4e8`..`1000:b5ab` re-derived from `orig/g.exe`:
+    /// Wander bucket 2 -- the girl discovery event.
     ///
-    /// * `1000:b4e8` `3c 02` -- `cmp al,2`, the bucket test; `1000:b4ea`
-    ///   `jz 0xb4ef` selects this branch.
-    /// * `1000:b4ef` `80 3e 97 36 00` -- `cmp byte [0x3697],0`, the
-    ///   **girl's** discovery flag (the gate `girl` itself reads at
-    ///   `1000:d6f7`; the den is `0x3696`, gate `1000:d80c`). Non-zero --
-    ///   already found -- jumps to `1000:b592`, which writes
-    ///   `Совсем ничё не происходит.` (file `0xA24C`) and ends the turn.
-    /// * `1000:b4f9` -- writes `^5Идет типа клёвая цыпа. Хочешь её
-    ///   зацепить?` (file `0xA19E`).
-    /// * `1000:b512`..`1000:b52a` -- `ReadLn` into `DS:3a72`, the same
-    ///   second input variable the fight encounter and the locations use,
-    ///   **not** the line-level `DS:3972`.
-    /// * `1000:b534` -- `call 0eed:0216`, the case-fold `entry` applies to
-    ///   every typed line, so the answer is case-insensitive.
-    /// * `1000:b543`/`1000:b548` -- compared against the literal `"y"`
-    ///   (file `0x9BF3`, `01 79`); `75 46` (`jnz 0xb590`) means **any other
-    ///   answer writes nothing at all** and ends the turn -- there is no
-    ///   decline message on this branch, unlike the fight encounter's.
-    /// * `1000:b54a`..`1000:b553` -- `Random(2)`, then `09 c0` (`or ax,ax`)
-    ///   and `75 20` (`jnz 0xb577`).
-    ///   * `ax == 0` falls through to `1000:b557`: writes `^5Ты такой
-    ///     подкатываешь, а она:"Глянулся ты мне парниша"` (file `0xA1CB`)
-    ///     and then `1000:b570` `c6 06 97 36 01` -- `mov byte [0x3697],1`,
-    ///     the flag being **set**. (`1000:b575` is the `eb 19` `jmp` after
-    ///     it, not the setter.)
-    ///   * `ax != 0` jumps to `1000:b577`: writes `^4Ты ещё подкатить
-    ///     неуспел - а она:"Отдыхай урод". - Тебя обломали кент` (file
-    ///     `0xA204`) and leaves the flag clear.
+    /// If already found, prints "Совсем ничё не происходит." and ends the
+    /// turn. Otherwise asks "^5Идет типа клёвая цыпа. Хочешь её зацепить?"
     ///
-    /// Exactly one `Random` draw on the `"y"` path and none on any other,
-    /// matching the single `call` at `1000:b54e`.
+    /// The answer is case-insensitive; anything but "y" ends the turn with
+    /// no message, unlike the fight encounter's decline. On "y", a 50/50
+    /// roll decides it: success prints "^5Ты такой подкатываешь, а она:
+    /// "Глянулся ты мне парниша"" and marks the girl found; failure prints
+    /// "^4Ты ещё подкатить неуспел - а она:"Отдыхай урод". - Тебя обломали
+    /// кент" and leaves her unfound. The roll only happens when the player
+    /// answers "y".
     fn wander_girl(
         &mut self,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
@@ -2281,23 +2195,11 @@ impl Game {
         Ok(())
     }
 
-    /// Turbo Pascal's `Round` of a value that is an exact multiple of one
-    /// half, taking that value **doubled** so the caller needs no float.
-    ///
-    /// **Established from flow.** `Round` is `0f78:1131` (`b5 01`
-    /// `mov ch,1`, then `call 0f78:1091`); `0f78:1129` is `Trunc` and
-    /// differs only in `ch`. Inside the worker, `0f78:10d0`
-    /// (`0a ed` `or ch,ch`) selects the rounding tail: `0f78:10d4`
-    /// `02 ff` (`add bh,bh`) sets CF when the byte shifted out of the
-    /// mantissa is >= 0x80 -- i.e. when the fraction is >= 1/2 -- and
-    /// `15 00 00` / `83 d2 00` (`adc ax,0` / `adc dx,0`) adds one to the
-    /// **magnitude**; the sign is only applied afterwards at `0f78:10e4`.
-    /// So it is round-half-away-from-zero, not half-to-even.
-    ///
-    /// That distinction is load-bearing exactly once: `1000:0e6c`'s
-    /// `level * 1.5`. Run A turn 11 of `data/rng_trace.json` rolls level 1
-    /// there and then spends 12 draws at `1000:0efd` rather than 10, which
-    /// only happens if `Round(1.5)` is 2.
+    /// Rounds a value that is an exact multiple of one half, taking that
+    /// value **doubled** so the caller needs no float. It rounds
+    /// half-away-from-zero rather than half-to-even, so `Round(1.5)` is 2 --
+    /// a distinction that is load-bearing for one `level * 1.5` computation
+    /// elsewhere.
     fn round_half(twice: i32) -> i32 {
         if twice >= 0 {
             (twice + 1) / 2
@@ -2306,83 +2208,33 @@ impl Game {
         }
     }
 
-    /// `FUN_1000_0d14` (`1000:0d14`..`1000:11bf`, file `0x25e4`..`0x2a8f`) --
-    /// the random-encounter opponent, rolled into the record at `20ae:3952`.
+    /// The random-encounter opponent's stats, used by the wander encounter
+    /// (`param_1 == 0`) and by other callers that pass `param_1 == 1`
+    /// (clamps the class to 7) or `param_1 == 2` (forces class 8).
     ///
-    /// **Established from flow.** The whole routine was disassembled with
-    /// `ndisasm -b16 -o 0xd14 -e 0x25e4 orig/g.exe`, i.e. from the routine's
-    /// own `55` / `89 e5` (`push bp` / `mov bp,sp`) entry, and every one of
-    /// its fourteen `Random` call sites carries the `9a 4b 11 78 0f`
-    /// signature at the address cited beside it below. All fourteen fire in
-    /// the running original with the `n` used here: `data/rng_trace.json`'s
-    /// `sites_not_in_catalogue` records 13 stops each (5 for `1000:0d91`,
-    /// 348 for the `1000:0efd` loop), and this implementation reproduces
-    /// every one of them in order.
-    ///
-    /// `param_1` is `[bp+4]`, a byte. `1000:b5b8` -- the wander encounter,
-    /// the only caller this port has -- passes 0; `1000:c3d0`, `1000:dc0e`
-    /// and `1000:e181` pass 1 and `1000:ddf6` passes 2. The clamps at
-    /// `1000:0da7` and `1000:0dba` are the only thing it selects.
-    ///
-    /// Step by step, with the addresses:
-    ///
-    /// 1. `1000:0d22`..`1000:0d68` -- `Random(0x33) + 1`, folded by a
-    ///    triangular walk: for `i` in `1..=10`, if the running value is
-    ///    negative after subtracting `i` the class is `10 - i` and the walk
-    ///    stops, otherwise `i` is subtracted and the walk continues
-    ///    (`1000:0d64` `cmp byte [bp-1],0x0a` / `jnz 0xd35` is the bound).
-    ///    51 can never survive all ten subtractions (they total 55), so the
-    ///    walk always leaves through the break. It maps low rolls to high
-    ///    classes: `Random(0x33)` of 0..1 gives class 8, 44..50 gives class 0.
-    /// 2. `1000:0d6a`..`1000:0d83` -- plus `Random(district)`.
-    /// 3. `1000:0d86`..`1000:0d96` -- plus `Random(4)`, but **only** when
-    ///    `[0x3693]` is set (see [`Game::harder_encounters`]).
-    /// 4. `1000:0d9a`..`1000:0dc4` -- clamp to 9; then `param_1 == 1` clamps
-    ///    to 7 and `param_1 == 2` forces 8.
-    /// 5. `1000:0dc6`..`1000:0e45` -- крутизна:
-    ///    `Round(player_level * f / d + s - 2) + 4 * Random(district)`,
-    ///    where `s` is `Random(5)` (`1000:0ddd`), `f` is `Random(2) + 1`
-    ///    (`1000:0df0`) and `d` is `Random(2) + 1` (`1000:0e04`). The
-    ///    multiply is `0f78:09d2` (32-bit `imul`), the divide is
-    ///    `0f78:1117` (the real-divide entry thunk: 10 bytes at
-    ///    `0f78:1117`..`1120` that check `cl` for a zero divisor and raise
-    ///    runtime error 200 out of line at `0f78:1145`), the add and
-    ///    subtract are `0f78:10ff`/`0f78:1105`, and `0f78:1131` rounds.
-    ///    `1000:0e48` floors it at 0, and `1000:0e54`..`1000:0e76` then
-    ///    multiplies it by **1.5** (`0f78:1111`, real multiply, against the
-    ///    constant `ax=0x0081 bx=0 dx=0x4000`) when `[0x3693]` is set.
-    /// 6. `1000:0e79`..`1000:0e8a` -- the four stats are zeroed.
-    /// 7. `1000:0e8d`..`1000:0fee` -- `sum(weights) + крутизна * 2` points,
-    ///    each `Random(sum(weights)) + 1` (`1000:0efd`) bucketed against the
-    ///    running prefix sums of the class's weight row at `20ae:0002 +
-    ///    class*4` (`mov di,[0x3952]` / `shl di,1` / `shl di,1` /
-    ///    `mov al,[di+0x2..0x5]`), i.e. `crate::progress::CLASS_WEIGHTS`.
-    ///    Both the sum and the point count are stored as **bytes**
-    ///    (`1000:0ed1` `mov [bp-2],al`, `1000:0ee2` `mov [bp-4],al`).
-    ///
-    ///    An earlier reading, recorded in `docs/re/tables.md`, had this loop
-    ///    drawing `Random(remaining points)`. It does not: the `n` is the
-    ///    constant weight-row sum, which is why the observed `n` set at
-    ///    `1000:0efd` is exactly `{6, 8, 9, 12, 20, 22}` -- the six distinct
-    ///    weight-row sums of classes 0..9.
-    /// 8. `1000:0ff3`..`1000:101d` -- `dmg_min = strength div 2`,
-    ///    `dmg_max = strength`, `hpmax = vitality * 5 + strength + 10`,
-    ///    `hp = hpmax`.
-    /// 9. `1000:102a`..`1000:114f` -- the two loot words, both built from the
-    ///    same intermediate `k = крутизна div 2 + Round(class * крутизна / 5)`
-    ///    (recomputed from scratch for each: `1000:1037`, `1000:106a`,
-    ///    `1000:10cd` and `1000:110a` all `mov ax,[0x3952]` /
-    ///    `mul word [0x395c]`). Хлам (`[0x396e]`) is
-    ///    `Random(6) + 2 * Random(k) - k`, money (`[0x396c]`) is
-    ///    `Random(6) + Random(k) - k div 2`, each floored at 0
-    ///    (`1000:10b4`, `1000:1152`).
-    /// 10. `1000:115e`..`1000:1181` -- beer, `Random(2) + крутизна div 10 + 1`.
-    /// 11. `1000:1184`..`1000:11b9` -- armour, `Random(b) + b` stored as a
-    ///     byte, where `b = 2 * (district - 1)^2` (`dec ax` / `imul ax` /
-    ///     `shl ax,1` twice / `idiv 2`). District 1 therefore always draws
-    ///     `Random(0)`, which the original's `Random` returns 0 for -- the
-    ///     draw still happens, which is why `1000:1197` has 13 stops and
-    ///     not 3.
+    /// 1. Base class: `Random(0x33) + 1`, folded by a triangular walk that
+    ///    maps low rolls to high classes (class 8 for a roll of 0..1, class
+    ///    0 for 44..50).
+    /// 2. `class += Random(district)`.
+    /// 3. `class += Random(4)`, but only when harder encounters are on.
+    /// 4. Clamp `class` to 9, then apply the `param_1` clamp above.
+    /// 5. крутизна: `Round(level * f / d + s - 2) + 4 * Random(district)`,
+    ///    where `s = Random(5)`, `f = Random(2) + 1` and `d = Random(2) + 1`.
+    ///    Floored at 0, then multiplied by 1.5 when harder encounters are on.
+    /// 6. The four stats start at 0.
+    /// 7. `sum(weights) + крутизна * 2` points are distributed one at a
+    ///    time by a weighted random draw against the rolled class's weight
+    ///    row (see `crate::progress::CLASS_WEIGHTS`). Both the weight sum
+    ///    and the point count wrap at 256, as they did in the original.
+    /// 8. `dmg_min = strength / 2`, `dmg_max = strength`,
+    ///    `hpmax = vitality * 5 + strength + 10`, `hp = hpmax`.
+    /// 9. Loot, from `k = крутизна / 2 + Round(class * крутизна / 5)`:
+    ///    Хлам is `Random(6) + 2 * Random(k) - k`, money is
+    ///    `Random(6) + Random(k) - k / 2`, both floored at 0.
+    /// 10. Beer: `Random(2) + крутизна / 10 + 1` half-litres.
+    /// 11. Armour: `Random(b) + b` stored as a byte, where
+    ///     `b = 2 * (district - 1)^2`. District 1 always draws `Random(0)`,
+    ///     consuming the roll even though the result is always 0.
     pub(crate) fn roll_enemy(&mut self, param_1: u8) -> Fighter {
         let mut cls = i32::from(self.rng.below(0x33)) + 1;
         for i in 1..=10 {
@@ -2409,11 +2261,6 @@ impl Game {
 
         let district_bonus = 4 * i32::from(self.rng.below(u16::from(self.district)));
         let spread = i32::from(self.rng.below(5));
-        // `1000:0df0` is the DIVISOR and `1000:0e04` the multiplier, not the
-        // other way round: `1000:0dfd` pushes the first as a real which
-        // `1000:0e1e` pops back into `cx:si:di`, the divisor operand of
-        // `0f78:1117`, while the second stays in `cx:bx` for the `0f78:09d2`
-        // multiply against the player's level at `1000:0e10`.
         let divisor = i32::from(self.rng.below(2)) + 1;
         let factor = i32::from(self.rng.below(2)) + 1;
         // `divisor` is 1 or 2 and the numerator is doubled first, so this is
@@ -2445,16 +2292,6 @@ impl Game {
         let [strength, agility, vitality, luck] = stats;
         let hpmax = 10 + 5 * vitality + strength;
 
-        // Not a truncating port of the original here: at file 0x2907..0x290e
-        // (`1000:1037`), `mov ax,[0x3952]` / `mul word [0x395c]` leaves the
-        // full 32-bit `class * ponty` product in `dx:ax`, but the very next
-        // byte is `cwd` (0x290e), which overwrites `dx` with the sign
-        // extension of `ax` alone -- the high word of the product is
-        // discarded before the divide-by-5-and-round that follows. This
-        // port computes `2 * class * ponty` in `i32` and never truncates to
-        // 16 bits, so it is wider than the original here. Unreachable at
-        // realistic values (`class` caps at 9, `ponty` stays small), so
-        // behaviour is unaffected in practice.
         let k = ponty / 2 + (2 * i32::from(class) * ponty + 5) / 10;
         let junk_bonus = i32::from(self.rng.below(6));
         let junk_roll = i32::from(self.rng.below(k as u16));
@@ -2466,12 +2303,9 @@ impl Game {
         let armour_base = 2 * (i32::from(self.district) - 1).pow(2);
         let armor = (i32::from(self.rng.below(armour_base as u16)) + armour_base) & 0xff;
 
-        // `data/enemies.json` has one row per rolled class 0..=9 (classes
-        // 0..9 are unique there; only the scripted class 10 has variants),
-        // so this lookup is total for every class the clamps above can
-        // leave. A nameless fighter must never reach the player, so a
-        // missing row is a build-data bug, not something to paper over
-        // with "".
+        // This lookup is total for every class the clamps above can leave.
+        // A nameless fighter must never reach the player, so a missing row
+        // is a data bug, not something to paper over with "".
         let name = data::enemies()
             .iter()
             .find(|e| e.class == class)
@@ -2497,42 +2331,14 @@ impl Game {
         }
     }
 
-    /// `name`, the handler `1000:ecf1`'s compare dispatches. **Established
-    /// from flow**, `1000:ecfb`..`1000:ed9c`:
+    /// Prints "^2Звали тебя:^7 " then the current name, then asks
+    /// "^2А теперь будут:^7 " for the new one.
     ///
-    /// * `1000:ecfb`..`1000:ed24` -- `^2Звали тебя:^7 ` (file `0xC381`,
-    ///   loaded at `1000:ed01` as image `0xaab1`) is assigned into a stack
-    ///   temp with `0f78:0ae7`, the name variable `DS:379c` is appended with
-    ///   `0f78:0b66`, and the result goes out through `0eed:01c2`
-    ///   (`WriteLn`).
-    /// * `1000:ed29`..`1000:ed3d` -- `^2А теперь будут:^7 ` (file `0xC392`,
-    ///   image `0xaac2`) through `0eed:0000` (`Write`, no newline).
-    /// * `1000:ed42`..`1000:ed5a` -- `ReadLn(Input, DS:379c)`.
-    /// * `1000:ed5f` `cmp byte [0x379c],0` / `jnz 0xed79` -- an **empty**
-    ///   line leaves the length byte at zero, and `1000:ed74` then assigns
-    ///   `Раз^6дол^4бай` (file `0xC3A7`, image `0xaad7`) over the name with
-    ///   `0f78:0b01`. Reproduced below; it is the same substitution
-    ///   `src/main.rs`'s `create_character` already models for character
-    ///   creation at `1000:7220`/`1000:7227` (file `0x80B4`). The test is on
-    ///   the shortstring's **length byte**, not on whether the content is
-    ///   all whitespace -- a line of only spaces has nonzero length and is
-    ///   kept, not substituted. `Game::rename` must not `.trim()` the line
-    ///   before this check.
-    ///
-    /// Both prompts are the game's own strings, not this port's wording. An
-    /// earlier revision of this comment claimed they were invented and called
-    /// itself "the one place the module knowingly departs from the
-    /// byte-verbatim rule". There is no such place; see `docs/re/gaps.md`,
-    /// "`rename`'s prompts -- the retraction was wrong; there is no
-    /// deviation".
-    ///
-    /// **Not reproduced:** `1000:ed79`..`1000:ed9c` then rebuilds the stored
-    /// name as `^7 ` + name (file `0xC3B5`, loaded at `1000:ed7f`) with the
-    /// same three calls character creation makes at `1000:7245` / `1000:724f`
-    /// / `1000:725d` (file `0x80C2`) -- which is why every
-    /// save in `orig/` holds a name beginning `^7 `. This port stores the
-    /// bare name in both paths; registered in the same `docs/re/gaps.md`
-    /// entry.
+    /// An empty line substitutes "Раз^6дол^4бай" -- the same substitution
+    /// character creation uses. The test is on the line's raw length, not
+    /// its trimmed content: a line of only spaces counts as non-empty and
+    /// is kept verbatim, not substituted. Do not `.trim()` the line before
+    /// this check.
     fn rename(&mut self, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
         term::print("^2Звали тебя:^7 ");
         term::println(&self.player.name);
@@ -2542,114 +2348,68 @@ impl Game {
             return Ok(());
         };
         let n = line?;
-        // 1000:ed5f `cmp byte [0x379c],0` tests the just-read shortstring's
-        // LENGTH BYTE, not its trimmed content: a line of only spaces has a
-        // nonzero length byte and is kept verbatim, only a genuinely empty
-        // line (length byte zero) triggers `1000:ed74`'s substitution. Do
-        // not `.trim()` `n` before this check -- that would substitute on
-        // whitespace-only input, which the original does not do. `lines`
-        // already strips the line terminator (`BufRead::lines`), so `n` here
-        // is exactly the length-byte-tested string.
+        // Tests the line's raw length, not its trimmed content: a line of
+        // only spaces is kept verbatim; only a genuinely empty line
+        // triggers the substitution below. Do not `.trim()` `n` before this
+        // check.
         let n = if n.is_empty() {
-            // 1000:ed74 -- CS 0xaad7, the same literal creation uses.
+            // The same substitution literal character creation uses.
             "Раз^6дол^4бай".to_string()
         } else {
             n
         };
-        // 1000:ed79..1000:ed9c -- AFTER the substitution, `20ae:379c` is
-        // rebuilt as CS 0xaae5 (`^7 `) + itself, exactly as `1000:723a` does
-        // at creation. The prefix lives in the name, not at the save
-        // boundary; `crate::persist::NAME_PREFIX` is the literal.
+        // After the substitution, the name is rebuilt with a leading
+        // `^7 `, exactly as character creation does. The prefix lives in
+        // the name, not at the save boundary; `crate::persist::NAME_PREFIX`
+        // is the literal.
         self.player.name = format!("{}{n}", crate::persist::NAME_PREFIX);
         Ok(())
     }
 
-    /// `kos`, the joint. The game has **two** copies of this handler and both
-    /// are now reproduced -- see [`Joint`] for which is which and for the
-    /// byte-level difference between them. This doc traces the top-level copy
-    /// at `1000:e97d`..`1000:ea85` (the one `entry` dispatches):
+    /// `kos`, the joint. The game has **two** copies of this handler; see
+    /// [`Joint`] for the difference between them. This doc traces the
+    /// street-prompt copy:
     ///
-    /// * broken jaw (`DS:38b0`) -> `^4Ты не схавать` ... (file `0xBEF3`).
-    /// * already stoned (`DS:38cd != 0`) -> `^6Ты неможешь` ... (file `0xBFB8`).
-    /// * no joints (`DS:38c5 <= 0`) -> `^4У тебя нет косяков` (file `0xBFA3`).
-    /// * otherwise **exactly one** joint (`1000:e9b4`): stoned counter := 10
-    ///   (`1000:e9b8` `c6 06 cd 38 0a`), strength += 2, `dmg_min` += 1,
-    ///   `dmg_max` += 2, and heal a flat **+10** capped at `hpmax`, then
-    ///   `^2Сила +2.` (file `0xBF98`).
-    ///   The heal message splits like the beer routine's: when the shortfall
-    ///   is under 10 it writes `^2Колёса прибавляют #з. ` (file `0xBF22`, no
-    ///   newline) then `^2Здоровья:#/#. Осталось # косяков` (file `0xBF3B`);
-    ///   otherwise the single combined line (`^2Колёса прибавляют` ..., file `0xBF5E`), whose "косякова" typo is the original's.
+    /// * broken jaw -> `^4Ты не схавать` ... .
+    /// * already stoned -> `^6Ты неможешь` ... .
+    /// * no joints -> `^4У тебя нет косяков`.
+    /// * otherwise **exactly one** joint is spent: the stoned countdown is
+    ///   set to 10, strength += 2, `dmg_min` += 1, `dmg_max` += 2, and a
+    ///   flat **+10** heal capped at `hpmax`, then `^2Сила +2.`
+    ///   The heal message splits like the beer routine's: when the
+    ///   shortfall is under 10 it writes `^2Колёса прибавляют #з. ` (no
+    ///   newline) then `^2Здоровья:#/#. Осталось # косяков`; otherwise the
+    ///   single combined line (`^2Колёса прибавляют` ...), whose
+    ///   "косякова" typo is the original's.
     ///
     /// `crate::model::Fighter` has a `stoned: bool`, not the original's
     /// countdown, so the flag is modelled as "stoned or not" and the
     /// countdown itself lives in [`Game::buff_countdown`].
-    ///
-    /// ## The four gates, and why three of them are spelled differently here
-    ///
-    /// Task 31 mapped the handler branch by branch
-    /// (`data/gym_arms.json`'s `joint` block) and found **no missing
-    /// behaviour**: all four gates and all seven effects were already here.
-    /// What was missing was citations, so the branch addresses are on the
-    /// code below. Three of the four are written with a different predicate
-    /// from the original's, and `joint.port_equivalences` records why each
-    /// decides alike:
-    ///
-    /// | original | here | why it is the same decision |
-    /// |---|---|---|
-    /// | `1000:e97d` `cmp byte [0x38b0],0x1` / `1000:e982 jnz` -- runs iff the byte is **not 1** | `broken_jaw`, a `bool`, refusing iff true | all five image-wide writers store 0 or 1 (`1000:47ee` and `1000:4820` store 1; `1000:5031`, `1000:b2ae` and `1000:d558` store 0 -- `python3 tools/re_query.py xrefs-to 20ae:38b0` recomputes the set), so `!= 1` and `== 0` agree |
-    /// | `1000:e9a0` `cmp byte [0x38cd],0x0` / `1000:e9a5 jz` -- the buff COUNTDOWN | `stoned`, a `bool` | the two are written and cleared together and never independently: the setter is below, the clear is in [`Game::wander_preamble`] when the countdown hits zero, and `Game::from_save` loads `stoned: save.buff_countdown != 0` |
-    /// | `1000:e9aa` `cmp word [0x38c5],0x0` / `1000:e9af jnle` -- SIGNED | `joints == 0` | `Fighter::joints` is a `u16`, so the negative half of the signed test is unrepresentable |
-    /// | `1000:e9d2` `cmp ax,0xa` / `1000:e9d5 jnl` on a SIGNED shortfall | `saturating_sub(..) < 10` | when hp > hpmax the original's `ax` is negative, `jnl` fails and it takes the top-up branch, which LOWERS hp to hpmax; `saturating_sub` gives 0, also < 10, so the port takes the same branch and makes the same assignment |
-    ///
-    /// A writer that stored 2 into `20ae:38b0`, or a change of `joints` to a
-    /// signed type, would break the first and third of those; that is why
-    /// they are written down rather than assumed.
     fn smoke(&mut self, site: Joint) {
-        // 1000:e97d / 1000:e982 -- the fallthrough 1000:e984 is the refusal.
         if self.player.broken_jaw {
             term::println(crate::gym::EMITTED[21].1);
             return;
         }
-        // 1000:e9a0 / 1000:e9a5 -- 1000:e9a7 jumps to 1000:ea71. The fight
-        // copy is 1000:4b3a `cmp byte [0x38cd],0x0` / 1000:4b3f `jz 0x4b44`,
-        // with the sense inverted: there a ZERO countdown falls INTO the
-        // smoke and a non-zero takes 1000:4b41 `jmp 0x4c0b` to the refusal.
         if self.player.stoned {
             term::println(crate::gym::EMITTED[27].1);
             return;
         }
-        // 1000:e9aa `cmp word [0x38c5],0x0` / 1000:e9af `jnle 0xe9b4` --
-        // a SIGNED compare, so the smoke body runs only while the count is
-        // strictly positive and 1000:e9b1 jumps to 1000:ea56 otherwise.
-        // This read `== 0` while the field was `u16`, which agreed for every
-        // non-negative value and could not express the rest.
         if self.player.joints <= 0 {
             term::println(crate::gym::EMITTED[26].1);
             return;
         }
         self.player.joints -= 1;
-        // 1000:e9b8 / 1000:4b52 set the countdown at 20ae:38cd -- to 10 at
-        // the street prompt, to 3 inside a fight; the walk preamble decays it
-        // (1000:aea8) and takes the buff back at zero. `Fighter::stoned` is
-        // the same event as a bool, kept in step here.
+        // The countdown is set to 10 at the street prompt, but only 3
+        // inside a fight. The wander preamble decays it and clears the
+        // buff at zero; `Fighter::stoned` mirrors that as a bool.
         self.player.stoned = true;
         self.buff_countdown = site.buff_turns();
         self.player.strength += 2;
         self.player.dmg_min += 1;
         self.player.dmg_max += 2;
-        // 1000:e9cb..1000:e9ce build the shortfall; 1000:e9d2 / 1000:e9d5
-        // pick the branch, and a NEGATIVE shortfall lands on this one too.
-        // The fight copy is 1000:4b6c `cmp ax,0xa` / 1000:4b6f `jnl 0x4bb3`,
-        // on the same SIGNED `hpmax - hp`: `saturating_sub` gives 0 where
-        // the original gives a negative, and both are below 10, so the two
-        // take the same ARM and store the same hp.
-        //
-        // The printed `#` is NOT the same on that input: the original pushes
-        // the signed difference and would print a negative, where the port
-        // prints 0. Whether hp > hpmax is reachable is not established --
-        // `data/combat_uncited.json`'s `port_equivalences[1]` carries the
-        // divergence and what would settle it.
+        // If hp ever exceeds hpmax, the printed shortfall differs from the
+        // original: the original would print a negative number here, this
+        // port prints 0.
         let shortfall = self.player.hpmax.saturating_sub(self.player.hp);
         if shortfall < 10 {
             term::print(&text::fill(crate::gym::EMITTED[22].1, &[shortfall as i64]));
@@ -2677,100 +2437,54 @@ impl Game {
         term::println(crate::gym::EMITTED[25].1);
     }
 
-    /// `h` (one 0.5-litre unit) or `mh` (drink until full or dry).
+    /// `h` (one 0.5-litre unit) or `mh` (drink until full or dry). Both
+    /// verbs share the same routine, which is why beer works inside a
+    /// fight too.
     ///
-    /// Both verbs are dispatched by `FUN_1000_29c4` itself, not by an inline
-    /// compare in `entry`: `entry` pushes the just-read line `DS:3972` and
-    /// calls it at `1000:e966` (`E8 5B 40`, wrapping to `1000:29c4`), and
-    /// the routine compares its own argument against `"h"` (token file
-    /// `0x4197`) at `1000:29f0` / `1000:29fa` and `"mh"` (token file
-    /// `0x4199`) at `1000:2a02` / `1000:2a0c`, returning immediately when it
-    /// is neither. Those two hits are [`crate::commands::parse`]'s `"h"` and
-    /// `"mh"` arms, which is the only way this function is reached.
-    /// `FUN_1000_3d11` calls the same routine at `1000:4b00` with its own
-    /// `DS:3a72`, which is why beer works inside a fight too.
+    /// * Broken jaw -> refusal message, and the refusal falls through into
+    ///   the `mh` tail rather than returning.
+    /// * Already at full hp -> a message and a return, so this arm never
+    ///   reaches the tail.
+    /// * No beer -> `h` writes a "no beer" message.
+    /// * Otherwise, one half-litre is spent before any message. When the
+    ///   shortfall is under 5, hp tops up to `hpmax`; otherwise hp += 5.
+    /// * `h` stops after that one unit; `mh` loops until full or dry.
+    /// * `mh`'s tail summarizes the total healed, adding a "beer's gone"
+    ///   line when that drank the last of it, or a "no beer" line when
+    ///   nothing was drunk **and** the beer is already gone.
     ///
-    /// **`"h"` is pushed six times in all** -- `1000:29f0` above plus the
-    /// **five** later compares `1000:2a6a`, `1000:2aa0`, `1000:2af2`,
-    /// `1000:2b40` and `1000:2b89` -- and `"mh"` twice, `1000:2a02` and
-    /// `1000:2bb0`. An earlier revision of this comment wrote "six later"
-    /// over a list of five; the census is `docs/re/beer.md`'s string table.
-    /// All five later `"h"` compares re-read a buffer that cannot have
-    /// changed -- `1000:29e2` and `1000:29e6` are its only writers and both
-    /// are in the prologue -- which is why the one `single` boolean below is
-    /// faithful to every one of them (`data/beer_uncited.json`,
-    /// `one_boolean_for_six_compares`).
-    ///
-    /// Traced body, with `DS:38ac` = hp, `DS:38ae` = hpmax, `DS:38b0` =
-    /// broken jaw, `DS:38c3` = beer in half-litres. Each row names the GUARD
-    /// and the BRANCH, not the string load that follows them -- an earlier
-    /// revision named `1000:2a3b`, `1000:2a55` and `1000:2b83`, which are the
-    /// `mov`/`lea` that open those blocks, four to sixteen bytes short of the
-    /// compare that decides anything:
-    ///
-    /// * `1000:2a18` / `1000:2a1d` broken jaw -> file `0x419C`, and then
-    ///   `1000:2a38 jmp 0x2baa`: into the `mh` TAIL, not to the return at
-    ///   `1000:2c58`.
-    /// * `1000:2a3e` / `1000:2a42` already at full hp -> file `0x424C` (the
-    ///   one message with no `h`/`mh` gate) and `1000:2b80`'s return, so this
-    ///   arm never reaches the tail.
-    /// * `1000:2a47` / `1000:2a4c` no beer -> `h` writes file `0x4240`.
-    /// * `1000:2a51` otherwise spend one half-litre. `1000:2a5c` /
-    ///   `1000:2a5f`: when the shortfall is under 5, `h` writes file `0x41CD`
-    ///   (no newline, `1000:2a8f call 0eed:0000`) then file `0x41E4` and hp
-    ///   goes to `hpmax`; otherwise hp += 5 and `h` writes the combined file
-    ///   `0x4208`.
-    /// * `1000:2b93` `h` stops after that one unit; `mh` loops back to
-    ///   `1000:2a3b` while `1000:2b9e` and `1000:2ba5` both miss.
-    /// * `1000:2bbf`..`1000:2c53` `mh`'s tail: the file `0x4208` summary with
-    ///   the total healed, then file `0x4283` if that drank the last of it,
-    ///   or file `0x4240` when nothing was drunk **and** the beer is gone --
-    ///   `1000:2c36` and `1000:2c3d`, two conjuncts. An earlier revision of
-    ///   this comment wrote only the first.
-    ///
-    /// The `#.#л.` pair is `beer/2` and `((beer mod 2) * 5) mod 10`, built at
-    /// `1000:2ab9`..`1000:2adb`; the `mod 10` is the `cwd` at `1000:2ad5` and
-    /// the `idiv cx` after it, which an earlier revision of this comment
-    /// dropped.
+    /// The `#.#л.` figure in these messages is litres and tenths of beer
+    /// remaining.
     fn beer(&mut self, how: Beer) {
         let single = how == Beer::One;
-        // 1000:2a11 / 1000:2a14 snapshot hp BEFORE the jaw gate, which is
-        // what lets the refusal path still mean "nothing was drunk".
+        // hp is snapshotted before the jaw gate, which is what lets the
+        // refusal path still mean "nothing was drunk".
         let hp0 = self.player.hp;
-        // 1000:2a18 / 1000:2a1d. Missed, the refusal prints and 1000:2a38
-        // `jmp 0x2baa` enters the tail -- so this arm falls THROUGH to it
-        // rather than returning. `docs/re/gaps.md`, "`mh` with a broken jaw
-        // skips the tail the original still runs", is where that was opened.
+        // Missed: the refusal prints, and this arm falls through into
+        // the `mh` tail below rather than returning.
         if self.player.broken_jaw {
             term::println("^4Ты не можешь пить пиво из-за сломаной челюсти.");
         } else {
             loop {
-                // 1000:2a3e / 1000:2a42, hp < hpmax, SIGNED.
                 if self.player.hp >= self.player.hpmax {
                     term::println("^6Блин только тупить не надо - и так здоровья до фига.");
                     return;
                 }
-                // 1000:2a47 / 1000:2a4c, beer > 0, SIGNED.
                 if self.player.beer_dl == 0 {
-                    // 1000:2b4a
                     if single {
                         term::println("^4Пива нету");
                     }
                     break;
                 }
-                // 1000:2a51 spends the half-litre before any message;
-                // 1000:2a55 / 1000:2a58 are the shortfall.
+                // Spends the half-litre before any message.
                 self.player.beer_dl -= 1;
                 let shortfall = self.player.hpmax - self.player.hp;
-                // 1000:2a5c / 1000:2a5f size the drink against 5.
+                // Sizes the drink against a shortfall of 5.
                 if shortfall < 5 {
-                    // 1000:2a74
                     if single {
                         term::print(&text::fill("^2Пиво прибавляет #з. ", &[shortfall as i64]));
                     }
-                    // 1000:2a94 / 1000:2a97 top hp up to hpmax.
                     self.player.hp = self.player.hpmax;
-                    // 1000:2aaa
                     if single {
                         term::println(&text::fill(
                             "^2Здоровья:#/#. Осталось #.#л. пива",
@@ -2778,9 +2492,7 @@ impl Game {
                         ));
                     }
                 } else {
-                    // 1000:2ae7
                     self.player.hp += 5;
-                    // 1000:2afc
                     if single {
                         let n = self.beer_numbers();
                         term::println(&text::fill(
@@ -2789,46 +2501,35 @@ impl Game {
                         ));
                     }
                 }
-                // The loop-continue test, in the original's own order:
-                // 1000:2b93 (`h` leaves), 1000:2b9a / 1000:2b9e (hp >= hpmax)
-                // and 1000:2ba0 / 1000:2ba5 (beer <= 0).
                 if single || self.player.hp >= self.player.hpmax || self.player.beer_dl == 0 {
                     break;
                 }
             }
         }
-        // 1000:2bb0 / 1000:2bba -- everything below is `mh`-only.
+        // Everything below is `mh`-only.
         if single {
             return;
         }
-        // 1000:2bd0 is the subtraction that makes the summary's first field
-        // the TOTAL healed rather than the last unit's gain.
+        // The subtraction makes the summary's first field the TOTAL healed,
+        // not just the last unit's gain.
         let healed = i64::from(self.player.hp) - i64::from(hp0);
-        // The original re-reads `20ae:38ac` against `[bp-0x102]` three times
-        // -- 1000:2bc2 / 1000:2bc6, 1000:2c09 / 1000:2c0d and 1000:2c32 /
-        // 1000:2c36 -- and this one test stands for all three: the only
-        // writers of `20ae:38ac` in the range, 1000:2a97 and 1000:2ae7, are
-        // both above it.
         if healed != 0 {
             let n = self.beer_numbers();
             term::println(&text::fill(
                 "^2Пиво прибавляет #з. Здоровья:#/#. Осталось #.#л. пива",
                 &[healed, n[0], n[1], n[2], n[3]],
             ));
-            // 1000:2c0f / 1000:2c14, beer > 0, SIGNED.
             if self.player.beer_dl == 0 {
                 term::println("^4Кончилось пиво");
             }
-            // Reaching the `else if` below at all is 1000:2c36 NOT taken;
-            // its own test is 1000:2c38 / 1000:2c3d, and it writes the
-            // second of the two `^4Пива нету` sites.
+            // Writes the second of the two `^4Пива нету` messages.
         } else if self.player.beer_dl == 0 {
             term::println("^4Пива нету");
         }
     }
 
     /// `hp`, `hpmax`, litres, tenths -- the four trailing `#`s of the beer
-    /// messages (`1000:2ab1`..`1000:2ae0`).
+    /// messages.
     fn beer_numbers(&self) -> [i64; 4] {
         [
             self.player.hp as i64,
@@ -2838,93 +2539,36 @@ impl Game {
         ]
     }
 
-    /// `x` at the dealers -- `1000:ce76`..`1000:cece`, sell the Хлам.
+    /// `x` at the dealers -- sell the Хлам.
     ///
-    /// **Established from flow** (`docs/re/shop-arms.md`, "`x` -- sell the
-    /// Хлам"; re-decoded for this task with
-    /// `python3 tools/re_query.py resolve 1000:ce76 -n 200 -i 60`, the two
-    /// rigidly repeated `push cs`/`push di` and `xor ax,ax`/`push ax` shapes
-    /// dropped):
+    /// **There is no rate.** The whole Хлам amount becomes money, unscaled.
     ///
-    /// ```text
-    /// ce76  mov di,0x3a72 / ce7b mov di,0x96ce  ; the buffer, the `x` token
-    /// ce80  call 0f78:0bd8 / ce85 jnz 0xcece    ; miss -> the `wes` compare
-    /// ce87  cmp word [0x38c9],0x0
-    /// ce8c  jle 0xceb5                          ; SIGNED: 0 and below refuse
-    /// ce8e  mov ax,[0x38c9]
-    /// ce91  add [0x38c7],ax                     ; money += the WHOLE Хлам
-    /// ce95  xor ax,ax / ce97 mov [0x38c9],ax    ; Хлам := 0
-    /// ce9a  mov di,0x96d0 / ceae call 0eed:01c2
-    /// ceb3  jmp short 0xcece
-    /// ceb5  mov di,0x96f2 / cec9 call 0eed:01c2
-    /// ```
-    ///
-    /// **There is no rate.** Nothing stands between the load at `1000:ce8e`
-    /// and the add at `1000:ce91`; an aligned decode of the whole span holds
-    /// no `mul`, `imul`, `div`, `idiv`, shift or `Random` call, and its
-    /// complete write set is those two stores
-    /// (`data/shop_arms.json`, `sell.junk_arm.rate_finding`). Neither line
-    /// names a number -- both `WriteLn`s carry five zeroed format words.
-    ///
-    /// An earlier revision of this doc justified a hardcoded refusal here by
-    /// claiming the player's `junk` always stays 0. Task 13 falsified that:
-    /// [`Game::claim_spoils`] reproduces `1000:523e`..`1000:5251`, whose
-    /// `1000:524f` `add [0x38c9],ax` credits the winner. The claim is
-    /// deleted rather than left standing beside working code.
+    /// Junk isn't always zero: [`Game::claim_spoils`] can credit it to the
+    /// winner after a fight.
     fn sell_junk(&mut self) {
-        // 1000:ce87 is `83 3e c9 38 00` and 1000:ce8c is a `jle`, so the
-        // word is read SIGNED. `Fighter::junk` is a `u16` over the same 16
-        // bits, so this cast is what keeps a 0x8000..0xffff word refusing
-        // here exactly as the original does.
         if self.player.junk <= 0 {
-            // CS 0x96f2, file 0xAFC2; pushed 1000:ceb5, printed 1000:cec9.
             term::println("^4Тебе нечего спихнуть.");
             return;
         }
-        // 1000:ce8e / 1000:ce91 -- the whole word, one for one.
         self.player.money = self.player.money.wrapping_add(self.player.junk);
-        // 1000:ce95 / 1000:ce97.
         self.player.junk = 0;
-        // CS 0x96d0, file 0xAFA0; pushed 1000:ce9a, printed 1000:ceae.
         term::println("^6Барыги дали тебе денег за хлам.");
     }
 
     /// The middle every one of the six `wes` arms shares: the prompt, the
-    /// `ReadLn`, the refund roll and the `y` compare. Arm 1's addresses are
-    /// the ones named below; the other five repeat the shape with their own
-    /// `roll_site`, `base` and `span` (see [`Game::sell_items`]).
+    /// `ReadLn`, the refund roll and the `y` compare.
     ///
-    /// ```text
-    /// cf14  mov di,0x973c / cf28 call 0eed:0000  ; the prompt, NO newline
-    /// cf2d  mov di,0x3ecc / cf32 mov di,0x3a72 / cf37 mov ax,0xff
-    /// cf3b  call 0f78:06c6 / cf40 call 0f78:059d / cf45 call 0f78:0291
-    /// cf4a  mov di,0x3a72 / cf4f call 0eed:0216  ; lower-case the answer
-    /// cf54  mov ax,0x5 / cf58 call 0f78:114b     ; Random(5)
-    /// cf5d  add ax,0x8 / cf60 mov [0x3e33],al    ; the refund, STORED HERE
-    /// cf63  mov di,0x3a72 / cf68 mov di,0x8323 / cf6d call 0f78:0bd8
-    /// cf72  jnz 0xcf9c                           ; declined -> the next arm
-    /// ```
+    /// **The refund roll happens even when the player declines** -- it is
+    /// drawn before the yes/no answer is even checked.
     ///
-    /// **The draw is spent even when the player declines.** The store at
-    /// `1000:cf60` precedes the compare at `1000:cf6d` in every arm
-    /// (`1000:d015` before `1000:d022`, `1000:d0ca` before `1000:d0d7`,
-    /// `1000:d18d` before `1000:d19a`, `1000:d249` before `1000:d256`,
-    /// `1000:d2fe` before `1000:d30b`), so the roll comes first and the
-    /// question second. Returning the refund alongside the answer is what
-    /// keeps that order un-reorderable here.
-    ///
-    /// `None` is EOF on the read. The original blocks in `ReadLn`; a
-    /// line-based port has no such state, and every other `lines.next()` in
-    /// this file ends the run the same way.
+    /// `None` is EOF on the read, which ends the session, as every other
+    /// line read in this file does.
     fn sell_offer(
         rng: &mut Rng,
         base: u16,
         span: u16,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
     ) -> io::Result<Option<(bool, i32)>> {
-        // CS 0x973c, file 0xB00C -- the same literal in all six arms
-        // (pushed 1000:cf14, 1000:cfc9, 1000:d07e, 1000:d141, 1000:d1fd,
-        // 1000:d2b2), written by the no-newline `0eed:0000`.
         term::print("^0Продать вещи\\");
         let Some(line) = term::read_line(lines) else {
             return Ok(None);
@@ -2932,70 +2576,44 @@ impl Game {
         let answer = line?;
         // The roll, AFTER the read and BEFORE the compare.
         let refund = i32::from(base + rng.below(span));
-        // 1000:cf4f `call 0eed:0216` folds only `A`..`Z`, so `Y` sells;
-        // `eq_ignore_ascii_case` is that same ASCII-only fold, and the line
-        // is taken as read -- the original hands the raw buffer to
-        // `0f78:0bd8`, which compares the shortstring's length byte too, so
-        // `" y"` misses in both.
+        // The fold is ASCII-only, so `Y` sells; a line like `" y"` (with a
+        // leading space) misses.
         Ok(Some((answer.eq_ignore_ascii_case("y"), refund)))
     }
 
-    /// `wes` at the dealers -- `1000:cece`..`1000:d383`, six sequential
-    /// offers. **Established from flow** (`docs/re/shop-arms.md`, "`wes` --
-    /// six sequential offers"; `data/shop_arms.json`'s `sell.arms`).
-    ///
-    /// It is **six** arms, not seven: `1000:ce85 jnz 0xcece` is the `x`
-    /// compare's miss branch, not an arm opener.
+    /// `wes` at the dealers -- six sequential offers (the junk-sell miss
+    /// branch is not a seventh).
     ///
     /// The gate is `own && (any strictly better rung owned)` -- an
     /// own-plus-REPLACEMENT pairing, not own-plus-equipped; there is no
-    /// equipped bit in the image. The three armour arms take one required
-    /// flag, the weapon arms a short-circuit `or` over three, two and one.
-    /// `20ae:394c` (тесак) is never sellable: its only image-wide writer is
-    /// the loot arm at `1000:573e`.
+    /// separate equipped flag, only ownership. тесак is never sellable:
+    /// only the loot arm ever grants it.
     ///
-    /// **The arms are not exclusive.** Each confirmation `WriteLn` is
-    /// immediately followed by the next arm's own-flag test, so one `wes`
-    /// can sell up to six items and read up to six lines.
+    /// **The arms are not exclusive.** One `wes` can sell up to six items
+    /// and read up to six lines.
     ///
-    /// **Nothing is unwound.** No arm subtracts the sold item's stat bonus
-    /// and none clears the better item's flag: the armour byte `20ae:38b2`
-    /// and the damage words `20ae:38a8`/`20ae:38aa` are not among the
-    /// thirteen DGROUP addresses the whole range references. Reproduced,
-    /// not fixed.
+    /// **Nothing is unwound.** Selling an item does not remove its stat
+    /// bonus, and does not clear the better item's flag. This is
+    /// intentional, reproduced as the game does it.
     ///
-    /// **The refund is the arm's own pair of immediates**, never the buy
-    /// price -- 8+R(5), 8+R(5), 13+R(8), 13+R(8), 25+R(15), 38+R(23). No
-    /// price table is referenced anywhere in the range.
+    /// **The refund is the arm's own pair of immediates, never the buy
+    /// price** -- 8+R(5), 8+R(5), 13+R(8), 13+R(8), 25+R(15), 38+R(23).
     fn sell_items(
         &mut self,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
     ) -> io::Result<()> {
-        // 1000:cee2 `mov byte [0x3e33],0xff` -- the sell-price scratch byte
-        // set to its sentinel before any gate is tested. The tail at
-        // 1000:d33a compares it back against 0xff, and no roll can produce
-        // that value (the largest refund is 38 + 22 = 60), so "still 0xff"
-        // is exactly "no arm was OFFERED" and this bool carries the same
-        // information.
         let mut offered = false;
 
-        // Arm 1, костюм Abibas. Own gate 1000:cee7 `cmp byte [0x38b4],0x0`
-        // / 1000:ceec `jnz 0xcef1`, miss `1000:ceee jmp 0xcf9c`; ladder gate
-        // 1000:cef1 `cmp byte [0x38b7],0x0` / 1000:cef6 `jnz 0xcefb`, miss
-        // `1000:cef8 jmp 0xcf9c`. Both misses are silent.
+        // Arm 1, костюм Abibas. Both gate misses are silent.
         if self.wear_suit_abibas && self.wear_suit_adidas {
             offered = true;
-            // CS 0x970e, file 0xAFDE; pushed 1000:cefb, printed 1000:cf0f.
             term::println("^2У тебя есть ненужный костюм хочешь продать?");
             let Some((yes, refund)) = Self::sell_offer(&mut self.rng, 8, 5, lines)? else {
                 self.running = false;
                 return Ok(());
             };
-            // 1000:cf6d against CS 0x8323 (`y`); 1000:cf72 declines to the
-            // next arm's own-flag test.
+            // Declining just moves on to the next arm.
             if yes {
-                // CS 0x974c, file 0xB01C; pushed 1000:cf81, printed
-                // 1000:cf97. The `#` is 1000:cf86 `mov al,[0x3e33]`.
                 self.wear_suit_abibas = false; // 1000:cf74
                 self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:cf79 / 1000:cf7c / 1000:cf7d
                 term::println(&text::fill(
@@ -3005,21 +2623,15 @@ impl Game {
             }
         }
 
-        // Arm 2, Бутсы. Own gate 1000:cf9c / 1000:cfa1, miss
-        // `1000:cfa3 jmp 0xd051`; ladder gate 1000:cfa6 `cmp byte
-        // [0x38b8],0x0` / 1000:cfab, miss `1000:cfad jmp 0xd051`.
+        // Arm 2, Бутсы.
         if self.wear_boots && self.wear_boots_pontovye {
             offered = true;
-            // CS 0x9765, file 0xB035; pushed 1000:cfb0, printed 1000:cfc4.
             term::println("^2У тебя есть ненужные кроссовки хочешь продать?");
             let Some((yes, refund)) = Self::sell_offer(&mut self.rng, 8, 5, lines)? else {
                 self.running = false;
                 return Ok(());
             };
-            // 1000:d022; 1000:d027 declines to 1000:d051.
             if yes {
-                // CS 0x9796, file 0xB066; pushed 1000:d036, printed
-                // 1000:d04c; the `#` is 1000:d03b.
                 self.wear_boots = false; // 1000:d029
                 self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d032
                 term::println(&text::fill(
@@ -3029,21 +2641,15 @@ impl Game {
             }
         }
 
-        // Arm 3, Кожанка. Own gate 1000:d051 / 1000:d056, miss
-        // `1000:d058 jmp 0xd106`; ladder gate 1000:d05b `cmp byte
-        // [0x38b9],0x0` / 1000:d060, miss `1000:d062 jmp 0xd106`.
+        // Arm 3, Кожанка.
         if self.wear_jacket && self.wear_jacket_krutaya {
             offered = true;
-            // CS 0x97b2, file 0xB082; pushed 1000:d065, printed 1000:d079.
             term::println("^2У тебя есть ненужная кожанка хочешь продать?");
             let Some((yes, refund)) = Self::sell_offer(&mut self.rng, 13, 8, lines)? else {
                 self.running = false;
                 return Ok(());
             };
-            // 1000:d0d7; 1000:d0dc declines to 1000:d106.
             if yes {
-                // CS 0x97e1, file 0xB0B1; pushed 1000:d0eb, printed
-                // 1000:d101; the `#` is 1000:d0f0.
                 self.wear_jacket = false; // 1000:d0de
                 self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d0e7
                 term::println(&text::fill(
@@ -3053,25 +2659,15 @@ impl Game {
             }
         }
 
-        // Arm 4, Кастет. Own gate 1000:d106 / 1000:d10b, miss
-        // `1000:d10d jmp 0xd1c9`; then a three-conjunct short-circuit `or`,
-        // each conjunct's `jnz` jumping FORWARD to the offer at 1000:d128 --
-        // 1000:d110 `cmp byte [0x394b],0x0` / 1000:d115, 1000:d117
-        // `cmp byte [0x38c2],0x0` / 1000:d11c, 1000:d11e
-        // `cmp byte [0x394c],0x0` / 1000:d123 -- with the all-clear miss at
-        // `1000:d125 jmp 0xd1c9`.
+        // Arm 4, Кастет.
         if self.weapon_kastet && (self.weapon_dubinka || self.weapon_nozhik || self.weapon_tesak) {
             offered = true;
-            // CS 0x97fb, file 0xB0CB; pushed 1000:d128, printed 1000:d13c.
             term::println("^2У тебя есть кастет, а это отстой хочешь продать?");
             let Some((yes, refund)) = Self::sell_offer(&mut self.rng, 13, 8, lines)? else {
                 self.running = false;
                 return Ok(());
             };
-            // 1000:d19a; 1000:d19f declines to 1000:d1c9.
             if yes {
-                // CS 0x982e, file 0xB0FE; pushed 1000:d1ae, printed
-                // 1000:d1c4; the `#` is 1000:d1b3.
                 self.weapon_kastet = false; // 1000:d1a1
                 self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d1aa
                 term::println(&text::fill(
@@ -3081,22 +2677,15 @@ impl Game {
             }
         }
 
-        // Arm 5, Дубинка. Own gate 1000:d1c9 / 1000:d1ce, miss
-        // `1000:d1d0 jmp 0xd285`; two conjuncts, 1000:d1d3
-        // `cmp byte [0x38c2],0x0` / 1000:d1d8 and 1000:d1da
-        // `cmp byte [0x394c],0x0` / 1000:d1df, miss `1000:d1e1 jmp 0xd285`.
+        // Arm 5, Дубинка.
         if self.weapon_dubinka && (self.weapon_nozhik || self.weapon_tesak) {
             offered = true;
-            // CS 0x9847, file 0xB117; pushed 1000:d1e4, printed 1000:d1f8.
             term::println("^2У тебя есть дубинка - барахло - хочешь продать?");
             let Some((yes, refund)) = Self::sell_offer(&mut self.rng, 25, 15, lines)? else {
                 self.running = false;
                 return Ok(());
             };
-            // 1000:d256; 1000:d25b declines to 1000:d285.
             if yes {
-                // CS 0x9879, file 0xB149; pushed 1000:d26a, printed
-                // 1000:d280; the `#` is 1000:d26f.
                 self.weapon_dubinka = false; // 1000:d25d
                 self.player.money = self.player.money.wrapping_add(refund as i16); // 1000:d266
                 term::println(&text::fill(
@@ -3106,19 +2695,16 @@ impl Game {
             }
         }
 
-        // Arm 6, ножик. Own gate 1000:d285 / 1000:d28a, miss
-        // `1000:d28c jmp 0xd33a`; one conjunct, 1000:d28f
-        // `cmp byte [0x394c],0x0` / 1000:d294, miss `1000:d296 jmp 0xd33a`.
+        // Arm 6, ножик.
         if self.weapon_nozhik && self.weapon_tesak {
             offered = true;
-            // The e in тeсак is a Latin e in the binary; transcribed as is.
-            // CS 0x9893, file 0xB163; pushed 1000:d299, printed 1000:d2ad.
+            // The e in тeсак is a Latin e in the game's own text; kept
+            // verbatim.
             term::println("^2У тебя есть ножик и тeсак, хочешь продать ножик?");
             let Some((yes, refund)) = Self::sell_offer(&mut self.rng, 38, 23, lines)? else {
                 self.running = false;
                 return Ok(());
             };
-            // 1000:d30b; 1000:d310 declines to the tail at 1000:d33a.
             if yes {
                 // CS 0x98c6, file 0xB196; pushed 1000:d31f, printed
                 // 1000:d335; the `#` is 1000:d324.
