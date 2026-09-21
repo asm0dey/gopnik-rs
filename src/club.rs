@@ -1,42 +1,28 @@
 //! The club's key dispatch -- the arms that handle player input.
 //!
-//! The verb, gates, intro lines, menu rows, stake init and prompt live in
-//! `crate::game`; this module is only what happens after the input is read.
-//!
 //! ## Four keys, and only three of them are this module's
 //!
 //! Each key is compared against the club's own buffer: `p`, `1`, `2` and
-//! the shared `w`. `w` belongs to `Game::shop_turn`'s catch-all the same way
-//! the gym's does, so [`key_dispatches`] returns `false` for it.
+//! the shared `w`. `w` belongs to `Game::shop_turn`'s catch-all.
 //!
 //! ## The menu block and the arm block are not the same code
 //!
 //! The menu prints the two rows once on entry; the arm block is the chain of
-//! key compares. Three five-byte predicates are byte-identical between them
-//! -- the two price tests and the district gate -- but the longest run the two
-//! blocks share is shorter. What they DO is different in kind:
-//!
-//! * in the menu the price test is **cosmetic** -- both arms store a colour
-//!   digit and reconverge, so no club row is ever hidden by price;
-//! * the menu's district gate skips a PRINT, the arm's skips a key COMPARE.
-//!
-//! So `Game::imm_row_visible` owns the row predicates.
+//! key compares. The price test is **cosmetic** -- both arms store a colour
+//! digit and reconverge, so no club row is ever hidden by price.
 //!
 //! ## Three things this module deliberately does not do
 //!
 //! * **No refusal for the key the district hides.** At district 1 the key is
-//!   never compared and nothing is printed. [`key_dispatches`] evaluates the
-//!   district before the key for exactly that reason, and there is no
-//!   "wrong district" literal for a refusal to use.
-//! * **No message for an unrecognised key.** The loop targets the PROMPT,
-//!   not the menu; no refusal literal exists for a bad key.
-//! * **No re-print of the menu between turns.** Same loop structure.
+//!   never compared and nothing is printed.
+//! * **No message for an unrecognised key.** The loop targets the PROMPT.
+//! * **No re-print of the menu between turns.**
 //!
 //! ## The stake is per VISIT, not per turn
 //!
-//! The stake is set at the top of each entry and is reset per VISIT.
-//! [`crate::game::Game::club_stake`] is that byte; resetting it per turn
-//! would make the whole `p` arm unreachable past its first hand.
+//! The stake is set at the top of each entry and reset per VISIT.
+//! Resetting it per turn would make the whole `p` arm unreachable past
+//! its first hand.
 
 use crate::game::Game;
 use crate::progress;
@@ -92,49 +78,19 @@ pub(crate) fn run_key(
     }
 }
 
-/// `p` -- `1000:e065`..`1000:e274`, the card game.
+/// The `p` arm -- the card game.
 ///
-/// **Established from flow**, re-disassembled for this task with
-/// `python3 tools/re_query.py resolve 1000:e065 -n 560 -i 330`:
+/// The player bets a stake. The game draws a random number from 0 to
+/// `district * 12 - 1`. The stake is compared against a 32-bit luck vs.
+/// draw comparison; the club wins when the predicate is **false**.
+/// `Ты поставил # рублей` is printed when placed.
 ///
-/// ```text
-/// e079  mov al,[0x3c82] / e07c xor ah,ah / e07e cmp ax,[0x38c7]
-/// e082  jle 0xe087                         ; stake <= money, SIGNED
-/// e084  jmp 0xe258                          ; the refusal, with the stake
-/// e087  mov di,0xa1ea .. e09e WriteLn       ; `Ты поставил # рублей`
-/// e0a3  mov al,[0x3c82] / e0a8 sub [0x38c7],ax
-/// e0ac  mov al,[0x3692] / e0b1 mov dx,0xc / e0b4 mul dx
-/// e0b7  call 0f78:114b                      ; Random(district * 12)
-/// e0bc  xor dx,dx / e0be mov cx,ax / e0c0 mov bx,dx
-/// e0c2  mov ax,[0x38a4] / e0c5 cwd
-/// e0c6  cmp dx,bx / e0c8 jnle 0xe0d0 / e0ca jl 0xe129
-/// e0cc  cmp ax,cx / e0ce jb 0xe129
-/// ```
+/// `money -= stake` followed by `money += stake * 2` is kept as written,
+/// even though it nets to `+stake` -- collapsing them loses the debit
+/// the gate measures against on the NEXT hand.
 ///
-/// **The compare is the 32-bit idiom [`Game::luck_below_random_32`] models,
-/// permuted a THIRD way and used with the opposite sense.** The den's first
-/// copy is `jl` / `jle` / `jb` (`1000:dda8`, `1000:ddaa`, `1000:ddb1`) and
-/// its second `jl` / `jnle` / `jnb` (`1000:ddeb`, `1000:dded`, `1000:ddf1`);
-/// the club's is `jnle` / `jl` / `jb`. The operands are the same two: удача
-/// `20ae:38a4` SIGN-extended by the `cwd` at `1000:e0c5`, the draw
-/// ZERO-extended by the `xor dx,dx` at `1000:e0bc` -- which is why a `jl`
-/// sits beside a `jb`. What differs is where the fall-through goes: both
-/// `jb`/`jnb` here take the "luck below the draw" case to `1000:e129`, the
-/// LOSS, so the club wins when the predicate is **false**. Writing
-/// `if luck_below_random_32(..)` around the payout would invert the game.
-///
-/// `1000:e0b7` is the only `Random` call site in `1000:df06`..`1000:e390`
-/// (`data/club_arms.json`'s `sweeps.random_call_sites`), and
-/// `python3 tools/re_query.py pushed-n 1000:e0b7` re-derives its `n` as
-/// `byte[0x3692] * 12`.
-///
-/// **`money += stake * 2` after `money -= stake` is a net `+stake`, and both
-/// are kept.** Collapsing them changes nothing observable and loses the
-/// debit the gate at `1000:e082` is measured against on the NEXT hand.
-///
-/// **The `#` of `^2Ты выиграл # рублей ` is the STAKE**, read at
-/// `1000:e0e0` before `1000:e0f7` raises it -- the net gain, not the doubled
-/// credit.
+/// The `#` in `^2Ты выиграл # рублей ` is the STAKE, read before the
+/// original raises it.
 fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>) -> io::Result<()> {
     let stake = i32::from(g.club_stake);
     // The operands are the other way round: STAKE in `ax` and the compare
@@ -386,8 +342,6 @@ mod tests {
 
     // -- arm `2` ---------------------------------------------------------
 
-    /// `1000:e2fa` is `cmp ...,0x16`; `1000:e33a` raises удача, which is the
-    /// byte the `p` arm's compare reads at `1000:e0c2`.
     #[test]
     fn arm_2_refuses_at_twentyone_and_raises_luck_at_twentytwo() {
         let mut g = club(2, 21);

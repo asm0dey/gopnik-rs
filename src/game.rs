@@ -1,65 +1,18 @@
 //! The main loop: dispatch, locations, and the handlers small enough to
-//! belong here rather than in their own module.
+//! belong here.
 //!
-//! ## Every user-visible string here is a verbatim byte range of `orig/g.exe`
+//! Every user-visible string here is kept verbatim from the original,
+//! with its `^N` colour markup and spacing.
 //!
-//! Nothing in this module composes, paraphrases or translates game text.
-//! Each literal below is quoted from `data/strings.json` with its file
-//! offset, keeping its `^N` colour markup, its typos, its double spaces and
-//! its trailing padding. `crate::term` is the only writer; it applies the
-//! colour policy itself, so the markup must survive into what it receives.
+//! ## Design
 //!
-//! Address convention used by every citation below: `docs/re/METHODOLOGY.md`,
-//! "Address convention, and its range of validity", is the authority, and
-//! `tools/addr.py` is its executable form -- `python3 tools/re_query.py
-//! resolve <citation>` converts one and prints the bytes there. A `mov di,<n>`
-//! / `push cs` string operand at `1000:XXXX` names the string whose file
-//! offset is what `1000:<n>` resolves to.
+//! The game is modal:
+//! * **Combat is modal.** The combat dispatcher runs its own prompt loop.
+//! * **Locations are modal.** Each location writes its own prompt.
+//! * **Walking rolls for an encounter**, reading a second line.
 //!
-//! ## This module was substantially redesigned mid-task
-//!
-//! The brief's `game.rs` sketch was a flat, stateless dispatcher: any verb
-//! reachable from any location, and `fight()` resolving a whole battle
-//! synchronously inside one command. Disassembling `entry` (see
-//! `crate::commands`' module doc for the method) disproved both:
-//!
-//! * **The prompt is a bare `\`, not `"> "`.** Confirmed two ways: the live
-//!   capture (`docs/re/oracle-captures/command-table-and-combat.md`) and the
-//!   binary itself -- file offset `0x9BF1` is the one-byte Pascal shortstring
-//!   `"\"`, printed repeatedly through `entry`.
-//! * **Combat is modal.** `FUN_1000_3d11` (`docs/re/combat.md`) runs its own
-//!   `^0Битва\` prompt loop (file `0x4A49`); the live capture shows it
-//!   rejecting `mar` and `i` outright rather than routing them anywhere.
-//! * **Walking (`w`/`run`) rolls for a random encounter**, which itself
-//!   reads a *second* line (into a different variable, `DS:3a72`) answering
-//!   `"Хочешь наехать?"` -- confirmed by disassembling `1000:ae5a`..`1000:b82c`
-//!   (see [`Game::walk`]'s doc for the full trace, with addresses).
-//! * **Locations are their own modal loop.** This was flagged as an
-//!   *inference* by the previous revision of this task; it is now
-//!   **confirmed**. Each location handler ends by writing its own prompt
-//!   string and then `ReadLn`-ing into `DS:3a72` -- the same second input
-//!   variable combat uses, not the top-level `DS:3972`. The prompt strings
-//!   are real and distinct per location: `^0Базар\` (file `0xA691`, written
-//!   at `1000:bd08`, `ReadLn` at `1000:bd2f`), `^0Барыги\` (`0xAC4B`),
-//!   `^0Ветеренар\` (`0xB313`), `^0Притон\` (`0xB787`), `^0Клуб\` (`0xBAB2`),
-//!   `^0Качалка\` (`0xBD43`). `girl` has no prompt string and no `ReadLn`:
-//!   it is **not** modal, and [`Game::visit_girl`] runs it to completion in
-//!   one turn, matching `1000:d701`..`1000:d798`.
-//!
-//! ## No typed save command
-//!
-//! `crate::commands` documents why `sv` is not save. Saving in the original
-//! is checkpoint-only, at exactly two sites -- the mage's paid save
-//! (`1000:761d`, `district * 50` rubles) and the district-advance autosave
-//! (`0x9bcd`'s prompt, `1000:acc8`'s write). Neither is a typed verb.
-//! `crate::persist` holds both, with the disassembly.
-//!
-//! [`Game::mage`] reaches the first of them and
-//! [`Game::district_advance`] the second: its `ReadLn` sits at the top of
-//! the original's main loop (`1000:ab75`..`1000:ad12`), which is where
-//! [`Game::run`] runs it too. Task 21 moved the promotion there out of the
-//! post-fight block; see `docs/re/gaps.md`, "The district-advance autosave
-//! — wired (Task 21)".
+//! No typed save command exists. Saving is checkpoint-only at two sites:
+//! the mage's paid save and the district-advance autosave.
 
 use crate::character_sheet;
 use crate::church;
@@ -212,101 +165,42 @@ pub struct Game {
     pub den_errand_1_pending: bool,
     pub den_errand_2_pending: bool,
     pub fight_accepted: bool,
-    /// `20ae:394d` / `.SAV 0x2b1`, `20ae:394e`, `20ae:394f` -- the pistol, its
-    /// silencer and its magazine. See [`crate::combat_dispatch::Pistol`],
-    /// which carries the evidence for all three.
+    /// The pistol, its silencer, and its magazine.
     ///
-    /// This field used to be `dealer_order_placed: bool`, documented as "a
-    /// 150-rouble order placed with the dealers (`1000:cd05`)". The address
-    /// and the price were right; the reading was not. `1000:cd05`'s arm is
-    /// `bmar` row 7 and it hands over the pistol -- `mov byte [0x394d],1`
-    /// followed immediately by `1000:cd0a` `add word [0x394f],3` -- and
-    /// `1000:cd7b` refuses row 8 without it with `^6Нету пушки. Сначала купи
-    /// пистолет` (CS `0x9666`).
+    /// Dealers row 7 sells the pistol; row 8 requires it; row 9 requires
+    /// exactly 25 walks after owning it and sells the silencer.
     pub pistol: crate::combat_dispatch::Pistol,
-    /// `20ae:3e32` -- counts walks 0..25 once the PISTOL is owned
-    /// (`1000:af24` `cmp byte [0x394d],0` is the gate on the increment), and
-    /// the phone call fires at exactly 25 (`1000:af36`).
-    ///
-    /// What it is counting down to is the **silencer**: `1000:ce00`
-    /// `cmp byte [0x3e32],0x19` is the only other reader, and it is `bmar`
-    /// row 9's gate. So the counter is the dealers' delivery time on the one
-    /// item they have to order in.
+    /// Counts walks 0..25 once the pistol is owned. The phone call fires
+    /// at exactly 25. Tracks the dealers' delivery time on the silencer.
     pub dealer_delivery_counter: u8,
-    /// `20ae:3c83` -- the rector showdown. **Confirmed** in Task 17
-    /// (`docs/re/combat-dispatch.md`): six references image-wide, two writes
-    /// and four reads, and **nothing ever clears it**. Its three effects are
-    /// all in `FUN_1000_3d11`: no crowd (`1000:411d`), no fleeing
-    /// (`1000:48eb`) and a death message that names the killer
-    /// (`1000:4f8c`).
+    /// The rector showdown flag. When set, there is no crowd, no fleeing,
+    /// and the death message names the killer.
     ///
-    /// **Both writers are DIFFERENT original addresses, not the same store
-    /// reached twice.** `1000:ae13` is the per-turn one, inside the chapter-5
-    /// endgame arm at the top of the main loop -- ported as
-    /// [`Game::enter_district_5`], called from [`Game::district_advance`] on
-    /// the turn `self.district` first becomes 5 during play.
-    /// `1000:7364` is the entry-time one, inside
-    /// `FUN_1000_6a0d` (the character-setup procedure, called exactly once,
-    /// at `1000:ab72`, before the main loop's first iteration) -- it reads
-    /// `[0x3692]`, the DISTRICT, at `1000:7262`/`1000:7347`, **not**
-    /// `[0x389c]`, the class (an earlier revision of this doc called it a
-    /// "class-5 character-creation arm" and invented a "set twice for a
-    /// Гопник" story from that wrong reading; there is no class dispatch
-    /// here at all). Because `FUN_1000_6a0d` runs on every entry into the
-    /// game, new character OR loaded save (`docs/re/wander.md`, "What
-    /// reaches `1000:73bb`"), a save loaded already at district 5 arms this
-    /// flag before turn one. Ported as part of
-    /// [`Game::apply_class_bonus`] (Task 20's review fix; see that method's
-    /// doc for the full re-derivation) rather than a separate method,
-    /// because `apply_class_bonus` is already the port's home for
-    /// everything else this same original function re-applies on load.
-    ///
-    /// All three effects were already implemented before Task 20 and are
-    /// now reachable in real play from both writers, not only from a test
-    /// that sets the field directly. Same shape as
-    /// [`Game::market_ban_countdown`]; registered in `docs/re/gaps.md`.
+    /// **Nothing ever clears it.** Once set, all three effects apply for
+    /// the rest of the game.
     pub rector_showdown: bool,
-    /// `20ae:3e35` -- the den's loan credit. Set to 5 at `1000:73e5` and
-    /// topped up once per walk while below `district * 10` (`1000:af19`).
+    /// The den's loan credit. Set to 5 and topped up once per walk while
+    /// below `district * 10`.
     pub den_loan_credit: u8,
-    /// `20ae:394a` / `.SAV 0x2ae` -- зубная защита. The ONLY thing it
-    /// changes is a jaw break landing on the player: `1000:47e8`
-    /// `cmp byte [0x394a],0` splits the break into the plain arm
-    /// (`1000:47ee` sets the jaw) and a `Random(4)` at `1000:47fe` whose 0
-    /// breaks it anyway and whose 1..3 does not. It is therefore a **draw
-    /// count** difference, not just flavour: `docs/re/combat.md` listed it as
-    /// unmodelled gap 3, and a save that ships it (`SAVE_R3`, `SAVE_R4`,
-    /// `SAVE_R5` all hold 1 at `.SAV 0x2ae`) desynchronises any replay
+    /// зубная защита (tooth guard). Changes only jaw breaks landing on the
+    /// player: `Random(4)` decides if the guard saves the teeth. This is a
+    /// **draw count** difference -- a save with it desynchronises replays
     /// without it.
     pub tooth_guard: bool,
-    /// `20ae:38bd` / `.SAV 0x221` -- the крестик, `luck += 2`, granted once
-    /// by the post-kill item table (`1000:548c` gate, `1000:54b1` flag).
+    /// the крестик (`luck += 2`).
     pub charm_krestik: bool,
-    /// `20ae:38be` / `.SAV 0x222` -- кольцо "Господи спаси", `luck += 1`
-    /// (`1000:54bd` gate, `1000:54e1` flag).
+    /// кольцо "Господи спаси" (`luck += 1`).
     pub charm_ring: bool,
-    /// `20ae:38ba` / `.SAV 0x21e` -- кастет. The four weapon flags gate each
-    /// other's damage bonuses in the post-kill item table
-    /// (`1000:552c`..`1000:57cc`), so all four have to be carried even
-    /// though none of them is read anywhere else.
+    /// кастет. The four weapon flags gate each other's damage bonuses,
+    /// so all four have to be carried.
     pub weapon_kastet: bool,
-    /// `20ae:394b` / `.SAV 0x2af` -- дубинка (`1000:55a0` gate).
+    /// дубинка (club).
     pub weapon_dubinka: bool,
-    /// `20ae:38c2` / `.SAV 0x226` -- ножик (`1000:568e` gate).
+    /// ножик (knife).
     pub weapon_nozhik: bool,
-    /// `20ae:394c` / `.SAV 0x2b0` -- тесак (`1000:5734` gate).
+    /// тесак (axe).
     pub weapon_tesak: bool,
-    /// `20ae:38b4` / `.SAV 0x218` -- костюм Abibas, `mar` row 4
-    /// (`1000:bf80` sets it, `^1Костюм Abibas(+1) ` at `1000:22a1`).
-    ///
-    /// **Task 26 made all six writable in play.** They were carried but
-    /// unreachable until then -- only a loaded `.SAV` could set one -- and
-    /// [`Game::buy_market_row`] now sets each from its own arm
-    /// (`1000:bf80`, `1000:c029`, `1000:c0e0`, `1000:c183`, `1000:c222`,
-    /// `1000:c2ca`). [`Game::imm_row_visible`]'s `abs` term still ignores
-    /// all four of the armour-bearing ones, which is the same divergence
-    /// `docs/re/gaps.md` records; closing that is the gym's recompute
-    /// (`1000:e3a4`..`1000:e3e2`), not this shop's, and it stays open.
+    /// костюм Abibas (`mar` row 4).
     pub wear_suit_abibas: bool,
     /// `20ae:38b5` / `.SAV 0x219` -- Бутсы (`1000:c029`, `1000:1e81`).
     pub wear_boots: bool,

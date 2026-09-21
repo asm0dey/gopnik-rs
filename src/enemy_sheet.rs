@@ -5,14 +5,8 @@ use crate::text;
 
 pub const HEADER_OPEN: &str = "^2Это ";
 pub const HEADER_LEVEL: &str = " # уровня";
-// CS `0x1274` -- what stands in for the крутизна word above the ladder.
 pub const NOT_IN_THIS_LIFE: &str = "Не в этой жизни.";
-/// What separates the header from the крутизна word -- the CS literal at
-/// 0x1285, assigned at `1000:139c`. It carries no `CS` citation because it
-/// is not game TEXT by `tools/test_character_sheet_port.py`'s test (no
-/// colour markup, no Cyrillic), so that scanner would resolve the citation
-/// to the wrong literal; `difftest`'s `enemy_fragment 1` record pins it
-/// instead.
+/// A separator string that appears between the header and крутизна.
 pub const KRUTIZNA_SEP: &str = " - ";
 pub const STATS: &str = "Сл:# Лв:# Жв:# Уд:#";
 pub const DAMAGE: &str = "Урон #-#";
@@ -22,17 +16,8 @@ pub const COLOUR_PREFIX: &str = "^";
 pub const HEALTH: &str = "Здоровье #/#  ";
 pub const ARMOUR: &str = "^2Броня #    ";
 
-/// The eight CS literals the sheet ASSEMBLES into its two composed lines,
-/// in the image's address order -- which is the order `difftest`'s scan of
-/// `1000:135c`..`165e` finds them in, so the array has to hold that order for
-/// `enemy_fragment` to mean anything. The two composed lines interleave:
-/// indices 0..3 build the header, 4..7 the health line.
-///
-/// The DGROUP halves -- the rank row at `DS:002e` (`1000:13e8 push ds`) and
-/// the крутизна row at `DS:0b42` (`1000:136f push ds`) -- are not CS
-/// literals and so are not here; [`lines`] interpolates them from
-/// [`crate::data::rank_name`] and [`crate::data::krutizna`], the same way
-/// `help`'s and the church's composed lines already do.
+/// Eight literal strings the sheet assembles into its two composed lines.
+/// Indices 0..3 build the header, 4..7 the health line.
 pub const FRAGMENTS: [&str; 8] = [
     NOT_IN_THIS_LIFE, // 1000:1382
     KRUTIZNA_SEP,     // 1000:139c
@@ -92,36 +77,15 @@ pub fn lines(e: &Fighter) -> Vec<String> {
     o.finish()
 }
 
-/// `1000:135c`..`1000:1414` -- the composed header.
+/// The composed header computation.
 ///
-/// Three branches, in this order:
+/// If level > 40, use a fallback. Otherwise append крутизна[level] to the
+/// rank name. If class >= 8, omit the крутизна.
 ///
-/// ```text
-/// 135c  cmp word [0x395c],0x28 / 1361 jnle 0x1382   ; level > 40 -> the fallback
-/// 1363  di = [0x395c] << 8 + 0xb42                  ; крутизна[level]
-/// 139c  the suffix := ' - ' + that
-/// 13c0  cmp word [0x3952],0x8  / 13c5 jl 0x13cc     ; class >= 8 -> no suffix
-/// 13c7  mov byte [bp-0x200],0x0                     ; ... by emptying it
-/// 13dc  di = [0x3952] << 8 + 0x2e                   ; ranks[class]
-/// ```
-///
-/// **The name is not in this line.** `1000:13dc` indexes the rank table by
-/// the enemy record's CLASS word, exactly as the player sheet's `1000:1a36`
-/// indexes it by the player's; the enemy record has no name field at all
-/// (`crate::model`'s table stops at `+0x16`). This port used to put
-/// `enemy.name` here, which happened to print the same text --
-/// `data/enemies.json`'s eleven names ARE the eleven rank rows -- so the
-/// correction is structural, not visible: a hand-built [`Fighter`] whose
-/// `name` and `class` disagree is the only place the two differ, and the
-/// test below is exactly that.
-///
-/// **`data::krutizna` has 43 rows and the guard passes 41 of them.** Levels
-/// 41 and 42 take the fallback although a row exists, which is the guard's
-/// behaviour and not a bound check -- reproduced as written. The compare is
-/// signed (`jnle`), but `level` cannot be negative in this port.
+/// The name indexes the rank table by CLASS word; the enemy record has no
+/// name field. Levels 41 and 42 take the fallback although a row exists.
 fn header(o: &mut Out, e: &Fighter) {
     let suffix = if e.class > 7 {
-        // 1000:13c0: classes 8, 9 and 10 print no крутизна at all.
         String::new()
     } else if e.level < 0x29 {
         format!("{KRUTIZNA_SEP}{}", data::krutizna(e.level))

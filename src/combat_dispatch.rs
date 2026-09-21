@@ -1,28 +1,12 @@
-//! The in-combat dispatcher's `v` and `f` arms -- `[1000:4c64, 1000:4f82)`.
+//! The in-combat dispatcher.
 //!
-//! `docs/re/combat-dispatch.md` is the map of the whole chain; this module is
-//! the half of it that carries arithmetic and state rather than a single call
-//! or a single line of text. `crate::game::Game::run_combat` walks the chain
-//! and prints; everything here is the part a test can pin to a number, the
-//! same split `crate::combat` uses for the blow loop.
+//! This module carries arithmetic and state rather than single calls or
+//! lines of text. Everything here is testable via numbers.
 //!
-//! **Established from flow** throughout, re-derived from `orig/g.exe` for this
-//! implementation with `tools/dis16.py` from an aligned walk out of
-//! `FUN_1000_3d11`'s entry at `1000:3d11` (`docs/re/METHODOLOGY.md`, "Is this
-//! address an instruction boundary?"). Every address below decodes to the
-//! instruction the comment quotes.
+//! ## The state
 //!
-//! ## The state, and where it lives
-//!
-//! | address | here | why it is not in [`crate::model::Fighter`] |
-//! |---|---|---|
-//! | `20ae:3c80` | [`Backup`] | 17 references image-wide, every one inside `FUN_1000_3d11`, and `1000:5841`/`1000:5843` zero it as the function returns -- so it is a fight-local even though it lives in DGROUP |
-//! | `20ae:394d`/`394e`/`394f` | [`Pistol`] | the player's kit, not a combat stat: bought at the dealers and read by `entry`, the character sheet and this chain |
-//!
-//! ## What is deliberately NOT here
-//!
-//! `1000:4e2a`'s `^2Подошли пацаны.` (CS `0x36ab`) is **dead code and is not
-//! ported**. [`backup_round`] documents the argument at its call site.
+//! The backup counter tracks rounds for the reinforcements mechanic.
+//! The pistol/silencer/magazine fields track ownership.
 
 use crate::rng::Rng;
 
@@ -43,9 +27,7 @@ use crate::rng::Rng;
 /// `^6Нету пушки. Сначала купи пистолет`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Pistol {
-    /// `20ae:394d`.
     pub owned: bool,
-    /// `20ae:394e`.
     pub silencer: bool,
     /// Cartridges. Signed, because the decrement test uses `jle`.
     pub cartridges: i16,
@@ -213,8 +195,7 @@ pub struct Fought {
     pub damage: u16,
     /// The enemy's hp after damage. Signed and not clamped.
     pub enemy_hp_after: i32,
-    /// `1000:4e43 cmp word [0x3c80],7` fired -- CS `0x36bd`,
-    /// `^2Твою подмогу отпинали.`
+    /// `^2Твою подмогу отпинали.` -- backup is exhausted.
     pub beaten: bool,
     /// Street cred is at or below zero (can't afford the backup).
     pub gave_up: bool,

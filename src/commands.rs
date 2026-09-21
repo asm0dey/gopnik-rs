@@ -1,133 +1,33 @@
-//! Verb parsing for the input-dispatch chain in `orig/g.exe`'s `entry`.
+//! Verb parsing for the main dispatch chain.
 //!
-//! ## Authority order, and why this file was rewritten twice
+//! The game reads a line and compares it against a chain of literal commands.
 //!
-//! This table went through three revisions during Task 11 and the final one
-//! is grounded in the disassembly, not in prose:
+//! | verb | behaviour |
+//! |---|---|
+//! | `w` | wander/encounter roll |
+//! | `run` | **synonym of `w`** |
+//! | `mar` | market menu |
+//! | `bmar` | dealers menu |
+//! | `rep` | vet |
+//! | `girl` | girlfriend |
+//! | `fight` | deprecated alias: `^6Пережитки прошлого жми w чтобы искать врагов` |
+//! | `pr` | den |
+//! | `kl` | club |
+//! | `trn` | gym |
+//! | `kos` | smoke a joint |
+//! | `i` | prints the command list |
+//! | `s` | stats |
+//! | `f` | shoot |
+//! | `k` | attack |
+//! | `name` | rename |
+//! | `version` | prints `^4Gopnik: ^7version 1.02 june,sept 2003` |
+//! | `help` | help |
+//! | `exit` | quit |
+//! | `e` | quit |
+//! | `h` / `mh` | dispatched by their own routine |
 //!
-//! 1. The brief's table came from the project plan's "Reference facts",
-//!    already known unreliable elsewhere in this project (it also asserted
-//!    the RNG multiplier was absent, later proven false).
-//! 2. A revision built from `data/strings.json`'s help-text block
-//!    (`"Напиши: <verb> чтобы ..."`, file `0xBFE0`..`0xC30D`) fixed several
-//!    brief errors but was itself flagged: **a printed help string is not
-//!    proof of what the input parser accepts.** The two can disagree (typos,
-//!    dead code, verbs the help text never mentions).
-//! 3. This revision is built from the actual dispatcher: `entry`'s
-//!    `do`-loop reads one line into `DS:3972` (`1000:ae5a`..`1000:ae63`,
-//!    `call far 0f78:06c6`, a Pascal `ReadLn`) and compares it against a
-//!    chain of literal tokens with `FUN_1f78_0bd8` (confirmed a Pascal
-//!    shortstring `CompareByte`-style equality routine by reading its own
-//!    decompilation, `build/decomp/FUN_1f78_0bd8_1f78_0bd8.c`: it walks
-//!    `min(len1,len2)` bytes and stops on the first mismatch, leaving the
-//!    zero flag set for the caller's `jz`/`jnz`). Each call is
-//!    `push DS:3972 / push CS:<token>` -- reproducible with
-//!    `python3 tools/re_query.py resolve <citation>`, which converts a
-//!    citation of either form (see `docs/re/METHODOLOGY.md`, "Address
-//!    convention, and its range of validity") and prints the bytes. On a mismatch
-//!    the code falls through to the *next* token's compare; on a match it
-//!    runs that token's handler.
-//!
-//! `docs/re/oracle-captures/command-table-and-combat.md`'s live capture is
-//! corroboration only (confirms runtime behaviour: which enemy appears, what
-//! `y`/anything-else does at an encounter prompt) -- it is not cited as
-//! proof of the verb table itself; see the per-verb table below for exactly
-//! what each verb's status is.
-//!
-//! ## The confirmed dispatch chain
-//!
-//! Traced with `ndisasm -b16 -o 0xab59` over `entry`'s 17143-byte body
-//! (`file_off 0xc429`..`0x10720`) and a script matching `mov di,<token>` /
-//! `push ds|cs` / `push di` pairs feeding `call far 0f78:0bd8`, filtered to
-//! calls whose *first* operand is `DS:3972` (the just-`ReadLn`'d line; a
-//! second, unrelated variable `DS:3a72` is reused for sub-prompts, see
-//! `Command::Walk`'s doc). Every row below was independently re-verified by
-//! disassembling its own compare instruction and confirming the token string
-//! at the file offset the citation resolves to (`tools/re_query.py resolve`):
-//!
-//! | verb | compare at | token file off | confirmed handler behaviour |
-//! |---|---|---|---|
-//! | `w` | `1000:ae86` | `0x9D5E` | wander/encounter roll -- see [`Command::Walk`] |
-//! | `run` | `1000:ae97`/`1000:aee4` | `0x9D60` | **synonym of `w`** -- same jump target `1000:aea1` |
-//! | `mar` | `1000:b94a` | `0xA42C` | market menu, gated on discovery flag `20ae:3694` + a pursuit flag `20ae:3b76` |
-//! | `bmar` | `1000:c4be` | `0xAA24` | dealers menu (fallthrough target of `mar`'s mismatch) |
-//! | `rep` | `1000:d3a6` | `0xB236` | vet |
-//! | `girl` | `1000:d6ed` | `0xB46A` | girlfriend |
-//! | `fight` | `1000:d7d8` | `0xB584` | **not a fight command** -- prints `^6Пережитки прошлого жми w чтобы искать врагов` (file `0xB58A`, "vestiges of the past, press w instead"), a deprecated-alias message |
-//! | `pr` | `1000:d802` | `0xB5BD` | den |
-//! | `kl` | `1000:df06` | `0xB9BA` | club |
-//! | `trn` | `1000:e390` | `0xBC23` | gym |
-//! | `kos` | `1000:e973` | `0xBEEF` | smoke a joint |
-//! | `i` | `1000:ea94` | `0xBFDE` | prints the command list; **not inventory** -- the brief's guess is wrong. Earlier revisions said the list was thirteen lines long and cited an oracle capture for it; the handler decodes to **seventeen** lines, one ungated plus seven gated on the discovery flags plus nine ungated -- `docs/re/club.md`, Part 2, and [`Game::show_command_list`] |
-//! | `s` | `1000:ec82` | `0xB855` | stats |
-//! | `f` | `1000:ec96` | `0xC31C` | shoot, **traced** in Task 18: `1000:ec9d cmp byte [0x394d],0` / `eca2 jz 0xecbd` gates the refusal `^6Ты чё псих? мигом менты накроют!` (file `0xC31E`) on owning a pistol, and without one the verb is accepted and answered with silence |
-//! | `k` | `1000:ecc7` | `0xC341` | **traced**: `1000:eccc jnz 0xece7` is the token miss and there is no further gate at all -- one unconditional `WriteLn` of `^6Чё машешь копытами? Ищи мудака которого будешь пинать!` (file `0xC343`, colour `^6`, not `^4`), then fall-through to the next compare |
-//! | `name` | `1000:ecf1` | `0xC37C` | rename |
-//! | `version` | `1000:edab` | `0xC3B9` | **not in the help text at all** -- prints the version banner from its own copy of the string at `0xC3C1`, `^4Gopnik: ^7version 1.02 june,sept 2003`. **Not what the game opens with**: that parenthetical was wrong -- the start-up screen is `FUN_1000_02c2`'s ASCII splash (`opening::splash`), and this verb's copy is read only on demand, never at start (`docs/re/port-gaps.md`'s `FUN_1000_6a0d` survey) |
-//! | `help` | `1000:edd5` | `0xC3E9` | **traced**: `1000:eddc call 0x5f55` is `FUN_1000_5f55`, the 985-byte help body -- `docs/re/port-gaps.md` row 1, ported in `61f0f1c` as `opening::HELP_PLAIN`/`HELP_FRAGMENTS` and printed by `Game::show_help` |
-//! | `exit` | `1000:ede9` | `0xC3EE` | **not in the help text** -- a second spelling of quit |
-//! | `e` | `1000:edfa` | `0xB43E` | quit (help text: `"если захочешь выйти"`) |
-//!
-//! ## `h` and `mh` are dispatched by a subroutine, not by an inline compare
-//!
-//! They are missing from the table above because `entry` does not compare
-//! them itself. At `1000:e966` it pushes the just-read `DS:3972` and calls
-//! `FUN_1000_29c4` (`E8 5B 40`, which wraps around 16 bits to `1000:29c4`);
-//! that routine compares its own argument against the token `"h"` (file
-//! `0x4197`, a length-prefixed `01 68`) at `1000:29f0` and `"mh"` (file
-//! `0x4199`, `02 6D 68`) at `1000:2a02`, and returns immediately when the
-//! line is neither. The two hits are `1000:29fa` and `1000:2a0c`, and they
-//! are the two [`parse`] arms below. **Five** further `"h"` compares
-//! (`1000:2a6a`, `1000:2aa0`, `1000:2af2`, `1000:2b40`, `1000:2b89` -- six
-//! pushes of the token in all, counting `1000:29f0`) and one further `"mh"`
-//! compare (`1000:2bb0`) choose which messages it writes. An earlier revision
-//! of this line wrote "Six further" over a list of five, and `Game::beer`'s
-//! doc comment carried the same miscount in different words -- two wordings
-//! is why it took two greps to find both. So both **are** top-level verbs;
-//! the earlier revision of this file was right to keep them, and the
-//! reviewer's lead that they are not top-level verbs at all does not hold --
-//! `FUN_1000_3d11`'s call at `1000:4b00` is a *second* call site, not the
-//! only one.
-//!
-//! `sv`, `v`, `x`, `wes` are **not** in this `DS:3972` list, and the reason
-//! for two of them is now known rather than open.
-//!
-//! **`sv` and `v` are dispatched -- by `FUN_1000_3d11`, against `DS:3a72`.**
-//! The follow-up this paragraph used to ask for was done by the final-review
-//! fix wave: combat runs its own nine-token compare chain through the same
-//! `0f78:0bd8`, and `sv` is at `1000:4c42` (token file `0x4E71`) and `v` at
-//! `1000:4caa` (token file `0x4E96`). Both are **established from flow**; see
-//! [`crate::game::Game::run_combat`] for the whole table. So neither is a
-//! corroboration-only verb any more -- they are *combat* verbs, which is why
-//! they were never going to turn up in `entry`'s list. Both arms were traced
-//! in Task 17 (`docs/re/combat-dispatch.md`) and are implemented in
-//! [`crate::combat_dispatch`].
-//!
-//! `x` and `wes` are the dealers' own submenu keys, read at `^0Барыги\\`
-//! rather than at the top-level prompt. The speculation this paragraph used
-//! to carry -- "they may well have no `DS:3972` compare at all" -- is
-//! settled, and the shape is indeed `sv`/`v`'s: they ARE compared, at
-//! `1000:ce80` and `1000:ced8` (tokens CS `0x96ce` and CS `0x970a`), against
-//! **`DS:3a72`**, the sub-prompt buffer, which is the same variable the fight
-//! prompt reads into. Each is compared at exactly one site image-wide.
-//!
-//! ## Corrections this makes to the brief
-//!
-//! * `sv` is not `Save` -- see [`Command::Inspect`]'s doc; the owner
-//!   confirmed there is no typed save verb.
-//! * `f`/`k` were swapped in the brief; `k` fights, `f` shoots (see table).
-//! * `x` is not `Quit`; `e`/`exit` are (confirmed dispatcher entries; `x` is
-//!   `bmar`-specific junk-selling, **established from flow** at its own
-//!   `1000:ce80` compare, see [`Command::SellJunk`]).
-//! * `wes` is not `Weapon`; it sells items at `bmar`, likewise established
-//!   from flow at `1000:ced8`.
-//! * `hp` is not a global health command -- its only occurrence in
-//!   `data/strings.json` is inside `pr`'s own submenu; not in this table at
-//!   all, so it falls through to `Unknown("hp")` at the top level, which is
-//!   correct: there is no evidence it is dispatched here.
-//! * `i` is the command list, not inventory (confirmed dispatcher entry,
-//!   corroborated by the live capture). The brief's `Inventory` variant is
-//!   removed; nothing in this task found a dedicated inventory verb.
+//! Combat verbs `sv` and `v`, and dealers' keys `x` and `wes`, are dispatched
+//! separately.
 
 /// One parsed player command.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,24 +43,9 @@ pub enum Command {
     Walk,
     Fight,
     Shoot,
-    /// `sv`. Not in `entry`'s `DS:3972` chain, because it is a **combat**
-    /// verb: `FUN_1000_3d11` compares it at `1000:4c42` against its own
-    /// `DS:3a72` buffer, token file `0x4E71`. **Established from flow.** The
-    /// oracle capture in `docs/re/tables.md` section 4 (typing `sv` mid-fight
-    /// printed the enemy's stat block) and the help text's `"приглядеться к
-    /// пинаемому мудаку"` were the only evidence when this variant was
-    /// written; they now corroborate a traced dispatch instead of standing
-    /// alone. Definitely not `Save` -- the owner confirmed no typed save verb
-    /// exists.
+    /// `sv` -- inspect the enemy's stat block mid-fight. Not a save verb.
     Inspect,
-    /// `v`. Also a combat verb, compared at `1000:4caa`, token file `0x4E96`
-    /// -- **established from flow**, and at exactly that one site in the
-    /// whole image, so the street prompt does not dispatch it at all
-    /// (`Game::call_backup` carries that scan). Its arm at `1000:4cb4` opens
-    /// with `cmp byte [0x3696],1`, the den's discovery flag, which fits the
-    /// help text's `"чтобы позвать подкрепление"` (file `0xC210`); the whole
-    /// arm is traced in `docs/re/combat-dispatch.md` and implemented in
-    /// [`crate::combat_dispatch::Backup`].
+    /// `v` -- call reinforcements, gated on discovering the den.
     Backup,
     CommandList,
     Joint,
@@ -171,18 +56,7 @@ pub enum Command {
     Version,
     Quit,
     LegacyFight,
-    /// `x` at the dealers (sell junk). Not in `entry`'s `DS:3972` chain --
-    /// **established from flow**, at `1000:ce80`, where the `bmar` handler
-    /// calls the shortstring compare `FUN_1f78_0bd8` on the sub-prompt
-    /// buffer `DS:3a72` against token CS `0x96ce`, and `1000:ce85 jnz 0xcece`
-    /// is the miss. `bmar`'s own submenu text (`data/strings.json` file
-    /// `0xAA58`: `"Здесь можно толкнуть хлам(x)"`) now corroborates that
-    /// traced compare instead of standing alone.
-    ///
-    /// `Game::shop_turn` is the **only** route to this arm: the street
-    /// prompt's own arm for it does nothing (`grep -n 'Command::SellJunk |
-    /// Command::SellItems' src/game.rs`), because the original's street
-    /// dispatcher never compares the token at all.
+    /// `x` at the dealers -- sell junk (`"Здесь можно толкнуть хлам(x)"`).
     SellJunk,
     SellItems,
     Unknown(String),

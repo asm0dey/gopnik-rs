@@ -138,42 +138,12 @@ pub fn blow_budget(attacker: &Fighter, defender: &Fighter) -> i16 {
 /// The two numbers the agility-reduction report line prints, or `None` when
 /// the original prints nothing.
 ///
-/// **Established from flow**, `1000:3fec`..`1000:4042` for the enemy's line
-/// and `1000:408f`..`1000:40e5` for the player's, decoded instruction by
-/// instruction. The two are the same sequence with `20ae:3956` (the enemy's
-/// agility) and `20ae:38a0` (the player's) swapped, which is why one function
-/// covers both directions -- the same split [`resolve_blow_nth`] uses.
+/// The two gates do not use the same arithmetic as the two printed numbers:
+/// the gate compares plain `budget / 18`, while each number is
+/// `(budget - 1) / 18 + 1`. Both truncate toward zero.
 ///
-/// ```text
-/// 3fec  mov ax,[0x3956] / add ax,4     ; the UNREDUCED budget
-/// 3ff2  cmp ax,0x12
-/// 3ff5  jle 0x4042                     ; nothing is printed at 18 or below
-/// 3ff7  mov ax,[0x3956] / add ax,4 / cwd / idiv 0x12 -> bx
-/// 4005  mov ax,[bp-0x10e] / cwd / idiv 0x12          ; the REDUCED budget
-/// 400f  cmp ax,bx
-/// 4011  jnl 0x4042                     ; nothing unless the reduction cost a blow
-/// 4013  mov di,0x2dec                  ; the line
-/// 4018  mov ax,[bp-0x10e] / dec / cwd / idiv 0x12 / inc / push   ; the FIRST `#`
-/// 4025  mov ax,[0x3956] / add 4 / dec / cwd / idiv 0x12 / inc / push ; the SECOND
-/// ```
-///
-/// **The two gates do not use the same arithmetic as the two printed
-/// numbers**, and reproducing one with the other would be a divergence: the
-/// gate at `1000:400f` compares plain `budget div 18`, while each `#` is
-/// `(budget - 1) div 18 + 1`. `idiv` truncates toward zero and so does Rust's
-/// `/` on `i16`, so the transcription is literal.
-///
-/// **Which `#` is which** is settled by the push order above -- the reduced
-/// count is pushed first, so it is the first `#` -- and corroborated by the
-/// live capture in `a_fast_defender_cuts_the_budget` below: agility 120
-/// against 50 printed `ты сможешь пнуть его раз 5 вместо 7`, and
-/// `blows_per_round` gives 5 opposed and 7 unopposed.
-///
-/// `(budget - 1) div 18 + 1` is [`blows_per_round`] of the same budget, so the
-/// pair is "blows after the reduction, blows before it".
-///
-/// No draw and no store: both sites are inside the budget block, which
-/// `docs/re/combat.md` establishes spends nothing.
+/// The reduced count is printed first, confirmed by captures like agility 120
+/// against 50 printing `ты сможешь пнуть его раз 5 вместо 7`.
 pub fn budget_report(attacker: &Fighter, defender: &Fighter) -> Option<(u16, u16)> {
     // Gate: above 18 to print.
     let unreduced = (attacker.agility as i16).wrapping_add(4);
@@ -195,12 +165,10 @@ pub fn budget_report(attacker: &Fighter, defender: &Fighter) -> Option<(u16, u16
 
 /// How many blows the attacker gets in one round.
 ///
-/// The blow loop at `1000:445c`..`1000:4660` is a do-while: it always swings
-/// once, subtracts 18 from the budget (`1000:4624`), and swings again while
-/// what is left is still positive (`1000:4652`, `cmp [bp-0x10e],0x0 / jng`
-/// leaves the loop). So this is `ceil(budget / 18)`, and never less than 1.
-/// Live check: `SAVE_R5`, agility 120, printed `- 6 ударов,  Точность 7
-/// удара 80%`, i.e. seven blows.
+/// The blow loop is a do-while: always swings once, subtracts 18 from the
+/// budget, and swings again while what is left is still positive. So this is
+/// `ceil(budget / 18)`, never less than 1. Confirmed: agility 120 gives
+/// `- 6 ударов,  Точность 7 удара 80%`, i.e. seven blows.
 pub fn blows_per_round(attacker: &Fighter, defender: &Fighter) -> u16 {
     let mut left = blow_budget(attacker, defender);
     let mut blows = 1u16;
@@ -261,59 +229,21 @@ pub fn resolve_blow(rng: &mut Rng, attacker: &Fighter, defender: &Fighter) -> Bl
     }
 }
 
-/// Resolve blow `blow_index` (0-based) of a round, stepping `rng` exactly as
-/// the original does.
-///
-/// The whole body is `1000:445c`..`1000:4624` (the player swinging) and
-/// `1000:467f`..`1000:4867` (the enemy swinging) -- the same instruction
-/// sequence twice with the two records' addresses swapped, which is why one
-/// function covers both directions. Addresses below are given as
-/// player-swinging / enemy-swinging.
-///
-/// Two places where they are NOT the same sequence, both outside this
-/// function: the enemy-swinging copy has the зубная защита branch
-/// (`1000:47c7`..`1000:4840`, see [`Swing`]), and the two loop TAILS test the
-/// defender differently -- `1000:4629` `jg` against `1000:48cd` `jl`, plus a
-/// defender check before the player's `ещё раз` line that the enemy's copy
-/// does not have. `crate::game::Game::combat_round` writes those out
-/// separately; `docs/re/gaps.md`, "Opened by Task 13", has the addresses.
+/// Resolve one blow of a round, stepping the RNG exactly as the original does.
 ///
 /// Draw order, and it matters:
 ///
-/// 1. `Random(100)` -- the hit roll, always (`1000:4460` / `1000:4683`).
-/// 2. on a hit, `Random(dmg_max - dmg_min)` -- the damage roll, a 16-bit
-///    `sub` whose result is passed as a `Word` (`1000:4497` / `1000:46ba`).
-/// 3. on a hit, `Random(100)` -- the crit roll (`1000:44b8` / `1000:46db`).
-/// 4. on a crit, `Random(3)` -- which of three crit taunts to print
-///    (`1000:44e3` / `1000:4706`). Nothing else depends on it, but it steps
-///    the seed.
-/// 5. on a hit, `Random(defender.luck * 3 + 200)` -- the break roll
-///    (`1000:4571` / `1000:4794`).
-/// 6. on a break, `Random(2)` -- jaw (0) or leg (1) (`1000:4595` /
-///    `1000:47be`). Drawn even when that limb is already broken; only the
-///    message is suppressed (`1000:459e` / `1000:47c7`).
-///
-/// 7. on a JAW break, and only when the *player* is the defender, owns the
-///    зубная защита (`DS:394a`) and does not already have a broken jaw:
-///    `Random(4)` at `1000:47fe` decides whether the guard saves the teeth.
-///    Enemy-swinging only -- the player-swinging copy has no such branch --
-///    and gated by `1000:47c7` `cmp byte [0x38b0],0` / `jnz 0x4840`, so it
-///    costs a draw on the FIRST jaw break of a guarded player and never
-///    again. The item is not on `Fighter`; it is carried on [`Swing`],
-///    because it lives outside the fighter record in the original too.
-///    (`1000:47fa` is the `mov ax,4` / `push ax` argument idiom, not the
-///    call -- `docs/re/combat.md`, "Player-only branch", records that
-///    near-miss.)
-///
-/// Armour is subtracted and the result floored at zero in between, at
-/// `1000:4546` / `1000:4769`; no draw there.
-///
-/// **UNVERIFIED as behaviour**: step 7 is a transcription. No draw at
-/// `1000:47fe` appears in `data/combat_trace.json` -- run C loads the save
-/// that ships the guard, but no jaw break landed on the player there -- and
-/// `tools/capture_combat_vectors.py` skips the rounds that could have
-/// exercised it. What would settle it: a capture in which a guarded player's
-/// jaw is broken.
+/// 1. `Random(100)` -- the hit roll, always.
+/// 2. on a hit, `Random(dmg_max - dmg_min)` -- the damage roll.
+/// 3. on a hit, `Random(100)` -- the crit roll.
+/// 4. on a crit, `Random(3)` -- which of three crit taunts. Steps the seed.
+/// 5. on a hit, `Random(defender.luck * 3 + 200)` -- the break roll.
+/// 6. on a break, `Random(2)` -- jaw (0) or leg (1). Drawn even when
+///    already broken; only the message is suppressed.
+/// 7. on a JAW break when the player is the defender, owns the зубная защита,
+///    and does not already have a broken jaw: `Random(4)` decides whether the
+///    guard saves the teeth. Enemy-swinging only. Costs a draw on the FIRST
+///    jaw break of a guarded player and never again.
 pub fn resolve_blow_nth(
     rng: &mut Rng,
     attacker: &Fighter,

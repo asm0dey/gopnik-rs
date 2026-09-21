@@ -2,17 +2,11 @@ use crate::model::Fighter;
 
 /// One piece of equipment the status screen can list.
 ///
-/// `bonus` is the number the original prints in the name itself, e.g.
-/// `^1Тесак(Урон+9) `. `effect` is what that suffix literally says the bonus
-/// applies to (`damage` / `luck` / `all` / `regen`); the bare `(+N)` form
-/// names no stat, so `effect` is `None` there rather than guessed.
+/// `bonus` is the number printed in the name, e.g. `^1Тесак(Урон+9) `.
+/// `effect` is what that suffix says the bonus applies to.
 ///
 /// `price` is filled in only where a shop row names the item verbatim with
-/// the same bonus; see `link_item_prices` in `tools/extract_tables.py`. It is
-/// `None` for everything else, which is honest -- the original's shop text
-/// and its inventory text are not the same strings.
-///
-/// A `None` price is not always the same kind of unknown: see `sold`.
+/// the same bonus. `None` otherwise.
 #[derive(Debug, Clone)]
 pub struct Item {
     pub id: &'static str,
@@ -114,14 +108,9 @@ pub fn rank_name(class: u16) -> &'static str {
     RANKS.get(usize::from(class)).copied().unwrap_or("")
 }
 
-/// The крутизна ladder the same header indexes by LEVEL -- DGROUP
-/// `20ae:0b42`, 43 entries, stride 256.
+/// The крутизна ladder indexed by character LEVEL -- 43 entries.
 ///
-/// **Established from flow.** `1000:1a53` `mov di,[0x38a6]` (the level),
-/// `1000:1a59` `shl di,cl`, `1000:1a5b` `add di,0xb42`, `1000:1a61` appends.
-/// Same `""` port decision for an out-of-range index as [`rank_name`]; the
-/// level is capped at 40 by `1000:2580` (`crate::progress::MAX_LEVEL`), so
-/// 43 rows cover every reachable value.
+/// The level is capped at 40, so 43 rows cover every reachable value.
 pub fn krutizna(level: u16) -> &'static str {
     KRUTIZNA.get(usize::from(level)).copied().unwrap_or("")
 }
