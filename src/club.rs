@@ -194,7 +194,7 @@ fn play_cards(g: &mut Game, lines: &mut dyn Iterator<Item = io::Result<String>>)
     g.player.money = g.player.money.wrapping_sub(stake as i16); // 1000:e0a8
 
     // 1000:e0ac..1000:e0b4 build the `n`; 1000:e0b7 is the draw.
-    let draw = g.rng.below_at("1000:e0b7", u16::from(g.district) * 12);
+    let draw = g.rng.below(u16::from(g.district) * 12);
     // 1000:e0c6..1000:e0ce -- the WIN is the fall-through, i.e. the
     // predicate being FALSE. See the doc above.
     if Game::luck_below_random_32(g.player.luck, draw) {

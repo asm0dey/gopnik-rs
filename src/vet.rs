@@ -277,7 +277,7 @@ fn patch_up(g: &mut Game) {
     }
 
     // 1000:d5f2/1000:d5f5 push the literal 3; 1000:d5f6 is the draw.
-    match g.rng.below_at("1000:d5f6", 3) {
+    match g.rng.below(3) {
         // 1000:d5fb / 1000:d5fe.
         1 => {
             // 1000:d600 pushes file `0xB394`

@@ -189,7 +189,7 @@ pub(crate) fn pickpocket(
     // 1000:c333..1000:c343 -- `mov si,ax` / two `shl ax,1` / `add ax,si` /
     // `add ax,0x5`, i.e. district * 5 + 5, not district * 5.
     let n = u16::from(g.district) * 5 + 5;
-    let draw = g.rng.below_at("1000:c344", n);
+    let draw = g.rng.below(n);
 
     // 1000:c353..1000:c35b. The SUCCESS arm is the fall-through of the three
     // branches -- удача NOT below the draw -- so the predicate is negated
@@ -200,7 +200,7 @@ pub(crate) fn pickpocket(
     if !Game::luck_below_random_32(g.player.luck, draw)
         // 1000:c361 / 1000:c366 `cmp ax,0x9` / 1000:c369 `jnb 0xc3cd` -- so
         // one draw in ten busts a theft that luck had already carried.
-        && g.rng.below_at("1000:c361", 10) < 9
+        && g.rng.below(10) < 9
     {
         haul(g);
         return Ok(());
@@ -213,7 +213,7 @@ fn haul(g: &mut Game) {
     // 1000:c36b `mov ax,[0x38a4]` / 1000:c36e `shl ax,1` -- a 16-bit shift,
     // so a удача above 0x7fff wraps; `wrapping_mul` is that, not a guess.
     // 1000:c376 `inc ax`, 1000:c377 stores into 20ae:3b74.
-    let take = i32::from(g.rng.below_at("1000:c371", g.player.luck.wrapping_mul(2))) + 1;
+    let take = i32::from(g.rng.below(g.player.luck.wrapping_mul(2))) + 1;
     // 1000:c37a reads it back and 1000:c37d `add [0x38c7],ax` credits it.
     g.player.money = g.player.money.wrapping_add(take as i16);
     // 1000:c381 pushes file `0xA096` `^2Опа бабки! # рублей на пиво!`, whose
@@ -325,11 +325,11 @@ mod tests {
     fn seed_for(district: u8, luck: u16, want_haul: bool, min_first: u16) -> u32 {
         for seed in 1u32..500_000 {
             let mut g = market(district, seed);
-            let draw = g.rng.below_at("probe", u16::from(district) * 5 + 5);
+            let draw = g.rng.below(u16::from(district) * 5 + 5);
             if draw < min_first {
                 continue;
             }
-            let ok = !Game::luck_below_random_32(luck, draw) && g.rng.below_at("probe", 10) < 9;
+            let ok = !Game::luck_below_random_32(luck, draw) && g.rng.below(10) < 9;
             if ok == want_haul {
                 return seed;
             }
@@ -364,43 +364,6 @@ mod tests {
         assert_eq!(g.progress.xp, u16::from(district) * 2, "1000:c3c0");
         assert_eq!(g.location, Location::Market, "1000:c3ca jumps to the loop");
         assert_eq!(g.market_ban_countdown, 0, "1000:c465 is on the other arm");
-    }
-
-    /// `1000:c344`, `1000:c361` and `1000:c371` in that order -- and the
-    /// second is spent only when the first compare passed, which is what
-    /// `1000:c357 jl 0xc3cd` does. Counted off the draw log, not the text.
-    #[test]
-    fn the_luck_gate_decides_whether_the_second_draw_is_spent() {
-        let district = 2u8;
-        let mut g = market(district, seed_for(district, 30_000, true, 0));
-        g.player.luck = 30_000;
-        g.rng.start_log();
-        turn(&mut g, "t");
-        let sites: Vec<_> = g.rng.take_log().iter().map(|d| d.site).collect();
-        assert_eq!(
-            sites,
-            vec!["1000:c344", "1000:c361", "1000:c371"],
-            "the three draws of 1000:c333..c377, in address order"
-        );
-
-        // удача 0 loses every `1000:c353` compare a NON-ZERO draw can make,
-        // which is what `min_first = 1` buys: the bust is reached without
-        // 1000:c361 ever running.
-        let mut g = market(district, seed_for(district, 0, false, 1));
-        g.player.luck = 0;
-        g.player.hp = 1; // lose the fight fast
-        g.rng.start_log();
-        turn(&mut g, "t");
-        let sites: Vec<_> = g.rng.take_log().iter().map(|d| d.site).collect();
-        assert_eq!(sites[0], "1000:c344", "the first draw is always spent");
-        assert!(
-            !sites.contains(&"1000:c361"),
-            "1000:c357 skips the Random(10) entirely, got {sites:?}"
-        );
-        assert!(
-            !sites.contains(&"1000:c371"),
-            "and the take is never drawn on the bust arm"
-        );
     }
 
     // -- the caught arm ---------------------------------------------------

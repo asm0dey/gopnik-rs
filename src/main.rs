@@ -119,14 +119,8 @@ fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         [] => {}
-        ["--trace-deterministic"] => {
-            let stdout = io::stdout();
-            let mut out = stdout.lock();
-            gopnik::trace::emit(&mut out)?;
-            return out.flush();
-        }
         _ => {
-            eprintln!("usage: gopnik [--trace-deterministic]");
+            eprintln!("usage: gopnik");
             std::process::exit(2);
         }
     }

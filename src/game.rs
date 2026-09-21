@@ -219,41 +219,6 @@ pub const IMM_ROWS: [ImmRow; 9] = [
     },
 ];
 
-/// What a replay of a captured fight needs that the draw stream cannot show.
-///
-/// Populated only while [`Game::start_fight_log`] is in force. The two lists
-/// mirror `data/combat_trace.json`'s two fight channels exactly, marker for
-/// marker: `fights` is one entry per `1000:3d11` stop and `prompts` one per
-/// `1000:441d` stop.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct FightLog {
-    /// The opponent as `Game::run_combat` received it, before any blow --
-    /// the guest's `20ae:3952`.. record at the combat function's prologue --
-    /// paired with the number of draws already spent when the fight started.
-    pub fights: Vec<(usize, Fighter)>,
-    /// One entry per `^0Битва\` prompt, in order.
-    pub prompts: Vec<PromptState>,
-}
-
-/// Both fighters at one `^0Битва\` prompt: what the previous round left.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PromptState {
-    /// 1-based index of the fight this prompt belongs to.
-    pub fight: usize,
-    /// Draws made before this prompt, from [`crate::rng::Rng::draws_logged`].
-    /// It is what ties this channel to the draw stream: a prompt recorded at
-    /// the wrong point fails even when both channels are individually right.
-    pub draws_before: usize,
-    pub player_hp: u16,
-    pub player_hpmax: u16,
-    pub enemy_hp: u16,
-    pub enemy_hpmax: u16,
-    pub player_broken_jaw: bool,
-    pub player_broken_leg: bool,
-    pub enemy_broken_jaw: bool,
-    pub enemy_broken_leg: bool,
-}
-
 /// The wandering mage's four lines, `1000:7538`..`75c7` -- `docs/re/port-
 /// gaps.md` row 23. Index 2 is filled with `district * 25` at print time
 /// (`1000:7583`..`7590`, `mov dx,0x19` / `mul dx`); the other three are
@@ -552,9 +517,6 @@ pub struct Game {
     /// at `1000:8247` to pick the parting line.
     pub church_visits: u8,
     mode: Mode,
-    /// The fight recorder, `None` unless [`Game::start_fight_log`] asked for
-    /// it. See that method for what it is for.
-    fight_log: Option<FightLog>,
     /// The most recently fought opponent, shown by `Command::Inspect` (`sv`).
     last_enemy: Option<Fighter>,
     running: bool,
@@ -642,7 +604,6 @@ impl Game {
             dealer_delivery_counter: 0,
             den_loan_credit: 0,
             church_visits: 0,
-            fight_log: None,
             tooth_guard: false,
             charm_krestik_38bd: false,
             charm_ring_38be: false,
@@ -1435,7 +1396,7 @@ impl Game {
             return;
         }
         term::println("^2Ты пришел к своей подруге.");
-        if self.rng.below_at("1000:d728", 2) == 0 && !self.places.is_found(Location::Club) {
+        if self.rng.below(2) == 0 && !self.places.is_found(Location::Club) {
             term::println("^2Она вытащила тебя в клуб и теперь ты знаешь где он находиться.");
             self.places.mark_found(Location::Club);
         }
@@ -1936,7 +1897,7 @@ impl Game {
         term::print(den::EMITTED[0].1);
         match self.district {
             1 => {
-                let n = self.rng.below_at("1000:d83f", 6) + 3;
+                let n = self.rng.below(6) + 3;
                 term::println(&text::fill(den::EMITTED[1].1, &[n as i64]));
             }
             2 => term::println(den::EMITTED[2].1),
@@ -2715,14 +2676,12 @@ impl Game {
         term::println(den::EMITTED[24].1);
         // 1000:dd8c..1000:dd94 build the `n`: [0x3692] * 15.
         let n15 = u16::from(self.district) * 15;
-        let roll = self.rng.below_at("1000:dd97", n15);
+        let roll = self.rng.below(n15);
         if Self::luck_below_random_32(self.player.luck, roll) {
             // 1000:ddb6, CS 0xa066, printed at 1000:ddca.
             term::println(den::EMITTED[25].1);
             // 1000:ddcf..1000:ddd7 rebuild the SAME `n` from scratch.
-            let roll2 = self
-                .rng
-                .below_at("1000:ddda", u16::from(self.district) * 15);
+            let roll2 = self.rng.below(u16::from(self.district) * 15);
             if Self::luck_below_random_32(self.player.luck, roll2) {
                 // 1000:ddf3/1000:ddf6 -- param_1 = 2 forces class 8, the
                 // `Мент` of data/string_tables.json's `ranks`.
@@ -2740,9 +2699,9 @@ impl Game {
             // and хлам gains district*10 + Random(district*10), the base
             // recomputed from [0x3692] for every one of the four terms.
             let base = u16::from(self.district) * 10;
-            let cash = i32::from(base) + i32::from(self.rng.below_at("1000:de5a", base));
+            let cash = i32::from(base) + i32::from(self.rng.below(base));
             self.player.money = self.player.money.wrapping_add(cash as i16);
-            let junk = base.wrapping_add(self.rng.below_at("1000:de7c", base));
+            let junk = base.wrapping_add(self.rng.below(base));
             self.player.junk = self.player.junk.wrapping_add(junk as i16);
             // 1000:de93 (CS 0x908b) + 1000:de98..1000:dea2, printed by
             // 1000:deaf -- BEFORE 1000:debe credits the same amount.
@@ -3209,7 +3168,7 @@ impl Game {
         if self.prison_tattoo {
             n /= 2;
         }
-        let notice = self.rng.below_at("1000:b5f1", n);
+        let notice = self.rng.below(n);
         // 1000:b5fc..1000:b61b -- luck is compared against it as a longint
         // (`cwd`, then `cmp dx,bx` / `cmp ax,cx` / `jnc 0xb614`), and the
         // class threshold differs between the two arms: 3 when luck lost the
@@ -3249,7 +3208,7 @@ impl Game {
         } else if !aggressive {
             // 1000:b696 -- the quiet arm has no decline roll at all: a
             // non-`y` answer simply ends the turn.
-        } else if self.rng.below_at("1000:b725", 2) == 0 {
+        } else if self.rng.below(2) == 0 {
             term::println("^4Он тебя заметил.");
             self.run_combat(0, enemy, lines)?;
         } else {
@@ -3293,7 +3252,7 @@ impl Game {
             &[enemy.level as i64],
         ));
         let n = u16::from(self.district) * 7 + 15;
-        let notice = self.rng.below_at("1000:b792", n);
+        let notice = self.rng.below(n);
         if i32::from(self.player.luck) >= i32::from(notice) {
             term::println("^2Ты затаился, прикинулся не гопом... Мент вроде не заметил");
             return Ok(());
@@ -3346,17 +3305,15 @@ impl Game {
             term::println(wander::BUCKET4[2]);
             return Ok(());
         }
-        if self.rng.below_at("1000:b841", 7) == 0 {
+        if self.rng.below(7) == 0 {
             term::println(wander::BUCKET4[0]);
         }
-        if self.rng.below_at("1000:b871", 7) != 0 {
+        if self.rng.below(7) != 0 {
             term::println(wander::BUCKET4[2]);
             return Ok(());
         }
-        let rank_roll = self.rng.below_at("1000:b891", 7);
-        let fill = self
-            .rng
-            .below_at("1000:b8bd", u16::from(self.district) * 10 + 1);
+        let rank_roll = self.rng.below(7);
+        let fill = self.rng.below(u16::from(self.district) * 10 + 1);
         term::print(wander::BUCKET4_FRAGMENTS[0]);
         term::print(data::rank_name(rank_roll));
         term::println(&text::fill(
@@ -3445,7 +3402,7 @@ impl Game {
         // 1000:af5d. The flag is set at 1000:af71 BEFORE the den/phone tests
         // at 1000:af76/1000:af7d, so a player without a phone loses the
         // errand permanently and sees nothing.
-        if !self.den_errand_1_pending && self.rng.below_at("1000:af68", 20) == 0 {
+        if !self.den_errand_1_pending && self.rng.below(20) == 0 {
             self.den_errand_1_pending = true;
             if self.places.is_found(Location::Den) && self.has_mobile {
                 // 1000:af84..1000:afb7 concatenates three pieces into one
@@ -3458,7 +3415,7 @@ impl Game {
 
         // Draw 2, 1000:afc7 -- the same shape one flag along, with понтовость
         // >= 100 as an extra print gate (1000:afdc).
-        if !self.den_errand_2_pending && self.rng.below_at("1000:afc7", 20) == 0 {
+        if !self.den_errand_2_pending && self.rng.below(20) == 0 {
             self.den_errand_2_pending = true;
             if self.places.is_found(Location::Den)
                 && self.pontovost_street >= 100
@@ -3483,7 +3440,7 @@ impl Game {
             // and `1000:b0b0`, each ported the way [`Game::enter_district_5`]
             // already substitutes for a `ReadKey` -- a discarded line read,
             // the same trick `src/persist.rs`'s `choose_slot` uses.
-            if self.rng.below_at("1000:b030", 200) == 0 {
+            if self.rng.below(200) == 0 {
                 term::println("Телефон:^6Алё Вася?");
                 term::read_key(lines); // 1000:b055
                 term::print("^2Нет это ");
@@ -3495,7 +3452,7 @@ impl Game {
                 term::println("^2Нет, он будет в больнице в ближайшие 2 месяца.");
             }
             // Draw 4, 1000:b0dc -- Random(100); prints only with a girl.
-            if self.rng.below_at("1000:b0dc", 100) == 0 && self.places.is_found(Location::Girl) {
+            if self.rng.below(100) == 0 && self.places.is_found(Location::Girl) {
                 term::println("Телефон(Твоя пассия):^5Привет, это я. Зайдешь ко мне сегодня?");
                 term::println("^2А ты: Безбазаров, жди.");
             }
@@ -3533,19 +3490,19 @@ impl Game {
         // 1000:b1b8 Random(10) market, 1000:b1ea Random(100) club,
         // 1000:b21c Random(100) gym. The comparison constants ARE the
         // probabilities (`docs/re/METHODOLOGY.md`).
-        if self.rng.below_at("1000:b186", 10) == 0 && !self.places.is_found(Location::Vet) {
+        if self.rng.below(10) == 0 && !self.places.is_found(Location::Vet) {
             self.places.mark_found(Location::Vet); // 1000:b196
             term::println("^1Ты спросил у прохожего где больница.");
         }
-        if self.rng.below_at("1000:b1b8", 10) == 0 && !self.places.is_found(Location::Market) {
+        if self.rng.below(10) == 0 && !self.places.is_found(Location::Market) {
             self.places.mark_found(Location::Market); // 1000:b1c8
             term::println("^1Ты нашел базар.");
         }
-        if self.rng.below_at("1000:b1ea", 100) == 0 && !self.places.is_found(Location::Club) {
+        if self.rng.below(100) == 0 && !self.places.is_found(Location::Club) {
             self.places.mark_found(Location::Club); // 1000:b1fa
             term::println("^1Ты увидел объявление \"Типа заходи в наш понтовый клуб\".");
         }
-        if self.rng.below_at("1000:b21c", 100) == 0 && !self.places.is_found(Location::Gym) {
+        if self.rng.below(100) == 0 && !self.places.is_found(Location::Gym) {
             self.places.mark_found(Location::Gym); // 1000:b22c
             term::println("^1На стене реклама \"Жизнь тяжела. Если не хочешь сдохнуть качайся!\".");
         }
@@ -3566,7 +3523,7 @@ impl Game {
             // leg block at 1000:b289 is reached only when the jaw is intact
             // (`jnz 0xb2a7` at 1000:b280), and the jaw block at 1000:b2ae
             // only when it is broken.
-            if self.rng.below_at("1000:b272", 20) == 0 {
+            if self.rng.below(20) == 0 {
                 if !self.player.broken_jaw && self.player.broken_leg {
                     self.player.broken_leg = false;
                     term::println("^2Твоя нога залечилась с Божей помощью.");
@@ -3594,16 +3551,14 @@ impl Game {
             6 => {
                 // Draw 10, 1000:b2fa. `n` is built at 1000:b2ef..1000:b2f8
                 // as district * 20 (`mov dx,0x14` / `mul dx`).
-                let r = self
-                    .rng
-                    .below_at("1000:b2fa", u16::from(self.district) * 20);
+                let r = self.rng.below(u16::from(self.district) * 20);
                 // 1000:b305..1000:b311: luck is sign-extended (`cwd`) and
                 // the result zero-extended, and the theft succeeds when
                 // luck >= result.
                 if i32::from(self.player.luck) >= i32::from(r) {
                     // Draw 11, 1000:b321. `n` is district * 5, built at
                     // 1000:b313..1000:b31e as (district << 2) + district.
-                    let amount = self.rng.below_at("1000:b321", u16::from(self.district) * 5) + 1;
+                    let amount = self.rng.below(u16::from(self.district) * 5) + 1;
                     // 1000:b326/1000:b32d: [0x3b74] := r + 1, money += it.
                     self.player.money = self.player.money.wrapping_add(amount as i16);
                     term::println(&text::fill(
@@ -3619,7 +3574,7 @@ impl Game {
         // as `mov ax,5` / `imul ax`, i.e. AX*AX = 25, and 1000:b358 stores
         // r+1 (so 1..25) into 20ae:3971. The chain at 1000:b35c..1000:b393
         // tests the highest boundary first.
-        let roll = self.rng.below_at("1000:b353", 25) + 1;
+        let roll = self.rng.below(25) + 1;
         let mut bucket = if roll >= 10 {
             4
         } else if roll >= 5 {
@@ -3632,7 +3587,7 @@ impl Game {
 
         // Draw 13, 1000:b39e -- Random(200); a zero calls the church at
         // 1000:b3a7.
-        if self.rng.below_at("1000:b39e", 200) == 0 {
+        if self.rng.below(200) == 0 {
             self.church(lines);
             // 1000:8282 `c6 06 70 39 00` is the routine's last act before
             // its single epilogue and no jump inside it targets an address
@@ -3643,7 +3598,7 @@ impl Game {
 
         // Draw 14, 1000:b3ae -- Random(100); a zero calls the mage at
         // 1000:b3b7. It spends no draw but does block on a ReadLn.
-        if self.rng.below_at("1000:b3ae", 100) == 0 {
+        if self.rng.below(100) == 0 {
             self.mage(lines)?;
         }
 
@@ -3674,7 +3629,7 @@ impl Game {
         }
 
         // Draw 15, 1000:7f63 -- Random(5). Five equally likely arms.
-        match self.rng.below_at("1000:7f63", 5) {
+        match self.rng.below(5) {
             // 1000:7f68's zero arm: a forced level-up.
             0 => {
                 // 1000:7f84's line, 1000:7f89's `ReadKey` and 1000:7f8e's
@@ -3707,7 +3662,7 @@ impl Game {
             }
             // 1000:7ff3 `cmp ax,1` / 1000:7ff6 `jz 0x7ffb` -- a stat
             // blessing. (1000:7f68 is the ZERO arm above, not this one.)
-            1 => match self.rng.below_at("1000:7fff", 4) {
+            1 => match self.rng.below(4) {
                 // 1000:8022..1000:8043. The dmg_min term reads the
                 // ALREADY-incremented strength, so it is +1 when the new
                 // strength is even -- the same rule as a level-up's.
@@ -3936,7 +3891,7 @@ impl Game {
         if !answer.eq_ignore_ascii_case("y") {
             return Ok(());
         }
-        if self.rng.below_at("1000:b54e", 2) == 0 {
+        if self.rng.below(2) == 0 {
             term::println("^5Ты такой подкатываешь, а она:\"Глянулся ты мне парниша\"");
             self.places.mark_found(Location::Girl);
         } else {
@@ -4050,7 +4005,7 @@ impl Game {
     ///     draw still happens, which is why `1000:1197` has 13 stops and
     ///     not 3.
     pub(crate) fn roll_enemy(&mut self, param_1: u8) -> Fighter {
-        let mut cls = i32::from(self.rng.below_at("1000:0d26", 0x33)) + 1;
+        let mut cls = i32::from(self.rng.below(0x33)) + 1;
         for i in 1..=10 {
             if cls - i < 0 {
                 cls = 10 - i;
@@ -4058,9 +4013,9 @@ impl Game {
             }
             cls -= i;
         }
-        cls += i32::from(self.rng.below_at("1000:0d70", u16::from(self.district)));
+        cls += i32::from(self.rng.below(u16::from(self.district)));
         if self.flag_3693 {
-            cls += i32::from(self.rng.below_at("1000:0d91", 4));
+            cls += i32::from(self.rng.below(4));
         }
         if cls > 9 {
             cls = 9;
@@ -4073,16 +4028,15 @@ impl Game {
         }
         let class = cls as u16;
 
-        let district_bonus =
-            4 * i32::from(self.rng.below_at("1000:0dcc", u16::from(self.district)));
-        let spread = i32::from(self.rng.below_at("1000:0ddd", 5));
+        let district_bonus = 4 * i32::from(self.rng.below(u16::from(self.district)));
+        let spread = i32::from(self.rng.below(5));
         // `1000:0df0` is the DIVISOR and `1000:0e04` the multiplier, not the
         // other way round: `1000:0dfd` pushes the first as a real which
         // `1000:0e1e` pops back into `cx:si:di`, the divisor operand of
         // `0f78:1117`, while the second stays in `cx:bx` for the `0f78:09d2`
         // multiply against the player's level at `1000:0e10`.
-        let divisor = i32::from(self.rng.below_at("1000:0df0", 2)) + 1;
-        let factor = i32::from(self.rng.below_at("1000:0e04", 2)) + 1;
+        let divisor = i32::from(self.rng.below(2)) + 1;
+        let factor = i32::from(self.rng.below(2)) + 1;
         // `divisor` is 1 or 2 and the numerator is doubled first, so this is
         // the real quotient exactly, with no rounding of its own.
         let twice = i32::from(self.player.level) * factor * 2 / divisor + 2 * (spread - 2);
@@ -4099,7 +4053,7 @@ impl Game {
         let points = ((i32::from(sum) + 2 * ponty) & 0xff) as u16;
         let mut stats = [0u16; 4]; // strength, agility, vitality, luck
         for _ in 0..points {
-            let roll = self.rng.below_at("1000:0efd", sum) + 1;
+            let roll = self.rng.below(sum) + 1;
             let mut edge = 0u16;
             for (i, w) in weights.iter().enumerate() {
                 edge += w;
@@ -4123,16 +4077,15 @@ impl Game {
         // realistic values (`class` caps at 9, `ponty` stays small), so
         // behaviour is unaffected in practice.
         let k = ponty / 2 + (2 * i32::from(class) * ponty + 5) / 10;
-        let junk_bonus = i32::from(self.rng.below_at("1000:102e", 6));
-        let junk_roll = i32::from(self.rng.below_at("1000:109c", k as u16));
+        let junk_bonus = i32::from(self.rng.below(6));
+        let junk_roll = i32::from(self.rng.below(k as u16));
         let junk = (junk_bonus + 2 * junk_roll - k).max(0);
-        let money_bonus = i32::from(self.rng.below_at("1000:10c4", 6));
-        let money_roll = i32::from(self.rng.below_at("1000:113c", k as u16));
+        let money_bonus = i32::from(self.rng.below(6));
+        let money_roll = i32::from(self.rng.below(k as u16));
         let money = (money_bonus + money_roll - k / 2).max(0);
-        let beer_dl = i32::from(self.rng.below_at("1000:1162", 2)) + ponty / 10 + 1;
+        let beer_dl = i32::from(self.rng.below(2)) + ponty / 10 + 1;
         let armour_base = 2 * (i32::from(self.district) - 1).pow(2);
-        let armor =
-            (i32::from(self.rng.below_at("1000:1197", armour_base as u16)) + armour_base) & 0xff;
+        let armor = (i32::from(self.rng.below(armour_base as u16)) + armour_base) & 0xff;
 
         // `data/enemies.json` has one row per rolled class 0..=9 (classes
         // 0..9 are unique there; only the scripted class 10 has variants),
@@ -4600,7 +4553,7 @@ impl Game {
         };
         let answer = line?;
         // The roll, AFTER the read and BEFORE the compare.
-        let refund = i32::from(base + rng.below_at(roll_site, span));
+        let refund = i32::from(base + rng.below(span));
         // 1000:cf4f `call 0eed:0216` folds only `A`..`Z`, so `Y` sells;
         // `eq_ignore_ascii_case` is that same ASCII-only fold, and the line
         // is taken as read -- the original hands the raw buffer to
@@ -5150,7 +5103,7 @@ impl Game {
                         // 1000:ca0c `call 0f78:114b` with `mov ax,0x4` at
                         // 1000:ca08, dispatched over four compares at
                         // 1000:ca11, 1000:ca53, 1000:ca77 and 1000:caa5.
-                        match g.rng.below_at("1000:ca0c", 4) {
+                        match g.rng.below(4) {
                             0 => {
                                 g.player.strength += 1; // 1000:ca16 inc [0x389e]
                                 term::println("^1Сила +1 "); // CS 0x9402 `^1Сила +1 `, 1000:ca1a
@@ -5475,7 +5428,7 @@ impl Game {
                         // 1000:bdc0 `add ax,0x3`, 1000:bdc3
                         // `add [0x38ac],ax`. The hot dog heals 3 or 4, and
                         // nothing stands between the draw and the add.
-                        g.player.hp += 3 + g.rng.below_at("1000:bdbb", 2);
+                        g.player.hp += 3 + g.rng.below(2);
                         // 1000:bdc7 `mov ax,[0x38ac]` / 1000:bdca
                         // `cmp ax,[0x38ae]` / 1000:bdce `jle 0xbdd6`, else
                         // 1000:bdd0 `mov ax,[0x38ae]` / 1000:bdd3
@@ -5502,7 +5455,7 @@ impl Game {
                         // compares. All three arms converge on 1000:beb4 and
                         // the roll changes NO state -- it is purely cosmetic,
                         // and it is still a draw.
-                        match g.rng.below_at("1000:be51", 3) {
+                        match g.rng.below(3) {
                             // 1000:be56 `cmp ax,0x0` / 1000:be59 `jnz 0xbe76`.
                             0 => term::println("^2Глинское? Чё за нафиг? А ладно."), // CS 0x8e5a `^2Глинское? Чё за нафиг? А ладно.`, 1000:be5b
                             // 1000:be76 `cmp ax,0x1` / 1000:be79 `jnz 0xbe96`.
@@ -5929,12 +5882,6 @@ impl Game {
         mut enemy: Fighter,
         lines: &mut dyn Iterator<Item = io::Result<String>>,
     ) -> io::Result<()> {
-        if self.fight_log.is_some() {
-            let at = self.rng.draws_logged();
-            if let Some(log) = self.fight_log.as_mut() {
-                log.fights.push((at, enemy.clone()));
-            }
-        }
         // 1000:3d24 `mov al,[bp+0x4]` / 1000:3d27 `cmp al,0x0` /
         // 1000:3d29 `jz 0x3d32` / 1000:3d2b `cmp al,0x6` /
         // 1000:3d2d `jz 0x3d32` -- the OUTER chain, on `param_1`. Everything
@@ -6021,24 +5968,6 @@ impl Game {
             self.crowd(&mut prompts_seen);
             term::print("^0Битва\\");
             // 1000:441d, the prompt's own ReadLn: the sample point.
-            if self.fight_log.is_some() {
-                let draws_before = self.rng.draws_logged();
-                let state = PromptState {
-                    fight: self.fight_log.as_ref().map_or(0, |l| l.fights.len()),
-                    draws_before,
-                    player_hp: self.player.hp,
-                    player_hpmax: self.player.hpmax,
-                    enemy_hp: enemy.hp,
-                    enemy_hpmax: enemy.hpmax,
-                    player_broken_jaw: self.player.broken_jaw,
-                    player_broken_leg: self.player.broken_leg,
-                    enemy_broken_jaw: enemy.broken_jaw,
-                    enemy_broken_leg: enemy.broken_leg,
-                };
-                if let Some(log) = self.fight_log.as_mut() {
-                    log.prompts.push(state);
-                }
-            }
             let Some(line) = term::read_line(lines) else {
                 self.running = false;
                 return Ok(());
@@ -6562,14 +6491,8 @@ impl Game {
     /// leave `Fighter::broken_jaw`/`broken_leg` asserted by nothing, which is
     /// where they stood before Task 13. `None` for every game the binary
     /// builds, so a real session allocates nothing.
-    pub fn start_fight_log(&mut self) {
-        self.fight_log = Some(FightLog::default());
-    }
 
     /// Take the recorded fight channels and stop recording.
-    pub fn take_fight_log(&mut self) -> FightLog {
-        self.fight_log.take().unwrap_or_default()
-    }
 
     /// `1000:4fba`..`1000:5051` -- the hospital rescue that turns a death
     /// into a survivable turn. Returns `true` when it fired, i.e. the player
@@ -6904,13 +6827,11 @@ impl Game {
         // 1000:52da `or ax,ax` / 1000:52dc `jbe 0x52e1` -- only a 0 out of
         // Random(30) reaches the gift chain; anything else takes 1000:52de
         // `jmp 0x53f7`.
-        if self.rng.below_at("1000:52d5", 30) == 0 {
+        if self.rng.below(30) == 0 {
             self.grant_oneshot_gift();
         }
         // 1000:53f7..1000:5444 -- the Нарк's joints.
-        let roll = self
-            .rng
-            .below_at("1000:5402", u16::from(self.district) * 25);
+        let roll = self.rng.below(u16::from(self.district) * 25);
         // Borland's 32-bit compare again, three branches for one predicate:
         // 1000:5411 `cmp dx,bx` / 1000:5413 `jnle 0x541b` (luck's high half
         // above the roll's -> pass) / 1000:5415 `jl 0x5449` (below -> fail),
@@ -6919,13 +6840,11 @@ impl Game {
         // `jnz 0x5449` -- only a Нарк carries one.
         if i32::from(self.player.luck) >= i32::from(roll) && enemy.class == 2 {
             // 1000:5427 `add [0x38c5],ax` -- a word add of the draw.
-            self.player.joints += self.rng.below_at("1000:5427", 3) as i16;
+            self.player.joints += self.rng.below(3) as i16;
             term::println(spoils::EMITTED[7].1); // file 0x540B
         }
         // 1000:5449..1000:57cc -- the class-keyed item table.
-        let roll = self
-            .rng
-            .below_at("1000:5454", u16::from(self.district) * 40);
+        let roll = self.rng.below(u16::from(self.district) * 40);
         // The same 32-bit shape with the senses swapped: 1000:5463
         // `cmp dx,bx` / 1000:5465 `jnle 0x5473` (high half above -> on to
         // the table) / 1000:5467 `jnl 0x546c`, then 1000:546c `cmp ax,cx` /
@@ -7012,7 +6931,7 @@ impl Game {
 
     /// Enemy class 1 (Нефор): `1000:547e`..`1000:5512`, `Random(3)`.
     fn spoil_charm(&mut self) {
-        match self.rng.below_at("1000:5482", 3) {
+        match self.rng.below(3) {
             // 1000:5487 `cmp ax,0x0` / 1000:548a `jnz 0x54b8`
             0 => {
                 // 1000:548c gate, 1000:5493 `add [0x38a4],2`, 1000:54b1 flag.
@@ -7050,7 +6969,7 @@ impl Game {
     /// no BETTER weapon is already owned -- the "better" set differs between
     /// them, which is why the two are written out rather than folded.
     fn spoil_club(&mut self) {
-        match self.rng.below_at("1000:5530", 2) {
+        match self.rng.below(2) {
             // 1000:5535 `cmp ax,0x0` / 1000:5538 `jnz 0x559b`
             0 => {
                 // 1000:553a `cmp byte [0x38ba],0x0` / 1000:553f `jnz 0x5599`
@@ -7094,7 +7013,7 @@ impl Game {
 
     /// Enemy class 7 (Беспредельщик): `1000:5613`..`1000:5672`, `Random(2)`.
     fn spoil_glasses(&mut self) {
-        match self.rng.below_at("1000:5617", 2) {
+        match self.rng.below(2) {
             // 1000:561c `cmp ax,0x0` / 1000:561f `jnz 0x5648`
             0 => {
                 // 1000:5621 gate, 1000:5628 flag. No stat change.
@@ -7122,7 +7041,7 @@ impl Game {
     /// `or al,al` / `jz` is a never-taken branch the compiler left in, so
     /// the first term's condition is only what follows it.
     fn spoil_blade(&mut self) {
-        match self.rng.below_at("1000:5681", 2) {
+        match self.rng.below(2) {
             // 1000:5686 `cmp ax,0x0` / 1000:5689 `jz 0x568e`
             0 => {
                 if self.weapon_nozhik_38c2 {
@@ -7273,10 +7192,10 @@ impl Game {
         }
         // 1000:413a `or ax,ax` / 1000:413c `jz 0x4141` -- only a 0 out of
         // Random(10) reaches the taunt draw.
-        if self.rng.below_at("1000:4135", 10) != 0 {
+        if self.rng.below(10) != 0 {
             return;
         }
-        let which = self.rng.below_at("1000:4145", 18);
+        let which = self.rng.below(18);
         // The eighteen lines at code offsets 0x2e92..0x314d (files
         // 0x4762..0x4A1D), in the order the `cmp ax,N` chain at 1000:414a
         // onwards tests them. Two are built from a name: 4 splices the
@@ -7765,134 +7684,6 @@ mod tests {
         }
     }
 
-    /// `1000:b76a`'s three arms, and which of them starts a fight.
-    ///
-    /// Driven through `cop_encounter` directly because reaching it from
-    /// `walk` needs the generator to roll class 8, which is a seed hunt
-    /// rather than a test. The input iterator is the assertion: the two
-    /// no-fight arms read **no** line (there is no prompt on this path at
-    /// all), while the `^4Запалил!` arm hands straight to combat, which
-    /// does read one.
-    #[test]
-    fn the_cop_encounter_fights_only_when_luck_loses_and_the_glasses_are_off() {
-        // Takes `&mut Rng` rather than `&mut Game`: the only thing it does
-        // to the game is start the RNG log, which only the first of the
-        // three cases below goes on to read.
-        let cop = |rng: &mut Rng| {
-            rng.start_log();
-            Fighter {
-                class: 8,
-                name: "Мент".to_string(),
-                hp: 10,
-                hpmax: 10,
-                ..Fighter::default()
-            }
-        };
-
-        // Luck wins the compare (1000:b7ab): no fight. The tattoo is set
-        // here on purpose: `1000:b784`..`1000:b791` has no
-        // `cmp byte [0x38bc],1`, so unlike `1000:b5f1` this roll must NOT
-        // be halved -- which is what makes the other test's "only" true.
-        let mut g = game();
-        g.player.luck = 10_000;
-        g.prison_tattoo = true;
-        let e = cop(&mut g.rng);
-        let mut lines = input(&["run", "run"]);
-        g.cop_encounter(e, &mut lines).unwrap();
-        assert_eq!(lines.count(), 2, "the stealth arm must read no line");
-        let log = g.rng.take_log();
-        assert_eq!(log.len(), 1, "exactly one draw, 1000:b792");
-        assert_eq!(log[0].site, "1000:b792");
-        assert_eq!(
-            log[0].n, 22,
-            "district 1 -> 1 * 7 + 15, and the tattoo must not halve it"
-        );
-
-        // Luck loses but the тёмные очки are on (1000:b7cd): still no fight.
-        let mut g = game();
-        g.player.luck = 0;
-        g.dark_glasses = true;
-        let e = cop(&mut g.rng);
-        let mut lines = input(&["run", "run"]);
-        g.cop_encounter(e, &mut lines).unwrap();
-        assert_eq!(lines.count(), 2, "the glasses arm must read no line");
-
-        // Luck loses with no glasses (1000:b801): the fight starts.
-        let mut g = game();
-        g.player.luck = 0;
-        let e = cop(&mut g.rng);
-        let mut lines = input(&["run", "run"]);
-        g.cop_encounter(e, &mut lines).unwrap();
-        assert_eq!(
-            lines.count(),
-            1,
-            "^4Запалил! must reach FUN_1000_3d11, which prompts"
-        );
-    }
-
-    /// The зоновская наколка halves `1000:b5f1`'s `n` and nothing else's.
-    /// Asserted on the `n` the port actually pushes, over a whole walk, so a
-    /// regression in either direction shows up.
-    #[test]
-    fn the_prison_tattoo_halves_only_the_ordinary_notice_roll() {
-        for (tattoo, want) in [(false, 22u16), (true, 11u16)] {
-            let mut seen = None;
-            // Walk until a bucket-3 turn produces an ordinary encounter.
-            for seed in 0..400u32 {
-                let mut g = game();
-                g.prison_tattoo = tattoo;
-                g.rng = Rng::new(seed);
-                g.rng.start_log();
-                g.walk(&mut input(&["run", "run", "run", "run"])).unwrap();
-                if let Some(d) = g.rng.take_log().iter().find(|d| d.site == "1000:b5f1") {
-                    seen = Some(d.n);
-                    break;
-                }
-            }
-            assert_eq!(
-                seen,
-                Some(want),
-                "tattoo = {tattoo}: 1000:b5f1's n (district 1)"
-            );
-        }
-    }
-
-    /// `1000:48dc`'s `run`, both arms that leave the fight and the one that
-    /// does not, and the fact that none of them draws.
-    #[test]
-    fn run_leaves_a_fight_without_spending_a_draw() {
-        let enemy = || Fighter {
-            name: "Дохляк".to_string(),
-            hp: 50,
-            hpmax: 50,
-            ..Fighter::default()
-        };
-
-        // Level 0 (1000:4ade): leaves, and reads exactly one line.
-        let mut g = game();
-        g.player.level = 0;
-        g.rng.start_log();
-        let mut lines = input(&["run", "run", "run"]);
-        g.run_combat(0, enemy(), &mut lines).unwrap();
-        assert_eq!(lines.count(), 2, "one line consumed, then the fight ended");
-        assert!(
-            g.rng.take_log().is_empty(),
-            "no arm of 1000:48eb..1000:4afb calls Random"
-        );
-
-        // A broken leg (1000:490e): stays in the fight, so every line is
-        // consumed and the loop only ends when the input runs out.
-        let mut g = game();
-        g.player.broken_leg = true;
-        let mut lines = input(&["run", "run", "run"]);
-        g.run_combat(0, enemy(), &mut lines).unwrap();
-        assert_eq!(
-            lines.count(),
-            0,
-            "1000:4915 re-prompts rather than leaving the fight"
-        );
-    }
-
     /// The opener runs on `param_1` 0 and 6 and on nothing else --
     /// `1000:3d27`/`1000:3d29` and `1000:3d2b`/`1000:3d2d` against
     /// `1000:3d2f jmp 0x3e8d`. The arm's own contents are
@@ -8003,251 +7794,6 @@ mod tests {
         g
     }
 
-    fn draws_at(g: &mut Game, site: &str) -> usize {
-        g.rng.take_log().iter().filter(|d| d.site == site).count()
-    }
-
-    /// The whole `v` sequence, measured on the two draw sites only the
-    /// backup block owns. `v` places the call and three `k`s take the
-    /// counter 1 -> 2 -> 3; `1000:4d9d` opens on the prompt the counter
-    /// reaches 3, so the gopota swing on that prompt and on every one after.
-    ///
-    /// The control is the same script with the den flag clear: `1000:4cb4`
-    /// refuses, the counter never leaves 0 and neither site ever fires.
-    #[test]
-    fn v_starts_a_countdown_that_k_ticks_and_then_the_gopota_swing() {
-        let script = ["v", "k", "k", "k"];
-
-        let mut g = game_with_gopota();
-        g.rng.start_log();
-        g.run_combat(0, punchbag(), &mut input(&script)).unwrap();
-        let log = g.rng.take_log();
-        let n = |site: &str| log.iter().filter(|d| d.site == site).count();
-        assert_eq!(n("1000:4db7"), 2, "the last two prompts have the gopota");
-        assert_eq!(n("1000:4e16"), 2, "the attrition coin, once per swing");
-        // Order matters: 1000:4db7 is the damage roll and 1000:4e16 the
-        // attrition, in that order, every time.
-        let backup: Vec<&str> = log
-            .iter()
-            .map(|d| d.site)
-            .filter(|s| *s == "1000:4db7" || *s == "1000:4e16")
-            .collect();
-        assert_eq!(backup, ["1000:4db7", "1000:4e16", "1000:4db7", "1000:4e16"]);
-
-        let mut g = game_with_gopota();
-        g.places = Places::from_bytes(&[0u8; 7]);
-        g.rng.start_log();
-        g.run_combat(0, punchbag(), &mut input(&script)).unwrap();
-        assert_eq!(draws_at(&mut g, "1000:4db7"), 0, "no den, no gopota");
-    }
-
-    /// `1000:4cc8` -- the cred gate is `cred >= district * 10 + 10`, and the
-    /// `jnle` makes the boundary itself pass. Measured on whether the
-    /// countdown started, one either side of the boundary, in two districts
-    /// so the `district * 10` term is exercised and not just the `+ 10`.
-    #[test]
-    fn the_backup_cred_gate_moves_with_the_district() {
-        for (district, need) in [(1u8, 20i16), (3, 40)] {
-            for (cred, expect_call) in [(need - 1, false), (need, true)] {
-                let mut g = game_with_gopota();
-                g.district = district;
-                g.pontovost_street = cred;
-                g.rng.start_log();
-                // `v` then three `k`s: if the call went through, the gopota
-                // arrive and their damage roll fires.
-                g.run_combat(0, punchbag(), &mut input(&["v", "k", "k", "k"]))
-                    .unwrap();
-                let fired = draws_at(&mut g, "1000:4db7") > 0;
-                assert_eq!(
-                    fired, expect_call,
-                    "district {district}, cred {cred} (needs {need})"
-                );
-            }
-        }
-    }
-
-    /// `1000:4cdb` -- the mobile phone stores 3 outright, and `1000:4d93` is
-    /// DOWNSTREAM of the `v` arm on the same straight line, so the gopota
-    /// swing in the very prompt the call was placed in and again in the next
-    /// one. Without a phone the same script leaves the counter at 1 and
-    /// neither prompt swings.
-    #[test]
-    fn the_mobile_phone_puts_the_gopota_in_the_fight_at_once() {
-        for (phone, want) in [(false, 0usize), (true, 2)] {
-            let mut g = game_with_gopota();
-            g.has_mobile = phone;
-            g.rng.start_log();
-            // `v`, then one line no compare matches -- so the only thing that
-            // can draw at 1000:4db7 is the backup block itself.
-            g.run_combat(0, punchbag(), &mut input(&["v", "zzz"]))
-                .unwrap();
-            assert_eq!(draws_at(&mut g, "1000:4db7"), want, "phone {phone}");
-        }
-    }
-
-    /// `[1000:4d93, 1000:4e9e)` is between the `v` arm and the `f` compare on
-    /// the dispatcher's straight line, not inside either -- so once the
-    /// gopota have arrived they swing on a line the chain never matched.
-    #[test]
-    fn the_gopota_swing_on_a_prompt_that_matched_no_verb_at_all() {
-        let mut g = game_with_gopota();
-        g.has_mobile = true;
-        g.player.level = 0; // so the closing `run` costs nothing
-        g.rng.start_log();
-        // `zzz` and `qqq` match no compare at all; `wes` is a DEALERS verb,
-        // compared at `1000:ced8` against `entry`'s buffer and never here.
-        // The closing `run` ends the fight so `last_enemy` is recorded.
-        g.run_combat(0, punchbag(), &mut input(&["v", "zzz", "qqq", "run"]))
-            .unwrap();
-        let log = g.rng.take_log();
-        assert_eq!(
-            log.iter().filter(|d| d.site == "1000:4db7").count(),
-            4,
-            "the call prompt and the three after it, whatever was typed"
-        );
-        // ... and the enemy really lost the hp those rolls bought. District
-        // 1: `3 + Random(4)` per swing, armour 0, so 12..=24 over four.
-        let left = g
-            .last_enemy
-            .as_ref()
-            .expect("the fight recorded an enemy")
-            .hp;
-        assert!(
-            (500 - 24..=500 - 12).contains(&left),
-            "enemy hp {left} is outside four district-1 backup blows"
-        );
-    }
-
-    /// `1000:507b` `cmp word [0x3962],0` / `jle 0x5085` is read AFTER the
-    /// whole chain and BEFORE `1000:5838`'s test of the flee flag, so a `run`
-    /// in the prompt where the gopota landed the killing blow is a VICTORY,
-    /// not an escape. `run` is compared at `1000:48e1` and the backup block
-    /// starts at `1000:4d93`, so both really do happen in the one prompt.
-    ///
-    /// Marked by the victory block's own `Random(30)` at `1000:52d5`, which
-    /// no other path in the function reaches.
-    #[test]
-    fn fleeing_in_the_prompt_the_gopota_win_is_still_a_victory() {
-        // `strength` is there only so `1000:51b9`'s award (the sum of the
-        // enemy's four stats) is non-zero and the kill is visible in the XP.
-        let scenario = |seed: u32, hp: u16| {
-            let mut g = game_with_gopota();
-            g.rng = Rng::new(seed);
-            g.has_mobile = true;
-            g.rng.start_log();
-            let enemy = Fighter {
-                hp,
-                hpmax: 50,
-                strength: 4,
-                ..punchbag()
-            };
-            g.run_combat(0, enemy, &mut input(&["v", "run"])).unwrap();
-            let log = g.rng.take_log();
-            let swings = log.iter().filter(|d| d.site == "1000:4db7").count();
-            let victory = log.iter().any(|d| d.site == "1000:52d5");
-            (swings, victory, g.progress.xp)
-        };
-
-        // District 1's backup blow is `3 + Random(4)`, so 3..=6. At 11 hp the
-        // enemy always survives the first swing and some seeds kill it with
-        // the second -- which is the prompt `run` is typed in.
-        let seed = (0..2000u32)
-            .find(|&s| scenario(s, 11) == (2, true, 4))
-            .expect("some seed kills the enemy on the second backup swing");
-
-        let (swings, victory, xp) = scenario(seed, 11);
-        assert_eq!(swings, 2, "one swing per prompt, and the second killed");
-        assert!(victory, "1000:507b is read before 1000:5838");
-        assert_eq!(xp, 4, "the enemy's four stats were awarded");
-
-        // Control, same seed: an enemy the gopota cannot kill in two swings
-        // leaves by `1000:4af7` and never reaches the victory block, so the
-        // difference above is the enemy's hp and nothing else.
-        let (swings, victory, xp) = scenario(seed, 500);
-        assert_eq!(swings, 2);
-        assert!(!victory, "the enemy is still up, so the flee flag wins");
-        assert_eq!(xp, 0);
-    }
-
-    /// `1000:4e79` -- the gopota bill `district * 5` of street cred per
-    /// swing and walk out the moment it is not positive.
-    #[test]
-    fn the_gopota_leave_when_the_street_cred_runs_out() {
-        let mut g = game_with_gopota();
-        g.has_mobile = true;
-        g.district = 1;
-        // 20 clears 1000:4cc8's gate for district 1, and then four swings at
-        // 5 apiece take it to exactly 0.
-        g.pontovost_street = 20;
-        g.rng.start_log();
-        g.run_combat(
-            0,
-            punchbag(),
-            &mut input(&["v", "z", "z", "z", "z", "z", "z"]),
-        )
-        .unwrap();
-        assert_eq!(g.pontovost_street, 0);
-        assert_eq!(
-            draws_at(&mut g, "1000:4db7"),
-            4,
-            "four swings at 5 cred each, then 1000:4e82 zeroes the counter"
-        );
-    }
-
-    /// `1000:4eb2` and `1000:4ebc`/`1000:4ec3` -- the two gates that make
-    /// `f` do nothing, measured on the draw count and on the magazine.
-    #[test]
-    fn shooting_needs_a_pistol_and_somewhere_it_is_allowed() {
-        let cases = [
-            (false, false, false, 0usize),
-            (true, false, false, 0),
-            (true, true, false, 1),
-            (true, false, true, 1),
-        ];
-        for (owned, silencer, flag_3693, want_draws) in cases {
-            let mut g = game();
-            g.pistol = combat_dispatch::Pistol {
-                owned,
-                silencer,
-                cartridges: 6,
-            };
-            g.flag_3693 = flag_3693;
-            g.rng.start_log();
-            g.run_combat(0, punchbag(), &mut input(&["f"])).unwrap();
-            let fired = draws_at(&mut g, "1000:4ef5");
-            assert_eq!(
-                fired, want_draws,
-                "owned {owned}, silencer {silencer}, 3693 {flag_3693}"
-            );
-            assert_eq!(
-                g.pistol.cartridges,
-                6 - want_draws as i16,
-                "1000:4eed spends one only when the shot is taken"
-            );
-        }
-    }
-
-    /// `1000:4ee6` -- an empty magazine is its own refusal, and it must not
-    /// take the count below zero however often `f` is typed.
-    #[test]
-    fn an_empty_magazine_refuses_without_drawing_or_going_negative() {
-        let mut g = game();
-        g.pistol = combat_dispatch::Pistol {
-            owned: true,
-            silencer: true,
-            cartridges: 1,
-        };
-        g.rng.start_log();
-        g.run_combat(0, punchbag(), &mut input(&["f", "f", "f", "f"]))
-            .unwrap();
-        assert_eq!(g.pistol.cartridges, 0);
-        assert_eq!(
-            draws_at(&mut g, "1000:4ef5"),
-            1,
-            "only the first `f` had a cartridge to spend"
-        );
-    }
-
     /// The shot lands on the enemy record, and its 20..=29 is subtracted with
     /// no armour term (`1000:4f28`) -- so an enemy in full armour loses
     /// exactly as much as a naked one from the same seed.
@@ -8274,101 +7820,6 @@ mod tests {
         let bare = hit(0);
         assert!((500 - 29..=500 - 20).contains(&bare), "hp {bare}");
         assert_eq!(hit(60), bare, "1000:4f28 has no `armour div 3` term");
-    }
-
-    /// `1000:4c5d` `xor ax,ax` / `call 0f78:0116` is `Halt(0)`: `e` at the
-    /// fight prompt leaves the whole game, not the fight, and reads no
-    /// further line.
-    ///
-    /// **`exit` must NOT.** `crate::commands::parse` folds `e` and `exit`
-    /// into one `Command::Quit` because `entry` dispatches both
-    /// (`1000:edfa`, `1000:ede9`), and `FUN_1000_3d11` compares only `e`
-    /// (CS `0x35a4` at `1000:4c56`). The shortstring `exit` sits at exactly
-    /// one image offset, CS `0xab1e`, referenced only by `1000:ede9`, so it
-    /// is never materialised inside the fight function and falls through the
-    /// chain like any other unmatched line. Typing only `e` cannot catch a
-    /// regression here, which is why both spellings are scripted.
-    #[test]
-    fn e_at_the_fight_prompt_halts_the_game_and_exit_does_not() {
-        let mut g = game();
-        let mut lines = input(&["e", "k", "k"]);
-        g.run_combat(0, punchbag(), &mut lines).unwrap();
-        assert!(!g.running, "1000:4c5f ends the process");
-        assert_eq!(lines.count(), 2, "nothing after `e` is read");
-        assert!(g.last_enemy.is_some(), "the fight still recorded its enemy");
-
-        // Case folding: 1000:4431 `call 0eed:0x216` runs on the buffer before
-        // any compare, so `E` is the same verb.
-        let mut g = game();
-        let mut lines = input(&["E", "k", "k"]);
-        g.run_combat(0, punchbag(), &mut lines).unwrap();
-        assert!(!g.running);
-        assert_eq!(lines.count(), 2);
-
-        // `exit` reaches no handler at all. The closing `run` (level 0, so
-        // no penalty) is what ends the fight, and it is the discriminator:
-        // if `exit` still halted, the game would be stopped and the `run`
-        // never read.
-        let mut g = game();
-        let mut lines = input(&["exit", "exit", "run"]);
-        g.rng.start_log();
-        g.run_combat(0, punchbag(), &mut lines).unwrap();
-        assert!(
-            g.running,
-            "`exit` is not compared at 1000:4c56 and must not Halt the game"
-        );
-        assert_eq!(lines.count(), 0, "both `exit`s and the `run` were read");
-        assert!(g.last_enemy.is_some(), "the fight ended by fleeing");
-        assert!(
-            g.rng.take_log().is_empty(),
-            "and `exit` reached no arm that draws either"
-        );
-    }
-
-    /// The property the captured oracles rest on: a fight that types only
-    /// the verbs the captures typed spends its draws at exactly the sites it
-    /// spent them at before Task 18 -- none of the four new ones -- even
-    /// when the player is carrying everything the new arms need.
-    ///
-    /// `data/combat_trace.json` is the real check (15 fights, 1900 draws);
-    /// this is the same statement in a form that names the four sites, so a
-    /// regression says which one leaked rather than only that the stream
-    /// moved.
-    #[test]
-    fn an_ordinary_fight_never_touches_the_four_new_random_sites() {
-        const NEW: [&str; 4] = ["1000:4db7", "1000:4e16", "1000:4ef5", "1000:4f18"];
-        let mut blows = 0;
-        for seed in 0..40u32 {
-            let mut g = game_with_gopota();
-            g.rng = Rng::new(seed);
-            g.has_mobile = true;
-            g.pistol = combat_dispatch::Pistol {
-                owned: true,
-                silencer: true,
-                cartridges: 99,
-            };
-            g.rng.start_log();
-            // Ten `k`s on a player who owns a pistol and could call the
-            // gopota, but types neither `f` nor `v`.
-            g.run_combat(0, punchbag(), &mut input(&["k"; 10])).unwrap();
-            let log = g.rng.take_log();
-            blows += log.iter().filter(|d| d.site == "1000:4460").count();
-            for site in NEW {
-                assert_eq!(
-                    log.iter().filter(|d| d.site == site).count(),
-                    0,
-                    "seed {seed}: {site} fired without `v` or `f` being typed"
-                );
-            }
-            assert!(
-                !log.is_empty(),
-                "seed {seed}: the fight drew nothing at all"
-            );
-        }
-        assert!(
-            blows > 0,
-            "no blow was ever rolled -- the script did nothing"
-        );
     }
 
     /// The flee penalty end to end -- `1000:493b`..`1000:4adc`. The growth
@@ -8461,29 +7912,6 @@ mod tests {
         g.run_combat(0, punchbag(), &mut input(&["run"])).unwrap();
         assert!(!g.places.is_found(Location::Den), "class 5 skips 1000:4a8e");
         assert_eq!(g.player.level, 2, "but still pays the level");
-    }
-
-    /// `1000:411d` -- the rector showdown suppresses the spectators, and
-    /// with them their two draws, while leaving the counter (and its
-    /// `^7Начинают собираться зрители` at exactly five) alone.
-    #[test]
-    fn the_rector_showdown_has_no_spectators() {
-        for (rector, want) in [(false, 6usize), (true, 0)] {
-            let mut g = game();
-            g.rector_showdown = rector;
-            g.rng.start_log();
-            // Ten prompts, the last of them the `run` that ends the fight --
-            // without it the loop prompts an eleventh time before it sees the
-            // input end. 1000:4135 fires from the fifth prompt onward, so six.
-            let mut script = vec!["zzz"; 9];
-            script.push("run");
-            g.run_combat(0, punchbag(), &mut input(&script)).unwrap();
-            assert_eq!(
-                draws_at(&mut g, "1000:4135"),
-                want,
-                "rector_showdown = {rector}"
-            );
-        }
     }
 
     /// `1000:48eb` and `1000:4f8c` -- the rector refuses the flee and, when
@@ -9303,95 +8731,6 @@ mod tests {
         assert_eq!(counter(true), 3, "1000:4ce2 -- the menu line's promise");
     }
 
-    /// `bmar` row 3, Офигенный косяк -- the only one of the nine that draws.
-    /// There is no RNG setter (see [`crate::rng::Rng::state`]), so each of
-    /// the four arms of the `Random(4)` at `1000:ca0c` is reached by seed
-    /// search and its own numbers asserted.
-    #[test]
-    fn the_good_joint_rolls_one_of_four_stat_points() {
-        let mut seen = [false; 4];
-        let mut odd_case_checked = false;
-        for seed in 0u32..256 {
-            let mut g = Game::new(player(), Progress::new(), seed);
-            g.location = Location::Dealers;
-            g.mode = Mode::Shop(Location::Dealers);
-            g.player.money = 100;
-            let was = g.player.clone();
-            g.rng.start_log();
-            g.shop_turn(Location::Dealers, "3", &mut no_input())
-                .unwrap();
-            let log = g.rng.take_log();
-            assert_eq!(log.len(), 1, "one draw per purchase, seed {seed}");
-            assert_eq!(log[0].site, "1000:ca0c");
-            assert_eq!(log[0].n, 4, "1000:ca08 `mov ax,0x4`");
-            assert_eq!(g.player.money, 80, "20ae:0b3a = 20, debit 1000:c9eb");
-            let roll = log[0].r as usize;
-            seen[roll] = true;
-            match roll {
-                // 1000:ca11
-                0 => {
-                    assert_eq!(g.player.strength, was.strength + 1, "1000:ca16");
-                    assert_eq!(g.player.dmg_max, was.dmg_max + 1, "1000:ca33");
-                    // player() starts at 5, so the NEW Сила is 6 -- even, and
-                    // 1000:ca45 runs.
-                    assert_eq!(g.player.dmg_min, was.dmg_min + 1, "1000:ca45");
-                    assert_eq!(g.player.hpmax, was.hpmax + 1, "1000:ca49");
-                    assert_eq!(g.player.hp, was.hp + 1, "1000:ca4d");
-                    // Same seed, one less Сила: the new value is 5, odd, and
-                    // 1000:ca43 `jnz 0xca49` skips the dmg-min half while
-                    // every other write still happens.
-                    let mut h = Game::new(player(), Progress::new(), seed);
-                    h.location = Location::Dealers;
-                    h.mode = Mode::Shop(Location::Dealers);
-                    h.player.money = 100;
-                    h.player.strength = 4;
-                    h.shop_turn(Location::Dealers, "3", &mut no_input())
-                        .unwrap();
-                    assert_eq!(h.player.strength, 5);
-                    assert_eq!(h.player.dmg_min, was.dmg_min, "1000:ca45 is skipped");
-                    assert_eq!(h.player.dmg_max, was.dmg_max + 1, "1000:ca33 is not");
-                    odd_case_checked = true;
-                }
-                // 1000:ca53
-                1 => {
-                    assert_eq!(g.player.agility, was.agility + 1, "1000:ca58");
-                    assert_eq!(g.player.strength, was.strength);
-                    assert_eq!(g.player.hpmax, was.hpmax);
-                }
-                // 1000:ca77
-                2 => {
-                    assert_eq!(g.player.vitality, was.vitality + 1, "1000:ca7c");
-                    assert_eq!(g.player.hpmax, was.hpmax + 5, "1000:ca99");
-                    assert_eq!(g.player.hp, was.hp + 5, "1000:ca9e");
-                }
-                // 1000:caa5
-                _ => {
-                    assert_eq!(g.player.luck, was.luck + 1, "1000:caaa");
-                    assert_eq!(g.player.hpmax, was.hpmax);
-                }
-            }
-        }
-        assert!(
-            seen.iter().all(|s| *s),
-            "all four rolls exercised: {seen:?}"
-        );
-        assert!(odd_case_checked, "the odd-Сила half of roll 0 was reached");
-        // Repeatable -- no already-own test in the arm (1000:c9b5's span).
-        let mut g = dealers(100);
-        g.shop_turn(Location::Dealers, "3", &mut no_input())
-            .unwrap();
-        g.shop_turn(Location::Dealers, "3", &mut no_input())
-            .unwrap();
-        assert_eq!(g.player.money, 60, "two purchases, 20 each");
-        // Too poor: 1000:c9c8 is `jle`.
-        let mut g = dealers(19);
-        g.rng.start_log();
-        g.shop_turn(Location::Dealers, "3", &mut no_input())
-            .unwrap();
-        assert_eq!(g.player.money, 19);
-        assert!(g.rng.take_log().is_empty(), "a refusal draws nothing");
-    }
-
     /// `bmar` row 4, зоновская наколка -- and the number is the wander
     /// mugging roll's ceiling at `1000:b5da`, this row's entire gameplay
     /// effect.
@@ -9665,107 +9004,6 @@ mod tests {
         g
     }
 
-    /// `mar` row 1, Хотдог. The heal is `3 + Random(2)` -- `1000:bdb7`
-    /// pushes the 2, `1000:bdbb` draws, `1000:bdc0 add ax,0x3` consumes it
-    /// and `1000:bdc3 add [0x38ac],ax` applies it -- clamped back to hp max
-    /// by `1000:bdce jle 0xbdd6` over `1000:bdd3 mov [0x38ac],ax`.
-    #[test]
-    fn the_market_hot_dog_heals_three_or_four_and_clamps_to_hp_max() {
-        let mut g = market(10);
-        g.player.hp = 1;
-        g.rng.start_log();
-        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
-        let log = g.rng.take_log();
-        assert_eq!(log.len(), 1, "1000:bdbb draws once");
-        assert_eq!((log[0].site, log[0].n), ("1000:bdbb", 2));
-        assert_eq!(g.player.hp, 1 + 3 + log[0].r, "1000:bdc0 / 1000:bdc3");
-        assert!(matches!(g.player.hp, 4 | 5), "hp {}", g.player.hp);
-        assert_eq!(g.player.money, 8, "1000:bdb3, price 2 at 20ae:0b2e");
-
-        // The clamp: 19/20 heals to 20, never to 22 or 23.
-        let mut g = market(10);
-        g.player.hp = 19;
-        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
-        assert_eq!(g.player.hp, 20, "1000:bdd3");
-        assert_eq!(g.player.hpmax, 20);
-
-        // No already-own test: the row is repeatable and draws every time.
-        let mut g = market(10);
-        g.player.hp = 1;
-        g.rng.start_log();
-        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
-        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
-        assert_eq!(g.rng.take_log().len(), 2, "1000:bdbb draws every purchase");
-        assert_eq!(g.player.money, 6);
-    }
-
-    /// Row 1's three gates, each on its refusing side. None of them reaches
-    /// the draw at `1000:bdbb`, which is what makes a refusal RNG-neutral.
-    #[test]
-    fn the_market_hot_dog_refuses_on_a_broken_jaw_full_health_and_no_money() {
-        // 1000:bd5c `cmp byte [0x38b0],0x1` / 1000:bd61 `jnz 0xbd7f` -- the
-        // branch jumps PAST the refusal at 1000:bd63, so a broken jaw
-        // refuses on the fall-through.
-        let mut g = market(10);
-        g.player.hp = 1;
-        g.player.broken_jaw = true;
-        g.rng.start_log();
-        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
-        assert_eq!(g.player.money, 10, "1000:bd63 is a refusal, not a sale");
-        assert_eq!(g.player.hp, 1);
-        assert!(g.rng.take_log().is_empty());
-
-        // 1000:bd82 `cmp ax,[0x38ae]` / 1000:bd86 `jnl 0xbdf1` -- hp is
-        // already at max, which is what `player()` ships.
-        let mut g = market(10);
-        g.rng.start_log();
-        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
-        assert_eq!(g.player.money, 10, "1000:bdf1 is a refusal, not a sale");
-        assert_eq!(g.player.hp, 20);
-        assert!(g.rng.take_log().is_empty());
-
-        // 1000:bd91 `jle` -- the refusal at 1000:bd93 is the fall-through.
-        let mut g = market(1);
-        g.player.hp = 1;
-        g.rng.start_log();
-        g.shop_turn(Location::Market, "1", &mut no_input()).unwrap();
-        assert_eq!(g.player.money, 1);
-        assert_eq!(g.player.hp, 1);
-        assert!(g.rng.take_log().is_empty());
-    }
-
-    /// `mar` row 2, Пиво. `1000:beb4 inc [0x38c3]` is the effect; the
-    /// `Random(3)` at `1000:be51` picks one of three lines and changes no
-    /// state at all -- and is drawn anyway, because a skipped draw
-    /// desynchronises every later one.
-    #[test]
-    fn the_market_beer_counts_up_and_draws_a_die_that_changes_nothing() {
-        let mut g = market(12);
-        g.rng.start_log();
-        g.shop_turn(Location::Market, "2", &mut no_input()).unwrap();
-        let log = g.rng.take_log();
-        assert_eq!(log.len(), 1, "1000:be51 draws even though nothing reads it");
-        assert_eq!((log[0].site, log[0].n), ("1000:be51", 3));
-        assert_eq!(g.player.beer_dl, 1, "1000:beb4");
-        assert_eq!(g.player.money, 7, "1000:be49, price 5 at 20ae:0b2f");
-
-        // Repeatable, and each purchase draws again.
-        g.rng.start_log();
-        g.shop_turn(Location::Market, "2", &mut no_input()).unwrap();
-        assert_eq!(g.rng.take_log().len(), 1);
-        assert_eq!(g.player.beer_dl, 2);
-        assert_eq!(g.player.money, 2);
-
-        // 1000:be27 `jle` refuses at 4, and the refusal rejoins at
-        // 1000:be42 `jmp short 0xbeb8` -- PAST 1000:beb4, so no beer.
-        let mut g = market(4);
-        g.rng.start_log();
-        g.shop_turn(Location::Market, "2", &mut no_input()).unwrap();
-        assert_eq!(g.player.money, 4);
-        assert_eq!(g.player.beer_dl, 0, "a failed purchase adds no beer");
-        assert!(g.rng.take_log().is_empty());
-    }
-
     /// `mar` row 3, Затемнённые очки -- `1000:bef6 mov byte [0x38b3],0x1`,
     /// one-shot through `1000:bece jnz 0xbf1f`.
     #[test]
@@ -10033,34 +9271,6 @@ mod tests {
         }
     }
 
-    /// The whole chain, end to end: buy the pistol at the dealers, then fire
-    /// it in a fight. Before Task 18 neither half existed, and `f` at either
-    /// prompt printed an invented refusal.
-    #[test]
-    fn a_pistol_bought_at_the_dealers_can_be_fired_in_a_fight() {
-        let mut g = game();
-        g.location = Location::Dealers;
-        g.mode = Mode::Shop(Location::Dealers);
-        g.district = 4;
-        g.player.money = 1_000;
-        g.player.agility = 50; // beats every Random(0x32)
-        g.flag_3693 = true; // 1000:4ebc, the shooting is permitted here
-        g.shop_turn(Location::Dealers, "7", &mut no_input())
-            .unwrap();
-        assert_eq!(g.pistol.cartridges, 3);
-
-        g.mode = Mode::Street;
-        g.rng.start_log();
-        g.run_combat(0, punchbag(), &mut input(&["f", "run"]))
-            .unwrap();
-        assert_eq!(g.pistol.cartridges, 2, "1000:4eed spent one");
-        let left = g.last_enemy.as_ref().unwrap().hp;
-        assert!(
-            (500 - 29..=500 - 20).contains(&left),
-            "the shot did 20..=29: enemy hp {left}"
-        );
-    }
-
     /// One `sheet_kit` wiring case: a setter for one `Game` field and the
     /// sheet line that field's DGROUP byte gates.
     type FlagCase = (fn(&mut Game), &'static str);
@@ -10203,33 +9413,6 @@ mod tests {
         g.weapon_tesak_394c = true; // 20ae:394c
     }
 
-    /// The `x` arm's sale: `1000:ce8e` loads the whole Хлам word,
-    /// `1000:ce91` adds it to the money ONE FOR ONE and `1000:ce97` zeroes
-    /// it. The delta is asserted as a number so a rate or a multiplier
-    /// creeping in fails here.
-    #[test]
-    fn dealers_x_credits_the_whole_junk_word_one_for_one_and_zeroes_it() {
-        let mut g = dealers(7);
-        g.player.junk = 23;
-        g.rng.start_log();
-        let out = term::capture::lines(|| {
-            g.shop_turn(Location::Dealers, "x", &mut no_input())
-                .unwrap();
-        });
-        // CS 0x96d0, file 0xAFA0 -- and no `#` in it: five zeroed format
-        // words at 1000:ce9f..1000:cead.
-        assert_eq!(out, vec!["^6Барыги дали тебе денег за хлам."]);
-        assert_eq!(g.player.money, 30, "1000:ce91 -- 7 + 23, no rate");
-        assert_eq!(g.player.junk, 0, "1000:ce97");
-        assert!(
-            g.rng.take_log().is_empty(),
-            "1000:ce76..1000:cece holds no `call 0f78:114b`"
-        );
-        // 1000:ceb3 lands on the `wes` compare, which misses on `x`; the
-        // handler cannot leave the shop from here.
-        assert_eq!(g.mode, Mode::Shop(Location::Dealers));
-    }
-
     /// The `1000:ce8c jle` refusal: CS 0x96f2 and nothing else changes.
     #[test]
     fn dealers_x_refuses_with_no_junk_and_changes_nothing() {
@@ -10261,486 +9444,6 @@ mod tests {
         assert_eq!(out, vec!["^4Тебе нечего спихнуть."]);
         assert_eq!(g.player.money, 7, "1000:ce8c takes the refusal");
         assert_eq!(g.player.junk, i16::MIN);
-    }
-
-    /// One `wes` arm's expectations, so the six can be driven from a table
-    /// instead of six near-identical test bodies.
-    struct SellArmCase {
-        /// The flags that make this arm -- and only this arm -- offered.
-        set: fn(&mut Game),
-        /// The lesser rung the arm sells; must be clear afterwards.
-        sold: fn(&Game) -> bool,
-        /// The better rung that made the offer; must still be set (nothing
-        /// clears the BETTER item's flag -- `sell.no_stat_subtraction_finding`).
-        better: fn(&Game) -> bool,
-        offer: &'static str,
-        /// The `call 0f78:114b` this arm's refund is drawn at.
-        site: &'static str,
-        /// The `add ax,imm` base and the `Random` span, both immediates.
-        base: i16,
-        span: u16,
-        confirm: &'static str,
-    }
-
-    /// The six arms in `1000:cee7`, `1000:cf9c`, `1000:d051`, `1000:d106`,
-    /// `1000:d1c9` and `1000:d285` order.
-    const SELL_ARMS: [SellArmCase; 6] = [
-        SellArmCase {
-            set: |g| {
-                g.wear_suit_abibas_38b4 = true;
-                g.wear_suit_adidas_38b7 = true;
-            },
-            sold: |g| g.wear_suit_abibas_38b4,
-            better: |g| g.wear_suit_adidas_38b7,
-            offer: "^2У тебя есть ненужный костюм хочешь продать?",
-            site: "1000:cf58",
-            base: 8,
-            span: 5,
-            confirm: "^2Ты продал костюм за #.",
-        },
-        SellArmCase {
-            set: |g| {
-                g.wear_boots_38b5 = true;
-                g.wear_boots_pontovye_38b8 = true;
-            },
-            sold: |g| g.wear_boots_38b5,
-            better: |g| g.wear_boots_pontovye_38b8,
-            offer: "^2У тебя есть ненужные кроссовки хочешь продать?",
-            site: "1000:d00d",
-            base: 8,
-            span: 5,
-            confirm: "^2Ты продал кроссовки за #.",
-        },
-        SellArmCase {
-            set: |g| {
-                g.wear_jacket_38b6 = true;
-                g.wear_jacket_krutaya_38b9 = true;
-            },
-            sold: |g| g.wear_jacket_38b6,
-            better: |g| g.wear_jacket_krutaya_38b9,
-            offer: "^2У тебя есть ненужная кожанка хочешь продать?",
-            site: "1000:d0c2",
-            base: 13,
-            span: 8,
-            confirm: "^2Ты продал кожанку за #.",
-        },
-        SellArmCase {
-            set: |g| {
-                g.weapon_kastet_38ba = true;
-                g.weapon_dubinka_394b = true;
-            },
-            sold: |g| g.weapon_kastet_38ba,
-            better: |g| g.weapon_dubinka_394b,
-            offer: "^2У тебя есть кастет, а это отстой хочешь продать?",
-            site: "1000:d185",
-            base: 13,
-            span: 8,
-            confirm: "^2Ты продал кастет за #.",
-        },
-        SellArmCase {
-            set: |g| {
-                g.weapon_dubinka_394b = true;
-                g.weapon_nozhik_38c2 = true;
-            },
-            sold: |g| g.weapon_dubinka_394b,
-            better: |g| g.weapon_nozhik_38c2,
-            offer: "^2У тебя есть дубинка - барахло - хочешь продать?",
-            site: "1000:d241",
-            base: 25,
-            span: 15,
-            confirm: "^2Ты продал дубинку за #.",
-        },
-        SellArmCase {
-            set: |g| {
-                g.weapon_nozhik_38c2 = true;
-                g.weapon_tesak_394c = true;
-            },
-            sold: |g| g.weapon_nozhik_38c2,
-            better: |g| g.weapon_tesak_394c,
-            offer: "^2У тебя есть ножик и тeсак, хочешь продать ножик?",
-            site: "1000:d2f6",
-            base: 38,
-            span: 23,
-            confirm: "^2Ты продал ножик за #.",
-        },
-    ];
-
-    /// `data/shop_arms.json`'s `sell.arms[].roll`, as
-    /// `(call.addr, base, n)` per arm. That block is re-derived from
-    /// `orig/g.exe` by `tools/test_shop_arms.py` — `roll.call.addr` is the
-    /// `call 0f78:114b`, `roll.n` the `mov ax,imm` before it and
-    /// `roll.base` the `add ax,imm` after it — so reading it here binds the
-    /// table above to the binary instead of to a second transcription of
-    /// itself.
-    fn sell_roll_immediates_from_artifact() -> Vec<(String, i16, u16)> {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/data/shop_arms.json");
-        let bytes = std::fs::read(path).expect("read data/shop_arms.json");
-        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("parse");
-        v["sell"]["arms"]
-            .as_array()
-            .expect("data/shop_arms.json sell.arms")
-            .iter()
-            .map(|a| {
-                let r = &a["roll"];
-                (
-                    r["call"]["addr"]
-                        .as_str()
-                        .expect("roll.call.addr")
-                        .to_string(),
-                    r["base"].as_i64().expect("roll.base") as i16,
-                    r["n"].as_u64().expect("roll.n") as u16,
-                )
-            })
-            .collect()
-    }
-
-    /// Each arm alone: its gate, its offer, its draw site and both of its
-    /// immediates, its flag clear, its confirmation, and the money delta as
-    /// a number.
-    ///
-    /// The delta must equal `base + r` for the value actually drawn at this
-    /// arm's own `call 0f78:114b`, so a wrong base — or a refund read from
-    /// the buy price — fails. Arm 4 at 13..21 and the row-5 buy price of 25
-    /// are different numbers, which is the point of the refund finding.
-    ///
-    /// A previous revision followed that with
-    /// `(base..base+span).contains(&delta)` and called the two checks
-    /// independent. They are not: `Rng::below_at` computes
-    /// `((r * n) >> 32) as u16`, which is `< n` by construction, so given
-    /// `log[0].n == a.span` and `delta == a.base + r` the range assertion
-    /// holds unconditionally — the tautology
-    /// `docs/re/METHODOLOGY.md` names. What replaces it is a check that can
-    /// fail: `site`, `base` and `span` are compared against
-    /// `data/shop_arms.json`'s `sell.arms[].roll`, which
-    /// `tools/test_shop_arms.py` re-derives from `orig/g.exe`. Chained with
-    /// the three assertions above it, that pins the number the port pays out
-    /// to the immediates the binary actually holds. Mutation case
-    /// `sell-arm-immediates-come-from-the-artifact`.
-    #[test]
-    fn each_wes_arm_sells_its_own_item_for_its_own_two_immediates() {
-        let artifact = sell_roll_immediates_from_artifact();
-        assert_eq!(
-            artifact.len(),
-            SELL_ARMS.len(),
-            "data/shop_arms.json records {} sell arms, the table has {}",
-            artifact.len(),
-            SELL_ARMS.len()
-        );
-        for (n, a) in SELL_ARMS.iter().enumerate() {
-            let mut g = dealers(100);
-            (a.set)(&mut g);
-            g.rng.start_log();
-            let out = term::capture::lines(|| {
-                g.shop_turn(Location::Dealers, "wes", &mut input(&["y"]))
-                    .unwrap();
-            });
-            let log = g.rng.take_log();
-            assert_eq!(log.len(), 1, "arm {} takes exactly one draw", n + 1);
-            assert_eq!(log[0].site, a.site, "arm {}", n + 1);
-            assert_eq!(log[0].n, a.span, "arm {} `Random(n)`", n + 1);
-            let delta = g.player.money - 100;
-            assert_eq!(
-                delta,
-                a.base + (log[0].r as i16),
-                "arm {} credits base + the drawn value",
-                n + 1
-            );
-            let (site, base, span) = &artifact[n];
-            assert_eq!(
-                (a.site, a.base, a.span),
-                (site.as_str(), *base, *span),
-                "arm {} immediates disagree with data/shop_arms.json's roll",
-                n + 1
-            );
-            assert!(!(a.sold)(&g), "arm {} clears the lesser rung", n + 1);
-            assert!((a.better)(&g), "arm {} leaves the better rung set", n + 1);
-            // The offer is a `WriteLn`; the `^0Продать вещи\` prompt is a
-            // no-newline `0eed:0000` Write, so it joins the confirmation.
-            assert_eq!(
-                out,
-                vec![
-                    a.offer.to_string(),
-                    format!(
-                        "^0Продать вещи\\{}",
-                        text::fill(a.confirm, &[i64::from(delta)])
-                    ),
-                ],
-                "arm {}",
-                n + 1
-            );
-        }
-    }
-
-    /// Each arm's own-flag gate: with the better rung set but the lesser one
-    /// clear, the arm is silent and the tail's no-offer line prints instead.
-    /// `1000:ceec`, `1000:cfa1`, `1000:d056`, `1000:d10b`, `1000:d1ce` and
-    /// `1000:d28a`.
-    #[test]
-    fn no_wes_arm_is_offered_without_the_lesser_rung() {
-        for (n, a) in SELL_ARMS.iter().enumerate() {
-            let mut g = dealers(100);
-            (a.set)(&mut g);
-            // Clear the lesser rung, keep the better one.
-            match n {
-                0 => g.wear_suit_abibas_38b4 = false,
-                1 => g.wear_boots_38b5 = false,
-                2 => g.wear_jacket_38b6 = false,
-                3 => g.weapon_kastet_38ba = false,
-                4 => g.weapon_dubinka_394b = false,
-                _ => g.weapon_nozhik_38c2 = false,
-            }
-            g.rng.start_log();
-            let out = term::capture::lines(|| {
-                g.shop_turn(Location::Dealers, "wes", &mut input(&["y"]))
-                    .unwrap();
-            });
-            assert_eq!(out, vec!["^6У тебя нет неужных вещей."], "arm {}", n + 1);
-            assert_eq!(g.player.money, 100, "arm {}", n + 1);
-            assert!(g.rng.take_log().is_empty(), "arm {} takes no draw", n + 1);
-        }
-    }
-
-    /// The ladder gate: the arm is offered only when a strictly BETTER rung
-    /// is owned. With the lesser rung alone, every arm is silent --
-    /// `1000:cef6`, `1000:cfab`, `1000:d060`, `1000:d123`, `1000:d1df` and
-    /// `1000:d294` are the last conjunct of each, and all of them miss.
-    #[test]
-    fn no_wes_arm_is_offered_without_a_better_rung() {
-        for (n, flag) in [
-            (
-                0usize,
-                (|g: &mut Game| g.wear_suit_abibas_38b4 = true) as fn(&mut Game),
-            ),
-            (1, |g: &mut Game| g.wear_boots_38b5 = true),
-            (2, |g: &mut Game| g.wear_jacket_38b6 = true),
-            (3, |g: &mut Game| g.weapon_kastet_38ba = true),
-            (4, |g: &mut Game| g.weapon_dubinka_394b = true),
-            (5, |g: &mut Game| g.weapon_nozhik_38c2 = true),
-        ] {
-            let mut g = dealers(100);
-            flag(&mut g);
-            g.rng.start_log();
-            let out = term::capture::lines(|| {
-                g.shop_turn(Location::Dealers, "wes", &mut input(&["y"]))
-                    .unwrap();
-            });
-            assert_eq!(out, vec!["^6У тебя нет неужных вещей."], "arm {}", n + 1);
-            assert_eq!(g.player.money, 100, "arm {}", n + 1);
-            assert!(g.rng.take_log().is_empty(), "arm {} takes no draw", n + 1);
-        }
-    }
-
-    /// Arm 4's ladder is a three-conjunct short-circuit `or` -- `1000:d110`
-    /// (`20ae:394b`), `1000:d117` (`20ae:38c2`) and `1000:d11e`
-    /// (`20ae:394c`), each `jnz` jumping forward to the offer at
-    /// `1000:d128`. Any ONE of the three offers the кастет.
-    #[test]
-    fn the_knuckles_arm_is_offered_by_any_one_of_its_three_better_rungs() {
-        for (which, set) in [
-            (
-                "20ae:394b",
-                (|g: &mut Game| g.weapon_dubinka_394b = true) as fn(&mut Game),
-            ),
-            ("20ae:38c2", |g: &mut Game| g.weapon_nozhik_38c2 = true),
-            ("20ae:394c", |g: &mut Game| g.weapon_tesak_394c = true),
-        ] {
-            let mut g = dealers(0);
-            g.weapon_kastet_38ba = true;
-            set(&mut g);
-            g.rng.start_log();
-            let out = term::capture::lines(|| {
-                g.shop_turn(Location::Dealers, "wes", &mut input(&["y"]))
-                    .unwrap();
-            });
-            assert_eq!(
-                out[0], "^2У тебя есть кастет, а это отстой хочешь продать?",
-                "{which}"
-            );
-            let log = g.rng.take_log();
-            assert_eq!(log.len(), 1, "{which} -- only arm 4 is offered");
-            assert_eq!(log[0].site, "1000:d185", "{which}");
-            assert_eq!(g.player.money, 13 + (log[0].r as i16), "{which}");
-            assert!(!g.weapon_kastet_38ba, "1000:d1a1, {which}");
-        }
-    }
-
-    /// The тесак is never sellable: no arm's own flag is `20ae:394c`, whose
-    /// only image-wide writer is the loot arm at `1000:573e`. Selling
-    /// everything the six arms offer leaves it set -- and one `wes` sells up
-    /// to six items, because each confirmation `WriteLn` falls straight into
-    /// the next arm's own-flag test.
-    ///
-    /// The six sites and the six bases come from
-    /// `data/shop_arms.json`'s `sell.arms[].roll`, not from literals here: a
-    /// previous revision followed the exact `assert_eq!(money, expect)` with
-    /// `(105..=163).contains(&money)`, which cannot fail once `expect` is
-    /// the sum of the same six bases and every `r < n`. Same tautology as in
-    /// `each_wes_arm_sells_its_own_item_for_its_own_two_immediates`, same
-    /// replacement: bind the constants to the artifact instead of restating
-    /// them.
-    #[test]
-    fn one_wes_sells_all_six_items_and_never_the_cleaver() {
-        let artifact = sell_roll_immediates_from_artifact();
-        assert_eq!(artifact.len(), 6, "data/shop_arms.json sell.arms");
-        let mut g = dealers(0);
-        all_sellable(&mut g);
-        g.rng.start_log();
-        let out = term::capture::lines(|| {
-            g.shop_turn(
-                Location::Dealers,
-                "wes",
-                &mut input(&["y", "y", "y", "y", "y", "y"]),
-            )
-            .unwrap();
-        });
-        let log = g.rng.take_log();
-        let sites: Vec<&str> = log.iter().map(|d| d.site).collect();
-        let want_sites: Vec<&str> = artifact.iter().map(|(s, _, _)| s.as_str()).collect();
-        assert_eq!(sites, want_sites, "six draws, in data/shop_arms.json order");
-        let expect: i16 = artifact
-            .iter()
-            .zip(&log)
-            .map(|((_, b, _), d)| *b + d.r as i16)
-            .sum();
-        assert_eq!(g.player.money, expect, "six credits, no rate anywhere");
-        // The six lesser rungs are cleared (1000:cf74, 1000:d029,
-        // 1000:d0de, 1000:d1a1, 1000:d25d, 1000:d312) ...
-        assert!(!g.wear_suit_abibas_38b4);
-        assert!(!g.wear_boots_38b5);
-        assert!(!g.wear_jacket_38b6);
-        assert!(!g.weapon_kastet_38ba);
-        assert!(!g.weapon_dubinka_394b);
-        assert!(!g.weapon_nozhik_38c2);
-        // ... and no better rung is: nothing in the range writes them.
-        assert!(g.wear_suit_adidas_38b7);
-        assert!(g.wear_boots_pontovye_38b8);
-        assert!(g.wear_jacket_krutaya_38b9);
-        assert!(g.weapon_tesak_394c, "20ae:394c is never sellable");
-        // Six offers, then the joined prompt+confirmation of each.
-        assert_eq!(out.len(), 12, "{out:?}");
-        // The tail's no-offer line is NOT among them.
-        assert!(
-            !out.iter()
-                .any(|l| l.contains("^6У тебя нет неужных вещей.")),
-            "{out:?}"
-        );
-    }
-
-    /// **The draw is spent even when the player declines.** In every arm the
-    /// store into `20ae:3e33` (`1000:cf60`, `1000:d015`, `1000:d0ca`,
-    /// `1000:d18d`, `1000:d249`, `1000:d2fe`) precedes the `y` compare
-    /// (`1000:cf6d`, `1000:d022`, `1000:d0d7`, `1000:d19a`, `1000:d256`,
-    /// `1000:d30b`), so refusing all six still advances the RNG stream by
-    /// six. Nothing else in this suite catches a port that rolls only on
-    /// acceptance: every other test answers `y`.
-    #[test]
-    fn declining_every_wes_offer_still_spends_all_six_draws() {
-        let mut g = dealers(100);
-        all_sellable(&mut g);
-        g.rng.start_log();
-        let out = term::capture::lines(|| {
-            g.shop_turn(
-                Location::Dealers,
-                "wes",
-                &mut input(&["n", "n", "n", "n", "n", "n"]),
-            )
-            .unwrap();
-        });
-        let log = g.rng.take_log();
-        let sites: Vec<&str> = log.iter().map(|d| d.site).collect();
-        assert_eq!(
-            sites,
-            vec![
-                "1000:cf58",
-                "1000:d00d",
-                "1000:d0c2",
-                "1000:d185",
-                "1000:d241",
-                "1000:d2f6",
-            ],
-            "the store at 1000:cf60 precedes the compare at 1000:cf6d"
-        );
-        assert_eq!(g.player.money, 100, "1000:cf72 and its five twins");
-        assert!(g.wear_suit_abibas_38b4, "1000:cf74 is not reached");
-        assert!(g.weapon_nozhik_38c2, "1000:d312 is not reached");
-        // Six offers, each declined -- so no confirmation follows, and the
-        // no-newline prompt joins the NEXT arm's offer instead. The
-        // no-offer line is absent: 1000:d33a sees the sixth roll, not the
-        // 0xff sentinel, so 1000:d33f jumps past 1000:d341.
-        assert_eq!(
-            out,
-            vec![
-                "^2У тебя есть ненужный костюм хочешь продать?",
-                "^0Продать вещи\\^2У тебя есть ненужные кроссовки хочешь продать?",
-                "^0Продать вещи\\^2У тебя есть ненужная кожанка хочешь продать?",
-                "^0Продать вещи\\^2У тебя есть кастет, а это отстой хочешь продать?",
-                "^0Продать вещи\\^2У тебя есть дубинка - барахло - хочешь продать?",
-                "^0Продать вещи\\^2У тебя есть ножик и тeсак, хочешь продать ножик?",
-                "^0Продать вещи\\",
-            ]
-        );
-    }
-
-    /// The same draw-before-the-question order, isolated to one arm: a
-    /// single declined offer still spends exactly one draw at that arm's
-    /// own site, and still suppresses the no-offer line (`1000:d33a` sees
-    /// the roll, so `1000:d33f` jumps past `1000:d341`).
-    #[test]
-    fn a_single_declined_offer_spends_its_draw_and_suppresses_the_tail_line() {
-        let mut g = dealers(100);
-        g.wear_suit_abibas_38b4 = true;
-        g.wear_suit_adidas_38b7 = true;
-        g.rng.start_log();
-        let out = term::capture::lines(|| {
-            g.shop_turn(Location::Dealers, "wes", &mut input(&["n"]))
-                .unwrap();
-        });
-        let log = g.rng.take_log();
-        assert_eq!(log.len(), 1);
-        assert_eq!(log[0].site, "1000:cf58");
-        assert_eq!(log[0].n, 5);
-        assert_eq!(g.player.money, 100);
-        assert!(g.wear_suit_abibas_38b4);
-        assert_eq!(
-            out,
-            vec![
-                "^2У тебя есть ненужный костюм хочешь продать?",
-                "^0Продать вещи\\"
-            ]
-        );
-    }
-
-    /// `1000:d33a` / `1000:d33f`: the no-offer line prints only when no arm
-    /// was reached at all, and it takes no draw.
-    #[test]
-    fn wes_with_nothing_sellable_prints_the_no_offer_line() {
-        let mut g = dealers(100);
-        g.rng.start_log();
-        let out = term::capture::lines(|| {
-            g.shop_turn(Location::Dealers, "wes", &mut no_input())
-                .unwrap();
-        });
-        assert_eq!(out, vec!["^6У тебя нет неужных вещей."]);
-        assert_eq!(g.player.money, 100);
-        assert!(g.rng.take_log().is_empty());
-        assert_eq!(g.mode, Mode::Shop(Location::Dealers));
-    }
-
-    /// `1000:cf4f call 0eed:0216` folds `A`..`Z` before the compare at
-    /// `1000:cf6d`, so `Y` sells.
-    #[test]
-    fn an_upper_case_y_sells() {
-        let mut g = dealers(0);
-        g.wear_suit_abibas_38b4 = true;
-        g.wear_suit_adidas_38b7 = true;
-        g.rng.start_log();
-        term::capture::lines(|| {
-            g.shop_turn(Location::Dealers, "wes", &mut input(&["Y"]))
-                .unwrap();
-        });
-        let log = g.rng.take_log();
-        assert_eq!(g.player.money, 8 + (log[0].r as i16));
-        assert!(!g.wear_suit_abibas_38b4);
     }
 
     /// `1000:d35a`..`1000:d368` overwrite the shared buffer `20ae:3a72` with
@@ -10900,97 +9603,6 @@ mod tests {
         );
     }
 
-    /// The seed-0 `RandSeed` chain out of `data/rng_vectors.json` -- the
-    /// 8086-interpreter oracle, not this port. See
-    /// `crate::combat::tests::ground_truth_states`, which reads the same
-    /// array for the same reason.
-    fn ground_truth_states() -> Vec<u32> {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/data/rng_vectors.json");
-        let bytes = std::fs::read(path).expect("read data/rng_vectors.json");
-        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("parse");
-        let block = &v["seeds"][0];
-        assert_eq!(block["seed"].as_u64(), Some(0));
-        block["next_u32"]
-            .as_array()
-            .expect("next_u32")
-            .iter()
-            .map(|x| x.as_u64().expect("u32") as u32)
-            .collect()
-    }
-
-    fn random_of(state: u32, n: u16) -> u16 {
-        ((state as u64 * n as u64) >> 32) as u16
-    }
-
-    /// The зубная защита's two arms, driven through a whole round.
-    ///
-    /// `combat::tests` pins the DRAW; this pins what the round does with it.
-    /// `1000:4820` (file `0x4BB1`) sets `[0x38b0]` and `1000:4827` (file
-    /// `0x4BE5`) does not, so the two arms differ in guest STATE and not
-    /// only in which line is printed -- which is what makes them assertable
-    /// here at all.
-    ///
-    /// The round is arranged so its draw stream is one player miss followed
-    /// by one enemy swing that hits, crits and breaks a jaw: the player's
-    /// agility 0 caps his accuracy at `4 * 5 = 20` (`1000:446a`) and both
-    /// chain indices below open above that, while the enemy's agility 14
-    /// gives him exactly one blow at the 90 cap and his luck 300 decides
-    /// every crit and break comparison by itself.
-    #[test]
-    fn the_zubnaya_zashchita_arms_differ_in_the_players_jaw_not_only_in_the_line() {
-        let st = ground_truth_states();
-        // chain index 3 -> the guard's Random(4) is 0, chain index 2 -> it
-        // is not; both are computed below rather than written down.
-        for k in [3usize, 2] {
-            let guard_draw = random_of(st[k + 7], 4);
-            let mut g = game();
-            g.rng = Rng::new(st[k - 1]);
-            g.tooth_guard = true;
-            g.player.agility = 0;
-            g.player.hp = 50;
-            g.player.hpmax = 50;
-            let mut enemy = Fighter {
-                agility: 14,
-                luck: 300,
-                dmg_min: 1,
-                dmg_max: 3,
-                hp: 50,
-                hpmax: 50,
-                ..Fighter::default()
-            };
-            g.rng.start_log();
-            g.combat_round(&mut enemy);
-            let log = g.rng.take_log();
-            let sites: Vec<&str> = log.iter().map(|d| d.site).collect();
-            assert_eq!(
-                sites,
-                [
-                    "1000:4460", // the player's miss: one draw, then his half ends
-                    "1000:4683",
-                    "1000:46ba",
-                    "1000:46db",
-                    "1000:4706",
-                    "1000:4794",
-                    "1000:47be",
-                    "1000:47fe",
-                ],
-                "chain index {k}: draw shape"
-            );
-            assert_eq!(
-                g.player.broken_jaw,
-                guard_draw == 0,
-                "chain index {k}: Random(4) = {guard_draw}; 1000:4803 `or ax,ax` / \
-                 `jnz 0x4827` means only 0 reaches the setter at 1000:4820"
-            );
-        }
-        assert_ne!(
-            random_of(st[10], 4) == 0,
-            random_of(st[9], 4) == 0,
-            "the two chain indices must land on DIFFERENT arms, or the loop \
-             above is one case written twice"
-        );
-    }
-
     #[test]
     fn combat_round_actually_lands_hits_over_a_bounded_number_of_rounds() {
         let mut g = game();
@@ -11011,428 +9623,6 @@ mod tests {
             before,
             enemy.hp
         );
-    }
-
-    /// Runs one whole walk on `seed` and reports what the decline branch's
-    /// `Random(2)` at `1000:b725` returned, or `None` when the turn produced
-    /// no fight encounter at all.
-    ///
-    /// **This observes the draw log rather than predicting it.** An earlier
-    /// version hand-replayed what it believed `walk`'s draws to be, and its
-    /// own doc admitted the flaw: "if `walk` gained, lost or reordered a
-    /// `Random` call, this helper would drift with it and stay green."
-    /// Task 11c added the eleven preamble draws that were missing, and the
-    /// helper duly broke -- which is the drift, not a conflict with the
-    /// finding the tests below assert. Reading `1000:b725` out of
-    /// [`crate::rng::Rng`]'s log cannot drift: it names the call site.
-    ///
-    /// What it still cannot do is tell whether the *sequence* is right; only
-    /// `tests/wander_sequence.rs`, replaying captured runs of the original,
-    /// settles that.
-    fn decline_roll_for(seed: u32) -> Option<u16> {
-        let mut g = Game::new(player(), Progress::new(), seed);
-        g.rng.start_log();
-        g.walk(&mut input(&["n"])).unwrap();
-        g.rng
-            .take_log()
-            .iter()
-            .find(|d| d.site == "1000:b725")
-            .map(|d| d.r)
-    }
-
-    /// **C1.** `1000:b718`..`1000:b74e`: after a non-`y` answer, `Random(2)`
-    /// returning **0** falls through to `1000:b72e`, which writes
-    /// `^4Он тебя заметил.` and sets the accept flag at `1000:b747` -- the
-    /// fight happens. A **non-zero** roll jumps to `1000:b74e`, writes
-    /// `^2Ты смылся.` and leaves the flag clear -- no fight.
-    ///
-    /// Observed through `running`: entering combat consumes the (empty)
-    /// rest of the input script and stops the loop; escaping does not.
-    #[test]
-    fn declining_an_encounter_fights_on_roll_zero_and_escapes_otherwise() {
-        let mut zero = None;
-        let mut nonzero = None;
-        for seed in 1u32..40_000 {
-            match decline_roll_for(seed) {
-                Some(0) if zero.is_none() => zero = Some(seed),
-                Some(n) if n != 0 && nonzero.is_none() => nonzero = Some(seed),
-                _ => {}
-            }
-            if zero.is_some() && nonzero.is_some() {
-                break;
-            }
-        }
-        let zero = zero.expect("no seed produced a decline roll of 0");
-        let nonzero = nonzero.expect("no seed produced a non-zero decline roll");
-
-        let mut g = Game::new(player(), Progress::new(), zero);
-        g.walk(&mut input(&["n"])).unwrap();
-        assert!(
-            !g.running,
-            "Random(2) == 0 means noticed: combat must start (seed {zero})"
-        );
-
-        let mut g = Game::new(player(), Progress::new(), nonzero);
-        g.walk(&mut input(&["n"])).unwrap();
-        assert!(
-            g.running,
-            "Random(2) != 0 means escaped: no combat (seed {nonzero})"
-        );
-        assert!(g.last_enemy.is_none(), "escaping must not record a fight");
-    }
-
-    /// Accepting with `y` always fights, whatever the RNG says next.
-    #[test]
-    fn accepting_an_encounter_always_fights() {
-        let seed = (1u32..40_000)
-            .find(|s| decline_roll_for(*s).is_some())
-            .expect("no seed produced an encounter");
-        let mut g = Game::new(player(), Progress::new(), seed);
-        g.walk(&mut input(&["Y"])).unwrap(); // 0eed:0216 case-folds first
-        assert!(!g.running, "an accepted encounter must enter combat");
-    }
-
-    /// The first seed whose walk reaches the girl event and whose
-    /// `Random(2)` at `1000:b54e` returns `want`. Observed from the draw
-    /// log, for the reason [`decline_roll_for`] gives.
-    fn girl_seed_with_roll(want: u16) -> u32 {
-        (1u32..40_000)
-            .find(|&seed| {
-                let mut g = Game::new(player(), Progress::new(), seed);
-                g.rng.start_log();
-                g.walk(&mut input(&["y"])).unwrap();
-                g.rng
-                    .take_log()
-                    .iter()
-                    .any(|d| d.site == "1000:b54e" && d.r == want)
-            })
-            .unwrap_or_else(|| panic!("no seed produced a girl event with Random(2) == {want}"))
-    }
-
-    /// **CRITICAL.** `1000:b54e`'s `Random(2)` returning **0** reaches
-    /// `1000:b570` (`c6 06 97 36 01`), which sets the *girl's* flag
-    /// `20ae:3697`. This is the only discovery path the port implements and
-    /// the only reason any location is reachable in a real session.
-    #[test]
-    fn wander_bucket_two_discovers_the_girl_on_roll_zero() {
-        let seed = girl_seed_with_roll(0);
-        let mut g = Game::new(player(), Progress::new(), seed);
-        assert!(!g.places.is_found(Location::Girl));
-        g.walk(&mut input(&["y"])).unwrap();
-        assert!(
-            g.places.is_found(Location::Girl),
-            "Random(2) == 0 must set 20ae:3697 (seed {seed})"
-        );
-        // The flag is the girl's, not the den's: 0x3696 stays clear.
-        assert!(!g.places.is_found(Location::Den));
-        assert!(g.running, "the girl event never enters combat");
-    }
-
-    /// A non-zero `Random(2)` jumps to `1000:b577`, writes the brush-off and
-    /// leaves `20ae:3697` clear.
-    #[test]
-    fn wander_bucket_two_leaves_the_flag_clear_on_a_non_zero_roll() {
-        let seed = girl_seed_with_roll(1);
-        let mut g = Game::new(player(), Progress::new(), seed);
-        g.walk(&mut input(&["y"])).unwrap();
-        assert!(
-            !g.places.is_found(Location::Girl),
-            "Random(2) != 0 must not set 20ae:3697 (seed {seed})"
-        );
-    }
-
-    /// `1000:b548` `75 46`: any answer but `y` skips the `Random(2)`
-    /// entirely and ends the turn, so declining must neither discover the
-    /// girl nor consume a draw.
-    #[test]
-    fn declining_the_girl_sets_nothing_and_spends_no_draw() {
-        let seed = girl_seed_with_roll(0);
-        let mut g = Game::new(player(), Progress::new(), seed);
-        g.walk(&mut input(&["n"])).unwrap();
-        assert!(!g.places.is_found(Location::Girl));
-        // The declined turn spent only the bucket roll, so the next draw is
-        // still the Random(2) the accepted turn would have seen.
-        assert_eq!(g.rng.below(2), 0, "the decline branch must not draw");
-    }
-
-    /// `1000:b4ef`'s non-zero arm (`1000:b592`) writes
-    /// `Совсем ничё не происходит.` and reads no input at all -- so an
-    /// already-discovered girl must not consume a line from the script.
-    #[test]
-    fn wander_bucket_two_reads_no_input_once_the_girl_is_known() {
-        let seed = girl_seed_with_roll(0);
-        let mut g = Game::new(player(), Progress::new(), seed);
-        g.places.mark_found(Location::Girl);
-        let mut lines = input(&["y"]);
-        g.walk(&mut lines).unwrap();
-        assert!(g.running);
-        assert!(
-            lines.next().is_some(),
-            "the already-found arm must not ReadLn"
-        );
-    }
-
-    /// The first seed whose `1000:b353` bucket roll (draw 12) lands on
-    /// `want`, with the church (`1000:b39e`) NOT overriding it to 0.
-    /// `docs/re/port-gaps.md` rows 11, 12 and 22's tests all key off this
-    /// rather than a hand-picked seed, so a change to the bucket-roll
-    /// arithmetic in `Game::wander_preamble` cannot silently desync the
-    /// tests from it.
-    fn bucket_seed(want: u8) -> u32 {
-        (1u32..40_000)
-            .find(|&seed| {
-                let mut g = Game::new(player(), Progress::new(), seed);
-                g.rng.start_log();
-                term::capture::lines(|| {
-                    g.walk(&mut no_input()).unwrap();
-                });
-                let log = g.rng.take_log();
-                let Some(roll) = log.iter().find(|d| d.site == "1000:b353").map(|d| d.r) else {
-                    return false;
-                };
-                let bucket = match roll + 1 {
-                    r if r >= 10 => 4,
-                    r if r >= 5 => 3,
-                    r if r >= 2 => 2,
-                    _ => 1,
-                };
-                let church_cancelled = log.iter().any(|d| d.site == "1000:b39e" && d.r == 0);
-                bucket == want && !church_cancelled
-            })
-            .unwrap_or_else(|| panic!("no seed produced wander bucket {want}"))
-    }
-
-    /// `run`'s own extra line (`wander::RAN`, `1000:aee4`..`aeff`) prints
-    /// when `Game::walk_verb`'s `ran` is true and never otherwise -- both
-    /// spellings still run the SAME preamble and land on the SAME bucket,
-    /// since `ran` only gates this one line. `docs/re/port-gaps.md` row 22.
-    #[test]
-    fn run_prints_its_own_extra_line_and_w_does_not() {
-        let seed = bucket_seed(1);
-        let w = term::capture::lines(|| {
-            let mut g = Game::new(player(), Progress::new(), seed);
-            g.walk_verb(false, &mut no_input()).unwrap();
-        });
-        let run = term::capture::lines(|| {
-            let mut g = Game::new(player(), Progress::new(), seed);
-            g.walk_verb(true, &mut no_input()).unwrap();
-        });
-        assert!(
-            !w.iter().any(|l| l == wander::RAN),
-            "`w` must not print {:?}: {w:?}",
-            wander::RAN
-        );
-        assert_eq!(
-            run,
-            {
-                let mut want = vec![wander::RAN.to_string()];
-                want.extend(w.clone());
-                want
-            },
-            "`run` must print exactly `w`'s output with {:?} first",
-            wander::RAN
-        );
-    }
-
-    /// Bucket 1 (`1000:b3c4`..`b4e8`): the toggle and the district line move
-    /// together, and there is no line at all outside districts 1..4.
-    /// `docs/re/port-gaps.md` row 12.
-    #[test]
-    fn bucket_one_prints_the_entered_or_left_line_for_its_district() {
-        let seed = bucket_seed(1);
-        for district in 1u8..=5 {
-            let mut g = Game::new(player(), Progress::new(), seed);
-            g.district = district;
-            let starting_flag = g.flag_3693;
-            let out = term::capture::lines(|| {
-                g.walk(&mut no_input()).unwrap();
-            });
-            assert_eq!(
-                g.flag_3693, !starting_flag,
-                "district {district} must still toggle 20ae:3693"
-            );
-            if district == 5 {
-                assert!(
-                    out.is_empty(),
-                    "district 5 has no line in either half: {out:?}"
-                );
-                continue;
-            }
-            let want = if g.flag_3693 {
-                wander::BUCKET1[usize::from(district - 1)]
-            } else {
-                wander::BUCKET1[4 + usize::from(district - 1)]
-            };
-            assert_eq!(out, vec![want.to_string()], "district {district}");
-        }
-    }
-
-    /// Bucket 4 (`1000:b82f`..`b94a`), not stoned: prints
-    /// `wander::BUCKET4[2]` and spends no draw. `docs/re/port-gaps.md`
-    /// row 11 -- this is the arm all five `tests/wander_sequence.rs` runs
-    /// take, since none of them are stoned on a bucket-4 turn.
-    #[test]
-    fn bucket_four_prints_nothing_happens_when_not_stoned() {
-        let seed = bucket_seed(4);
-        let mut g = Game::new(player(), Progress::new(), seed);
-        assert!(!g.player.stoned);
-        g.rng.start_log();
-        let out = term::capture::lines(|| {
-            g.walk(&mut no_input()).unwrap();
-        });
-        assert_eq!(out, vec![wander::BUCKET4[2].to_string()]);
-        assert!(
-            g.rng
-                .take_log()
-                .iter()
-                .all(|d| d.site != "1000:b841" && d.site != "1000:b871"),
-            "the not-stoned arm must spend neither of bucket 4's own draws"
-        );
-    }
-
-    /// Bucket 4, stoned: both `Random(7)` draws fire, in address order, and
-    /// the composed encounter line's rank and fill are drawn -- not
-    /// recomputed from `enemy` the way bucket 3's similarly-worded line is.
-    /// `docs/re/port-gaps.md` row 11.
-    #[test]
-    fn bucket_four_spends_two_draws_and_can_compose_an_encounter_when_stoned() {
-        let seed = bucket_seed(4);
-        // Both draws non-zero: no floating line, no composed line, just the
-        // shared "Ничё не происходит." site.
-        let quiet = (0u32..2000)
-            .find(|&s| {
-                let mut g = Game::new(player(), Progress::new(), seed);
-                g.buff_countdown = 5;
-                g.player.stoned = true;
-                g.rng = Rng::new(s);
-                g.rng.start_log();
-                term::capture::lines(|| g.walk(&mut no_input()).unwrap());
-                let log = g.rng.take_log();
-                let a = log.iter().find(|d| d.site == "1000:b841").map(|d| d.r);
-                let b = log.iter().find(|d| d.site == "1000:b871").map(|d| d.r);
-                matches!((a, b), (Some(a), Some(b)) if a != 0 && b != 0)
-            })
-            .expect("no inner seed avoided both bucket-4 zeros");
-        {
-            let mut g = Game::new(player(), Progress::new(), seed);
-            g.buff_countdown = 5;
-            g.player.stoned = true;
-            g.rng = Rng::new(quiet);
-            let out = term::capture::lines(|| g.walk(&mut no_input()).unwrap());
-            assert_eq!(
-                out,
-                vec![wander::BUCKET4[2].to_string()],
-                "both draws non-zero must print only the shared line"
-            );
-        }
-
-        // The composed arm: both draws zero.
-        let compose = (0u32..2000)
-            .find(|&s| {
-                let mut g = Game::new(player(), Progress::new(), seed);
-                g.buff_countdown = 5;
-                g.player.stoned = true;
-                g.rng = Rng::new(s);
-                g.rng.start_log();
-                term::capture::lines(|| {
-                    g.walk(&mut input(&["anything"])).unwrap();
-                });
-                let log = g.rng.take_log();
-                let a = log.iter().find(|d| d.site == "1000:b841").map(|d| d.r);
-                let b = log.iter().find(|d| d.site == "1000:b871").map(|d| d.r);
-                matches!((a, b), (Some(0), Some(0)))
-            })
-            .expect("no inner seed hit both bucket-4 zeros");
-        let mut g = Game::new(player(), Progress::new(), seed);
-        g.buff_countdown = 5;
-        g.player.stoned = true;
-        g.district = 3;
-        g.rng = Rng::new(compose);
-        let mut lines = input(&["anything"]);
-        let out = term::capture::lines(|| g.walk(&mut lines).unwrap());
-        assert_eq!(out[0], wander::BUCKET4[0], "first draw 0 floats first");
-        assert!(
-            out[1].starts_with(wander::BUCKET4_FRAGMENTS[0]),
-            "{:?} must open the composed line",
-            out[1]
-        );
-        assert!(
-            out[1].ends_with(wander::BUCKET4_FRAGMENTS[1].trim_start_matches(' '))
-                || out[1].contains(" уровня. Хочешь наехать?"),
-            "{:?} must carry the fill fragment",
-            out[1]
-        );
-        assert_eq!(out[2], wander::BUCKET4[1]);
-        assert!(
-            lines.next().is_none(),
-            "the ReadLn at 1000:b8e2 must consume the one line the script offered"
-        );
-    }
-
-    /// Bucket 0 (the church-cancelled turn): the outer dispatch's mismatch
-    /// arm at `1000:b92a` prints the SAME text as bucket 4's shared site,
-    /// via a SEPARATE CS reference (`wander::BUCKET4[3]`, not `[2]`).
-    /// `docs/re/port-gaps.md` row 11's "bucket 0" note.
-    #[test]
-    fn bucket_zero_prints_the_outer_mismatch_line() {
-        // Any seed whose FIRST wander turn's church draw (1000:b39e) is 0
-        // forces bucket 0 on that turn, whatever the bucket roll was.
-        let seed = (1u32..40_000)
-            .find(|&s| {
-                let mut g = Game::new(player(), Progress::new(), s);
-                g.rng.start_log();
-                term::capture::lines(|| g.walk(&mut no_input()).unwrap());
-                g.rng
-                    .take_log()
-                    .iter()
-                    .any(|d| d.site == "1000:b39e" && d.r == 0)
-            })
-            .expect("no seed rolled the church on its first wander turn");
-        let mut g = Game::new(player(), Progress::new(), seed);
-        // The church itself blocks on ReadKeys; feed it enough lines and
-        // ignore its own output, then isolate the bucket-0 line alone by
-        // diffing against a second walk from the same point is unnecessary
-        // here -- `wander::BUCKET4[3]` is asserted to be the LAST line
-        // this walk prints, which is what `1000:82b2`'s straight-line
-        // ending (parting, then the bucket dispatch) guarantees.
-        let out = term::capture::lines(|| {
-            g.walk(&mut input(&[
-                "k", "k", "k", "k", "k", "k", "k", "k", "k", "k", "k", "k",
-            ]))
-            .unwrap();
-        });
-        assert_eq!(
-            out.last().map(String::as_str),
-            Some(wander::BUCKET4[3]),
-            "a church-cancelled turn must end on the outer mismatch line: {out:?}"
-        );
-    }
-
-    /// The chain the CRITICAL finding was about: wander discovers the girl,
-    /// `girl` then discovers the club. Both flags come from real setters
-    /// (`1000:b570`, `1000:d751`).
-    #[test]
-    fn wander_then_girl_makes_the_club_reachable() {
-        let seed = girl_seed_with_roll(0);
-        let mut g = Game::new(player(), Progress::new(), seed);
-        g.player.money = 100;
-        g.walk(&mut input(&["y"])).unwrap();
-        assert!(g.places.is_found(Location::Girl));
-        // visit_girl's own Random(2) must come up 0 for the club reveal;
-        // drive it until it does, which the player can do by revisiting.
-        for _ in 0..40 {
-            if g.places.is_found(Location::Club) {
-                break;
-            }
-            g.player.money = 100;
-            g.dispatch(Command::Girl, &mut no_input()).unwrap();
-        }
-        assert!(
-            g.places.is_found(Location::Club),
-            "girl must be able to reveal the club (seed {seed})"
-        );
-        g.dispatch(Command::Club, &mut no_input()).unwrap();
-        assert_eq!(g.mode, Mode::Shop(Location::Club));
     }
 
     /// I7: a dead player ends the game (`1000:5053` -> `FUN_1000_074b(0)`,
@@ -11779,79 +9969,6 @@ mod tests {
             );
             std::fs::remove_dir_all(&g.save_dir).ok();
         }
-    }
-
-    /// `1000:b5fc`..`b61b` -- the notice compare that picks the encounter's
-    /// class threshold: 3 when luck LOST (`1000:b60a`), 7 when it won
-    /// (`1000:b614`). The test that matters is `luck == notice`, where `<`
-    /// and `<=` disagree, and nothing had ever produced it: `notice` is a
-    /// draw, so the equality has to be constructed.
-    ///
-    /// It is constructed by replay. Luck is read only AFTER `1000:b5f1`
-    /// and influences no draw before it (the one luck-driven draw in the
-    /// walk is the Вор's, and this walker is class 5), so the same seed
-    /// yields the same `notice` whatever luck is set to. Pass one reads it
-    /// off the RNG log; passes two and three replay with luck placed either
-    /// side of it, and the seed is only accepted when those two DISAGREE --
-    /// which is what proves the rolled class lies in 3..=6, the band where
-    /// the two thresholds differ at all.
-    #[test]
-    fn a_notice_roll_equal_to_luck_is_not_a_loss() {
-        let aggressive = "ищущий кого отпинать";
-
-        /// One walk at `seed` with `luck`, returning the encounter line and
-        /// the `1000:b5f1` draw if the walk reached one.
-        fn walk(seed: u32, luck: u16) -> Option<(String, u16)> {
-            let mut g = game();
-            g.player.class = 5;
-            g.player.luck = luck;
-            g.rng = Rng::new(seed);
-            g.rng.start_log();
-            let out = term::capture::lines(|| {
-                g.walk_verb(false, &mut input(&["n", "n", "n", "n"]))
-                    .unwrap();
-            });
-            let notice = g.rng.take_log().iter().find(|d| d.site == "1000:b5f1")?.r;
-            let line = out.iter().find(|l| l.contains(" уровня"))?.clone();
-            Some((line, notice))
-        }
-
-        let found = (0..4_000u32).find_map(|seed| {
-            let (_, notice) = walk(seed, 0)?;
-            // The band check: below and above must disagree, or the class
-            // is outside 3..=6 and the equality case proves nothing.
-            let below = walk(seed, notice.checked_sub(1)?)?.0;
-            let above = walk(seed, notice + 1)?.0;
-            let (lo, hi) = (below.contains(aggressive), above.contains(aggressive));
-            if lo && !hi {
-                Some((seed, notice))
-            } else {
-                None
-            }
-        });
-        let (seed, notice) = found.expect(
-            "no seed in 0..4000 produced an encounter whose class sits in 3..=6, \
-             so the equality case below would prove nothing",
-        );
-
-        // luck < notice loses and takes the class-3 threshold.
-        assert!(
-            walk(seed, notice - 1).unwrap().0.contains(aggressive),
-            "seed {seed}: luck {} vs notice {notice}",
-            notice - 1
-        );
-        // luck == notice is NOT a loss -- 1000:b60a is `jnc`, so the equal
-        // case takes the class-7 threshold with the winners.
-        assert!(
-            !walk(seed, notice).unwrap().0.contains(aggressive),
-            "seed {seed}: luck == notice == {notice} must not be a loss"
-        );
-        // And above it, likewise.
-        assert!(
-            !walk(seed, notice + 1).unwrap().0.contains(aggressive),
-            "seed {seed}: luck {} vs notice {notice}",
-            notice + 1
-        );
     }
 
     /// `Game::shop_turn`'s vet tail -- `1000:d6c5 jmp 0xd4ba` returns to the
@@ -12242,45 +10359,6 @@ mod tests {
         ] {
             assert_eq!(Game::round_half(twice), want, "round_half({twice})");
         }
-    }
-
-    /// `1000:b8bd`'s draw bound -- `district * 10 + 1`, the fill value of
-    /// wander bucket 4's stoned branch.
-    ///
-    /// The bound is asserted off the RNG log rather than from the printed
-    /// line, because the draw's `n` is the thing the mutants change.
-    /// **District 1 cannot pin it**: `1 * 10 + 1` and `1 + 10 + 1` differ by
-    /// one but `1 * 10` and `1 + 10` are both 10 — so a district-1 row
-    /// leaves `* 10`→`+ 10` alive. District 3 separates all four.
-    #[test]
-    fn the_stoned_wander_fill_is_drawn_from_district_times_ten_plus_one() {
-        for (district, want) in [(1u8, 11u16), (3, 31), (5, 51)] {
-            let mut g = game();
-            g.district = district;
-            g.player.stoned = true;
-            // 1000:b841 anything, 1000:b871 must be 0 to reach the fill,
-            // 1000:b891 the rank.
-            g.rng = Rng::new(seed_drawing(&[(7, 1), (7, 0), (7, 2)]));
-            g.rng.start_log();
-            term::capture::lines(|| {
-                g.wander_flavor(&mut input(&["x"])).unwrap();
-            });
-            let log = g.rng.take_log();
-            let fill = log
-                .iter()
-                .find(|d| d.site == "1000:b8bd")
-                .unwrap_or_else(|| panic!("district {district} never reached the fill draw"));
-            assert_eq!(fill.n, want, "district {district}");
-        }
-
-        // Not stoned: 1000:b82f's gate returns before any draw at all.
-        let mut g = game();
-        g.player.stoned = false;
-        g.rng.start_log();
-        term::capture::lines(|| {
-            g.wander_flavor(&mut input(&["x"])).unwrap();
-        });
-        assert!(g.rng.take_log().is_empty(), "sober must spend no draw");
     }
 
     /// `Game::enter_shop`'s two location gates and `Game::visit_girl`'s
@@ -12757,37 +10835,6 @@ mod tests {
         );
     }
 
-    /// Menu lines 6 and 13 share one byte, `1000:d8c8`/`1000:da35`, and the
-    /// `hp` ARM's own gate `1000:dbf3` reads the same one. Pinned together
-    /// so a port that offered the row without arming the arm (or the
-    /// reverse) goes red.
-    #[test]
-    fn the_den_errand_one_row_and_the_hp_arm_share_their_byte() {
-        for pending in [false, true] {
-            let mut g = game();
-            g.district = 1;
-            g.den_errand_1_pending = pending;
-            let menu = term::capture::lines(|| g.print_den_menu());
-            let has = |t: &str| menu.iter().any(|l| l == t);
-            assert_eq!(has("^6На одного пацана наехал какой-то урод"), pending);
-            assert_eq!(
-                has("Напиши ^6hp^7 чтобы отпинать мудака который наезжал на пацана"),
-                pending
-            );
-            g.rng.start_log();
-            let out = term::capture::lines(|| {
-                g.shop_turn(Location::Den, "hp", &mut input(&["run"]))
-                    .unwrap()
-            });
-            assert_eq!(
-                !out.is_empty(),
-                pending,
-                "the arm must fire exactly when the row is offered"
-            );
-            assert_eq!(!g.rng.take_log().is_empty(), pending);
-        }
-    }
-
     /// **Controller ruling R1, measured.** Threshold blocks #1/#2
     /// ([`Game::den_menu_reveal_hint`], `1000:d90f` / `1000:da6e`) and
     /// block #3 ([`Game::den_reveal`], `1000:dcba`) are two predicates, and
@@ -12830,28 +10877,6 @@ mod tests {
         assert!(
             !g.places.is_found(Location::Dealers) && !g.places.is_found(Location::Gym),
             "the `a` ARM must refuse in silence while the menu offers it"
-        );
-    }
-
-    /// `p` -- `1000:db22`..`1000:db77`. Gate `1000:db38`, effects
-    /// `1000:db3a` and `1000:db3e`, both strings.
-    #[test]
-    fn den_p_spends_a_half_litre_and_raises_the_street_cred_by_five() {
-        let mut g = game();
-        g.player.beer_dl = 2;
-        g.pontovost_street = 7;
-        g.rng.start_log();
-        let out =
-            term::capture::lines(|| g.shop_turn(Location::Den, "p", &mut no_input()).unwrap());
-        assert_eq!(
-            out,
-            vec!["^2Ты угостил пацанов пивом. Понтовость улутшилась на 5."]
-        );
-        assert_eq!(g.player.beer_dl, 1, "1000:db3a `dec [0x38c3]`");
-        assert_eq!(g.pontovost_street, 12, "1000:db3e `add word [0x38cb],0x5`");
-        assert!(
-            g.rng.take_log().is_empty(),
-            "1000:db22..1000:db77 holds no `call 0f78:114b`"
         );
     }
 
@@ -12915,68 +10940,6 @@ mod tests {
         assert_eq!(refusal(0, 0), vec!["^6Ты уже всю мелочь выгреб!"]);
     }
 
-    /// `s` -- `1000:dc63`..`1000:dcba`. The first line always, the second
-    /// on `district*10 + 10 <= [0x38cb]` (`1000:dc98`/`1000:dc9f`), and the
-    /// arm writes nothing at all.
-    #[test]
-    fn den_s_prints_the_cred_and_adds_the_second_line_at_the_threshold() {
-        let ask = |district: u8, cred: i16| {
-            let mut g = game();
-            g.district = district;
-            g.pontovost_street = cred;
-            g.player.money = 33;
-            g.player.beer_dl = 4;
-            g.den_loan_credit = 2;
-            g.rng.start_log();
-            let out =
-                term::capture::lines(|| g.shop_turn(Location::Den, "s", &mut no_input()).unwrap());
-            // The measured no_effect_claim over 1000:dc63..1000:dcba: the
-            // absolute-write sweep finds zero stores in the span.
-            assert_eq!(g.pontovost_street, cred);
-            assert_eq!(g.player.money, 33);
-            assert_eq!(g.player.beer_dl, 4);
-            assert_eq!(g.den_loan_credit, 2);
-            assert!(g.rng.take_log().is_empty());
-            out
-        };
-        // district 1 -> the threshold is 20.
-        assert_eq!(
-            ask(1, 20),
-            vec![
-                "^4Твоя понтовость сейчас = 20.",
-                "^0Да если чё мы за тебя впрягаемся.",
-            ]
-        );
-        assert_eq!(ask(1, 19), vec!["^4Твоя понтовость сейчас = 19."]);
-        // district 3 -> 40, so the same cred that passed at district 1 fails.
-        assert_eq!(ask(3, 20), vec!["^4Твоя понтовость сейчас = 20."]);
-        assert_eq!(
-            ask(3, 40),
-            vec![
-                "^4Твоя понтовость сейчас = 40.",
-                "^0Да если чё мы за тебя впрягаемся.",
-            ]
-        );
-    }
-
-    /// `hp` -- `1000:dbf3`'s gate stands IN FRONT of `1000:dc04`'s key
-    /// compare, so with no errand pending the token is never compared: no
-    /// output, no draw, no state change.
-    #[test]
-    fn den_hp_is_not_even_compared_without_an_errand() {
-        let mut g = game();
-        g.den_errand_1_pending = false;
-        g.rng.start_log();
-        let out =
-            term::capture::lines(|| g.shop_turn(Location::Den, "hp", &mut no_input()).unwrap());
-        assert!(
-            out.is_empty(),
-            "1000:dbf8 falls through in silence: {out:?}"
-        );
-        assert!(g.rng.take_log().is_empty(), "no opponent may be rolled");
-        assert!(!g.fight_accepted_3b72, "1000:dc11 must not run");
-    }
-
     /// With the errand pending: `1000:dc0e` rolls with `param_1 = 1`,
     /// `1000:dc11` sets the accept flag, `1000:dc53` announces the opponent
     /// and `1000:dc5e` consumes the errand after the fight returns.
@@ -13020,231 +10983,6 @@ mod tests {
         );
     }
 
-    /// `d` -- both gates at `1000:dd4b` and `1000:dd55` are SILENT, and
-    /// neither spends a draw or consumes the errand.
-    #[test]
-    fn den_d_refuses_in_silence_below_a_hundred_cred_or_without_the_errand() {
-        for (cred, errand) in [(99, true), (100, false), (0, false)] {
-            let mut g = game();
-            g.district = 1;
-            g.pontovost_street = cred;
-            g.den_errand_2_pending = errand;
-            g.player.money = 5;
-            g.rng.start_log();
-            let out =
-                term::capture::lines(|| g.shop_turn(Location::Den, "d", &mut no_input()).unwrap());
-            assert!(out.is_empty(), "cred {cred}, errand {errand}: {out:?}");
-            assert!(g.rng.take_log().is_empty(), "no draw before the gates pass");
-            assert_eq!(g.den_errand_2_pending, errand, "1000:dec8 is not reached");
-            assert_eq!(g.player.money, 5);
-        }
-    }
-
-    /// `d`'s haul path: `1000:dda8`'s compare goes to `1000:de36` when luck
-    /// wins. Three draws, at `1000:dd97`, `1000:de5a` and `1000:de7c`, with
-    /// the `n` each site pushes; money and хлам each gain
-    /// `district*10 + Random(district*10)`; the xp line prints `district*12`
-    /// and `1000:debe` credits the same number.
-    ///
-    /// Luck is pinned at `0x7fff` so `Longint(luck) < Longint(Random(15))`
-    /// is false for every possible roll -- the branch is selected by the
-    /// predicate under test, not by a lucky seed.
-    #[test]
-    fn den_d_hauls_when_luck_wins_the_first_roll() {
-        let mut g = game();
-        g.district = 1;
-        g.player.luck = 0x7fff;
-        g.pontovost_street = 100;
-        g.den_errand_2_pending = true;
-        g.player.money = 0;
-        g.player.junk = 0;
-        let level_before = g.player.level;
-        let threshold_before = g.progress.threshold;
-        g.rng.start_log();
-        let out =
-            term::capture::lines(|| g.shop_turn(Location::Den, "d", &mut no_input()).unwrap());
-        let full = g.rng.take_log();
-        let log: Vec<_> = full
-            .iter()
-            .filter(|d| d.site.starts_with("1000:dd") || d.site.starts_with("1000:de"))
-            .cloned()
-            .collect();
-        assert_eq!(
-            log.iter().map(|d| (d.site, d.n)).collect::<Vec<_>>(),
-            vec![("1000:dd97", 15), ("1000:de5a", 10), ("1000:de7c", 10)],
-            "three draws in range, in order, with the `n` each site pushes"
-        );
-        assert_eq!(
-            out[..4],
-            [
-                "^0Давай быстрее..".to_string(),
-                "^2Ты пришел воровать деньги".to_string(),
-                "^2Ты наваровал денег".to_string(),
-                "^6Ты получаешь 12 качков опыта".to_string(),
-            ]
-        );
-        // The last two lines are `FUN_1000_2526`'s own, landed with
-        // `docs/re/port-gaps.md` row 14: the 12 качков the line above awards
-        // buy a level, so `1000:2591`'s opener, its two stat gains and
-        // `1000:28ab`'s tail follow. Built from `crate::progress`'s
-        // constants rather than re-transcribed -- `tools/difftest.py`
-        // already re-decodes all six of those literals out of `orig/g.exe`,
-        // so a second hand copy would be a second place to be wrong and no
-        // second reading.
-        assert_eq!(out.len(), 6, "{out:?}");
-        assert!(out[4].starts_with(progress::LEVELUP_PREFIX), "{:?}", out[4]);
-        assert_eq!(
-            out[4].matches("+1 ").count(),
-            progress::GAINS_PER_LEVEL,
-            "one `+1` per gain, on one line: {:?}",
-            out[4]
-        );
-        assert_eq!(
-            out[5],
-            text::fill(
-                progress::LEVELUP_TAIL,
-                &[i64::from(g.progress.xp), i64::from(g.progress.threshold)],
-            )
-        );
-        assert_eq!(
-            g.player.money,
-            10 + (log[1].r as i16),
-            "1000:de6d: district*10 + Random(district*10)"
-        );
-        assert_eq!(
-            g.player.junk,
-            10 + log[2].r as i16,
-            "1000:de8f: the same shape for хлам"
-        );
-        // 1000:debe credits district*12 = 12; 1000:dec5's FUN_1000_2526(0)
-        // then drains it against the 10-point first threshold, which is why
-        // the level rises and 2 xp is left over -- and why `full` carries
-        // two extra draws at `1000:25fe`, the per-level stat rolls, that
-        // `log` filters out.
-        assert_eq!(g.player.level, level_before + 1, "1000:dec5 levelled up");
-        assert_eq!(g.progress.xp, 12 - threshold_before);
-        assert_eq!(g.progress.threshold, threshold_before + 10);
-        assert!(
-            full.len() > log.len(),
-            "the level-up spends its own draws at 1000:25fe"
-        );
-        assert!(!g.den_errand_2_pending, "1000:dec8");
-    }
-
-    /// `d` at district 3: every `n` and every award is rebuilt from
-    /// `[0x3692]`, so they all move together. Without this the district
-    /// multipliers could all be hard-coded to 1 and the test above would
-    /// still pass.
-    #[test]
-    fn den_d_scales_every_draw_and_every_award_with_the_district() {
-        let mut g = game();
-        g.district = 3;
-        g.player.luck = 0x7fff;
-        g.pontovost_street = 100;
-        g.den_errand_2_pending = true;
-        g.player.money = 0;
-        g.player.junk = 0;
-        g.rng.start_log();
-        let out =
-            term::capture::lines(|| g.shop_turn(Location::Den, "d", &mut no_input()).unwrap());
-        let log: Vec<_> = g
-            .rng
-            .take_log()
-            .into_iter()
-            .filter(|d| d.site.starts_with("1000:dd") || d.site.starts_with("1000:de"))
-            .collect();
-        assert_eq!(
-            log.iter().map(|d| (d.site, d.n)).collect::<Vec<_>>(),
-            vec![("1000:dd97", 45), ("1000:de5a", 30), ("1000:de7c", 30)]
-        );
-        assert!(out.contains(&"^6Ты получаешь 36 качков опыта".to_string()));
-        assert_eq!(g.player.money, 30 + (log[1].r as i16));
-        assert_eq!(g.player.junk, 30 + log[2].r as i16);
-    }
-
-    /// `d`'s "slipped away" path: luck loses `1000:dda8`'s compare and wins
-    /// `1000:dde9`'s. Seed 6 is chosen because its first two `Random(15)`
-    /// draws are 2 and 0, which with `luck == 0` is exactly
-    /// `0 < 2` then `not (0 < 0)`. Two draws in range, no fight, no money.
-    #[test]
-    fn den_d_slips_away_when_luck_loses_once_and_wins_once() {
-        let mut g = Game::new(player(), Progress::new(), 6);
-        g.district = 1;
-        g.player.luck = 0;
-        g.pontovost_street = 100;
-        g.den_errand_2_pending = true;
-        g.player.money = 0;
-        g.rng.start_log();
-        let out =
-            term::capture::lines(|| g.shop_turn(Location::Den, "d", &mut no_input()).unwrap());
-        let log = g.rng.take_log();
-        assert_eq!(
-            log.iter().map(|d| (d.site, d.n, d.r)).collect::<Vec<_>>(),
-            vec![("1000:dd97", 15, 2), ("1000:ddda", 15, 0)],
-            "two draws in range, and no third: no opponent was rolled"
-        );
-        assert_eq!(
-            out,
-            vec![
-                "^0Давай быстрее..",
-                "^2Ты пришел воровать деньги",
-                "^4Шухер менты!",
-                "^2Ты смылся от ментов.",
-            ]
-        );
-        assert_eq!(g.player.money, 0, "nothing is stolen on this path");
-        assert!(
-            !g.den_errand_2_pending,
-            "1000:dec8 runs on the cop paths too"
-        );
-    }
-
-    /// `d`'s caught path: luck loses BOTH compares. Seed 3's first two
-    /// `Random(15)` draws are 1 and 7. `1000:ddf6` rolls with
-    /// `param_1 = 2`, which `1000:0dc0` forces to class 8 -- the `Мент` --
-    /// and `1000:ddff` prints after the fight returns.
-    #[test]
-    fn den_d_fights_a_cop_when_luck_loses_twice() {
-        let mut g = Game::new(player(), Progress::new(), 3);
-        g.district = 1;
-        g.player.luck = 0;
-        g.pontovost_street = 100;
-        g.den_errand_2_pending = true;
-        g.rng.start_log();
-        let out = term::capture::lines(|| {
-            g.shop_turn(Location::Den, "d", &mut input(&["run"]))
-                .unwrap()
-        });
-        let in_range: Vec<_> = g
-            .rng
-            .take_log()
-            .into_iter()
-            .filter(|d| d.site == "1000:dd97" || d.site == "1000:ddda")
-            .map(|d| (d.site, d.n, d.r))
-            .collect();
-        assert_eq!(
-            in_range,
-            vec![("1000:dd97", 15, 1), ("1000:ddda", 15, 7)],
-            "both luck rolls lost"
-        );
-        assert_eq!(
-            g.last_enemy.as_ref().map(|e| e.class),
-            Some(8),
-            "1000:ddf6's param_1 == 2 forces the Мент"
-        );
-        assert_eq!(out.first().map(String::as_str), Some("^0Давай быстрее.."));
-        assert!(
-            out.contains(&"^4Шухер менты!".to_string()),
-            "1000:ddb6: {out:?}"
-        );
-        assert_eq!(
-            out.last().map(String::as_str),
-            Some("^6Пора валить!"),
-            "1000:ddff prints AFTER the fight: {out:?}"
-        );
-        assert!(!g.den_errand_2_pending, "1000:dec8");
-    }
-
     /// The 32-bit compare at `1000:dda6`..`1000:ddb3`: high halves SIGNED
     /// (`1000:dda8 jl`), low halves UNSIGNED (`1000:ddb1 jb`). The last two
     /// cases are what a single signed 16-bit compare would get wrong -- a
@@ -13284,60 +11022,6 @@ mod tests {
         g.shop_turn(Location::Den, "w", &mut no_input()).unwrap();
         assert_eq!(g.mode, Mode::Street);
         assert_eq!(g.location, Location::Street);
-    }
-
-    /// `1000:d82f`/`d859`/`d879`/`d899` -- the four district suffixes of
-    /// `print_den_intro`, and `1000:d83f`'s `Random(6) + 3` inside the first.
-    /// Nothing else in the repo compares them: `data/strings.json` and
-    /// `data/den_arms.json` both check the ARTIFACT against `orig/g.exe` and
-    /// neither reads `src/`, `data/rng_trace.json` has no `1000:d83f` entry,
-    /// and no `data/difftest_scripts/*.txt` enters the den. The draw is the
-    /// den's only one outside the `d` arm and fires on every district-1
-    /// entry, so moving or dropping it shifts every later value in the
-    /// session.
-    #[test]
-    fn the_den_intro_names_the_district_and_draws_only_in_the_first() {
-        const PREFIX: &str = "Ты пришел в притон - ";
-        for (district, want) in [
-            (2u8, "^0общагу ВКИ"),
-            (3, "^0гоповский притон"),
-            (4, "^0притон отморозков"),
-        ] {
-            let mut g = game();
-            g.district = district;
-            g.rng.start_log();
-            let out = term::capture::lines(|| g.print_den_intro());
-            assert_eq!(out, vec![format!("{PREFIX}{want}")], "district {district}");
-            assert!(g.rng.take_log().is_empty(), "district {district} drew");
-        }
-
-        // District 1 is the only arm with a draw: `1000:d83f`, bound 6, and
-        // the `+ 3` puts the dorm number in 3..=8.
-        let mut g = game();
-        g.district = 1;
-        g.rng.start_log();
-        let out = term::capture::lines(|| g.print_den_intro());
-        let log = g.rng.take_log();
-        assert_eq!(log.len(), 1);
-        assert_eq!((log[0].site, log[0].n), ("1000:d83f", 6));
-        // The dorm number is the DRAW plus 3, and it is compared against
-        // the draw the log recorded -- not re-parsed out of the line and
-        // compared to itself, which is a check that cannot fail and is what
-        // this assertion used to be. `cargo mutants` found it: rewriting
-        // 1000:d83f's `+ 3` to `* 3` survived the circular version.
-        let n = i64::from(log[0].r) + 3;
-        assert!((3..=8).contains(&n), "dorm {n} outside 3..=8");
-        assert_eq!(out, vec![format!("{PREFIX}^0общагу №{n}")]);
-
-        // `1000:d899` falls through: district 5 writes the prefix through
-        // `0eed:0000` (`Write`) and no `WriteLn` follows, so there is no
-        // suffix AND no newline.
-        let mut g = game();
-        g.district = 5;
-        g.rng.start_log();
-        let out = term::capture::lines(|| g.print_den_intro());
-        assert_eq!(out, vec![PREFIX.to_string()]);
-        assert!(g.rng.take_log().is_empty(), "district 5 drew");
     }
 
     /// `1000:d914`/`d91b` -- the reveal hint's early return, and its

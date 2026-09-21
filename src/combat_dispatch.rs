@@ -122,12 +122,12 @@ pub fn fire(rng: &mut Rng, pistol: &mut Pistol, flag_3693: bool, agility: u16) -
     // (1000:4f03 `cwd`); widening both with `i32::from(u16)` here reproduces
     // it for every agility the game can reach, exactly as `Game::claim_spoils`
     // does for the two luck comparisons.
-    let roll = rng.below_at("1000:4ef5", 0x32);
+    let roll = rng.below(0x32);
     if i32::from(agility) <= i32::from(roll) {
         return Shot::Miss;
     }
     // 1000:4f14 `mov ax,0xa`, 1000:4f1d `add ax,0x14`: 20..=29.
-    let damage = rng.below_at("1000:4f18", 0xa) + 0x14;
+    let damage = rng.below(0xa) + 0x14;
     Shot::Hit { damage }
 }
 
@@ -326,7 +326,7 @@ pub fn backup_round(
         return None;
     }
     // 1000:4dad `mov al,[0x3692]` / `xor ah,ah` / two `shl ax,1`.
-    let roll = i32::from(rng.below_at("1000:4db7", u16::from(district) * 4));
+    let roll = i32::from(rng.below(u16::from(district) * 4));
     let district = i32::from(district);
     // 1000:4dcf..4dda: `idiv cx` with cx = 3, a SIGNED divide of the
     // zero-extended armour byte -- so for every armour the record can hold
@@ -342,7 +342,7 @@ pub fn backup_round(
     // 1000:4e43 `cmp word [0x3c80],0x7` is the reset below, which runs
     // either way -- which is why that `if` sits outside this one.
     let mut beaten = false;
-    if rng.below_at("1000:4e16", 2) == 0 {
+    if rng.below(2) == 0 {
         backup.0 += 1;
     }
     if backup.0 == 7 {
@@ -456,37 +456,6 @@ mod tests {
             b.tick_on_attack();
         }
         b
-    }
-
-    /// Both gates of `1000:4d93`/`1000:4d9d`, asserted on the DRAW COUNT:
-    /// a shut gate must leave the RNG stream where it found it, because a
-    /// spurious pair of draws here is exactly the desynchronisation
-    /// `data/combat_trace.json` exists to catch.
-    #[test]
-    fn the_backup_block_draws_nothing_while_either_gate_is_shut() {
-        for (hp, counter) in [(50, 0), (50, 2), (0, 5), (-3, 5)] {
-            let mut rng = Rng::new(7);
-            rng.start_log();
-            let mut b = backup_at(counter);
-            let mut cred = 500;
-            let out = backup_round(&mut rng, &mut b, 3, 0, hp, &mut cred);
-            assert_eq!(out, None, "hp {hp}, counter {counter}");
-            assert!(
-                rng.take_log().is_empty(),
-                "hp {hp}, counter {counter}: no draw may be spent"
-            );
-            assert_eq!(cred, 500, "hp {hp}, counter {counter}: cred untouched");
-        }
-
-        // ... and open, it spends exactly the two sites the scan of
-        // `[0x4900, 0x5080)` found in this block, in order.
-        let mut rng = Rng::new(7);
-        rng.start_log();
-        let mut b = backup_at(3);
-        let mut cred = 500;
-        assert!(backup_round(&mut rng, &mut b, 3, 0, 50, &mut cred).is_some());
-        let sites: Vec<&str> = rng.take_log().iter().map(|d| d.site).collect();
-        assert_eq!(sites, vec!["1000:4db7", "1000:4e16"]);
     }
 
     /// `1000:4db7`'s `n` is `district * 4` and the damage floor is
@@ -621,49 +590,6 @@ mod tests {
         assert_eq!(b.count(), 0);
     }
 
-    /// The three refusals of `[1000:4eb2, 1000:4ee6)`, each asserted to spend
-    /// no draw and no cartridge.
-    #[test]
-    fn the_pistol_refusals_cost_neither_a_draw_nor_a_cartridge() {
-        let cases = [
-            (
-                Pistol {
-                    owned: false,
-                    silencer: true,
-                    cartridges: 9,
-                },
-                true,
-                Shot::NoPistol,
-            ),
-            (
-                Pistol {
-                    owned: true,
-                    silencer: false,
-                    cartridges: 9,
-                },
-                false,
-                Shot::NotHere,
-            ),
-            (
-                Pistol {
-                    owned: true,
-                    silencer: false,
-                    cartridges: 0,
-                },
-                true,
-                Shot::NoCartridges,
-            ),
-        ];
-        for (start, flag_3693, want) in cases {
-            let mut rng = Rng::new(1);
-            rng.start_log();
-            let mut p = start;
-            assert_eq!(fire(&mut rng, &mut p, flag_3693, 50), want);
-            assert_eq!(p, start, "{want:?}: no state may move");
-            assert!(rng.take_log().is_empty(), "{want:?}: no draw");
-        }
-    }
-
     /// `1000:4ebc` / `1000:4ec3` is an OR: either the flag or the silencer
     /// opens the shot, and the silencer is what makes it work with the flag
     /// clear.
@@ -700,7 +626,7 @@ mod tests {
         let mut checked_equal = 0;
         for seed in 0..400u32 {
             // What Random(0x32) yields for this seed, read once.
-            let roll = Rng::new(seed).below_at("1000:4ef5", 0x32);
+            let roll = Rng::new(seed).below(0x32);
             for agility in [roll.saturating_sub(1), roll, roll + 1] {
                 let mut rng = Rng::new(seed);
                 let mut p = Pistol {
