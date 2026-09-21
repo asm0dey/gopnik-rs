@@ -1,59 +1,6 @@
-//! GOPNIK .SAV parsing and writing. 694 bytes, Borland Pascal record layout.
-//!
-//! ## The file IS guest memory
-//!
-//! `orig/g.exe` moves the whole record between the file and `DS:369c` with
-//! one *untyped* block operation in each direction -- `1000:6c01` /
-//! `1000:6c06` (`BlockRead`), `1000:acc3` / `1000:acc8` and `1000:7658` /
-//! `1000:765d` (`BlockWrite`), all with `RecSize` = `0x2b6` = 694. So byte
-//! `n` of a `.SAV` is `20ae:(0x369c + n)`, which is why every field below
-//! carries the DGROUP address it occupies as well as its offset, and why
-//! `docs/re/save-format.md` could name all 694 bytes from the disassembly
-//! that reads them.
-//!
-//! ## Round trip must be byte-exact, and what that does NOT prove
-//!
-//! [`Save::to_bytes`] starts from a **zeroed** buffer and copies exactly two
-//! windows through from the source blob: the shortstring padding past each
-//! `pstring`'s declared length, which Borland never clears and which carries
-//! no meaning. Everything else is rebuilt from a named field.
-//!
-//! That is deliberate, and it is a change from the previous revision, which
-//! started from a copy of the whole input and overwrote only the slices it
-//! knew about. Under that shape a field this module *forgot to write* was
-//! copied through untouched and the round trip still passed. With the buffer
-//! zeroed it comes back as a hole, and
-//! `tests/save_roundtrip.rs::all_reference_saves_round_trip_byte_exactly`
-//! fails against the five real saves.
-//!
-//! **A hole is all it catches.** The round trip cannot see a *symmetric*
-//! mislocation -- one applied to both [`Save::parse`] and [`Save::to_bytes`]
-//! -- because `to_bytes` then writes each byte back exactly where `parse`
-//! read it. Measured, not argued: swapping the `joints` and `money` offsets
-//! in **both** directions leaves every one of the eleven tests in
-//! `tests/save_roundtrip.rs` green, `rust_offsets_match_save_layout_json`
-//! and `save_layout_json_fields_tile_the_record` included.
-//!
-//! What does catch it is `tests/save_load.rs`, and specifically these two,
-//! which is where to add a case for a newly named field:
-//!
-//! * `save_r5_loads_the_character_the_shipped_bytes_describe` (line 82) --
-//!   asserts field VALUES against `SAVE_R5`'s documented contents, so a
-//!   field reading someone else's byte is wrong even when it round-trips;
-//! * `every_named_field_is_actually_written_by_to_bytes` (line 455) --
-//!   sets each `data/save_layout.json` field in turn and requires only that
-//!   field's own byte span to move.
-//!
-//! Both go red under the swap above. On the Python side the same job is
-//! `tools/test_decode_save.py`'s `test_every_evidence_address_really_
-//! references_that_byte`, which resolves each field's cited instruction out
-//! of `orig/g.exe`.
-//!
-//! The offsets below are hand-mirrored from `tools/decode_save.py` (the
-//! Task 5 Python reference decoder) and from the layout it emits at
-//! `data/save_layout.json`. `tests/save_roundtrip.rs` reads that JSON and
-//! asserts these constants agree with it, so the two copies cannot silently
-//! drift apart.
+//! GOPNIK .SAV parsing and writing. A 694-byte fixed-layout record: each
+//! byte occupies a specific field, mirroring the game's own in-memory
+//! character record.
 
 use encoding_rs::{EncoderResult, IBM866};
 use std::fmt;
@@ -67,17 +14,15 @@ pub const OFF_HPMAX: usize = OFF_STATE + 0x12;
 pub const OFF_TAIL: usize = OFF_STATE + 0x14;
 const PSTRING_CAP: usize = 255;
 
-/// `.SAV` offset + `RECORD_BASE` is the DGROUP address of that byte.
-/// Established from flow; see the module doc.
 pub const RECORD_BASE: usize = 0x369c;
 
-/// The temporary-buff countdown, `20ae:38cd`.
+/// The temporary-buff countdown.
 pub const OFF_BUFF_COUNTDOWN: usize = 0x231;
-/// XP not yet spent on a level, `20ae:38ce`.
+/// XP not yet spent on a level.
 pub const OFF_XP: usize = 0x232;
-/// XP needed for the next level, `20ae:38d0`.
+/// XP needed for the next level.
 pub const OFF_THRESHOLD: usize = 0x234;
-/// `array[1..40] of string[2]`, `20ae:38d2`. Three bytes per level.
+/// The growth log: 40 entries, three bytes each.
 pub const OFF_GROWTH_LOG: usize = 0x236;
 /// Levels the growth log has a slot for, and the record's own `MAX_LEVEL`.
 pub const GROWTH_LOG_SLOTS: usize = 40;
@@ -87,14 +32,9 @@ pub const GROWTH_SLOT_LEN: usize = 3;
 /// `^4Gopnik: ^7version 1.02 june,sept 2003`, the `magic` a new character
 /// starts with.
 ///
-/// **Established from flow**: `1000:6dcd`..`1000:6ddb` assigns the CS
-/// literal at image `0x6489` (file `0x7D59`) into `DS:369c` inside the
-/// new-character block, three instructions after `district := 1`. It is
-/// therefore per-save state that every save happens to agree on, not a
-/// constant the format reserves -- and a `Save` this port builds has to
-/// write it, or the original refuses nothing but the player sees a blank
-/// banner. Corroborated by all five shipped saves and by
-/// `data/probes/saveprobe-fresh-record.json`.
+/// This is per-save state that every save happens to agree on, not a
+/// constant the format reserves -- a `Save` this port builds has to write
+/// it, or the player sees a blank banner instead.
 pub const MAGIC: &str = "^4Gopnik: ^7version 1.02 june,sept 2003";
 
 #[derive(Debug)]
@@ -120,16 +60,15 @@ pub enum SaveError {
     /// as Rust `String` (UTF-8) can be up to two bytes per character for
     /// non-ASCII (e.g. Cyrillic) text.
     TooLong(usize),
-    /// A byte the record holds as a Pascal `Boolean` was neither 0 nor 1.
+    /// A byte the record holds as a boolean was neither 0 nor 1.
     ///
     /// Not defensiveness: it is what keeps the round trip **total**. The
     /// 23 flag bytes are carried as `bool`, so a 2 could not survive
-    /// re-serialisation, and silently rewriting it as 1 would be a
-    /// round trip that is byte-exact for every file the game writes and
-    /// quietly lossy for one it does not. Every direct store to any of
-    /// those bytes image-wide is `mov byte [X],0` or `mov byte [X],1`
-    /// (`docs/re/save-format.md`), so the original cannot produce such a
-    /// file; a hand-edited one is refused rather than mangled.
+    /// re-serialisation, and silently rewriting it as 1 would be a round
+    /// trip that is byte-exact for every file the game writes and quietly
+    /// lossy for one it does not. The original itself never writes
+    /// anything but 0 or 1 to these bytes, so a hand-edited file is
+    /// refused rather than mangled.
     NotBoolean { off: usize, value: u8 },
 }
 
@@ -190,33 +129,25 @@ fn cp866_encode(s: &str) -> Result<Vec<u8>, SaveError> {
     }
 }
 
-/// The item, condition and purse block: `.SAV 0x214`..`0x230` and
-/// `0x2ae`..`0x2b5`, i.e. `20ae:38b0`..`38cc` and `20ae:394a`..`3951`.
+/// The item, condition and purse block.
 ///
 /// One struct for two spans because they are one set: the character sheet
-/// (`FUN_1000_1a03`) prints them interleaved, and two of the four hand
-/// weapons live in each span. Every field's evidence is the sheet's own flag
-/// line -- the guard's operand IS the DGROUP address and the label sits
-/// inside the arm that guard selects -- with the addresses in
-/// `docs/re/save-format.md` and in `data/save_layout.json`'s `evidence`.
+/// prints them interleaved, and two of the four hand weapons live in each
+/// span.
 ///
 /// **Kinds come from the code, not from the five saves.** The 23 `bool`
-/// fields are Pascal `Boolean` because every direct store to any of them
-/// image-wide writes 0 or 1 and nothing else. The five `i16` fields are
-/// Pascal `Integer` because every compare against them is a word compare
-/// followed by a *signed* conditional; that is also why `20ae:38c4`,
-/// `38c6`, `38c8`, `38ca`, `38cc` and `3950` have no reference of their own
-/// anywhere in the image -- they are high halves.
+/// fields are booleans because every direct store to any of them writes 0
+/// or 1 and nothing else. The five `i16` fields are signed because every
+/// compare against them uses a signed conditional.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Items {
-    /// `0x214` / `20ae:38b0` -- `^4Сломана челюсть  ` (`1000:2037`).
+    /// `^4Сломана челюсть  `.
     pub broken_jaw: bool,
-    /// `0x215` / `20ae:38b1` -- `^4Сломана нога  ` (`1000:2099`).
+    /// `^4Сломана нога  `.
     pub broken_leg: bool,
-    /// `0x216` / `20ae:38b2` -- `^2Броня #    ` (`1000:227b`), subtracted
-    /// from incoming damage at `1000:4769`.
+    /// `^2Броня #    `, subtracted from incoming damage.
     pub armour: u8,
-    /// `0x217` / `20ae:38b3` -- `^1У тебя есть тёмные очки` (`1000:1cf8`).
+    /// `^1У тебя есть тёмные очки`.
     pub dark_glasses: bool,
     /// `0x218` / `20ae:38b4` -- `^1Костюм Abibas(+1) ` (`1000:22a1`).
     pub suit_abibas: bool,

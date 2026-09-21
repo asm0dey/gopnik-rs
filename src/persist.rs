@@ -90,29 +90,21 @@ pub fn slot_filename(slot: char) -> String {
 /// character the `?` matched.
 ///
 /// **`?` is a DOS wildcard and matches ANY single character**, not just a
-/// slot key. `1000:6a81`/`1000:6a8a` pass the mask at CS `0x633f` (file
-/// `0x7C0F`) to `FindFirst`, and `1000:6ada` reads `[0x3d2b]` -- the
-/// seventh byte of the name `FindFirst` returned -- to print the menu line.
-/// So `save_r1.sav` and `save_rx.sav` are both listed and both prompted for
-/// by the original, and neither is a key `1000:6b5e`..`1000:6b7f` accepts:
-/// typing what they show starts a new character. The scan and the key test
-/// are two mechanisms, and this function is only the first of them.
+/// slot key. So `save_r1.sav` and `save_rx.sav` are both listed and
+/// prompted for, and neither is a key the load menu accepts: typing what
+/// they show starts a new character instead. The scan and the key check
+/// are two separate steps.
 ///
-/// An earlier revision filtered on [`SLOT_KEYS`] here, which made those two
-/// files invisible to the port and turned the listing order into compare
-/// order. The game itself only ever writes `save_r0` and `save_r2`..`save_r5`
-/// (`crate::persist`'s module doc), so nothing in ordinary play produced
-/// one -- but `tools/savegen.py` writes whatever it is told to.
+/// The game itself only ever writes `save_r0` and `save_r2`..`save_r5`, so
+/// nothing in ordinary play produces anything else.
 ///
-/// Two **port decisions** here, neither a property of the original:
+/// Two behaviours here are the port's own choice, not the original's:
 ///
-/// * **Order is by name, not directory order.** `FindFirst`/`FindNext`
-///   (`1000:6a8a`, `1000:6b2b`) walk the FAT directory in on-disk order,
-///   which no portable API exposes and which nothing in the game depends on
-///   -- it decides only which menu line prints first. Sorted is
-///   deterministic, which a test can assert.
-/// * **Both filename cases match.** The DOS mask is case-insensitive on
-///   FAT; this host is not, and the shipped corpus is uppercase while the
+/// * **Order is by name, not directory order.** Directory order is not
+///   portable and nothing in the game depends on it -- it only decides
+///   which menu line prints first. Sorted is deterministic.
+/// * **Both filename cases match.** DOS filenames are case-insensitive;
+///   this host is not, and the shipped save files are uppercase while the
 ///   game writes lowercase.
 pub fn present_slots(dir: &Path) -> Vec<char> {
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -132,8 +124,7 @@ pub fn present_slots(dir: &Path) -> Vec<char> {
             continue;
         }
         // The character the `?` matched, taken from the name AS STORED so
-        // the menu prints what is on disk -- `1000:6ada` reads the byte
-        // `FindFirst` returned, not a case-folded one.
+        // the menu prints what is on disk, not a case-folded one.
         let Some(c) = name.chars().nth(SLOT_MASK_PREFIX.len()) else {
             continue;
         };
@@ -167,69 +158,41 @@ impl Game {
     /// The 694-byte record this `Game` would be saved as.
     ///
     /// Every field of [`Save`] is filled from live state: there is no
-    /// template and no carried-over blob, which is exactly what
-    /// `Game::write_save` used to refuse over. The `Unsupported` error it
-    /// returned named `.SAV` offsets `0x214` and `0x2ae` as the blocker;
-    /// both spans are established now (`docs/re/save-format.md`), so the
-    /// blocker is gone rather than worked around.
+    /// template and no carried-over blob.
     ///
-    /// **What is deliberately NOT here, and why that is faithful.** The
-    /// record is `20ae:369c`..`20ae:3951` and nothing else; every other
-    /// global this port carries sits outside it and is therefore *not saved
-    /// by the original either*:
+    /// **What is deliberately NOT here, and why that is faithful.** These
+    /// fields live on `Game` but are not part of the saved record, matching
+    /// the original, which does not persist them either:
     ///
-    /// | field | address | side of the record |
-    /// |---|---|---|
-    /// | [`Game::harder_encounters`] | `20ae:3693` | below `369c` |
-    /// | [`Game::fight_accepted`] | `20ae:3b72` | above `3951` |
-    /// | [`Game::market_ban_countdown`] | `20ae:3b76` | above `3951` |
-    /// | [`Game::club_ban_countdown`] | `20ae:3b77` | above |
-    /// | [`Game::den_errand_1_pending`] | `20ae:3b78` | above |
-    /// | [`Game::den_errand_2_pending`] | `20ae:3b79` | above |
-    /// | [`Game::club_stake`] | `20ae:3c82` | above -- club-local, reset per visit at `1000:e020` |
-    /// | [`Game::rector_showdown`] | `20ae:3c83` | above |
-    /// | [`Game::dealer_delivery_counter`] | `20ae:3e32` | above |
-    /// | [`Game::den_loan_credit`] | `20ae:3e35` | above |
-    /// | [`Game::district`] | `20ae:3692` | below -- the load path takes it from the slot digit (`1000:6bf9`) |
-    /// | [`Game::places`] | `20ae:3694`..`369a` | below -- `places.sav`, seven separate byte writes |
-    ///
-    /// Two tests in `tests/save_load.rs` are the executable form of that
-    /// claim, one per direction, because either alone leaves half the
-    /// inventory unguarded:
-    ///
-    /// * `every_in_record_address_named_in_game_rs_is_persisted` re-derives
-    ///   the set of `20ae:` addresses `src/game.rs` names, keeps the ones
-    ///   inside the record, and requires each to be cited here. Adding a
-    ///   `Game` field for an in-record byte and forgetting to persist it
-    ///   fails that test rather than silently losing the byte.
-    /// * `every_game_field_is_either_persisted_or_named_out_of_record` walks
-    ///   `struct Game`'s own field list and requires every field whose doc
-    ///   names a `20ae:` address to be accounted for on ONE of the two
-    ///   sides. The table above was written as complete and then went
-    ///   stale — Task 28 added [`Game::fight_accepted`], above `3951`,
-    ///   and no row — because the in-record test filters to `(lo..hi)` and
-    ///   structurally cannot see this half. Its limit is stated in its own
-    ///   doc.
+    /// - [`Game::harder_encounters`]
+    /// - [`Game::fight_accepted`]
+    /// - [`Game::market_ban_countdown`]
+    /// - [`Game::club_ban_countdown`]
+    /// - [`Game::den_errand_1_pending`]
+    /// - [`Game::den_errand_2_pending`]
+    /// - [`Game::club_stake`] -- club-local, reset on every visit
+    /// - [`Game::rector_showdown`]
+    /// - [`Game::dealer_delivery_counter`]
+    /// - [`Game::den_loan_credit`]
+    /// - [`Game::district`] -- taken from the save-slot digit on load instead
+    /// - [`Game::places`] -- persisted separately, in `places.sav`
     pub fn to_save(&self) -> Save {
         let p = &self.player;
         let mut save = Save::blank();
-        // `20ae:379c` already holds `^7 ` + the typed name (`1000:723a` at
-        // creation, `1000:ed79` on rename), so the record is a straight copy.
+        // The name field already holds `^7 ` + the typed name (set at
+        // creation, or on rename), so the record is a straight copy.
         save.name = p.name.clone();
-        // The eight stat words, `20ae:389c` (class), `20ae:389e`,
-        // `20ae:38a0`, `20ae:38a2`, `20ae:38a4`, `20ae:38a6` (level),
-        // `20ae:38a8`, `20ae:38aa`; then `20ae:38ac`/`20ae:38ae` for hp and
-        // hpmax. `docs/re/combat.md`, "The fighter record".
+        // The eight stat words, including class and level, then hp and
+        // hpmax.
         save.stats = [
             p.class, p.strength, p.agility, p.vitality, p.luck, p.level, p.dmg_min, p.dmg_max,
         ];
         save.hp = p.hp;
         save.hpmax = p.hpmax;
-        // `20ae:38cd`, `38ce`, `38d0`, `38d2`. `Progress` widened xp and the
-        // threshold to `u32`; the original's are 16-bit words, so the
-        // narrowing here is the widening being given back, not a cap. Same
-        // for `armor` below (`u16` here, one byte at `20ae:38b2`) and for
-        // the five `Integer`s further down.
+        // `Progress` widened xp and the threshold to `u32`; the original
+        // fields are 16-bit words, so the narrowing here just gives that
+        // width back, not a cap. Same for `armor` below (`u16` here, one
+        // byte in the record) and for the five `Integer`s further down.
         save.buff_countdown = self.buff_countdown;
         save.xp = self.progress.xp;
         save.threshold = self.progress.threshold;
@@ -273,25 +236,22 @@ impl Game {
     /// Rebuild a `Game` from a loaded record.
     ///
     /// `district` and `places` come from the caller because **neither is in
-    /// the record**: the district is `Val` of the slot digit
-    /// (`1000:6bf9`), or `level div 10 + 1` for slot `0` (`1000:6d93`), and
-    /// the seven discovery flags live in `places.sav`. Slots 2..5 never read
-    /// that file (`1000:6c50` gates it on `district == 0`), so their
-    /// `places` is all-clear.
+    /// the record**: the district is derived from the save-slot digit, or
+    /// `level div 10 + 1` for slot `0`, and the seven discovery flags live in
+    /// `places.sav`. Slots 2..5 never read that file, so their `places` is
+    /// all-clear.
     ///
-    /// `1000:7347`..`1000:73e5` -- the district-5 rector-showdown arm, the
-    /// class bonus, and the den loan credit -- runs on **every** entry into
-    /// the game, new character or loaded save (`docs/re/wander.md`, "What
-    /// reaches `1000:73bb`"; `Game::apply_class_bonus`'s own doc has the
-    /// full re-derivation of the district-5 half, added for Task 20's
-    /// review fix), so it is all re-applied here, after BOTH `places` and
-    /// `district` are installed -- the district-5 arm reads `district`,
-    /// which must therefore be set before this call, not after it.
+    /// The district-5 rector-showdown arm, the class bonus, and the den
+    /// loan credit run on **every** entry into the game, new character or
+    /// loaded save, so they are all re-applied here, after BOTH `places`
+    /// and `district` are installed -- the district-5 arm reads
+    /// `district`, which must therefore be set before this call, not after
+    /// it.
     pub fn from_save(save: &Save, places: Places, district: u8, seed: u32) -> Game {
         let it = &save.items;
         let player = Fighter {
-            // `1000:6dd7` reads the record's pstring straight into
-            // `20ae:379c`, prefix included -- no strip.
+            // The record's name string is copied in with its prefix
+            // included -- no strip.
             name: save.name.clone(),
             class: save.stats[0],
             strength: save.stats[1],
@@ -306,19 +266,18 @@ impl Game {
             armor: it.armour,
             broken_jaw: it.broken_jaw,
             broken_leg: it.broken_leg,
-            // 20ae:38c5 is a signed Integer and the original keeps a
-            // negative one (`1000:e9aa` / `1000:23b4` are both signed
-            // compares), so there is nothing to clamp.
+            // This is a signed value and the original can keep a negative
+            // one, so there is nothing to clamp.
             joints: it.joints,
             // `crate::model::Fighter::stoned` and `Game::buff_countdown`
-            // are two models of one variable (`docs/re/gaps.md`); the
-            // countdown is the one the original keeps, so it decides.
+            // are two models of one variable; the countdown is the one the
+            // original keeps, so it decides.
             stoned: save.buff_countdown != 0,
-            // 20ae:38c3 is a signed Integer (1000:db33 `jle`) and the
-            // original keeps a negative one, so there is nothing to clamp.
+            // This is a signed value and the original can keep a negative
+            // one, so there is nothing to clamp.
             beer_dl: it.beer_half_litres,
             money: it.money,
-            // 20ae:38c9 likewise (1000:ce87 `jle`).
+            // Likewise.
             junk: it.junk,
         };
         let progress = Progress {
@@ -327,18 +286,15 @@ impl Game {
             growth_log: growth_log_from_record(&save.growth_log),
         };
         let mut g = Game::new(player, progress, seed);
-        // `Game::new` is the NEW-character path: `1000:6dc3`/`1000:6dc8`
-        // mark the vet and the market found. A load never reaches those two
-        // stores -- `1000:6da0` jumps past them -- so the flags are replaced
-        // wholesale here rather than added to.
+        // `Game::new` is the NEW-character path and marks the vet and the
+        // market as found. A load never does that, so the flags are
+        // replaced wholesale here rather than added to.
         g.places = places;
         // `district` MUST be set before the re-applied `apply_class_bonus`
-        // call below: `1000:7347`..`1000:7364`, now ported inside it, reads
-        // `[0x3692]` (district) to decide whether this load arms
-        // `rector_showdown` -- `Game::new`'s own internal call ran with the
-        // struct literal's `district: 1`, which is right for a NEW
-        // character but would be wrong here, before this field is replaced
-        // with the loaded value.
+        // call below: it reads `district` to decide whether this load arms
+        // `rector_showdown`. `Game::new`'s own internal call ran with
+        // `district: 1`, which is right for a NEW character but would be
+        // wrong here, before this field is replaced with the loaded value.
         g.district = district;
         g.apply_class_bonus();
         g.has_mobile = it.mobile;
@@ -372,11 +328,9 @@ impl Game {
     /// Write the 694-byte record, and **only** that.
     ///
     /// The two writers differ here and the difference is real: the mage
-    /// writes `places.sav` as well (`1000:766f`..`1000:7724`) and the
-    /// district-advance autosave does **not** -- `1000:acc8`'s `BlockWrite`
-    /// is followed straight by `1000:acd5 Close` and then the confirmation
-    /// line. So the flags are [`Game::write_places`]'s job, called by the
-    /// writer that actually does it.
+    /// writes `places.sav` as well, and the district-advance autosave does
+    /// **not**. So the flags are [`Game::write_places`]'s job, called by
+    /// the writer that actually does it.
     ///
     /// Returns the path so the caller can print it; the mage's own
     /// confirmation names no file, but the district autosave's does.
@@ -390,26 +344,24 @@ impl Game {
         Ok(path)
     }
 
-    /// The seven discovery flags, one byte each, `1000:766f`..`1000:7724`.
-    /// `crate::locations::TRACKED` fixes the order from the reader's own
-    /// destinations (`docs/re/gaps.md`, "`PLACES.SAV`'s byte order").
+    /// The seven discovery flags, one byte each.
+    /// `crate::locations::TRACKED` fixes their order.
     pub fn write_places(&self, dir: &Path) -> io::Result<PathBuf> {
         let path = dir.join(PLACES_SAVE);
         std::fs::write(&path, self.places.to_bytes())?;
         Ok(path)
     }
 
-    /// The mage's paid save, `1000:7621`..`1000:773d`: the record, then the
-    /// flags, then the confirmation.
+    /// The mage's paid save: the record, then the flags, then the
+    /// confirmation.
     ///
-    /// The money has already left by the time this is called -- `1000:761d`
-    /// debits before the file is opened, and the original does not refund a
+    /// The money has already left by the time this is called -- it debits
+    /// before the file is opened, and the original does not refund a
     /// failed write either.
     pub fn mage_save(&self) -> io::Result<PathBuf> {
         let dir = self.save_dir.clone();
         let path = self.write_save_as(&dir, MAGE_SAVE)?;
         self.write_places(&dir)?;
-        // 1000:7729, CS 0x74c2, file 0x8D92.
         term::println("^0Сохранено! ^1Можешь беспредельничать дальше.");
         Ok(path)
     }
@@ -422,13 +374,11 @@ impl Game {
 /// indexing and holds only the two code bytes, so the Pascal length byte is
 /// derived: 2 when both codes are set, 1 when only the first is, 0 when
 /// neither. **That loses one distinction the original can express** -- the
-/// flee penalty clears only the length byte (`1000:497d`) and leaves the
-/// payload, a "length 0, codes still there" state no `Progress` value maps
-/// to. A record parsed into a `Game` and written back out therefore
-/// normalises such a slot to three zero bytes. It is a port limitation, not
-/// a finding about the original, and it is why `Save`'s own round trip
-/// (which never goes through `Progress`) is the one the byte-exactness test
-/// uses.
+/// flee penalty can clear only the length byte and leave the payload, a
+/// "length 0, codes still there" state no `Progress` value maps to. A
+/// record parsed into a `Game` and written back out therefore normalises
+/// such a slot to three zero bytes. It is a port limitation, not a finding
+/// about the original.
 fn growth_log_to_record(p: &Progress) -> [GrowthSlot; GROWTH_LOG_SLOTS] {
     let mut out = [[0u8; 3]; GROWTH_LOG_SLOTS];
     for (i, slot) in out.iter_mut().enumerate() {
@@ -452,42 +402,31 @@ fn growth_log_from_record(rec: &[GrowthSlot; GROWTH_LOG_SLOTS]) -> [progress::Gr
     out
 }
 
-/// The three arms of `1000:6a67`..`1000:6b81`, which are three different
-/// things and not two levels of "maybe".
+/// The three arms below are three different things, not two levels of
+/// "maybe".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotMenu {
-    /// The directory holds no `save_r?.sav`. `1000:6b33`'s
-    /// `cmp byte [0x3d04],0` / `ja 0x6b3d` falls straight through to the
-    /// new-character block **printing nothing at all**, which is the
+    /// The directory holds no `save_r?.sav`. This falls straight through to
+    /// the new-character block **printing nothing at all**, which is the
     /// ordinary case for a clean checkout.
     NoSaves,
-    /// A menu was printed and the key pressed was none of `0`, `2`..`5`
-    /// (`1000:6b5e`..`1000:6b7f`) -- `1` included, which is the key the
-    /// prompt itself suggests. `1000:6b81` jumps to the new-character block.
+    /// A menu was printed and the key pressed was none of `0`, `2`..`5` --
+    /// `1` included, which is the key the prompt itself suggests. This
+    /// jumps to the new-character block.
     NewCharacter,
     /// A menu was printed and an accepted digit was pressed.
     Load(char),
 }
 
-/// The lines `1000:6a67`..`1000:6b30`'s loop writes for a given slot set.
+/// The lines the slot-menu loop writes for a given slot set.
 ///
-/// A function returning the lines rather than printing them, for the reason
-/// `docs/superpowers/RESUME.md` gives under "the highest-value cleanup
-/// left": `crate::term` writes straight to this process's stdout and nothing
-/// in the crate can capture it, so text that only reaches `term` has no
-/// executable assertion at all. Every string here is a verbatim byte range
-/// of `orig/g.exe` and this project pins those.
+/// Per slot, in order:
 ///
-/// The loop body, per iteration of `1000:6a8f`..`1000:6b30`:
-///
-/// * `1000:6a99` `cmp byte [0x3d04],0` / `jbe 0x6ab9` -- the counter is the
-///   number of slots printed SO FAR, so `^1или` (CS `0x634b`, file `0x7C1B`)
-///   is written before every entry except the first, never after the last.
-/// * `1000:6abd` `cmp byte [0x3d2b],0x30` / `jz 0x6b06` -- the digit in the
-///   found filename. Not `'0'`: `^1Можно начать с ` (CS `0x6351`) + the
-///   digit + ` района` (CS `0x6363`). `'0'`: `1000:6b06` re-tests it and
-///   `1000:6b0d` writes `^1Можно начать с того места где ты сохранился`
-///   (CS `0x636b`, file `0x7C3B`) instead.
+/// * `^1или` is written before every entry except the first, never after
+///   the last.
+/// * The digit in the found filename decides the line: not `'0'` writes
+///   `^1Можно начать с ` + the digit + ` района`; `'0'` writes
+///   `^1Можно начать с того места где ты сохранился` instead.
 pub fn slot_menu_lines(slots: &[char]) -> Vec<String> {
     let mut out = Vec::new();
     for (i, &slot) in slots.iter().enumerate() {
@@ -503,10 +442,10 @@ pub fn slot_menu_lines(slots: &[char]) -> Vec<String> {
     out
 }
 
-/// The prompt after the menu, `1000:6b3d` (CS `0x6399`, file `0x7C69`).
+/// The prompt after the menu.
 pub const SLOT_PROMPT: &str = "^0Нажми цифру с какого района начать. 1-начать сначала";
 
-/// Print the slot menu and read the key, `1000:6a67`..`1000:6b81`.
+/// Print the slot menu and read the key.
 pub fn choose_slot(
     dir: &Path,
     lines: &mut dyn Iterator<Item = io::Result<String>>,
@@ -519,11 +458,9 @@ pub fn choose_slot(
         term::println(&line);
     }
     term::println(SLOT_PROMPT);
-    // 1000:6b56 is a ReadKey, not a ReadLn -- the original takes one
-    // keystroke with no Enter. This port has no raw-key input anywhere
-    // (`crate::term` writes only), so it reads a line and takes its first
-    // character. A PORT DECISION, and the one place this path knowingly
-    // differs from `1000:6b56`.
+    // The original takes one keystroke with no Enter key needed. This
+    // port has no raw-key input, so it reads a line and takes its first
+    // character -- a deliberate divergence.
     let Some(line) = term::read_line(lines) else {
         return Ok(SlotMenu::NewCharacter);
     };
@@ -533,21 +470,18 @@ pub fn choose_slot(
     })
 }
 
-/// Load slot `slot` out of `dir`, `1000:6b84`..`1000:6d9d`.
+/// Load slot `slot` out of `dir`.
 ///
-/// `Ok(None)` is the original's own fall-through: a `Reset` that leaves
-/// `IOResult` non-zero (`1000:6bd4`/`1000:6bdb`) prints
-/// `^6Чё-то глюкануло - нaверно нет такого сейва, Default:1` at
-/// `1000:6da5` and continues into the new-character block, so a missing or
-/// unreadable file is not an error here either.
+/// `Ok(None)` is the original's own fall-through: a failed read prints
+/// `^6Чё-то глюкануло - нaверно нет такого сейва, Default:1` and continues
+/// into the new-character block, so a missing or unreadable file is not an
+/// error here either.
 pub fn load_slot(dir: &Path, slot: char, seed: u32) -> io::Result<Option<Game>> {
-    // `1000:6b5e`..`1000:6b81` compares the key against exactly `'2'`,
-    // `'3'`, `'4'`, `'5'`, `'0'` and jumps to the new-character block on
-    // anything else, so a key outside that set never reaches the open at
-    // all. [`choose_slot`] already filters, but this is a `pub` entry point
-    // and the same rejection belongs here -- the alternative was
-    // `to_digit(10).unwrap_or(1)` further down, which turned a stray
-    // character into a plausible-looking district 1.
+    // The key must be exactly one of `'2'`, `'3'`, `'4'`, `'5'`, `'0'`;
+    // anything else goes to the new-character block instead. [`choose_slot`]
+    // already filters, but this is a `pub` entry point and needs the same
+    // rejection -- the alternative, folding any stray character to a
+    // digit, would turn it into a plausible-looking district 1.
     let Some(digit) = slot.to_digit(10) else {
         return Ok(None);
     };
@@ -557,8 +491,6 @@ pub fn load_slot(dir: &Path, slot: char, seed: u32) -> io::Result<Option<Game>> 
     let bytes = match read_slot(dir, slot) {
         Ok(b) => b,
         Err(_) => {
-            // 1000:6da5, CS 0x6451, file 0x7D21:
-            // `^6Чё-то глюкануло - нaверно нет такого сейва, Default:1`.
             term::println("^6Чё-то глюкануло - нaверно нет такого сейва, Default:1");
             return Ok(None);
         }
@@ -570,55 +502,45 @@ pub fn load_slot(dir: &Path, slot: char, seed: u32) -> io::Result<Option<Game>> 
             return Ok(None);
         }
     };
-    // 1000:6c1e, CS 0x63dc, file 0x7CAC: `^0Загружено из save_r` + digit.
     term::println(&format!("^0Загружено из save_r{slot}"));
 
-    // 1000:6c50 `cmp byte [0x3692],0` -- ONLY slot 0 reads places.sav, and
-    // 1000:6d8c..1000:6d9d then derives its district from the level.
+    // ONLY slot 0 reads places.sav; the others derive their district from
+    // the level.
     let (places, district) = if slot == '0' {
         let places = match std::fs::read(dir.join(PLACES_SAVE))
             .or_else(|_| std::fs::read(dir.join(PLACES_SAVE.to_uppercase())))
         {
-            // `>= PLACES_BYTES`, not `> 0`: the original opens the file with
-            // `Reset(f, 1)` and issues SEVEN separate one-byte `Read`s
-            // (`1000:6ca2`..`1000:6d0e`), so a file with fewer than seven
-            // bytes leaves `IOResult` non-zero and takes the failure arm.
-            // It is also the only thing standing between a truncated
-            // `PLACES.SAV` and `&b[..7]` panicking.
+            // `>= PLACES_BYTES`, not `> 0`: the original reads the file as
+            // seven separate one-byte reads, so a file with fewer than
+            // seven bytes fails and takes the failure arm. It is also the
+            // only thing standing between a truncated `PLACES.SAV` and
+            // `&b[..7]` panicking.
             Ok(b) if b.len() >= PLACES_BYTES => {
-                // 1000:6d20, CS 0x63fd, file 0x7CCD:
-                // `^0Загружено из places`.
                 term::println("^0Загружено из places");
                 Places::from_bytes(&b[..PLACES_BYTES])
             }
             _ => {
-                // 1000:6d3b..1000:6d73: the failure arm CLEARS the flags,
-                // with three class-keyed exceptions, then prints
+                // The failure arm CLEARS the flags, with three class-keyed
+                // exceptions, then prints
                 // `^6Чё-то глюкануло - немогу прoгрузить Places:Ресет ту
-                // Default` (CS 0x6413, file 0x7CE3). The class bonus that
-                // `Game::from_save` re-applies restores exactly those three,
-                // so an all-clear set plus the bonus reproduces the arm.
+                // Default`. The class bonus that `Game::from_save`
+                // re-applies restores exactly those three, so an all-clear
+                // set plus the bonus reproduces the arm.
                 term::println("^6Чё-то глюкануло - немогу прoгрузить Places:Ресет ту Default");
                 Places::from_bytes(&[0u8; 7])
             }
         };
-        // `1000:6d93`..`1000:6d9d`: `mov ax,[0x38a6]` / `cwd` / `idiv cx`
-        // / `inc ax` / `mov [0x3692],al`. **Signed** division -- `cwd`
-        // sign-extends and `idiv` is the signed form -- and `20ae:38a6` is a
-        // Pascal `Integer`, corroborated by `1000:ab7f`'s `cmp ax,[0x38a6]`
-        // / `jle`, a signed conditional. The `as u8` models `mov [...],al`,
-        // the truncation to the low byte.
+        // Signed division: the level is a signed value, so this uses signed
+        // division to derive the district, then truncates to a byte.
         //
         // The cast to `i16` is not decoration: a record is not required to
-        // hold a level in 0..40, and `tools/savegen.py --set level=0x8000`
-        // writes one that is negative -- which is the workflow this branch
-        // hands the next several tasks, so "unreachable in play" is not a
-        // reason to model it unsigned.
+        // hold a level in 0..40, so a negative level is possible even
+        // though it is unreachable in ordinary play.
         let level = save.stats[5] as i16;
         (places, (level / 10 + 1) as u8)
     } else {
-        // Slots 2..5 never open places.sav; their flags start clear, and the
-        // district is the digit itself (`1000:6bf9`).
+        // Slots 2..5 never open places.sav; their flags start clear, and
+        // the district is the digit itself.
         (Places::from_bytes(&[0u8; 7]), digit as u8)
     };
     Ok(Some(Game::from_save(&save, places, district, seed)))

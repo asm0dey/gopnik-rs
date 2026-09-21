@@ -1,90 +1,28 @@
-//! The market's pickpocket -- `t` at the `mar` prompt, `1000:c329`..`c46a`,
-//! and the police ban it leaves behind.
+//! The market's pickpocket -- `t` at the `mar` prompt -- and the police ban
+//! it leaves behind.
 //!
-//! `docs/re/port-gaps.md` rows 9 and 25. Row 9 is the verb itself; row 25 is
-//! the ban's two other ends -- the gate at `1000:b95e` that keeps a wanted
-//! player out of the market ([`crate::game::Game::enter_shop`]) and the
-//! clear at `1000:d793` inside `girl` ([`crate::game::Game::visit_girl`]).
+//! ## The mechanic
 //!
-//! ## The shape
+//! Success needs удача (luck) at or above a random draw scaled by
+//! `district * 5 + 5`, using the same signed/unsigned luck compare as
+//! [`crate::game::Game::luck_below_random_32`] -- fall-through (luck NOT
+//! below the draw) is success. A second draw of `Random(10)` must land
+//! below 9, then a third draw of `Random(удача * 2)`, plus one, is the
+//! amount of money stolen.
 //!
-//! ```text
-//! c329  call 0f78:0bd8                 ; the market buffer 20ae:3a72 vs `t`
-//! c333  al := [0x3692] ; ax := ax*5+5
-//! c344  call 0f78:114b                 ; draw 1 -- Random(district*5 + 5)
-//! c349  xor dx,dx / mov cx,ax / mov bx,dx      ; the draw ZERO-extends
-//! c34f  mov ax,[0x38a4] / cwd                  ; удача SIGN-extends
-//! c353  cmp dx,bx / c355 jg 0xc35d / c357 jl 0xc3cd
-//! c359  cmp ax,cx / c35b jb 0xc3cd
-//! c35d  mov ax,0xa / c361 call 0f78:114b       ; draw 2 -- Random(10)
-//! c366  cmp ax,0x9 / c369 jnb 0xc3cd
-//! c36b  mov ax,[0x38a4] / shl ax,1
-//! c371  call 0f78:114b                 ; draw 3 -- Random(удача * 2)
-//! c376  inc ax / c377 mov [0x3b74],ax
-//! c37a  mov ax,[0x3b74] / c37d add [0x38c7],ax ; money += the take
-//! c381..c396   WriteLn `^2Опа бабки! # рублей на пиво!`
-//! c39b..c3b4   WriteLn `^6Ты получаешь # качков опыта`, # = district*2
-//! c3b9  al := [0x3692] / xor ah,ah / shl ax,1
-//! c3c0  add [0x38ce],ax               ; the xp credit, district*2
-//! c3c4  mov al,0x0 / c3c7 call 0x12526 ; FUN_1000_2526(0)
-//! c3ca  jmp 0xc46a
-//! c3cd  mov al,0x1 / c3d0 call 0x10d14 ; FUN_1000_0d14(1) -- clamp to class 7
-//! c3d3  mov byte [0x3b72],0x1          ; the fight-accepted flag
-//! c3d8..c3ec   WriteLn `^4Корявый! ты попался!`
-//! c3f1..c42e   one composed WriteLn: `^6Это ` + ranks[[0x3952]] + ` # уровня.`
-//! c433  mov al,0x1 / c436 call 0x13d11 ; FUN_1000_3d11(1) -- a real fight
-//! c439..c44d   WriteLn `^6Блин менты запалят сматывайся!.`
-//! c452..c460   0f78:0b01 writes `w` into the market buffer 20ae:3a72
-//! c465  mov byte [0x3b76],0x5          ; the market ban countdown
-//! c46a  the loop's own `w` compare, which the store at c460 now satisfies
-//! ```
+//! On success the take is added to money, printing
+//! `^2Опа бабки! # рублей на пиво!` and crediting `district * 2`
+//! experience with `^6Ты получаешь # качков опыта`.
 //!
-//! ## `1000:c353` is Borland's 32-bit compare, not Ghidra's `bVar24`
+//! On failure: `^4Корявый! ты попался!`, then `^6Это ` + the offended
+//! rank's name + ` # уровня.`, then `^6Блин менты запалят сматывайся!.` --
+//! a real fight follows against an opponent clamped to class 7, the
+//! fight-accepted flag is set, and the market bans the player for five
+//! visits.
 //!
-//! The decompilation renders `1000:c34f`..`c35b` as
-//! `((int)uVar7 < 0 && bVar24) || (bVar24 && (uVar8 <= uVar7))`, which is its
-//! FPU-less model of a pair of branches it could not fold. The instructions
-//! are the same 32-bit idiom [`crate::game::Game::luck_below_random_32`]
-//! already carries, permuted exactly as the club's `1000:e0c6` permutes it:
-//! `jg` / `jl` / `jb`, high halves signed and low halves unsigned, with the
-//! **fall-through** -- luck NOT below the draw -- as the success arm. The
-//! five bytes at `1000:c355`/`c357` (`7f 06`, `7c 74`) and `1000:c35b`
-//! (`72 70`) are what say so. Transliterating Ghidra's expression would have
-//! made the theft succeed whenever удача was negative and fail otherwise.
-//!
-//! ## Where the xp is added
-//!
-//! `1000:c3c0 add [0x38ce],ax`, five instructions BEFORE the level-up call,
-//! with `ax` the same `district * 2` the line at `1000:c39b` printed. Ghidra
-//! renders the level-up's argument as `(uint)(bVar10 >> 7) << 8` -- its model
-//! of whatever `ah` held after the `shl`; the instruction is
-//! `1000:c3c4 mov al,0x0`, so the byte parameter is 0, the CAPPED form.
-//! [`crate::progress::apply_levels`]'s `award` models the `add` and its
-//! `uncapped` models the parameter, the same pairing `crate::club` uses.
-//!
-//! ## The three draws
-//!
-//! `1000:c344`, `1000:c361` and `1000:c371` are the first draws this port has
-//! ever spent inside a shop submenu. `data/rng_trace.json` observes none of
-//! the three -- recomputed from the shipped artifact, not remembered: the
-//! file's call-site census holds 35 distinct addresses and `1000:c344`,
-//! `1000:c361` and `1000:c371` are not among them, because the capture driver
-//! never typed `t`. So the two sequence oracles cannot see these draws.
-//!
-//! ## Where the strings are pinned
-//!
-//! `tools/difftest.py`'s `market_line` / `market_gap` / `market_fragment`
-//! records re-find all eight of the two spans' CS literals by walking
-//! `1000:c329`..`c46a` and `1000:c480`..`c499` instruction by instruction --
-//! never from a hardcoded offset list -- and compare them against the tables
-//! below. `tools/test_string_citations.py` scans this file's citations
-//! against `orig/g.exe` and reports **20 checked, 3 unchecked, 0 bad**. The
-//! three unchecked ones are the two on [`EXIT_TOKEN`] and the one in
-//! [`busted`]: a single character is not GAME TEXT by that scanner's own
-//! test, so it declines to pin a citation it cannot verify rather than
-//! resolving it to the wrong literal. `market_fragment pickpocket 2` is what
-//! pins `w` to the image, the same way `enemy_fragment 1` and `6` pin the
-//! enemy sheet's two uncited literals.
+//! The ban itself is tracked elsewhere: [`crate::game::Game::enter_shop`]
+//! keeps a banned player out of the market, and
+//! [`crate::game::Game::visit_girl`] clears the ban.
 
 use std::io;
 

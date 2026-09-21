@@ -1,6 +1,6 @@
 //! Reimplementation of the original's pseudo-random generator.
 
-/// The original's `System.RandSeed`, stepped by the Borland Pascal LCG.
+/// The original's random seed, stepped by the same LCG.
 #[derive(Debug, Clone)]
 pub struct Rng {
     state: u32,

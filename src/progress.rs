@@ -1,63 +1,46 @@
 //! Понтовость: XP thresholds, level-ups and the stat growth they hand out.
 //!
-//! Everything here is transcribed from `FUN_1000_2526` (`1000:2526`), the
-//! routine the combat function calls once a kill has been credited, plus the
-//! XP award at `1000:51b9`..`1000:51c8` and the character-creation block at
-//! `1000:7140`..`1000:71e8`. `docs/re/progression.md` cites every address and
-//! records how each number was checked against the original.
+//! The two words the original keeps *outside* the fighter record are
+//! modelled by [`Progress`]:
 //!
-//! The two words the original keeps *outside* the fighter record are modelled
-//! by [`Progress`]:
+//! | field | meaning |
+//! |---|---|
+//! | [`Progress::xp`] | XP not yet spent on a level |
+//! | [`Progress::threshold`] | XP needed for the next level |
 //!
-//! | global | `.SAV` | meaning | evidence |
-//! |---|---|---|---|
-//! | `DS:38ce` | `0x232` | XP not yet spent on a level | `1000:2536`, `1000:254d` |
-//! | `DS:38d0` | `0x234` | XP needed for the next level | `1000:2550`, `1000:6de0` |
+//! The class/rank index is **not** modelled here: it lives on
+//! [`crate::model::Fighter::class`] instead, since it is part of the same
+//! record the rest of `Fighter` mirrors.
 //!
-//! `DS:389c` / `.SAV 0x200`, the class/rank index, is **not** here: it is
-//! field `+0x00` of the same 16-byte record the rest of [`crate::model::Fighter`]
-//! mirrors (`1000:25aa` indexes the weight table with it, `1000:712a`/
-//! `1000:71b8` store it at character creation), so it lives on
-//! [`crate::model::Fighter::class`] instead. This is a fix-wave-1 move: Task
-//! 9b originally carried it here because `Fighter` had no class field yet.
-//!
-//! ## Deviation from the Task 9b brief
-//!
-//! The brief specified `apply_levels(f: &mut Fighter, xp: u32) -> Vec<LevelUp>`.
-//! That signature cannot express what the original does: each level draws two
-//! random stat increases from the character's *class* weight table
-//! (`1000:25aa`, `1000:25fe`), so both the class and the generator have to
-//! reach the function, and the running threshold is stored state that goes out
-//! of step with the level once the level cap bites (`1000:2580`). The
-//! signature here takes those inputs explicitly. `xp_to_next` and `xp_award`
-//! keep the brief's signatures unchanged.
+//! Each level draws two random stat increases from the character's
+//! *class* weight table, so both the class and the random generator have
+//! to reach the level-up function. The running threshold is stored state,
+//! not derived from the level, because it goes out of step with the level
+//! once the level cap bites.
 
 use crate::model::Fighter;
 use crate::rng::Rng;
 use crate::term;
 use crate::text;
 
-/// `1000:2580`, `cmp word [0x38a6],0x28` — the понтовость cap.
+/// The понтовость cap.
 pub const MAX_LEVEL: u16 = 40;
 
-/// `1000:287d`, `cmp word [bp-0x8],0x2` — stat increases handed out per level.
+/// Stat increases handed out per level.
 pub const GAINS_PER_LEVEL: usize = 2;
 
-/// `1000:6de0`, `mov word [0x38d0],0xa` — a new character's first threshold.
+/// A new character's first XP threshold.
 pub const THRESHOLD_BASE: u16 = 10;
 
-/// `1000:2550`, `add word [0x38d0],0xa` — how much each level adds to it.
+/// How much each level adds to the threshold.
 pub const THRESHOLD_STEP: u16 = 10;
 
-/// Per-class stat-growth weights, read out of the table at `DS:0002`
-/// (`1000:25aa`..`1000:25b6` reads `[[0x389c] * 4 + 2]` and its three
-/// siblings). Index is the class/rank word at `.SAV` `0x200`; the four bytes
-/// are the weights of strength, agility, vitality and luck in that order.
+/// Per-class stat-growth weights. Index is the class/rank; the four bytes
+/// are the weights of strength, agility, vitality and luck, in that order.
 ///
-/// The eleven rows are the eleven rank names at `DS:002e`: Дохляк, Нефор,
-/// Нарк, Подтсан, Отморозок, Гопник, Вор, Беспредельщик, Мент, Маньячок,
-/// Ректор НГУ. `tests/progression.rs` checks this table against
-/// `data/xp.json`, which the capture tool reads straight out of `orig/g.exe`.
+/// The eleven rows are the eleven rank names: Дохляк, Нефор, Нарк,
+/// Подтсан, Отморозок, Гопник, Вор, Беспредельщик, Мент, Маньячок,
+/// Ректор НГУ.
 pub const CLASS_WEIGHTS: [[u16; 4]; 11] = [
     [1, 2, 1, 2],
     [2, 2, 2, 3],
@@ -73,42 +56,32 @@ pub const CLASS_WEIGHTS: [[u16; 4]; 11] = [
 ];
 
 /// The four stat answers the class prompt accepts, and the starting stats
-/// each stores — `1000:7148`, `1000:7167`, `1000:7186` and the `else` at
-/// `1000:71a0`, in strength/agility/vitality/luck order. Index is the answer
-/// the player typed; anything outside `0..=3` is folded to `0`
-/// (`1000:712d`..`1000:713b`).
+/// each stores, in strength/agility/vitality/luck order. Index is the
+/// answer the player typed; anything outside `0..=3` is folded to `0`.
 pub const START_STATS: [[u16; 4]; 4] = [[3, 3, 3, 3], [5, 2, 4, 1], [4, 3, 3, 2], [3, 3, 2, 4]];
 
-/// `1000:71b8`, `add word [0x389c],0x3` — the class prompt's answer plus this
-/// is the stored class/rank index.
+/// The class prompt's answer plus 3 is the stored class/rank index.
 pub const CLASS_OF_ANSWER_OFFSET: u16 = 3;
 
-/// `1000:2591`..`25a5`, cs `0x248f` — what opens every level's line. A
-/// `Write`, not a `WriteLn` (`call 0eed:0000`, not `0eed:01c2`), so the two
-/// stat gains land on the same line and `1000:288b`'s bare `WriteLn` ends it.
+/// What opens every level-up line. It is a `Write`, not a `WriteLn`, so
+/// the two stat gains land on the same line, ended afterwards by a bare
+/// `WriteLn`.
 pub const LEVELUP_PREFIX: &str = "^1Понтовость увеличивается: ";
 
-/// `1000:28ab`, cs `0x24ea` — printed once after the whole loop, and only
-/// when the routine's `param_1` is zero (`1000:28a0`). Its two `#`s are
-/// filled from [`LEVELUP_TAIL_FILLS`]' two globals, in that order.
+/// Printed once after the whole loop, and only in the capped form. Its two
+/// `#`s are filled from [`LEVELUP_TAIL_FILLS`]'s two globals, in that
+/// order.
 pub const LEVELUP_TAIL: &str = "^6Сейчас у тебя # качков опыта. До слеующей прокачки надо #";
 
-/// Which globals `1000:28ab` pushes into [`LEVELUP_TAIL`]'s two `#`s, in
-/// push order: `push [0x38ce]` then `push [0x38d0]` — the XP left over and
-/// the new threshold, i.e. [`Progress::xp`] then [`Progress::threshold`].
-///
-/// Named rather than left implicit in the `fill` call below so
-/// `tools/difftest.py` compares the ORDER against the two `ff 36` operands
-/// it reads out of the image; swapping the two values in the port is then a
-/// failing record instead of two plausible numbers in the wrong slots.
+/// Which globals fill [`LEVELUP_TAIL`]'s two `#`s, in order: the XP left
+/// over, then the new threshold -- [`Progress::xp`] then
+/// [`Progress::threshold`].
 pub const LEVELUP_TAIL_FILLS: [u16; 2] = [0x38CE, 0x38D0];
 
 /// One of the four stats a level-up can raise.
 ///
-/// The discriminants are the branch order of `FUN_1000_2526`
-/// (`1000:2615`, `1000:26c0`, `1000:275c`, `1000:2814`), which is also the
-/// order of the weight bytes and of the codes the original writes into its
-/// growth log.
+/// The discriminants are in the same order as the weight bytes and the
+/// codes the original writes into its growth log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stat {
     Strength,
@@ -118,11 +91,9 @@ pub enum Stat {
 }
 
 impl Stat {
-    /// The character the original records for this stat in the
-    /// `array[1..40] of string[2]` growth log at `.SAV 0x236` — `'1'`..`'4'`,
-    /// written next to each `+1` message (`1000:24b7`, `1000:24c8`,
-    /// `1000:24da`, `1000:24e8`) and replayed in reverse by the de-level
-    /// penalty at `1000:498f`..`1000:4a4e`.
+    /// The character the original records for this stat in the growth log
+    /// — `'1'`..`'4'`, written next to each `+1` message, and replayed in
+    /// reverse by the de-level penalty.
     pub fn code(self) -> u8 {
         match self {
             Stat::Strength => b'1',
@@ -132,10 +103,9 @@ impl Stat {
         }
     }
 
-    /// The `Write` this stat's arm makes before it appends its code —
-    /// `1000:2635` (cs `0x24ac`), `1000:26dd` (`0x24b9`), `1000:2779`
-    /// (`0x24ca`) and `1000:2831` (`0x24dc`). All four keep their trailing
-    /// space: the gains run together on one line, ended by `1000:288b`.
+    /// The `Write` this stat's arm makes before it appends its code. All
+    /// four keep their trailing space: the gains run together on one line,
+    /// ended by a final `WriteLn`.
     pub fn message(self) -> &'static str {
         match self {
             Stat::Strength => "^1Сила +1 ",
@@ -146,19 +116,12 @@ impl Stat {
     }
 
     /// Inverse of [`Stat::code`]. `None` for any other byte, including the
-    /// `0` an entry cleared by the de-level penalty holds (`1000:497d`).
-    ///
-    /// The four codes are the four `cmp byte [bp+di-0x10a],N` links of the
-    /// penalty's own chain; each arm below is one of them.
+    /// `0` an entry cleared by the de-level penalty holds.
     pub fn from_code(code: u8) -> Option<Stat> {
         match code {
-            // 1000:498f `cmp byte [bp+di-0x10a],0x31` / 1000:4994 `jnz 0x49e0`
             b'1' => Some(Stat::Strength),
-            // 1000:49e3 `cmp byte [bp+di-0x10a],0x32` / 1000:49e8 `jnz 0x4a09`
             b'2' => Some(Stat::Agility),
-            // 1000:4a0c `cmp byte [bp+di-0x10a],0x33` / 1000:4a11 `jnz 0x4a46`
             b'3' => Some(Stat::Vitality),
-            // 1000:4a49 `cmp byte [bp+di-0x10a],0x34` / 1000:4a4e `jnz 0x4a6f`
             b'4' => Some(Stat::Luck),
             // The chain's own miss, and it carries NO address of its own: a
             // byte none of the four compares names -- including the 0 a
@@ -174,11 +137,9 @@ impl Stat {
 
 /// One level gained, with what it handed out.
 ///
-/// `gains` is `None` in a slot only when the class weights sum to zero, which
-/// makes every one of the four range tests fail (`1000:2814`'s `jl` falls
-/// through to the end of the loop body) and the draw grant nothing. Only
-/// class 10, Ректор НГУ, has all-zero weights, and no player character can
-/// hold it — see [`CLASS_WEIGHTS`].
+/// `gains` is `None` in a slot only when the class weights sum to zero, so
+/// the draw grants nothing. Only class 10, Ректор НГУ, has all-zero
+/// weights, and no player character can hold it -- see [`CLASS_WEIGHTS`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LevelUp {
     pub new_level: u16,
@@ -193,39 +154,27 @@ pub type GrowthEntry = [u8; GAINS_PER_LEVEL];
 /// The XP bookkeeping the original keeps outside the fighter record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Progress {
-    /// `DS:38ce` / `.SAV 0x232`.
     pub xp: u16,
-    /// `DS:38d0` / `.SAV 0x234`.
     pub threshold: u16,
-    /// `array[1..40] of string[2]` at `.SAV 0x236`, addressed through
-    /// Borland's biased base `20ae:38cf` — the real base is `20ae:38d2` and
-    /// `1000:2647`..`1000:2651` reaches element `n` as `20ae:38cf + n * 3`,
-    /// which is `base - 1 * 3 + n * 3`. **Established from flow.**
+    /// `array[1..40] of string[2]`.
     ///
-    /// Ten references image-wide (`python3 tools/re_query.py xrefs-to
-    /// 20ae:38cf`): eight in `FUN_1000_2526` — two per stat, the read at
-    /// `1000:2651`/`26f9`/`2795`/`284d` and the write-back at
-    /// `1000:2670`/`2718`/`27b4`/`286c` — and two in `FUN_1000_3d11`, the
-    /// flee penalty's copy at `1000:495e` and its clear at `1000:497d`. So
-    /// the log is written **only** by the level-up and read **only** by the
-    /// de-level, which is why it lives here and not on
+    /// The log is written **only** by the level-up and read **only** by
+    /// the de-level, which is why it lives here and not on
     /// [`crate::model::Fighter`].
     ///
-    /// Index 0 exists to keep the original's 1-based indexing: `1000:258e`
-    /// raises the level *before* `1000:2647` reads it, so nothing is ever
-    /// appended at 0. There are `MAX_LEVEL + 1` slots and
-    /// `append_growth_code` drops anything past the last, where the
-    /// original would run off the end of its array — that overrun is
-    /// reachable only through the two uncapped level-ups at `1000:5094` and
-    /// `1000:5145` (opponent kind 3 and 4), which this port never triggers,
-    /// and reproducing a memory overwrite is not something a port should do.
+    /// Index 0 exists to keep the original's 1-based indexing: the level
+    /// is raised before the log is read, so nothing is ever appended at 0.
+    /// There are `MAX_LEVEL + 1` slots, and `append_growth_code` drops
+    /// anything past the last -- an overrun only the two uncapped
+    /// level-ups (the rector and endgame kills) could reach, and this port
+    /// never triggers them.
     pub growth_log: [GrowthEntry; MAX_LEVEL as usize + 1],
 }
 
 impl Progress {
-    /// A new character's state: `1000:6de0` sets the threshold to 10 and
-    /// nothing writes the level or the XP total, both of which start at 0.
-    /// The growth log is BSS and starts as 41 empty shortstrings.
+    /// A new character's state: the threshold starts at 10 and nothing
+    /// writes the level or the XP total, both of which start at 0. The
+    /// growth log starts as 41 empty entries.
     pub fn new() -> Progress {
         Progress {
             xp: 0,
@@ -235,15 +184,10 @@ impl Progress {
     }
 }
 
-/// `1000:2657`..`1000:267a` and its three siblings — append one stat code to
-/// `growth_log[level]`.
+/// Append one stat code to `growth_log[level]`.
 ///
-/// The original does it as a Pascal string concatenation
-/// (`rtl_str_concat` at `0f78:0b66` with the CS literal, then
-/// `rtl_str_assign_max` at `0f78:0b01` with a max of **2**), so the entry
-/// holds at most two codes and a third would be dropped by the truncation.
-/// That is why the array element is `string[2]` and why
-/// [`GAINS_PER_LEVEL`] is the same 2.
+/// The entry holds at most two codes; a third would be dropped by
+/// truncation. That is why [`GAINS_PER_LEVEL`] is 2.
 fn append_growth_code(p: &mut Progress, level: u16, stat: Stat) {
     let Some(entry) = p.growth_log.get_mut(usize::from(level)) else {
         return;
@@ -261,35 +205,30 @@ impl Default for Progress {
 
 /// XP required to advance **from** `level` to `level + 1`.
 ///
-/// The original does not hold a curve: it stores the current requirement in
-/// `DS:38d0`, sets it to 10 for a new character (`1000:6de0`) and adds 10 per
-/// level gained (`1000:2550`), so the requirement at level *n* is
-/// `10 + 10 * n`. The de-level penalty subtracts the same 10
-/// (`1000:4ac7`), which keeps the two in step downwards as well.
+/// The original does not hold a curve: it stores the current requirement,
+/// sets it to 10 for a new character and adds 10 per level gained, so the
+/// requirement at level *n* is `10 + 10 * n`. The de-level penalty
+/// subtracts the same 10, which keeps the two in step downwards as well.
 pub fn xp_to_next(level: u16) -> u16 {
     THRESHOLD_BASE + THRESHOLD_STEP * level
 }
 
 /// XP awarded for defeating `enemy`.
 ///
-/// `1000:51b9`..`1000:51c8`: the sum of the enemy's four stats, printed as
-/// `^6За отпин врага ты получаешь # качков опыта` (`1000:51b4`) and added to
-/// `DS:38ce` at `1000:51e9`.
+/// The sum of the enemy's four stats, printed as
+/// `^6За отпин врага ты получаешь # качков опыта` and added to the XP
+/// total.
 ///
-/// `player_level` is accepted because the task brief's interface names it,
-/// and is deliberately unused: nothing between `1000:51b4` and `1000:51e9`
-/// reads the player's level. Thirty captured kills spanning player levels 0,
-/// 1, 2, 10, 11, 15, 16, 20, 21, 30, 31 and 32 all print exactly this sum —
-/// see `data/xp.json`, `award_cases`.
+/// `player_level` is deliberately unused: nothing in the award calculation
+/// reads the player's level.
 ///
-/// Two callers skip the award entirely rather than scale it: `1000:51a6`
-/// jumps past it when the fight was the rector or the endgame (`param_1` 3 or
-/// 4), and those two paths instead force a level with `xp := threshold`
-/// (`1000:508e`, `1000:513f`).
+/// Two callers skip the award entirely rather than scale it: when the
+/// fight was the rector or the endgame, those paths instead force a level
+/// with `xp := threshold`.
 pub fn xp_award(player_level: u16, enemy: &Fighter) -> u16 {
     let _ = player_level;
-    // The four stats are summed in `ax` and added to `20ae:38ce` as a word,
-    // so the sum wraps rather than widening.
+    // The four stats are summed and added as a word, so the sum wraps
+    // rather than widening.
     enemy
         .strength
         .wrapping_add(enemy.agility)
@@ -299,11 +238,11 @@ pub fn xp_award(player_level: u16, enemy: &Fighter) -> u16 {
 
 /// The weight row for `class`, or all zeros for a class outside the table.
 ///
-/// The original indexes `DS:(class * 4 + 2)` with no bounds check
-/// (`1000:25aa`); a class past the eleventh row would read whatever follows
-/// the table, which is the rank-name strings. Returning zeros instead is a
-/// deliberate divergence: no reachable class exceeds 10 (`1000:712d` clamps
-/// the prompt's answer to `0..=3` before adding 3), so the original's
+/// The original indexes the table with no bounds check; a class past the
+/// eleventh row would read whatever follows the table, which is the
+/// rank-name strings. Returning zeros instead is a deliberate divergence:
+/// no reachable class exceeds 10, since the class prompt's answer is
+/// clamped to `0..=3` before deriving the class, so the original's
 /// behaviour there is unreachable and inventing it would be a guess.
 pub fn class_weights(class: u16) -> [u16; 4] {
     CLASS_WEIGHTS
@@ -312,11 +251,11 @@ pub fn class_weights(class: u16) -> [u16; 4] {
         .unwrap_or([0; 4])
 }
 
-/// Which stat a draw of `roll` (already `Random(sum) + 1`, so `1..=sum`) hits.
+/// Which stat a draw of `roll` (already `Random(sum) + 1`, so `1..=sum`)
+/// hits.
 ///
-/// The four range tests of `FUN_1000_2526`, in order: `roll <= w0`
-/// (`1000:2615`), `roll <= w0+w1` (`1000:26c0`), `roll <= w0+w1+w2`
-/// (`1000:275c`), `roll <= w0+w1+w2+w3` (`1000:2814`).
+/// The four range tests, in order: `roll <= w0`, `roll <= w0+w1`,
+/// `roll <= w0+w1+w2`, `roll <= w0+w1+w2+w3`.
 fn pick(weights: [u16; 4], roll: u16) -> Option<Stat> {
     let mut edge = 0u16;
     for (i, w) in weights.iter().enumerate() {
@@ -330,22 +269,21 @@ fn pick(weights: [u16; 4], roll: u16) -> Option<Stat> {
 
 /// Apply one stat increase and everything it drags along.
 ///
-/// * strength (`1000:261d`..`1000:269d`): `dmg_max + 1`, `dmg_min + 1` when
-///   the *new* strength is even, `hpmax + 1`, `hp + 1`.
-/// * agility (`1000:26c5`): nothing else.
-/// * vitality (`1000:2761`, `1000:27c3`): `hpmax + 5`, `hp + 5`.
-/// * luck (`1000:2819`): nothing else.
+/// * strength: `dmg_max + 1`, `dmg_min + 1` when the *new* strength is
+///   even, `hpmax + 1`, `hp + 1`.
+/// * agility: nothing else.
+/// * vitality: `hpmax + 5`, `hp + 5`.
+/// * luck: nothing else.
 ///
-/// Together these keep the identity the in-game help screen states
-/// (`1000:610c`) and character creation establishes (`1000:71bd`):
-/// `hpmax = 10 + 5 * vitality + strength`. Neither branch clamps `hp` to
-/// `hpmax`; both go up by the same amount.
+/// Together these keep the identity the in-game help screen states and
+/// character creation establishes: `hpmax = 10 + 5 * vitality + strength`.
+/// Neither branch clamps `hp` to `hpmax`; both go up by the same amount.
 pub fn grant(f: &mut Fighter, stat: Stat) {
     match stat {
         Stat::Strength => {
             f.strength = f.strength.wrapping_add(1);
             f.dmg_max = f.dmg_max.wrapping_add(1);
-            // `1000:2683`..`1000:2691`: idiv by 2, act on a zero remainder.
+            // Divide by 2 and act on a zero remainder (i.e., even).
             if f.strength.is_multiple_of(2) {
                 f.dmg_min = f.dmg_min.wrapping_add(1);
             }
@@ -364,25 +302,23 @@ pub fn grant(f: &mut Fighter, stat: Stat) {
 
 /// Credit `award` XP and apply every level it buys, in order.
 ///
-/// `FUN_1000_2526` (`1000:2526`) in full. Two loops, exactly as the original
-/// has them:
+/// Two loops:
 ///
-/// 1. `1000:2546`..`1000:255f` drains the XP pool — `xp -= threshold;
-///    threshold += 10` — counting the levels bought. This loop has no cap.
-/// 2. `1000:257a`..`1000:289d` hands out one level per count: raise the level,
-///    then draw [`GAINS_PER_LEVEL`] stat increases against the class weights.
+/// 1. Drains the XP pool — `xp -= threshold; threshold += 10` — counting
+///    the levels bought. This loop has no cap.
+/// 2. Hands out one level per count: raise the level, then draw
+///    [`GAINS_PER_LEVEL`] stat increases against the class weights.
 ///
-/// `uncapped` is the routine's `param_1`. When it is `false` the second loop
-/// stops the moment the level is already [`MAX_LEVEL`] (`1000:2580`), so XP
-/// drained by the first loop is *lost* and the threshold keeps climbing past
-/// `xp_to_next(MAX_LEVEL)` — that is why [`Progress::threshold`] is carried
-/// rather than derived from the level. The combat path passes `false`
-/// (`1000:5238`, `mov al,0`); the rector and endgame kills pass `true`
-/// (`1000:5094`, `1000:5145`, `mov al,1`) and can push the level past 40.
+/// When `uncapped` is `false` the second loop stops the moment the level is
+/// already [`MAX_LEVEL`], so XP drained by the first loop is *lost* and the
+/// threshold keeps climbing past `xp_to_next(MAX_LEVEL)` — that is why
+/// [`Progress::threshold`] is carried rather than derived from the level.
+/// The combat path passes `false`; the rector and endgame kills pass
+/// `true` and can push the level past 40.
 ///
 /// Draws come from `rng` in the order the original makes them: one
-/// `Random(sum of the four class weights)` per stat increase (`1000:25fe`),
-/// the result incremented by one (`1000:2603`).
+/// `Random(sum of the four class weights)` per stat increase, the result
+/// incremented by one.
 pub fn apply_levels(
     p: &mut Progress,
     f: &mut Fighter,
@@ -390,7 +326,7 @@ pub fn apply_levels(
     award: u16,
     uncapped: bool,
 ) -> Vec<LevelUp> {
-    // 1000:debe `add [0x38ce],ax` -- a word add, so it wraps.
+    // A word add, so it wraps.
     p.xp = p.xp.wrapping_add(award);
     let mut ups = Vec::new();
     if p.xp < p.threshold {
@@ -410,7 +346,7 @@ pub fn apply_levels(
             break;
         }
         f.level += 1;
-        // 1000:25a5, before the weight sum is built and before either draw.
+        // Before the weight sum is built and before either draw.
         term::print(LEVELUP_PREFIX);
         let hpmax_before = f.hpmax;
         let mut gains = [None; GAINS_PER_LEVEL];
@@ -418,20 +354,18 @@ pub fn apply_levels(
             let roll = rng.below(sum).wrapping_add(1);
             let stat = pick(weights, roll);
             if let Some(stat) = stat {
-                // 1000:2635/26dd/2779/2831 -- inside the arm, so a draw that
-                // matches no range prints nothing, the same way it records
-                // nothing.
+                // Inside the arm, so a draw that matches no range prints
+                // nothing, the same way it records nothing.
                 term::print(stat.message());
                 grant(f, stat);
-                // 1000:2657/26ff/279b/2853 -- the code is appended inside the
-                // arm that granted the stat, so a roll that matches no range
-                // (only class 10, whose weights are all zero) records
-                // nothing.
+                // The code is appended inside the arm that granted the
+                // stat, so a roll that matches no range (only class 10,
+                // whose weights are all zero) records nothing.
                 append_growth_code(p, f.level, stat);
             }
             *slot = stat;
         }
-        // 1000:288b -- the bare `WriteLn` that ends this level's line.
+        // The bare `WriteLn` that ends this level's line.
         term::println("");
         ups.push(LevelUp {
             new_level: f.level,
@@ -439,9 +373,9 @@ pub fn apply_levels(
             gains,
         });
     }
-    // 1000:28a0 `cmp byte [bp+0x4],0x0` -- the tail is the capped caller's
-    // only. It is inside the `xp >= threshold` test, so the early return
-    // above is what keeps it off a no-op call.
+    // The tail is the capped caller's only. It is inside the
+    // `xp >= threshold` test, so the early return above is what keeps it
+    // off a no-op call.
     if !uncapped {
         term::println(&text::fill(
             LEVELUP_TAIL,
@@ -451,56 +385,39 @@ pub fn apply_levels(
     ups
 }
 
-/// Take back the stat grants `growth_log[level]` records, and spend the entry
-/// — `[1000:4954, 1000:4a78)`, the first half of the flee penalty.
+/// Take back the stat grants `growth_log[level]` records, and spend the
+/// entry -- the first half of the flee penalty.
 ///
-/// **Established from flow**, re-derived from `orig/g.exe` for this
-/// implementation. The block:
+/// The codes are the inverse of [`grant`], including the parity branch: it
+/// divides the *new* strength by two and takes the `dmg_min` decrement
+/// when the remainder is 1, where [`grant`] takes the increment when it is
+/// 0. So a strength that gained `dmg_min` on the way up loses it on the
+/// way down, at the same crossing.
 ///
-/// ```text
-/// 4954  growth_log[level] -> the local at [bp-0x10a]   (rtl_str_assign_max, max 0xff)
-/// 497d  mov byte [di+0x38cf],0        ; the SOURCE entry's length byte
-/// 4982  for i := 1 to 2 do            ; 1000:4989 inc / 1000:4a6f cmp,2 / 1000:4a73 jz
-/// 498f    '1' -> dec [0x389e] ... 49b3 dec [0x38aa] ... 49ca dec [0x38ae], clamp hp
-/// 49e3    '2' -> dec [0x38a0]
-/// 4a0c    '3' -> dec [0x38a2] ... 4a30 sub word [0x38ae],5, clamp hp
-/// 4a49    '4' -> dec [0x38a4]
-/// ```
+/// **The copy is what makes the clear safe:** the source entry is zeroed
+/// *before* the loop runs, and the loop reads a copy. Divergences here,
+/// all deliberate and none reachable in play:
 ///
-/// The codes are the inverse of [`grant`], including the parity branch:
-/// `1000:49b7`..`1000:49c4` divides the *new* strength by two and takes the
-/// `dmg_min` decrement when the remainder is 1, where `1000:2683` takes the
-/// increment when it is 0. So a strength that gained `dmg_min` on the way up
-/// loses it on the way down, at the same crossing.
-///
-/// **The copy is what makes the clear safe:** `1000:497d` zeroes the source
-/// *before* the loop runs, and the loop reads the copy at `[bp-0x10a]`. Two
-/// divergences, both deliberate and neither reachable in play:
-///
-/// * the loop does not consult the copied string's length byte, so an entry
-///   that was already spent would have the loop read whatever the shortstring
-///   assignment left in the local's positions 1 and 2 — uninitialised stack.
-///   This clears **both codes** instead of only the length, so a spent entry
-///   reliably costs nothing. Reaching that state means fleeing twice at the
-///   same level without levelling in between, and the flee itself decrements
-///   the level, so the entry is always re-earned first.
+/// * the loop does not consult the copied string's length byte, so an
+///   entry that was already spent would read whatever was left over from
+///   an earlier assignment -- uninitialised stack. This clears **both
+///   codes** instead of only the length, so a spent entry reliably costs
+///   nothing. Reaching that state means fleeing twice at the same level
+///   without levelling in between, and the flee itself decrements the
+///   level, so the entry is always re-earned first.
 /// * the stat decrements use `wrapping_sub`, matching [`grant`]'s
 ///   `wrapping_add`, rather than the original's signed word arithmetic.
-/// * the parity test is `!strength.is_multiple_of(2)` on a `u16`, where
-///   `1000:49b7`..`1000:49c4` is `cwd` / `idiv cx` with `cx = 2` and then
-///   `cmp ax,1` on the remainder -- a SIGNED division, whose remainder for a
-///   negative strength is `-1` and never equal to 1. The two agree for every
-///   strength below 0x8000; a strength with bit 15 set is unreachable here
-///   for the same reason the `wrapping_sub` divergence is. [`grant`]'s
-///   `is_multiple_of(2)` at `1000:2683` carries the identical caveat.
+/// * the parity test is `!strength.is_multiple_of(2)` on a `u16`, where the
+///   original does a signed division whose remainder for a negative
+///   strength is never equal to 1. The two agree unless the strength's top
+///   bit is set, which is unreachable here for the same reason the
+///   `wrapping_sub` divergence is. [`grant`]'s own parity test carries the
+///   identical caveat.
 ///
-/// Returns the codes it acted on, in order, so the caller can write the four
-/// `^4… -1 ` lines the original writes between the decrements. Nothing else is
-/// written inside the loop, so collecting them and printing afterwards is
-/// byte-identical.
+/// Returns the codes it acted on, in order, so the caller can write the
+/// four `-1` lines the original writes between the decrements.
 ///
-/// **No draw**: there is no `9a 4b 11 78 0f` anywhere in
-/// `[1000:48eb, 1000:4afb)`.
+/// **No draw:** this function never touches the RNG.
 pub fn undo_growth(p: &mut Progress, f: &mut Fighter) -> Vec<Stat> {
     let level = usize::from(f.level);
     let entry = p.growth_log.get(level).copied().unwrap_or_default();
@@ -509,8 +426,8 @@ pub fn undo_growth(p: &mut Progress, f: &mut Fighter) -> Vec<Stat> {
     }
     let mut undone = Vec::new();
     for code in entry {
-        // 1000:4a6f is reached by every non-matching code, so an empty
-        // position costs nothing.
+        // Reached by every non-matching code, so an empty position costs
+        // nothing.
         let Some(stat) = Stat::from_code(code) else {
             continue;
         };
@@ -530,10 +447,7 @@ pub fn undo_growth(p: &mut Progress, f: &mut Fighter) -> Vec<Stat> {
             }
             Stat::Luck => f.luck = f.luck.wrapping_sub(1),
         }
-        // 1000:49ce and 1000:4a35 -- the same three-instruction clamp, only
-        // after the two codes that move `hpmax`. Its test is
-        // 1000:49d1 `cmp ax,[0x38ae]` / 1000:49d5 `jle 0x49dd` after code
-        // '1', and 1000:4a38 / 1000:4a3c `jle 0x4a44` after code '3'; both
+        // The same clamp, only after the two codes that move `hpmax`: both
         // store hpmax into hp only when hp is STRICTLY above it.
         if matches!(stat, Stat::Strength | Stat::Vitality) && f.hp > f.hpmax {
             f.hp = f.hpmax;
@@ -543,22 +457,16 @@ pub fn undo_growth(p: &mut Progress, f: &mut Fighter) -> Vec<Stat> {
     undone
 }
 
-/// Give the level back — `1000:4ac3`..`1000:4ad9`, the last three steps of the
-/// flee penalty.
+/// Give the level back — the last three steps of the flee penalty:
+/// decrement the level by 1, subtract 10 from the threshold, and if xp is
+/// now at or above the threshold, clamp it to threshold - 1.
 ///
-/// ```text
-/// 4ac3  ff 0e a6 38        dec [0x38a6]              ; the level
-/// 4ac7  83 2e d0 38 0a     sub word [0x38d0],10      ; the threshold
-/// 4acc  xp >= threshold -> xp := threshold - 1       ; 1000:4acf jl 0x4adc
-/// ```
-///
-/// The threshold step is exactly the one `apply_levels` adds at
-/// `1000:2550`, which is what keeps [`xp_to_next`] true of the pair after a
-/// de-level as well as after a level-up. Both subtractions saturate here;
-/// the original's are signed word arithmetic, and neither can go negative
-/// from a state this port can reach — `1000:4931`'s `[0x38a6] > 0` guard is
-/// what stops the level, and the threshold is `10 + 10 * level` whenever the
-/// level cap has not bitten.
+/// The threshold step is exactly the one `apply_levels` adds, which is
+/// what keeps [`xp_to_next`] true of the pair after a de-level as well as
+/// after a level-up. Both subtractions saturate here; neither can go
+/// negative from a state this port can reach — the level is guarded to
+/// stay above 0, and the threshold is `10 + 10 * level` whenever the level
+/// cap has not bitten.
 pub fn demote(p: &mut Progress, f: &mut Fighter) {
     f.level = f.level.saturating_sub(1);
     p.threshold = p.threshold.saturating_sub(THRESHOLD_STEP);
@@ -567,25 +475,21 @@ pub fn demote(p: &mut Progress, f: &mut Fighter) {
     }
 }
 
-/// A freshly created character: `1000:7140`..`1000:71e8`.
+/// A freshly created character.
 ///
-/// `name` is stored verbatim into [`Fighter::name`]; the original prompts for
-/// it separately (`^0А зовут тебя:`) and this port has no way to invent a
-/// default, so a caller must supply one rather than risk shipping a
-/// silently-empty name (Task 11's job; this signature just makes forgetting
-/// it a compile error instead of a blank save).
+/// `name` is stored verbatim into [`Fighter::name`]; the original prompts
+/// for it separately (`^0А зовут тебя:`) and this port has no way to
+/// invent a default, so a caller must supply one rather than risk shipping
+/// a silently-empty name.
 ///
 /// `answer` is what the player typed at
 /// `0-Пацан, 1-Отморозок, 2-Гопник, 3-Вор`; anything outside `0..=3` is
-/// folded to `0` (`1000:712d`..`1000:713b`). The stored class is
-/// `answer + 3` (`1000:71b8`), which is why a fresh Пацан is class 3
-/// (Подтсан) and not class 0.
+/// folded to `0`. The stored class is `answer + 3`, which is why a fresh
+/// Пацан is class 3 (Подтсан) and not class 0.
 ///
-/// The derived fields are `hpmax = 10 + 5 * vitality + strength`
-/// (`1000:71bd`..`1000:71cf`), `hp = hpmax` (`1000:71d2`),
-/// `dmg_min = strength div 2` (`1000:71d8`) and `dmg_max = strength`
-/// (`1000:71e4`). Level and XP start at zero and the threshold at 10
-/// (`1000:6de0`).
+/// The derived fields are `hpmax = 10 + 5 * vitality + strength`,
+/// `hp = hpmax`, `dmg_min = strength div 2` and `dmg_max = strength`.
+/// Level and XP start at zero and the threshold at 10.
 pub fn new_character(name: &str, answer: u16) -> (Fighter, Progress) {
     let answer = if answer <= 3 { answer } else { 0 };
     let [strength, agility, vitality, luck] = START_STATS[usize::from(answer)];

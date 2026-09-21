@@ -1,48 +1,18 @@
 //! Locations and the per-district rediscovery flags.
 //!
-//! `PLACES.SAV` is 7 bytes, one per rediscoverable location. `orig/PLACES.SAV`
-//! is all `0x01` (every location already found), which round-trips correctly
-//! under any permutation of the 7 slots, so the file itself cannot pin the
-//! order down -- the reader at `1000:6c5a` does, and [`TRACKED`] quotes it.
+//! `PLACES.SAV` is 7 bytes, one per rediscoverable location. The shipped
+//! file already has every location found, so it cannot itself fix the byte
+//! order; [`TRACKED`] does.
 //!
 //! Entering a new district hides locations again; `reset_for_new_district`
-//! models that (`docs/re/tables.md`, "Availability gates": `district` is
-//! `20ae:3692`, raised once понтовость reaches `district * 10`, file `0xC462`
-//! / `1000:ab92`).
+//! models that, raised once понтовость reaches `district * 10`.
 //!
-//! The reset is NOT unconditional, and `reset_for_new_district` now models
-//! that. `1000:ab96` clears Vet and Market, then three `74 05` skips each
-//! spare exactly one flag -- Club at `1000:aba7` and Girl at `1000:abb8` are
-//! spared when `[20ae:389c] == 3`, Den at `1000:abc9` when it is `5`. Gym at
-//! `1000:abac` and Dealers at `1000:abbd` are always cleared, being the
-//! second store in each pair, past the skip -- which is the whole reason the
-//! guards read as sparing one flag rather than two:
+//! The reset is not unconditional: Vet and Market are always cleared. Club
+//! and Girl are spared when the character's class is `3`, Den is spared
+//! when it is `5`. Gym and Dealers are always cleared.
 //!
-//! ```text
-//! 1000:ab96  mov byte [0x3698],0x0    Vet      -- always
-//! 1000:ab9b  mov byte [0x3694],0x0    Market   -- always
-//! 1000:aba0  cmp word [0x389c],0x3
-//! 1000:aba5  jz 0xabac                         -- class 3 skips the next store
-//! 1000:aba7  mov byte [0x3699],0x0    Club
-//! 1000:abac  mov byte [0x369a],0x0    Gym      -- always (jump lands here)
-//! 1000:abb1  cmp word [0x389c],0x3
-//! 1000:abb6  jz 0xabbd
-//! 1000:abb8  mov byte [0x3697],0x0    Girl
-//! 1000:abbd  mov byte [0x3695],0x0    Dealers  -- always
-//! 1000:abc2  cmp word [0x389c],0x5
-//! 1000:abc7  jz 0xabce
-//! 1000:abc9  mov byte [0x3696],0x0    Den
-//! ```
-//!
-//! Re-derive with
-//! `python3 tools/re_query.py resolve 1000:ab96 -n 60 -i 30`.
-//!
-//! `[0x389c]` is the character class (Task 11b), read the same way in
-//! `Game::apply_class_bonus` (`1000:73bb`). This was a KNOWN DIVERGENCE for
-//! three tasks -- `Places` had no class to consult, and after `Task 21` made
-//! `Game::district_advance` the one caller (where `self.player.class` is in
-//! scope) the only thing left holding it open was that the brief had scoped
-//! it out. The class is now a parameter.
+//! The class is a parameter of this function, read the same way
+//! `Game::apply_class_bonus` reads it.
 
 /// `Dealers` is the `bmar` verb -- the game calls the place **Барыги**, not
 /// a market. Its entry text is `Ты пришел к барыгам напиши  ^6w^7  чтобы
