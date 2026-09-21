@@ -1,29 +1,21 @@
-//! The gym's key dispatch -- `trn`'s second block, `1000:e624`..`1000:e948`.
+//! The gym's key dispatch -- `trn`'s second block.
 //!
 //! `crate::game` keeps the verb (`Command::Gym` -> `Game::enter_shop`), the
 //! intro line, the five [`crate::game::IMM_ROWS`] menu rows and the prompt;
-//! this module is only what happens after the `ReadLn` at
-//! `1000:e60b`..`1000:e615`. The map it is written from is `docs/re/gym.md`
-//! and `data/gym_arms.json`, whose `what_the_port_must_change` array is the
-//! work order and which `python3 tools/test_gym_arms.py` re-derives from
-//! `orig/g.exe`.
+//! this module is only what happens after that.
 //!
 //! ## The second block is the key dispatch, not a second menu
 //!
-//! **Established from flow** (`data/gym_arms.json`'s `menu_vs_arm_finding`).
-//! `1000:e400`..`1000:e594` prints the menu, once, on entry;
-//! `1000:e633`..`1000:e941` is the chain of key compares, reached by
-//! fall-through from the prompt and by nothing else. Eight of the ten guard
-//! constants are byte-identical between the two halves and one whole
-//! predicate is (row 3's level test, 17 bytes at `1000:e4b1` and
-//! `1000:e746`) -- but two things are not, and both matter here:
+//! The menu prints once, on entry; the chain of key compares is reached by
+//! fall-through from the prompt and by nothing else. Most of the guard
+//! conditions match between the menu and the dispatch chain, but two do
+//! not, and both matter here:
 //!
-//! * the `5` arm's ceiling is `(district - 2) * 10` (`1000:e87f`..`1000:e894`)
-//!   where the row's is `district * 2` (`1000:e57d`..`1000:e58d`), so the arm
-//!   is reachable through a menu that no longer lists it;
-//! * the `4` arm refuses when the tooth guard is already owned
-//!   (`1000:e7fa`) and the row has no such gate (`1000:e51a` is its only
-//!   one), so the row stays listed after the purchase.
+//! * the `5` arm's ceiling is `(district - 2) * 10` where the row's is
+//!   `district * 2`, so the arm is reachable through a menu that no longer
+//!   lists it;
+//! * the `4` arm refuses when the tooth guard is already owned and the row
+//!   has no such gate, so the row stays listed after the purchase.
 //!
 //! So the two halves share no code here either. `crate::game`'s
 //! `Game::imm_row_visible` owns the menu predicates; nothing in this module
@@ -32,58 +24,15 @@
 //! ## Three things this module deliberately does not do
 //!
 //! * **No refusal for a key the district hides.** At district 1 the `3`,
-//!   `4` and `5` compares are jumped over entirely (`1000:e72d`,
-//!   `1000:e7e7`, `1000:e866`), so the key is never compared and nothing is
-//!   printed. [`key_dispatches`] evaluates the district before the key for
-//!   exactly that reason: testing the key first and the district second
-//!   would print a refusal the original has no path to.
-//! * **No message for an unrecognised key.** The chain falls off its end at
-//!   `1000:e943`, which jumps to the PROMPT and not to the menu, and there
-//!   is no `Непонятно` literal anywhere in `1000:e390`..`1000:ea94` for it
-//!   to print (`data/gym_arms.json`'s string sweep over the range).
-//! * **No re-print of the menu between turns.** `1000:e943`'s target is
-//!   `1000:e5e4`, the prompt.
-//!
-//! Address convention: `docs/re/METHODOLOGY.md`, "Address convention, and
-//! its range of validity"; `python3 tools/re_query.py resolve <citation>`
-//! converts one and prints the bytes there. Every string literal below is
-//! quoted from `data/strings.json` at the file offset its `mov di,<n>` push
-//! resolves to, markup and trailing spaces included.
-//!
-//! ## Why the string citations are written the way they are
-//!
-//! `tools/test_string_citations.py` scans this file (Task 32's review round
-//! added it to that scanner's `SOURCES`, which had let the whole module
-//! through — the same omission its own docstring records for `src/game.rs`
-//! at Task 20). It checks two things and both need a particular shape:
-//! `scan` resolves a `file 0xNNNN` citation only when a backtick-quoted
-//! literal sits within one line of it, and `comment_code_pairs` binds that
-//! quoted literal to the Rust literal on a code line within two below. So
-//! each of the **18** inline citations here is written as
-//! `file `0xNNNN` `^Nthe string``, on one line, directly above the
-//! `term::println` that prints it. Written the shorter way — the offset in
-//! the comment and the text only inside the `println` — both halves report
-//! nothing at all, which is how a module with 18 of them passed a guard
-//! whose entire purpose is to catch a wrong one.
-//!
-//! **The citations that stay `unchecked` here are of two kinds, and neither
-//! is a gap.** Most are inside the `text` disassembly fences of the arm docs
-//! below (`mov di,0xa47e (file 0xBD4E)` and its like) — transcript lines,
-//! where quoting the string beside the offset would corrupt the transcript —
-//! and the rest are prose mentions in this doc and the arm docs. **Every
-//! offset in both kinds is checked elsewhere in this file** by an inline
-//! citation of the same offset, so `unchecked` here means "cited twice, once
-//! in a checkable form", not "unverified". The one exception is `CS 0x848e`,
-//! the shared `w` exit token, whose string is the single character `w` and
-//! therefore can never match the scanner's game-text rule at all.
-//!
-//! Both statements are recomputable rather than counted here: the per-kind
-//! tally and the "checked elsewhere" containment come from running
-//! `tools/test_string_citations.py`'s `scan` and `literals_near` over this
-//! file, which is what the Task 32 fix-round report shows. A raw count in
-//! this comment would go stale on the next edit, which is the defect
-//! `docs/re/METHODOLOGY.md` warns about under "A port citation cites the
-//! command, not the line it printed".
+//!   `4` and `5` compares are jumped over entirely, so the key is never
+//!   compared and nothing is printed. [`key_dispatches`] evaluates the
+//!   district before the key for exactly that reason: testing the key
+//!   first and the district second would print a refusal the original has
+//!   no path to.
+//! * **No message for an unrecognised key.** The chain falls off its end,
+//!   which jumps to the PROMPT and not to the menu, and there is no
+//!   `Непонятно` literal for it to print.
+//! * **No re-print of the menu between turns.** Its target is the prompt.
 
 use crate::game::Game;
 use crate::progress;
@@ -92,43 +41,31 @@ use crate::text;
 
 /// Whether the gym's compare chain reaches a compare that `key` matches.
 ///
-/// **Established from flow.** Six keys exist, each at its own `0f78:0bd8`
-/// compare against the gym's own buffer `20ae:3a72` -- `1` `1000:e62e`,
-/// `2` `1000:e6ba`, `3` `1000:e73c`, `4` `1000:e7f3`, `5` `1000:e875`,
-/// `w` `1000:e93c` -- and three of them sit behind a district test that
-/// decides whether the compare happens at all:
+/// Six keys exist -- `1`, `2`, `3`, `4`, `5`, `w` -- and three of them sit
+/// behind a district test that decides whether the compare happens at all:
 ///
-/// | key | gate | branch | sense |
-/// |---|---|---|---|
-/// | `3` | `1000:e728` `cmp byte [0x3692],0x1` | `1000:e72d` `ja 0xe732` | district > 1 |
-/// | `4` | `1000:e7e2` `cmp byte [0x3692],0x1` | `1000:e7e7` `jbe 0xe861` | district > 1 |
-/// | `5` | `1000:e861` `cmp byte [0x3692],0x2` | `1000:e866` `ja 0xe86b` | district > 2 |
+/// | key | district |
+/// |---|---|
+/// | `3` | > 1 |
+/// | `4` | > 1 |
+/// | `5` | > 2 |
 ///
 /// So at district 1 exactly three keys exist -- `1`, `2` and `w` -- and that
 /// is a fact about the DISPATCHER, not about what the menu printed. `&&`
-/// short-circuits left to right, which is the original's order: gate, then
-/// compare.
+/// short-circuits left to right: gate, then compare.
 ///
-/// `w` is not here. Its compare at `1000:e93c` is the shared exit every
-/// location's prompt has (the literal at CS `0x848e` has nine push sites
-/// image-wide), and `Game::shop_turn`'s catch-all already owns it; a
-/// `false` from this function is `1000:e932`, the fall-through into it.
+/// `w` is not here. It is the shared exit every location's prompt has, and
+/// `Game::shop_turn`'s catch-all already owns it; a `false` from this
+/// function is the fall-through into it.
 pub(crate) fn key_dispatches(g: &Game, key: &str) -> bool {
     match key {
-        // 1000:e62e / 1000:e633 -- no gate of its own.
+        // No gate of its own.
         "1" => true,
-        // 1000:e6ba / 1000:e6bf -- no gate of its own.
+        // No gate of its own.
         "2" => true,
-        // 1000:e728 gates the compare at 1000:e73c, whose hit is
-        // 1000:e741; 1000:e72f jumps the whole arm.
         "3" => g.district > 1,
-        // 1000:e7e2 gates the compare at 1000:e7f3, whose miss is
-        // 1000:e7f8.
         "4" => g.district > 1,
-        // 1000:e861 gates the compare at 1000:e875, whose hit is
-        // 1000:e87a; 1000:e868 jumps the whole arm.
         "5" => g.district > 2,
-        // 1000:e932: the `w` compare, then 1000:e943 back to the prompt.
         _ => false,
     }
 }
@@ -147,195 +84,117 @@ pub(crate) fn run_key(g: &mut Game, key: &str) {
     }
 }
 
-/// `1` -- `1000:e624`..`1000:e6b0`, `качаться гантелями и штангой`, 20 rubles.
+/// `1` -- `качаться гантелями и штангой`, 20 rubles.
 ///
-/// **Established from flow**, re-disassembled for this task with
-/// `python3 tools/re_query.py resolve 1000:e624 -n 800 -i 500`:
+/// **The damage split is easy to get backwards.** урон max rises on EVERY
+/// purchase, while урон min rises only when the NEW strength -- the one
+/// just incremented -- is even. Both-conditional and both-unconditional
+/// readings are equally wrong and equally invisible without checking the
+/// numbers.
 ///
-/// ```text
-/// e635  cmp word [0x38c7],0x14 / e63a jnl 0xe657   ; can pay 20, SIGNED
-/// e63c  mov di,0x8e4d (file 0xA71D) .. e650 WriteLn / e655 jmp short 0xe6b0
-/// e657  sub word [0x38c7],0x14                     ; бабки -20
-/// e65c  mov di,0xa47e (file 0xBD4E) .. e670 WriteLn
-/// e675  inc [0x389e]                               ; Сила +1
-/// e679  inc [0x38ae]                               ; здоровье max +1
-/// e67d  inc [0x38ac]                               ; здоровье +1
-/// e681  mov ax,[0x389e] / e684 cwd / e685 mov cx,2 / e688 idiv cx
-/// e68a  xchg ax,dx / e68b or ax,ax / e68d jnz 0xe693
-/// e68f  inc [0x38a8]                               ; урон min +1
-/// e693  inc [0x38aa]                               ; урон max +1
-/// e697  mov di,0x9402 (file 0xACD2) .. e6ab WriteLn
-/// ```
-///
-/// **The damage split is the one thing here that is easy to get backwards.**
-/// `1000:e68d`'s `jnz` is a four-byte skip and `1000:e68f inc [0x38a8]` is
-/// exactly four bytes, so the jump lands on `1000:e693` and урон max rises on
-/// EVERY purchase while урон min rises only when the NEW strength -- the one
-/// `1000:e675` just incremented -- is even. Both-conditional and
-/// both-unconditional are equally wrong and equally invisible in a screen
-/// capture, which is why
-/// `arm_1_raises_dmg_max_every_time_and_dmg_min_only_on_an_even_strength`
-/// buys twice from an odd strength and asserts +1 against +2 separately.
-///
-/// The `idiv` is signed and `Fighter::strength` is a `u16`, so the negative
-/// half of the remainder test is unrepresentable and `is_multiple_of(2)`
-/// decides as `or ax,ax` / `jnz` does. Nothing one-shot is consumed, so the
-/// arm repeats.
+/// `Fighter::strength` is a `u16`, so `is_multiple_of(2)` is a safe test for
+/// evenness. Nothing one-shot is consumed, so the arm repeats.
 fn train_strength(g: &mut Game) {
-    // 1000:e635 / 1000:e63a -- a signed word compare, and `Fighter::money`
-    // is an `i16` now, so this is the same compare on the same width.
+    // A signed word compare, and `Fighter::money` is an `i16`, so this is
+    // the same compare on the same width.
     if g.player.money < 20 {
-        // 1000:e63c pushes file `0xA71D` `^4Не хватает`, printed by
-        // 1000:e650; 1000:e655 leaves.
+        // Prints `^4Не хватает` and leaves.
         term::println(EMITTED[2].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(20_i16); // 1000:e657
 
-    // 1000:e65c pushes file `0xBD4E` `^2Ты прокачиваешь силу.`, printed by
-    // 1000:e670 -- BEFORE the six stores.
+    // Prints `^2Ты прокачиваешь силу.` BEFORE the six stat changes.
     term::println(EMITTED[3].1);
     g.player.strength += 1; // 1000:e675
     g.player.hpmax += 1; // 1000:e679
     g.player.hp += 1; // 1000:e67d
 
-    // 1000:e681..1000:e68d: the remainder of the NEW strength div 2.
+    // The remainder of the NEW strength div 2.
     if g.player.strength.is_multiple_of(2) {
         g.player.dmg_min += 1; // 1000:e68f
     }
     g.player.dmg_max += 1; // 1000:e693 -- outside the branch, every time.
 
-    // 1000:e697 pushes file `0xACD2` `^1Сила +1 ` (the trailing space is
-    // the original's), printed by 1000:e6ab.
+    // Prints `^1Сила +1 ` (the trailing space is intentional).
     term::println(EMITTED[4].1);
 }
 
-/// `2` -- `1000:e6b0`..`1000:e728`, `качаться на тренажерах`, 20 rubles.
-///
-/// **Established from flow**, same decode:
-///
-/// ```text
-/// e6c1  cmp word [0x38c7],0x14 / e6c6 jnl 0xe6e3
-/// e6c8  mov di,0x8e4d (file 0xA71D) .. e6dc WriteLn / e6e1 jmp short 0xe728
-/// e6e3  sub word [0x38c7],0x14
-/// e6e8  mov di,0xa496 (file 0xBD66) .. e6fc WriteLn
-/// e701  inc [0x38a2]                 ; Выносливость +1
-/// e705  add word [0x38ae],0x5        ; здоровье max +5
-/// e70a  add word [0x38ac],0x5        ; здоровье +5
-/// e70f  mov di,0xa4b6 (file 0xBD86) .. e723 WriteLn
-/// ```
+/// `2` -- `качаться на тренажерах`, 20 rubles.
 ///
 /// Same price and the same refusal literal as `1`, and that is where the
 /// resemblance stops: this arm has four effects and **no conditional at
 /// all**, both health words rise by a flat 5, and neither damage word is
 /// touched. The two arms are not a template of each other.
 fn train_stamina(g: &mut Game) {
-    // 1000:e6c1 / 1000:e6c6.
     if g.player.money < 20 {
-        // 1000:e6c8 pushes file `0xA71D` `^4Не хватает`, printed by
-        // 1000:e6dc; 1000:e6e1 leaves.
+        // Prints `^4Не хватает` and leaves.
         term::println(EMITTED[5].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(20_i16); // 1000:e6e3
 
-    // 1000:e6e8 pushes file `0xBD66` `^2Ты прокачиваешь выносливость.`,
-    // printed by 1000:e6fc.
+    // Prints `^2Ты прокачиваешь выносливость.`
     term::println(EMITTED[6].1);
     g.player.vitality += 1; // 1000:e701 -- 20ae:38a2 is `+0x06`, живучесть
     g.player.hpmax += 5; // 1000:e705
     g.player.hp += 5; // 1000:e70a
 
-    // 1000:e70f pushes file `0xBD86` `^1Выносливость +1 ` (trailing space
-    // is the original's), printed by 1000:e723.
+    // Prints `^1Выносливость +1 ` (the trailing space is intentional).
     term::println(EMITTED[7].1);
 }
 
-/// `3` -- `1000:e728`..`1000:e7e2`, `прокачать 10 качков опыта`, 10 rubles.
-///
-/// **Established from flow**, same decode:
-///
-/// ```text
-/// e746  mov al,[0x3692] / e749 xor ah,ah / e74b mov dx,0xa / e74e mul dx
-/// e750  sub ax,0x3 / e753 cmp ax,[0x38a6] / e757 jnle 0xe774
-/// e759  mov di,0xa4c9 (file 0xBD99) .. e76d WriteLn / e772 jmp short 0xe7e2
-/// e774  cmp word [0x38c7],0xa / e779 jnl 0xe796
-/// e77b  mov di,0x9473 (file 0xAD43) .. e78f WriteLn / e794 jmp short 0xe7e2
-/// e796  sub word [0x38c7],0xa                 ; бабки -10
-/// e79b  mov di,0xa4f8 (file 0xBDC8) .. e7af WriteLn
-/// e7b4  add word [0x38ce],0xa                 ; опыт +10
-/// e7b9  mov di,0xa50b (file 0xBDDB) / e7be mov ax,0xa / e7c1 push ax
-/// e7ce  WriteLn
-/// e7d3  mov ax,[0x38ce] / e7d6 cmp ax,[0x38d0] / e7da jl 0xe7e2
-/// e7dc  mov al,0x0 / e7de push ax / e7df call 0x12526   ; FUN_1000_2526(0)
-/// ```
+/// `3` -- `прокачать 10 качков опыта`, 10 rubles.
 ///
 /// **The gate order is load-bearing.** The level test comes first and the
 /// money test second, so a player who is both too strong and too poor sees
-/// `^6Ты слишком крутой...` and never the money refusal. `1000:e757` is
-/// `jnle`, so the arm runs iff `district * 10 - 3 > level` -- byte-identical
-/// arithmetic to menu row 3's at `1000:e4b1`..`1000:e4be`, differing only in
-/// the `jcc` that follows, because the menu SKIPS the row where the arm
-/// PROCEEDS.
+/// `^6Ты слишком крутой...` and never the money refusal. The arm runs iff
+/// `district * 10 - 3 > level` -- the same arithmetic as menu row 3's,
+/// differing only in that the menu SKIPS the row where the arm PROCEEDS.
 ///
-/// **The printed `#` is a separate immediate, not the xp total.** The one
-/// `#` of file `0xBDDB` is filled from `1000:e7be mov ax,0xa` pushed at
-/// `1000:e7c1`; menu row 3's `#` has its own `mov ax,0xa` at `1000:e505`.
-/// The two are equal and independent.
+/// **The printed `#` is a separate immediate, not the xp total.** Menu row
+/// 3's `#` has its own value. The two are equal and independent.
 ///
-/// **The ordering `1000:e796` / `1000:e7b4` / `1000:e7ce` / `1000:e7df`
-/// is why [`progress::apply_levels`] is called with `award = 0`.** The xp is
-/// credited by the `add` at `1000:e7b4` and printed before the level-up runs,
-/// and `apply_levels` adds its own `award` *before* the threshold test, so
-/// passing `award = 10` after the manual `xp += 10` would grant twenty.
-/// `arm_3_credits_ten_qualification_points_once_not_twice` is the falsifier.
+/// **This is why [`progress::apply_levels`] is called with `award = 0` in
+/// its CAPPED form (`uncapped: false`).** The xp is credited and printed
+/// before the level-up runs, and `apply_levels` adds its own `award`
+/// *before* the threshold test, so passing `award = 10` after the manual
+/// `xp += 10` would grant twenty.
 ///
-/// **The outer threshold guard is kept.** `1000:e7d3`..`1000:e7da` duplicates
-/// the callee's own entry test at `1000:2535`: the seven bytes
-/// `a1 ce 38 3b 06 d0 38` are identical at `1000:e7d3` and `1000:2535`, and
-/// only the `jcc` after them differs (`1000:e7da jl` against
-/// `1000:253c jnl`) -- and the callee's early-out lands at
-/// `1000:28c1`, past the closing message at `1000:28a6`, so keeping it and
-/// dropping it are both faithful. It is kept because it is a branch of the
-/// original and this is a port. `1000:e7df`'s `param_1 = 0` is the CAPPED
-/// form (`1000:257a`..`1000:2587`), which is `uncapped: false`.
+/// **The outer threshold guard is kept**, even though it duplicates the
+/// callee's own entry check -- consistent with the original having that
+/// branch, since this is a port.
 ///
-/// This is the only arm in the whole range that can move the RNG stream, and
-/// it moves it indirectly: the gym contains no `Random` call site of its own,
-/// while `1000:2526` spends two draws per level gained at `1000:25fe`.
+/// This is the only arm in the whole range that can move the RNG stream,
+/// and it moves it indirectly: the gym contains no `Random` call site of
+/// its own, while levelling up spends two draws per level gained.
 fn train_xp(g: &mut Game) {
-    // 1000:e746..1000:e753 / 1000:e757 `jnle`. `mul dx` is unsigned and the
-    // compare is signed; district is 1..5, so neither can wrap.
+    // The multiply is unsigned and the compare is signed; district is 1..5,
+    // so neither can wrap.
     if i32::from(g.district) * 10 - 3 <= i32::from(g.player.level) {
-        // 1000:e772 leaves. file `0xBD99` `^6Ты слишком крутой чтобы тренироваться здесь.`,
-        // pushed at 1000:e759 and printed by 1000:e76d.
+        // Prints `^6Ты слишком крутой чтобы тренироваться здесь.` and leaves.
         term::println(EMITTED[8].1);
         return;
     }
-    // 1000:e774 / 1000:e779 -- second, so the line above wins when both fail.
+    // Checked second, so the line above wins when both fail.
     if g.player.money < 10 {
-        // 1000:e77b pushes file `0xAD43` `^4Не хватает деньжат`, printed by
-        // 1000:e78f; 1000:e794 leaves.
+        // Prints `^4Не хватает деньжат` and leaves.
         term::println(EMITTED[9].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(10_i16); // 1000:e796
 
-    // 1000:e79b pushes file `0xBDC8` `^2Ты тренируешься.`, printed by
-    // 1000:e7af.
+    // Prints `^2Ты тренируешься.`
     term::println(EMITTED[10].1);
     g.progress.xp += 10; // 1000:e7b4
 
-    // The `#` is 1000:e7be's own `mov ax,0xa`, pushed at 1000:e7c1 -- not
-    // [0x38ce]. file `0xBDDB` `^1 +# качков опыта `, pushed at 1000:e7b9
-    // and printed by 1000:e7ce.
+    // The `#` is a fixed immediate, not the xp total. Prints
+    // `^1 +# качков опыта `.
     term::println(&text::fill(EMITTED[11].1, &[10]));
-    // 1000:e7d3 / 1000:e7d6 / 1000:e7da.
     if g.progress.xp < g.progress.threshold {
         return;
     }
-    // 1000:e7dc / 1000:e7df -- FUN_1000_2526(0). `award` is 0 because the
-    // grant already happened at 1000:e7b4.
+    // `award` is 0 because the grant already happened above.
     progress::apply_levels(&mut g.progress, &mut g.player, &mut g.rng, 0, false);
 }
 
@@ -371,88 +230,54 @@ fn train_xp(g: &mut Game) {
 /// `1000:47ce`/`1000:47f3`, which splits a jaw break into the plain arm and
 /// a `Random(4)`: a DRAW-COUNT difference, not flavour.
 fn buy_tooth_guard(g: &mut Game) {
-    // 1000:e7fa / 1000:e7ff -- first, so it wins over the money test below.
+    // Checked first, so it wins over the money test below.
     if g.tooth_guard {
-        // 1000:e848 pushes file `0xBE1A` `^6У тебя есть эта штучка.`,
-        // printed by 1000:e85c.
+        // Prints `^6У тебя есть эта штучка.`
         term::println(EMITTED[14].1);
         return;
     }
-    // 1000:e801 / 1000:e806.
     if g.player.money < 30 {
-        // 1000:e808 pushes file `0xBDEF` `^4А не хватает рубликов`, printed
-        // by 1000:e81c; 1000:e821 leaves.
+        // Prints `^4А не хватает рубликов` and leaves.
         term::println(EMITTED[12].1);
         return;
     }
     g.player.money = g.player.money.wrapping_sub(30_i16); // 1000:e823
     g.tooth_guard = true; // 1000:e828
 
-    // 1000:e82d pushes file `0xBE07` `^2Ты купил защиту.`, printed by
-    // 1000:e841.
+    // Prints `^2Ты купил защиту.`
     term::println(EMITTED[13].1);
 }
 
-/// `5` -- `1000:e861`..`1000:e932`, `прокачать пресс`, 20 rubles.
+/// `5` -- `прокачать пресс`, 20 rubles.
 ///
-/// **Established from flow**, same decode:
+/// **This arm's ceiling is NOT menu row 5's.** The row's is `district * 2`;
+/// this is `(district - 2) * 10` -- a different NUMBER, not a different
+/// spelling of the same one. At district 3 the row disappears at trained
+/// armour 6 while the arm keeps working to 10, so the arm is reachable
+/// through a menu that no longer lists it, which is exactly why the loop
+/// reprints only the prompt. Sharing one predicate between the row and the
+/// arm is wrong in both directions. The `district - 2` subtraction cannot
+/// underflow on the reachable path: the gate already required district > 2.
 ///
-/// ```text
-/// e87f  mov al,[0x3692] / e882 xor ah,ah / e884 dec ax / e885 dec ax
-/// e886  mov dx,0xa / e889 mul dx / e88b mov dx,ax        ; (district-2)*10
-/// e88d  mov al,[0x3e34] / e890 xor ah,ah / e892 cmp ax,dx / e894 jnl 0xe8f9
-/// e896  cmp word [0x38c7],0x14 / e89b jnl 0xe8b8
-/// e89d  mov di,0xa564 (file 0xBE34) .. e8b1 WriteLn / e8b6 jmp short 0xe8f7
-/// e8b8  sub word [0x38c7],0x14           ; бабки -20
-/// e8bd  mov di,0xa57a (file 0xBE4A) .. e8d1 WriteLn
-/// e8d6  inc [0x38b2]                     ; Броня +1
-/// e8da  inc [0x3e34]                     ; the trained-armour scratch
-/// e8de  mov di,0xa593 (file 0xBE63) .. e8f2 WriteLn / e8f7 jmp short 0xe932
-/// e8f9  mov di,0xa59e (file 0xBE6E) .. e90d WriteLn
-/// e912  cmp byte [0x3692],0x4 / e917 jnb 0xe932
-/// e919  mov di,0xa5d0 (file 0xBEA0) .. e92d WriteLn
-/// ```
+/// **The hint is suppressed from district 4 up.** `^6Качай дальше в
+/// следующем районе` follows the ceiling line only while `district < 4`.
 ///
-/// **This arm's ceiling is NOT menu row 5's.** The row's is `district * 2`
-/// (`1000:e57d`..`1000:e58d`); this is `(district - 2) * 10`. The two
-/// predicates are 16 bytes against 21 and differ by exactly `d1 e0`
-/// (`shl ax,1`) against `48 48 ba 0a 00 f7 e2` (`dec` / `dec` /
-/// `mov dx,0xa` / `mul dx`) -- a different NUMBER, not a different spelling
-/// of the same one. At district 3 the row disappears at trained armour 6
-/// while the arm keeps working to 10, so the arm is reachable through a menu
-/// that no longer lists it, which is exactly why the loop reprints only the
-/// prompt. Sharing one predicate between the row and the arm is wrong in
-/// both directions; `arm_5_keeps_working_after_its_menu_row_has_gone` is the
-/// falsifier. The `dec ax` pair cannot underflow on the reachable path: the
-/// gate at `1000:e861` already required district > 2.
+/// **`Game::trained_armour` is derived, not the raw armour.** It is
+/// recomputed on every entry to the gym as the armour stat minus the
+/// armour that came from equipment, so it is the armour the player
+/// TRAINED. Both readers -- this arm's ceiling and
+/// `Game::imm_row_visible`'s `("trn","5")` row -- call it instead of
+/// substituting `armor`.
 ///
-/// **The hint is suppressed from district 4 up.** `1000:e912`/`1000:e917`
-/// sits INSIDE the ceiling branch, so `^6Качай дальше в следующем районе`
-/// follows the ceiling line only while `district < 4`.
-///
-/// **`20ae:3e34` is ported.** The original recomputes it on every entry to
-/// the gym (`1000:e3a4`..`1000:e3e2`) as the armour byte `20ae:38b2` minus
-/// the armour that came from equipment, so it is the armour the player
-/// TRAINED. `Game::trained_armour` is that recompute, and both readers --
-/// this arm's ceiling and `Game::imm_row_visible`'s `("trn","5")` row --
-/// call it instead of substituting `armor`. This used to be the standing
-/// `docs/re/gaps.md` entry "The four armour flags are carried but the gym's
-/// `abs` ignores them", whose one-directional consequence was that the arm
-/// stopped EARLIER than the original would.
-///
-/// `1000:e8d6` (`inc [0x38b2]`) and `1000:e8da` (`inc [0x3e34]`) are still
-/// one statement here, but now for a different reason: the scratch is
-/// derived, so incrementing the armour it is derived from moves both. The
-/// arm still terminates, which `arm_5_stops_when_the_ceiling_is_reached`
-/// asserts by counting.
+/// Armour and the trained-armour scratch move together in one statement
+/// here: since the scratch is derived, incrementing the armour it is
+/// derived from moves both. The arm still terminates.
 fn train_abs(g: &mut Game) {
-    // 1000:e87f..1000:e892 / 1000:e894 `jnl 0xe8f9`.
     let ceiling = (i32::from(g.district) - 2) * 10;
-    // 1000:e88d `mov al,[0x3e34]` / `xor ah,ah` -- the trained-armour
-    // scratch, zero-extended. `Game::trained_armour` is its port.
+    // The trained-armour scratch, zero-extended. `Game::trained_armour` is
+    // its port.
     if i32::from(g.trained_armour()) >= ceiling {
-        // file `0xBE6E` `^6Ты максимально прокачал пресс для своего уровня`,
-        // pushed at 1000:e8f9 and printed by 1000:e90d.
+        // Prints `^6Ты максимально прокачал пресс для своего уровня`.
         term::println(EMITTED[18].1);
         // 1000:e912 / 1000:e917 -- inside the ceiling branch only.
         if g.district < 4 {

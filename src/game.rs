@@ -7911,11 +7911,7 @@ mod tests {
     }
 
     /// The reveal hint's early return has a byte-identical twin. Both flags
-    /// found means no hint, whatever the arithmetic says. Every other
-    /// den-menu test builds from `game()`, which has only the vet and
-    /// market found, so until this test the early return was never taken
-    /// TRUE: deleting it, or flipping the `&&` to `||`, left the whole
-    /// suite green.
+    /// found means no hint, whatever the arithmetic says.
     #[test]
     fn the_den_reveal_hint_is_suppressed_once_both_places_are_found() {
         // Arithmetic that comfortably clears the 0x28 gate on its own:
@@ -8190,11 +8186,10 @@ mod tests {
             assert_eq!(g.player.hp, want, "class {class} hp {hp}");
         }
 
-        // 1000:b2ea -- the Вор. Draw 10 is `Random(district * 20)` and the
-        // theft succeeds on `luck >= r`; draw 11 is `Random(district * 5)`
-        // and the take is `r + 1` (1000:b326).
-        // The `luck == r` row is the one that tells 1000:b305's `>=` from a
-        // `>`: every other row is decided by the inequality's strict part.
+        // The Вор. Draw 10 is `Random(district * 20)` and the theft succeeds
+        // on `luck >= r`; draw 11 is `Random(district * 5)` and the take is
+        // `r + 1`. A tie (`luck == r`) still succeeds, since the check is
+        // `>=`, not `>`.
         for (luck, r10, r11, gain) in [
             (5u16, 0u16, 2u16, 3i16),
             (5, 0, 0, 1),
@@ -8253,37 +8248,26 @@ mod tests {
     }
 
     /// The weapon-spoils damage table, every arm against every relevant
-    /// starting weapon set -- `1000:552c`..`1000:560b` (`spoil_club`) and
-    /// `1000:567d`..`1000:57cc` (`spoil_blade`).
+    /// starting weapon set (`spoil_club` and `spoil_blade`).
     ///
-    /// **`cargo mutants` is what said this was missing**: ~39 MISSED across
-    /// the `spoil_*` / `grant_oneshot_gift` / `claim_spoils` cluster, the
-    /// same structural cause as the church's ~65 -- `difftest.py`'s 363
-    /// records compare text and read no field, so the damage arithmetic ran
-    /// unchecked.
-    ///
-    /// Each expected delta is the original's own immediate, read off the
-    /// cited store: `1000:5574`/`55da` (+2), `1000:55e6` (+4),
-    /// `1000:56cf` (+4), `1000:56e0` (+2), `1000:56ff` (+6),
-    /// `1000:577c` (+7), `1000:5794` (+5), `1000:57a5` (+3),
-    /// `1000:57c4` (+9) -- summed per arm by the conditions above them,
+    /// Each expected delta is summed per arm by the conditions above them,
     /// which are chained `if`s, not a `match`, so one arm can add several.
     ///
-    /// Two rows look wrong and are not: a ножик found by a дубинка owner
-    /// adds 6 (`56cf`'s 4 plus `56e0`'s 2), and a тесак found by a дубинка
-    /// owner adds 12 (`577c`'s 7 plus `5794`'s 5). Both are what the chains
-    /// compute; the port transliterates them rather than rationalising.
+    /// Two rows look wrong and are not, and both are intentional: a ножик
+    /// found by a дубинка owner adds 6 (4 plus 2), and a тесак found by a
+    /// дубинка owner adds 12 (7 plus 5). Both are what the chains compute;
+    /// the port transliterates them rather than rationalising.
     #[test]
     fn the_weapon_spoils_table_adds_exactly_these_damages() {
         // (arm draw, starting (kastet, nozhik, dubinka, tesak), delta)
         let club: [SpoilRow; 9] = [
-            // 1000:5530 draw 0 -- the кастет, "урон+2".
+            // Draw 0 -- the кастет, "урон+2".
             (0, (false, false, false, false), 2),
             (0, (true, false, false, false), 0), // already owned: 1000:553a
             (0, (false, true, false, false), 0), // 1000:555f, better weapon
             (0, (false, false, true, false), 0), // 1000:5566
             (0, (false, false, false, true), 0), // 1000:556d
-            // 1000:5530 draw 1 -- the дубинка, "урон+4".
+            // Draw 1 -- the дубинка, "урон+4".
             (1, (false, false, false, false), 4), // 1000:55e6
             (1, (true, false, false, false), 2),  // 1000:55da
             (1, (false, true, false, false), 0),  // 1000:55c5
@@ -8306,14 +8290,14 @@ mod tests {
         }
 
         let blade: [SpoilRow; 10] = [
-            // 1000:5681 draw 0 -- the ножик, "урон+6".
+            // Draw 0 -- the ножик, "урон+6".
             (0, (false, false, false, false), 6), // 56ff
             (0, (true, false, false, false), 4),  // 56cf
             (0, (false, false, true, false), 6),  // 56cf + 56e0
             (0, (true, false, true, false), 2),   // 56e0 only
             (0, (false, false, false, true), 0),  // 5709's message only
             (0, (false, true, false, false), 0),  // already owned
-            // 1000:5681 draw 1 -- the тесак, "урон+9".
+            // Draw 1 -- the тесак, "урон+9".
             (1, (false, false, false, false), 9), // 57c4
             (1, (true, false, false, false), 7),  // 577c
             (1, (false, true, false, false), 10), // 577c + 57a5
@@ -8336,7 +8320,7 @@ mod tests {
         }
 
         // Both tables set their flag on the granting pass and refuse the
-        // second -- 1000:5541, 1000:55a7, 1000:5698, 1000:573e.
+        // second.
         for (draw, flag) in [(0u16, "kastet"), (1, "dubinka")] {
             let mut g = game();
             g.rng = Rng::new(seed_drawing(&[(2, draw), (2, draw)]));
@@ -8357,11 +8341,10 @@ mod tests {
         }
     }
 
-    /// `spoil_charm` (`1000:547e`..`5512`) and `spoil_glasses`
-    /// (`1000:5613`..`5672`) -- luck, and the two flags that carry no stat.
+    /// `spoil_charm` and `spoil_glasses` -- luck, and the two flags that
+    /// carry no stat.
     #[test]
     fn the_charm_spoils_grant_luck_once_each() {
-        // 1000:5493 `add [0x38a4],2` and 1000:54c4 `inc [0x38a4]`.
         for (draw, want) in [(0u16, 2i64), (1, 1), (2, 0)] {
             let mut g = game();
             g.rng = Rng::new(seed_drawing(&[(3, draw), (3, draw)]));
@@ -8372,7 +8355,7 @@ mod tests {
                 want,
                 "charm draw {draw}"
             );
-            // The 1000:548c / 54bd / 54ed gates: a second find grants nothing.
+            // A second find grants nothing.
             term::capture::lines(|| g.spoil_charm());
             assert_eq!(
                 i64::from(g.player.luck) - i64::from(luck),
@@ -8381,7 +8364,7 @@ mod tests {
             );
         }
 
-        // 1000:5621 and 1000:564d -- flags only, no stat moves at all.
+        // Flags only, no stat moves at all.
         for draw in [0u16, 1] {
             let mut g = game();
             g.rng = Rng::new(seed_drawing(&[(2, draw)]));
@@ -8403,13 +8386,11 @@ mod tests {
         }
     }
 
-    /// `1000:52e1`..`1000:53f2` -- the post-kill one-shot gift chain, the
-    /// second grant site for the same three rings `Game::church`'s arm 2
-    /// hands out (`docs/re/progression.md`: the 56 bytes at `1000:8101` and
-    /// `1000:532f` compare equal).
+    /// The post-kill one-shot gift chain -- the second grant site for the
+    /// same three rings `Game::church`'s arm 2 hands out.
     ///
     /// `dmg_min` starts at 3, not the fixture's 1: ring 1 leaves it at 4 and
-    /// ring 2's `+= 2` at `1000:53a5` would read the same as `*= 2` from 2.
+    /// ring 2's `+= 2` would read the same as `*= 2` from 2.
     #[test]
     fn the_post_kill_gift_chain_grants_each_ring_once_in_order() {
         let mut g = game();
@@ -8425,7 +8406,7 @@ mod tests {
             i64::from(g.player.dmg_max),
         ];
         // `player()` starts at strength 5, so ring 1's `+= 1` lands on 6 and
-        // 1000:534d's parity test fires; ring 2's `+= 2` is unconditional.
+        // its parity test fires; ring 2's `+= 2` is unconditional.
         let want: [[i64; 8]; 3] = [
             [6, 6, 1, 1, 1, 1, 1, 1],
             [30, 30, 5, 5, 5, 5, 3, 5],
@@ -8433,9 +8414,9 @@ mod tests {
         ];
         for (round, want) in want.iter().enumerate() {
             let out = term::capture::lines(|| g.grant_oneshot_gift());
-            // The header at 1000:52e1 is gated on its own three-way OR,
-            // separate from the if/else chain below it, so it still prints
-            // on the round that hands out the last ring.
+            // The header is gated on its own three-way OR, separate from
+            // the if/else chain below it, so it still prints on the round
+            // that hands out the last ring.
             assert!(
                 out.contains(&"^1Оба на! Колечко! Вот свезло, так свезло!".to_string()),
                 "round {round} printed no header: {out:?}"
@@ -8461,29 +8442,15 @@ mod tests {
         assert!(out.is_empty(), "a fourth visit printed: {out:?}");
     }
 
-    /// Every stat the church's draw-15 table moves, arm by arm --
-    /// `1000:7f63`'s `Random(5)` and, inside its `1` arm, `1000:7fff`'s
-    /// `Random(4)`.
+    /// Every stat the church's draw-15 table moves, arm by arm -- a
+    /// `Random(5)` roll and, inside its `1` arm, a `Random(4)` roll.
     ///
-    /// **This is the test that was missing, and `cargo mutants` is what said
-    /// so.** A run over the tree returned ~65 MISSED mutants inside
-    /// `Game::church` alone, nearly all of them `+=` rewritten to `-=` or
-    /// `*=` on the award lines. They survived because this port's oracles
-    /// compare TEXT -- `difftest.py`'s 363 records read no field at all --
-    /// and every church test drove the sermon prose, never the awards. The
-    /// whole reward table was code that nothing checked.
+    /// The deltas touch strength, agility, vitality, luck, the two rings,
+    /// armour, and понтовость.
     ///
-    /// The deltas are the addresses' own: `1000:8022`..`8043` (strength),
-    /// `1000:8067` (agility), `1000:808b`..`8094` (vitality),
-    /// `1000:80b9` (luck), `1000:8101`..`8134` and `1000:815c`..`8184`
-    /// (the two rings), `1000:81e9` (armour), `1000:820d`..`821a`
-    /// (понтовость).
-    ///
-    /// **Both strength parities are driven**, because `1000:8033`'s
-    /// `is_multiple_of(2)` reads the ALREADY-incremented strength: starting
-    /// even leaves it odd and `dmg_min` still, starting odd leaves it even
-    /// and `dmg_min` moves. A single-parity table would leave that branch
-    /// undefended the same way the awards were.
+    /// **Both strength parities are driven**, because the parity check reads
+    /// the ALREADY-incremented strength: starting even leaves it odd and
+    /// `dmg_min` still, starting odd leaves it even and `dmg_min` moves.
     #[test]
     fn the_church_award_table_moves_exactly_these_stats() {
         /// Seed whose next draws are `arm` at `Random(5)` and, when asked,
@@ -8498,7 +8465,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("no seed for arm {arm} sub {sub:?}"))
         }
 
-        /// The fields `1000:7f63`'s table can touch, in `src/model.rs` order.
+        /// The fields the church table can touch, in `src/model.rs` order.
         fn snapshot(g: &Game) -> [i64; 8] {
             let p = &g.player;
             [
@@ -8524,17 +8491,17 @@ mod tests {
         // (arm, sub, starting strength, [hp, hpmax, str, agi, vit, luck,
         //  dmg_min, dmg_max])
         let table: [(u16, Option<u16>, u16, [i64; 8]); 8] = [
-            // 1000:8022 -- strength. Even start -> odd after, no dmg_min.
+            // Strength. Even start -> odd after, no dmg_min.
             (1, Some(0), 10, [1, 1, 1, 0, 0, 0, 0, 1]),
-            // Odd start -> even after, so 1000:8043's dmg_min fires.
+            // Odd start -> even after, so dmg_min fires.
             (1, Some(0), 11, [1, 1, 1, 0, 0, 0, 1, 1]),
             (1, Some(1), 10, [0, 0, 0, 1, 0, 0, 0, 0]),
             (1, Some(2), 10, [5, 5, 0, 0, 1, 0, 0, 0]),
             (1, Some(3), 10, [0, 0, 0, 0, 0, 1, 0, 0]),
-            // 1000:8101 -- the first ring, same parity rule as above.
+            // The first ring, same parity rule as above.
             (2, None, 10, [6, 6, 1, 1, 1, 1, 0, 1]),
             (2, None, 11, [6, 6, 1, 1, 1, 1, 1, 1]),
-            // 1000:81e9 -- armour only, no fighter stat.
+            // Armour only, no fighter stat.
             (3, None, 10, [0, 0, 0, 0, 0, 0, 0, 0]),
         ];
 
@@ -8551,8 +8518,7 @@ mod tests {
                 want.to_vec(),
                 "arm {arm} sub {sub:?} strength {strength}"
             );
-            // 1000:81e9 `inc byte [0x38b2]` is the armour arm's and nothing
-            // else in the table touches armour.
+            // Nothing else in the table touches armour.
             assert_eq!(
                 g.player.armor - armour_before,
                 u8::from(arm == 3),
@@ -8564,7 +8530,7 @@ mod tests {
             );
         }
 
-        // 1000:81ef's arm: `district * 50 + 50`, and it prints the amount.
+        // This arm's gain: `district * 50 + 50`, and it prints the amount.
         for district in [1u8, 3, 5] {
             let mut g = game();
             g.district = district;
@@ -8586,9 +8552,8 @@ mod tests {
         }
 
         // Arm 2's three gifts fire in order, one per visit, and the third is
-        // text-only (1000:818b's gate, 1000:81c4). `player()` starts at
-        // strength 5, so ring 1 lands it on 6 (dmg_min +1) and ring 2's
-        // unconditional `+= 2` at 1000:817d follows.
+        // text-only. `player()` starts at strength 5, so ring 1 lands it on
+        // 6 (dmg_min +1) and ring 2's unconditional `+= 2` follows.
         let mut g = game();
         // `dmg_min` starts at 3, not the fixture's 1, on purpose: ring 1
         // leaves it at 2 from the default, and `2 += 2` and `2 *= 2` are
@@ -8609,16 +8574,14 @@ mod tests {
         assert!(g.oneshot_gift_1 && g.oneshot_gift_2 && g.ring_gospodi_pomilui);
     }
 
-    /// `run` is NOT a shop exit. `1000:ded7` compares the buffer against CS
-    /// `0x848e`, the one-byte shortstring `01 77` (`w`), and nothing else --
-    /// a `run` misses it and takes the back edge at `1000:dee1`'s fall-through
-    /// to the prompt, silently. The street is the only dispatch with a second
-    /// synonym (`1000:ae86`'s `w` AND `1000:ae97`'s `run`), which is why
+    /// `run` is NOT a shop exit. Only `w` matches, and nothing else -- a
+    /// `run` falls through to the prompt, silently. The street is the only
+    /// dispatch with a second synonym (`w` AND `run`), which is why
     /// `commands::parse` folds the two, and why `shop_turn` must not use it.
     ///
-    /// Every location goes through the same shared arm, so this holds for the
-    /// vet, club, gym, market and dealers too; the vet's extra `e` exit
-    /// (`1000:d6be`) is its own arm above and is unaffected.
+    /// Every location goes through the same shared arm, so this holds for
+    /// the vet, club, gym, market and dealers too; the vet's extra `e` exit
+    /// is its own arm above and is unaffected.
     #[test]
     fn run_is_a_street_synonym_and_does_not_leave_a_shop() {
         for loc in [
@@ -8638,20 +8601,13 @@ mod tests {
         }
     }
 
-    /// `1000:ae13`/`1000:ae1f` via [`Game::enter_district_5`] -- reaching
-    /// district 5 sets `rector_showdown`, and the flee refusal at
-    /// `1000:48eb` ([`Game::flee`]) is the reader this test drives live.
+    /// Reaching district 5 sets `rector_showdown`, via
+    /// [`Game::enter_district_5`], and the flee refusal ([`Game::flee`]) is
+    /// the reader this test drives live.
     ///
-    /// **Task 21 changed which method this test drives, and that is the
-    /// point.** It used to call `run_combat` and assert the promotion
-    /// happened inside the post-fight block; the original promotes at
-    /// `1000:ab92`, in the top-of-turn block `1000:ee01` jumps back to, and
-    /// `FUN_1000_3d11` has no district write at all
-    /// (`tools/re_query.py xrefs-to 20ae:3692`: the only in-play write is
-    /// `1000:ab92`). So the old call site was the wrong one and the test
-    /// encoded it. The keystroke consumed here is `1000:ac31`'s `ReadLn`,
-    /// answered `n` so the save arm is not taken; `1000:addc`'s `ReadKey`
-    /// inside `enter_district_5` takes the second.
+    /// Reaching district 5 also prompts to save; answering `n` here means
+    /// the save arm is not taken, and `enter_district_5` then reads one more
+    /// key.
     #[test]
     fn reaching_district_5_arms_the_rector_showdown_and_flee_refuses() {
         let mut g = game();
@@ -8669,18 +8625,16 @@ mod tests {
             "1000:ae1f must grant the Den in the same arm"
         );
 
-        // The reader: 1000:48eb refuses `run` outright while rector_showdown
-        // is set. Reusing `g` itself -- not a fresh instance with the field
-        // poked directly -- is the point: this is the flag `enter_district_5`
-        // just armed, changing behaviour on the very game it armed it on,
-        // where before Task 20 this arm was reachable only by setting the
-        // field directly in a test.
+        // The reader refuses `run` outright while rector_showdown is set.
+        // Reusing `g` itself -- not a fresh instance with the field poked
+        // directly -- is the point: this is the flag `enter_district_5` just
+        // armed, changing behaviour on the very game it armed it on.
         let fled = g.flee();
         assert!(!fled, "1000:48eb refuses every flee once the flag is set");
     }
 
-    /// A won fight no longer promotes: `FUN_1000_3d11` writes no district
-    /// byte, and `1000:ab75` runs at the top of the NEXT turn.
+    /// A won fight no longer promotes the district by itself; the advance
+    /// runs at the top of the NEXT turn.
     #[test]
     fn a_won_fight_does_not_advance_the_district_by_itself() {
         let mut g = game();
@@ -8698,12 +8652,7 @@ mod tests {
         assert_eq!(g.district, 2);
     }
 
-    /// **One district per turn, never four.** `1000:ab75`..`1000:ad12`
-    /// contains no backward branch (`ab83`, `ab85`, `ab8d`, `ab8f`, `aba5`,
-    /// `abb6`, `abc7`, `ac59` and `ac5b` are all forward), and the only
-    /// branch in the image targeting `0xab75` is `1000:ee01`, at the end of
-    /// the turn. The port used to run the gate in a `while` loop, which
-    /// collapsed all four promotions into the fight that earned them.
+    /// **One district per turn, never four.**
     #[test]
     fn the_advance_gains_at_most_one_district_per_turn() {
         let mut g = game();
@@ -8714,18 +8663,16 @@ mod tests {
             assert_eq!(g.district, want, "one 1000:ab92 per pass, not a loop");
         }
         // The fourth pass reaches 5 and takes the chapter-5 arm, which eats a
-        // second line at 1000:addc.
+        // second line of input.
         g.district_advance(&mut input(&["n", ""])).unwrap();
         assert_eq!(g.district, 5);
-        // 1000:ab88's `jb` refuses a sixth.
+        // A sixth advance is refused.
         g.district_advance(&mut input(&["n"])).unwrap();
         assert_eq!(g.district, 5, "1000:ab8f jumps past the increment");
     }
 
-    /// Both gates refuse before anything is read: a failed gate jumps to
-    /// `1000:ae18` at `1000:ab85`/`1000:ab8f`, ahead of `1000:ac31`'s
-    /// `ReadLn`, so the line the street prompt is about to read must still be
-    /// there.
+    /// Both gates refuse before anything is read, so the line the street
+    /// prompt is about to read must still be there.
     #[test]
     fn a_refused_advance_prints_nothing_and_consumes_no_line() {
         let mut g = game();
@@ -8741,9 +8688,8 @@ mod tests {
         );
     }
 
-    /// `1000:abce`/`1000:abd3` clear both ban countdowns, and they are
-    /// cleared on the advance itself -- not by the save arm, which the `n`
-    /// here declines.
+    /// Both ban countdowns are cleared on the advance itself -- not by the
+    /// save arm, which the `n` here declines.
     #[test]
     fn the_advance_clears_both_ban_countdowns() {
         let mut g = game();
@@ -8757,10 +8703,8 @@ mod tests {
         assert_eq!(g.club_ban_countdown, 0, "1000:abd3");
     }
 
-    /// `1000:b95e` `cmp byte [0x3b76],0x0` / `1000:b963 jz 0xb968` -- the
-    /// market is open only while the countdown is zero, and a non-zero one
-    /// takes `1000:b965 jmp 0xc480` to a refusal that neither enters nor
-    /// changes anything. `docs/re/port-gaps.md` row 25.
+    /// The market is open only while the countdown is zero, and a non-zero
+    /// one leads to a refusal that neither enters nor changes anything.
     #[test]
     fn the_market_ban_gate_refuses_entry_while_the_countdown_stands() {
         for standing in [5u8, 1] {
@@ -8774,7 +8718,7 @@ mod tests {
             assert_eq!(g.mode, Mode::Street, "and no submenu is opened");
             assert_eq!(g.market_ban_countdown, standing, "the gate only reads");
         }
-        // Zero takes `jz 0xb968`, the intro at 1000:b96b.
+        // Zero leads to the intro.
         let mut g = game();
         let out = term::capture::lines(|| {
             g.dispatch(Command::Market, &mut no_input()).unwrap();
@@ -8786,10 +8730,9 @@ mod tests {
         assert_eq!(g.mode, Mode::Shop(Location::Market));
     }
 
-    /// `1000:b954` runs BEFORE `1000:b95e` and its miss jumps to
-    /// `1000:c49b`, not `1000:c480`, so an undiscovered market prints its
-    /// own refusal whatever the countdown says. A port that tested the ban
-    /// first would print the other line.
+    /// The discovery check runs before the ban check, so an undiscovered
+    /// market prints its own refusal whatever the countdown says. Testing
+    /// the ban first would print the other line.
     #[test]
     fn the_discovery_gate_runs_before_the_market_ban_gate() {
         let mut g = game();
@@ -8805,8 +8748,7 @@ mod tests {
         );
     }
 
-    /// `1000:d788`..`1000:d793` -- the `girl` block heals, charges 12 and
-    /// clears the market ban, all three past the refusal at `1000:d706`.
+    /// The `girl` block heals, charges 12 and clears the market ban.
     #[test]
     fn the_girl_clears_the_market_ban_only_when_she_is_paid() {
         let mut g = game();
@@ -8832,10 +8774,9 @@ mod tests {
     }
 
     /// The countdown's whole life cycle, driven through the real walk
-    /// preamble: set to 5 (`1000:c465`, [`crate::market`]), ticked down once
-    /// per walk by `1000:b173`, announced on its last turn by `1000:b11e`,
-    /// and gone on the fifth. The `== 1` test at `1000:b11e` runs BEFORE the
-    /// `dec` at `1000:b173`, so the message and the last tick share a turn.
+    /// preamble: set to 5 ([`crate::market`]), ticked down once per walk,
+    /// announced on its last turn, and gone on the fifth. The `== 1` test
+    /// runs BEFORE the tick, so the message and the last tick share a turn.
     #[test]
     fn the_market_ban_ticks_down_once_per_walk_and_announces_its_last_turn() {
         let mut g = game();
@@ -8870,7 +8811,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------
-    // The endings -- `docs/re/port-gaps.md` rows 2, 4, 7, 13, 17, 21.
+    // The endings.
     // -----------------------------------------------------------------
 
     /// A player who can actually kill both rectors, so the endgame can be
@@ -8894,10 +8835,6 @@ mod tests {
     /// **The game can be finished.** Both rector fights run, the victory
     /// ending fires, the marquee plays and the end screen's `Ты победил.`
     /// banner follows it -- and the game stops.
-    ///
-    /// This is the point of the batch: before it, `1000:ae18`'s four calls
-    /// had no counterpart at all and `run_combat` had no `param_1 == 4`
-    /// arm, so no sequence of inputs reached an ending.
     #[test]
     fn the_endgame_can_be_played_to_the_victory_screen() {
         let mut g = champion();
@@ -8905,14 +8842,14 @@ mod tests {
         let out = term::capture::lines(|| {
             g.rector_endgame(&mut input(&script)).unwrap();
         });
-        // 1000:3ec5 and 1000:3f43 -- the two openers, so both fights ran.
+        // The two openers, so both fights ran.
         assert!(out.iter().any(|l| l.contains("Ну вот мы и встретились")));
         assert!(out
             .iter()
             .any(|l| l.contains("Тут заходит настоящий ректор")));
-        // 1000:515f -- the fake-out, which is fight 3's own ending.
+        // The fake-out, which is fight 3's own ending.
         assert!(out.iter().any(|l| l.contains("да это ж не ректор был")));
-        // 1000:50ae.. -- fight 4's five victory lines.
+        // Fight 4's five victory lines.
         assert!(out.iter().any(|l| l.contains("ТЫ САМЫЙ КРУТОЙ")));
         assert!(out.iter().any(|l| l == "^1А результат:"));
         // The marquee, then the end screen, in that order.
@@ -8929,9 +8866,7 @@ mod tests {
     }
 
     /// The two boss values skip the ordinary victory text: no
-    /// `^2Враг сдох.` (1000:519d is in the ELSE of 1000:5139), no XP award
-    /// line (1000:51a6/51ac) and no "too weak an opponent" pair
-    /// (1000:51f6/51fc).
+    /// `^2Враг сдох.`, no XP award line and no "too weak an opponent" pair.
     #[test]
     fn a_boss_kill_prints_none_of_the_ordinary_victory_lines() {
         let mut g = champion();
@@ -8944,16 +8879,15 @@ mod tests {
         assert!(!out.iter().any(|l| l.contains("Враг сдох")));
         assert!(!out.iter().any(|l| l.contains("качков опыта")));
         assert!(!out.iter().any(|l| l.contains("слишком слабого мудака")));
-        // 1000:513f/5142 set xp := threshold and 1000:5145's
-        // FUN_1000_2526(1) spends it with the level cap LIFTED -- the test
-        // player starts at MAX_LEVEL, so a capped call would move nothing.
+        // Boss XP is set to the threshold and spent with the level cap
+        // LIFTED -- the test player starts at MAX_LEVEL, so a capped call
+        // would move nothing.
         assert_eq!(g.player.level, before_level + 1, "1000:5094 passes 1");
         assert_eq!(before_level, crate::progress::MAX_LEVEL);
     }
 
-    /// The two stat blocks `FUN_1000_11c2` writes, as the fights receive
-    /// them -- `1000:11dc`..`1000:1223` for the constants and
-    /// `1000:1228`..`1000:1252` for the four derived fields.
+    /// The two stat blocks the boss constructor writes -- the constants,
+    /// and the four derived fields.
     #[test]
     fn the_boss_constructor_matches_both_of_the_original_stat_blocks() {
         let v0 = Game::boss("rektor_ngu_v0");
@@ -8983,24 +8917,23 @@ mod tests {
             (10, 160, 50, 60, 188, 32, 80)
         );
         for f in [&v0, &v1] {
-            // 1000:1228 / 1000:1234 / 1000:123a / 1000:124f.
             assert_eq!(f.dmg_min, f.strength / 2);
             assert_eq!(f.dmg_max, f.strength);
             assert_eq!(f.hpmax, f.vitality * 5 + f.strength + 10);
             assert_eq!(f.hp, f.hpmax);
-            // 1000:1255/125a the break flags.
+            // The break flags.
             assert!(!f.broken_jaw && !f.broken_leg);
         }
     }
 
-    /// `1000:57ce` -- the den errand's reward. `district * 20` понтовость
-    /// and `district * 10` xp, the xp going through `FUN_1000_2526(0)`.
+    /// The den errand's reward: `district * 20` понтовость and
+    /// `district * 10` xp, on top of the ordinary combat award.
     ///
     /// The threshold is pushed out of reach first, so the xp arithmetic is
     /// exact and neither run levels: what is under test is the award, not
-    /// the level drain it feeds. The `param_1 = 0` control is run from the
-    /// same starting state with the same script, so the difference between
-    /// the two is the block and nothing else.
+    /// the level drain it feeds. The control run uses the same starting
+    /// state and script, so the difference between the two is just the
+    /// errand.
     #[test]
     fn the_den_errand_pays_cred_and_experience_and_nothing_else_does() {
         let run = |kind: u8| {
@@ -9016,10 +8949,10 @@ mod tests {
         let (errand, out) = run(6);
         let (control, control_out) = run(0);
 
-        // 1000:57d4 -- `district * 20`.
+        // `district * 20`.
         assert_eq!(errand.pontovost_street, control.pontovost_street + 60);
-        // 1000:5824..1000:582e -- `district * 10`, on top of the ordinary
-        // award the control also gets.
+        // `district * 10`, on top of the ordinary award the control also
+        // gets.
         assert_eq!(errand.progress.xp, control.progress.xp + 30);
         assert!(out
             .iter()
@@ -9027,7 +8960,7 @@ mod tests {
         assert!(out
             .iter()
             .any(|l| l.contains("Ты получаешь 30 качков опыта за помощь")));
-        // 1000:57d2 `jnz 0x5838` -- every other `param_1` skips it.
+        // Every other errand kind skips it.
         assert!(!control_out.iter().any(|l| l.contains("за помощь")));
     }
 
@@ -9042,8 +8975,8 @@ mod tests {
         }
     }
 
-    /// `1000:3e8d` / `1000:3ead` / `1000:3f2b` -- the three openers the
-    /// `0 | 6` gate does NOT cover, and the silence of everything else.
+    /// The three openers the `0 | 6` gate does NOT cover, and the silence
+    /// of everything else.
     #[test]
     fn each_param_value_greets_with_its_own_opener() {
         for (kind, want) in [
@@ -9062,8 +8995,8 @@ mod tests {
                 "param_1 {kind}"
             );
         }
-        // 2 and 5 reach no opener at all: 1000:3d2f jumps past the chain and
-        // none of its three compares names them.
+        // 2 and 5 reach no opener at all: none of the chain's three
+        // compares names them.
         for kind in [2u8, 5] {
             let mut g = game();
             let out = term::capture::lines(|| {
@@ -9078,8 +9011,8 @@ mod tests {
         }
     }
 
-    /// Both deaths run the end screen -- `1000:4fb4` (the rector's) and
-    /// `1000:5074` (the plain one), each behind its own ReadKey.
+    /// Both deaths run the end screen -- the rector's and the plain one --
+    /// each behind its own key press.
     #[test]
     fn dying_draws_the_end_screen() {
         for rector in [false, true] {
@@ -9106,7 +9039,7 @@ mod tests {
                 out.iter().any(|l| l.contains("Ты сдох.")),
                 "rector={rector}"
             );
-            // 1000:0765 -- the death banner's colour digit is '4'.
+            // The death banner's colour digit is '4'.
             assert!(
                 out.iter().any(|l| l.starts_with("          ^4\u{2502}")),
                 "rector={rector}"
@@ -9116,16 +9049,12 @@ mod tests {
     }
 
     // -----------------------------------------------------------------
-    // The opening and the text dumps -- `docs/re/port-gaps.md` rows 1, 10,
-    // 15 and 16. `tools/difftest.py` owns the WORDING of every line here
-    // (71 `opening_line` records read straight out of `orig/g.exe`); these
-    // tests own the BRANCHES and the interpolation, which no record can see.
+    // The opening and the text dumps.
     // -----------------------------------------------------------------
 
-    /// `1000:61bb cmp byte [0x3692],0x1` / `1000:61c0 jbe 0x61db` is `help`'s
-    /// only branch: one line appears from district 2 on and from nowhere
-    /// else. Both sides are asserted, so neither can pass by printing
-    /// everything or nothing.
+    /// `help`'s only branch: one line appears from district 2 on and from
+    /// nowhere else. Both sides are asserted, so neither can pass by
+    /// printing everything or nothing.
     #[test]
     fn help_gates_exactly_one_line_on_the_district() {
         let gated = crate::text::strip(opening::HELP_PLAIN[opening::HELP_DISTRICT_LINE]);
@@ -9154,9 +9083,9 @@ mod tests {
     }
 
     /// The two composed lines and the two `#`-filled ones are the whole
-    /// reason `help` is not a static blob: `1000:5f82`/`5fed` append the
-    /// class's rank name, `1000:5f96` the player's name, and `1000:6020`
-    /// pushes the class's STRENGTH growth weight into both filled lines.
+    /// reason `help` is not a static blob: two append the class's rank
+    /// name, one the player's name, and one pushes the class's STRENGTH
+    /// growth weight into both filled lines.
     #[test]
     fn help_is_personalised_from_the_class_and_the_name() {
         // Class 5 (Гопник) weighs 4/3/3/2 and class 6 (Вор) 3/3/2/4, so the
@@ -9198,9 +9127,8 @@ mod tests {
         );
     }
 
-    /// `1000:ee04`..`1000:ee8b`: `e` / `exit` at the STREET prompt prints two
-    /// lines, then the FULL character sheet (`1000:ee36 call 0x1a03`), then
-    /// reads one discarded key (`1000:ee39`).
+    /// `e` / `exit` at the STREET prompt prints two lines, then the FULL
+    /// character sheet, then reads one discarded key.
     #[test]
     fn quitting_prints_the_tail_the_character_sheet_and_eats_one_key() {
         let mut g = game();
@@ -9225,9 +9153,9 @@ mod tests {
         );
     }
 
-    /// `1000:7262`'s chain keys on the DISTRICT, and `1000:7369`'s gate adds
-    /// the tutorial for district 1 only. Districts 2, 3 and 4 print the same
-    /// wording as `Game::district_advance`, from the OTHER string copy.
+    /// This chain keys on the DISTRICT, and adds the tutorial for district
+    /// 1 only. Districts 2, 3 and 4 print the same wording as
+    /// `Game::district_advance`, from the OTHER string copy.
     #[test]
     fn the_entry_announcement_is_two_lines_per_district_plus_the_tutorial() {
         let want: Vec<(u8, usize)> = vec![(1, 5), (2, 2), (3, 2), (4, 2), (5, 1)];
@@ -9253,9 +9181,9 @@ mod tests {
         assert!(term::capture::lines(|| g.announce_district()).is_empty());
     }
 
-    /// `1000:ad12`'s chain has arms for 2, 3 and 4 only, and it reads the
-    /// district AFTER `1000:ab92`'s increment -- so the line the player sees
-    /// names the district they arrived in, not the one they left.
+    /// This chain has arms for 2, 3 and 4 only, and it reads the district
+    /// AFTER the increment -- so the line the player sees names the
+    /// district they arrived in, not the one they left.
     #[test]
     fn the_promotion_announces_the_district_it_arrived_in() {
         for from in 1..=3u8 {
