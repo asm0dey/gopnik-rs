@@ -302,7 +302,7 @@ mod tests {
         g.places.mark_found(Location::Club);
         g.location = Location::Club;
         g.club_stake = 5;
-        g.progress.threshold = u16::MAX; // keeps 1000:e124 from levelling
+        g.progress.threshold = u16::MAX; // keeps the player from levelling
         g
     }
 
@@ -326,7 +326,11 @@ mod tests {
     fn arm_1_refuses_at_fourteen_and_raises_agility_at_fifteen() {
         let mut g = club(1, 14);
         let a0 = g.player.agility;
-        assert_eq!(turn(&mut g, "1"), vec!["^4Не хватает"], "1000:e2a0");
+        assert_eq!(
+            turn(&mut g, "1"),
+            vec!["^4Не хватает"],
+            "arm 1 refuses below the cost"
+        );
         assert_eq!(g.player.money, 14, "no debit on the refusal");
         assert_eq!(g.player.agility, a0, "and no effect either");
 
@@ -334,10 +338,10 @@ mod tests {
         assert_eq!(
             turn(&mut g, "1"),
             vec!["^2Ты прокачиваешь ловкость.", "^1Ловкость +1 "],
-            "1000:e2c0 then 1000:e2dd"
+            "agility levels up, printing both lines"
         );
-        assert_eq!(g.player.money, 0, "1000:e2a7 sub 0xf");
-        assert_eq!(g.player.agility, a0 + 1, "1000:e2c5");
+        assert_eq!(g.player.money, 0, "the 15-cost is debited in full");
+        assert_eq!(g.player.agility, a0 + 1, "agility rises by one");
     }
 
     // -- arm `2` ---------------------------------------------------------
@@ -346,17 +350,21 @@ mod tests {
     fn arm_2_refuses_at_twentyone_and_raises_luck_at_twentytwo() {
         let mut g = club(2, 21);
         let l0 = g.player.luck;
-        assert_eq!(turn(&mut g, "2"), vec!["^4Не хватает"], "1000:e315");
+        assert_eq!(
+            turn(&mut g, "2"),
+            vec!["^4Не хватает"],
+            "arm 2 refuses below the cost"
+        );
         assert_eq!(g.player.luck, l0);
 
         let mut g = club(2, 22);
         assert_eq!(
             turn(&mut g, "2"),
             vec!["^2Ты прокачиваешь удачу.", "^1Удача +1 "],
-            "1000:e335 then 1000:e352"
+            "luck levels up, printing both lines"
         );
-        assert_eq!(g.player.money, 0, "1000:e31c sub 0x16");
-        assert_eq!(g.player.luck, l0 + 1, "1000:e33a");
+        assert_eq!(g.player.money, 0, "the 22-cost is debited in full");
+        assert_eq!(g.player.luck, l0 + 1, "luck rises by one");
     }
 
     /// At district 1 the key is never compared. **Nothing is printed and
@@ -366,9 +374,9 @@ mod tests {
     fn district_one_swallows_the_two_key_in_silence() {
         let mut g = club(1, 1_000);
         let before = g.player.clone();
-        assert!(turn(&mut g, "2").is_empty(), "1000:e2e7 skips the compare");
+        assert!(turn(&mut g, "2").is_empty(), "district 1 skips the compare");
         assert_eq!(g.player, before);
-        assert!(!key_dispatches(&g, "2"), "gate 1000:e2e2");
+        assert!(!key_dispatches(&g, "2"), "the gate is closed at district 1");
         let g = club(2, 1_000);
         assert!(key_dispatches(&g, "2"), "district 2 opens it");
     }
@@ -383,9 +391,9 @@ mod tests {
         assert_eq!(
             turn(&mut g, "p"),
             vec!["^6Не хватает денег - надо 5."],
-            "1000:e26f, the # is 1000:e25d's stake"
+            "the refusal names the actual stake"
         );
-        assert_eq!(g.player.money, 4, "1000:e0a8 is past the refusal");
+        assert_eq!(g.player.money, 4, "no debit reaches past the refusal");
 
         let mut g = club(1, 5);
         assert!(!turn(&mut g, "p").is_empty(), "5 <= 5 buys");
@@ -406,13 +414,16 @@ mod tests {
                 "^6Ты получаешь 1 качков опыта",
                 "^6Ставки изменились. Теперь ставка - 7",
             ],
-            "1000:e09e, 1000:e0f2, 1000:e113, 1000:e16f"
+            "the win prints all four lines in order"
         );
         // -5 at the start then +10 on win -- a net +5, and both are
         // kept because the debit is what the NEXT hand's gate measures.
-        assert_eq!(g.player.money, 105, "1000:e0a8 then 1000:e0d7");
-        assert_eq!(g.club_stake, 7, "1000:e0f7");
-        assert_eq!(g.progress.xp, 1, "1000:e11d, district 1");
+        assert_eq!(
+            g.player.money, 105,
+            "the bet is debited, then the win credited"
+        );
+        assert_eq!(g.club_stake, 7, "the stake climbs to seven");
+        assert_eq!(g.progress.xp, 1, "xp is awarded for the district 1 win");
     }
 
     /// The LOSS path: one line and one store. The stake is back to 5, so
@@ -431,8 +442,8 @@ mod tests {
                     "1000:e09e then 1000:e140, and 1000:e156 suppresses \
                      1000:e158"
                 );
-                assert_eq!(g.player.money, 91, "only 1000:e0a8 debited");
-                assert_eq!(g.club_stake, 5, "1000:e145");
+                assert_eq!(g.player.money, 91, "only the bet is debited");
+                assert_eq!(g.club_stake, 5, "the stake resets to five");
                 break;
             }
             g.club_stake = 9;
@@ -452,7 +463,7 @@ mod tests {
             assert_eq!(
                 out.iter().any(|l| l.starts_with("^6Ставки изменились")),
                 printed,
-                "stake {before} -> {} at 1000:e14a/1000:e151",
+                "stake {before} -> {} decides if the changed line prints",
                 before + 2
             );
         }
@@ -476,10 +487,10 @@ mod tests {
         assert_eq!(
             stakes,
             vec![5, 7, 9, 11, 13, 15, 17],
-            "1000:e020 then six 1000:e0f7"
+            "six wins climb the stake in lockstep"
         );
-        assert_eq!(g.club_ban_countdown, 5, "1000:e23e");
-        assert_eq!(g.location, Location::Street, "1000:e251 writes `w`");
+        assert_eq!(g.club_ban_countdown, 5, "the ban countdown starts at five");
+        assert_eq!(g.location, Location::Street, "the caught block writes `w`");
     }
 
     /// The caught block's order: roll, flag, accusation, announcement, the
@@ -501,13 +512,10 @@ mod tests {
         assert!(
             out.iter()
                 .any(|l| l == "^6Ты получаешь 15 качков опыта за победу в игре"),
-            "1000:e203, district 3 * 5"
+            "xp for district 3 is district times five"
         );
-        assert!(
-            g.player.level > level0,
-            "1000:e21c ran, and it ran before 1000:e222"
-        );
-        assert!(g.fight_accepted, "1000:e184");
+        assert!(g.player.level > level0, "the level-up ran before the fight");
+        assert!(g.fight_accepted, "the fight is accepted");
     }
 
     // -- the chain itself ------------------------------------------------
@@ -521,7 +529,11 @@ mod tests {
             let before = g.player.clone();
             assert!(turn(&mut g, key).is_empty(), "{key:?} must print nothing");
             assert_eq!(g.player, before);
-            assert_eq!(g.location, Location::Club, "1000:e368 -> 1000:e025");
+            assert_eq!(
+                g.location,
+                Location::Club,
+                "an unrecognised key leaves the player in the club"
+            );
         }
     }
 
@@ -530,9 +542,13 @@ mod tests {
     #[test]
     fn w_still_leaves_the_club() {
         let mut g = club(5, 1_000);
-        assert!(!key_dispatches(&g, "w"), "1000:e361 is not this module's");
+        assert!(!key_dispatches(&g, "w"), "w is not this module's own key");
         assert!(turn(&mut g, "w").is_empty());
-        assert_eq!(g.location, Location::Street, "1000:e366 -> 1000:e36b");
+        assert_eq!(
+            g.location,
+            Location::Street,
+            "w leaves through the shared exit"
+        );
     }
 
     /// Everything [`key_dispatches`] admits must have an arm in

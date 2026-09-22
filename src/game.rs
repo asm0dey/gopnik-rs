@@ -1325,9 +1325,9 @@ impl Game {
                 // This roll forces the enemy to be a `Мент` (class 8).
                 let cop = self.roll_enemy(2);
                 self.run_combat(5, cop, lines)?;
-                term::println(den::EMITTED[26].1); // CS 0xa075
+                term::println(den::EMITTED[26].1);
             } else {
-                term::println(den::EMITTED[27].1); // CS 0xa084
+                term::println(den::EMITTED[27].1);
             }
         } else {
             term::println(den::EMITTED[28].1);
@@ -2854,7 +2854,7 @@ impl Game {
                         // by `kos` in a fight, and at the street prompt -- the effect is fully
                         // consumed.
                         g.player.joints += 1;
-                        term::println("^2Ты купил косяк"); // CS 0x939f `^2Ты купил косяк`, 1000:c912
+                        term::println("^2Ты купил косяк");
                     },
                 );
                 true
@@ -2866,13 +2866,13 @@ impl Game {
                     price,
                     // `^6У тебя уже есть мобила.`
                     &[(owned, Some("^6У тебя уже есть мобила."))],
-                    "^4Нету денег", // CS 0x93b0 `^4Нету денег`, 1000:c94e
+                    "^4Нету денег",
                     |g| {
                         // Sets the ownership flag. Read by the character sheet, by the in-combat
                         // backup countdown -- which is what the menu line's "подмога быстрее приходит"
                         // actually is -- and by wander encounters.
                         g.has_mobile = true;
-                        term::println("^2Чё ты модный типа да?."); // CS 0x93bd `^2Чё ты модный типа да?.`, 1000:c977
+                        term::println("^2Чё ты модный типа да?.");
                     },
                 );
                 true
@@ -2880,45 +2880,40 @@ impl Game {
             // Row 3, Офигенный косяк. One gate, so the row is repeatable and each purchase
             // rolls again.
             "3" => {
-                self.buy_after_gates(
-                    price,
-                    &[],
-                    "^4Не хватает", // CS 0x8e4d `^4Не хватает`, 1000:c9ca
-                    |g| {
-                        // Debit, then the line, then the draw.
-                        term::println("^2Пошли стероиды!"); // CS 0x93f0 `^2Пошли стероиды!`, 1000:c9ef
+                self.buy_after_gates(price, &[], "^4Не хватает", |g| {
+                    // Debit, then the line, then the draw.
+                    term::println("^2Пошли стероиды!");
 
-                        match g.rng.below(4) {
-                            0 => {
-                                g.player.strength += 1; // Inc [0x389e]
-                                term::println("^1Сила +1 "); // CS 0x9402 `^1Сила +1 `, 1000:ca1a
-                                g.player.dmg_max += 1; // Inc [0x38aa]
+                    match g.rng.below(4) {
+                        0 => {
+                            g.player.strength += 1; // Inc [0x389e]
+                            term::println("^1Сила +1 ");
+                            g.player.dmg_max += 1; // Inc [0x38aa]
 
-                                // The dmg-min half runs only when the NEW Сила is even -- the mirror of the
-                                // in-combat stat-loss arm, which takes its dmg-min half when Сила is odd.
-                                if g.player.strength % 2 == 0 {
-                                    g.player.dmg_min += 1; // Inc [0x38a8]
-                                }
-                                g.player.hpmax += 1; // Inc [0x38ae]
-                                g.player.hp += 1; // Inc [0x38ac]
+                            // The dmg-min half runs only when the NEW Сила is even -- the mirror of the
+                            // in-combat stat-loss arm, which takes its dmg-min half when Сила is odd.
+                            if g.player.strength % 2 == 0 {
+                                g.player.dmg_min += 1; // Inc [0x38a8]
                             }
-                            1 => {
-                                g.player.agility += 1; // Inc [0x38a0]
-                                term::println("^1Ловкость +1 "); // CS 0x940d `^1Ловкость +1 `, 1000:ca5c
-                            }
-                            2 => {
-                                g.player.vitality += 1; // Inc [0x38a2]
-                                term::println("^1Живучесть +1 "); // CS 0x941c `^1Живучесть +1 `, 1000:ca80
-                                g.player.hpmax += 5; // Add word [0x38ae],0x5
-                                g.player.hp += 5; // Add word [0x38ac],0x5
-                            }
-                            _ => {
-                                g.player.luck += 1; // Inc [0x38a4]
-                                term::println("^1Удача +1 "); // CS 0x942c `^1Удача +1 `, 1000:caae
-                            }
+                            g.player.hpmax += 1; // Inc [0x38ae]
+                            g.player.hp += 1; // Inc [0x38ac]
                         }
-                    },
-                );
+                        1 => {
+                            g.player.agility += 1; // Inc [0x38a0]
+                            term::println("^1Ловкость +1 ");
+                        }
+                        2 => {
+                            g.player.vitality += 1; // Inc [0x38a2]
+                            term::println("^1Живучесть +1 ");
+                            g.player.hpmax += 5; // Add word [0x38ae],0x5
+                            g.player.hp += 5; // Add word [0x38ac],0x5
+                        }
+                        _ => {
+                            g.player.luck += 1; // Inc [0x38a4]
+                            term::println("^1Удача +1 ");
+                        }
+                    }
+                });
                 true
             }
             // Row 4, зоновская наколка.
@@ -2928,13 +2923,13 @@ impl Game {
                     price,
                     // `^6Сделать, конечно, можно но толку не будет.`
                     &[(owned, Some("^6Сделать, конечно, можно но толку не будет."))],
-                    "^4Нету денег", // CS 0x93b0 `^4Нету денег`, 1000:caea -- row 2's literal
+                    "^4Нету денег", // reuses row 2's refusal literal
                     |g| {
                         // Sets the ownership flag. Read outside this arm by the character sheet and by
                         // the wander mugging roll, which halves the chance when it is set -- that
                         // single branch is the row's entire gameplay effect.
                         g.prison_tattoo = true;
-                        term::println("^2Чистый зек."); // CS 0x9438 `^2Чистый зек.`, 1000:cb13
+                        term::println("^2Чистый зек.");
                     },
                 );
                 true
@@ -2961,7 +2956,7 @@ impl Game {
                         // `^6У тебя есть эта железка.`
                         (owned, Some("^6У тебя есть эта железка.")),
                     ],
-                    "^4Не хватает деньжат", // CS 0x9473 `^4Не хватает деньжат`, 1000:cb82
+                    "^4Не хватает деньжат",
                     |g| {
                         g.weapon_kastet = true; // Mov byte [0x38ba],0x1
 
@@ -2993,7 +2988,7 @@ impl Game {
                         // `^6У тебя есть дубина.`
                         (owned, Some("^6У тебя есть дубина.")),
                     ],
-                    "^4Не хватает на дубинку деньжат", // CS 0x9511 `^4Не хватает на дубинку деньжат`, 1000:cc3b
+                    "^4Не хватает на дубинку деньжат",
                     |g| {
                         g.weapon_dubinka = true; // Mov byte [0x394b],0x1
 
@@ -3020,7 +3015,7 @@ impl Game {
                     price,
                     // `^6Ну.. ты.. ВАЩЕ ОФИГЕЛ!`
                     &[(owned, Some("^6Ну.. ты.. ВАЩЕ ОФИГЕЛ!"))],
-                    "^4Дорогая штука!", // CS 0x95b2 `^4Дорогая штука!`, 1000:ccea
+                    "^4Дорогая штука!",
                     |g| {
                         g.pistol.owned = true; // Mov byte [0x394d],0x1
                         g.pistol.cartridges += 3; // Add word [0x394f],0x3
@@ -3042,7 +3037,7 @@ impl Game {
                     price,
                     // `^6Нету пушки. Сначала купи пистолет`
                     &[(no_gun, Some("^6Нету пушки. Сначала купи пистолет"))],
-                    "^4Нехватка денег.", // CS 0x9637 `^4Нехватка денег.`, 1000:cd88
+                    "^4Нехватка денег.",
                     |g| {
                         // Adds FIVE, though the menu line says six.
                         g.pistol.cartridges += 5;
@@ -3070,7 +3065,7 @@ impl Game {
                         // `^6Да купил уже, купил`
                         (owned, Some("^6Да купил уже, купил")),
                     ],
-                    "^4Подкопи бабла.", // CS 0x968a `^4Подкопи бабла.`, 1000:ce19
+                    "^4Подкопи бабла.",
                     |g| {
                         g.pistol.silencer = true; // Mov byte [0x394e],0x1
 
@@ -3147,33 +3142,28 @@ impl Game {
                         if g.player.hp > g.player.hpmax {
                             g.player.hp = g.player.hpmax;
                         }
-                        term::println("^2Ты сожрал хот-дог"); // CS 0x8e23 `^2Ты сожрал хот-дог`, 1000:bdd6
+                        term::println("^2Ты сожрал хот-дог");
                     },
                 );
                 true
             }
             // Row 2, Пиво. One gate, repeatable.
             "2" => {
-                self.buy_after_gates(
-                    price,
-                    &[],
-                    "^4Не хватает", // CS 0x8e4d `^4Не хватает`, 1000:be29
-                    |g| {
-                        // Dispatches over three compares; all three converge and the roll changes NO
-                        // state -- it is purely cosmetic, and it is still a draw.
-                        match g.rng.below(3) {
-                            0 => term::println("^2Глинское? Чё за нафиг? А ладно."), // CS 0x8e5a `^2Глинское? Чё за нафиг? А ладно.`, 1000:be5b
-                            1 => term::println("^2Пивко. Холодненькое."), // CS 0x8e7c `^2Пивко. Холодненькое.`, 1000:be7b
-                            2 => term::println("^2Ну чё по пиву?."), // CS 0x8e93 `^2Ну чё по пиву?.`, 1000:be9b
-                            // Unreachable in practice: no line prints here, though the increment still
-                            // runs on this arm too.
-                            _ => {}
-                        }
-                        // Increments a WORD count of half-litres, not a flag. A failed purchase adds
-                        // no beer.
-                        g.player.beer_dl += 1;
-                    },
-                );
+                self.buy_after_gates(price, &[], "^4Не хватает", |g| {
+                    // Dispatches over three compares; all three converge and the roll changes NO
+                    // state -- it is purely cosmetic, and it is still a draw.
+                    match g.rng.below(3) {
+                        0 => term::println("^2Глинское? Чё за нафиг? А ладно."),
+                        1 => term::println("^2Пивко. Холодненькое."),
+                        2 => term::println("^2Ну чё по пиву?."),
+                        // Unreachable in practice: no line prints here, though the increment still
+                        // runs on this arm too.
+                        _ => {}
+                    }
+                    // Increments a WORD count of half-litres, not a flag. A failed purchase adds
+                    // no beer.
+                    g.player.beer_dl += 1;
+                });
                 true
             }
             // Row 3, Затемнённые очки. Two gates.
@@ -3183,12 +3173,12 @@ impl Game {
                     price,
                     // `^6У тебя есть очки от солнца.`
                     &[(owned, Some("^6У тебя есть очки от солнца."))],
-                    "^4Не хватает бабок", // CS 0x8ea7 `^4Не хватает бабок`, 1000:bedb
+                    "^4Не хватает бабок",
                     |g| {
                         // Sets the ownership flag. Read outside this arm by the character sheet and by
                         // the wander cop encounter, which is where the glasses actually stop a fight.
                         g.dark_glasses = true;
-                        term::println("^2Модные такие очки от солнца."); // CS 0x8eba `^2Модные такие очки от солнца.`, 1000:bf04
+                        term::println("^2Модные такие очки от солнца.");
                     },
                 );
                 true
@@ -3207,13 +3197,13 @@ impl Game {
                         // `^6У тебя уже есть костюм.`
                         (owned, Some("^6У тебя уже есть костюм.")),
                     ],
-                    "^4Не хватает денег", // CS 0x8ef9 `^4Не хватает денег`, 1000:bf65
+                    "^4Не хватает денег",
                     |g| {
                         g.wear_suit_abibas = true;
-                        term::println("^2Теперь ты больше похож на гопа."); // CS 0x8f0c `^2Теперь ты больше похож на гопа.`, 1000:bf8e
-                                                                            // ARMOUR +1, unconditionally. The menu line's `Смягчает пинок на 1` agrees.
-                                                                            // Read outside this arm by the kick's damage reduction and the gym's
-                                                                            // recompute.
+                        term::println("^2Теперь ты больше похож на гопа.");
+                        // ARMOUR +1, unconditionally. The menu line's `Смягчает пинок на 1` agrees.
+                        // Read outside this arm by the kick's damage reduction and the gym's
+                        // recompute.
                         g.player.armor = g.player.armor.wrapping_add(1);
                     },
                 );
@@ -3231,12 +3221,12 @@ impl Game {
                         // `^6У тебя такие уже есть.`
                         (owned, Some("^6У тебя такие уже есть.")),
                     ],
-                    "^4Нету на них денег", // CS 0x8f6d `^4Нету на них денег`, 1000:c00e
+                    "^4Нету на них денег",
                     |g| {
                         g.wear_boots = true;
-                        term::println("^2Зацени красовки."); // CS 0x8f81 `^2Зацени красовки.`, 1000:c037
-                                                             // The damage range, +1/+1, unconditionally. The menu says only `Увеличивают
-                                                             // урон`.
+                        term::println("^2Зацени красовки.");
+                        // The damage range, +1/+1, unconditionally. The menu says only `Увеличивают
+                        // урон`.
                         g.player.dmg_min += 1;
                         g.player.dmg_max += 1;
                     },
@@ -3260,11 +3250,11 @@ impl Game {
                         // `^6Ты уже купил это.`
                         (owned, Some("^6Ты уже купил это.")),
                     ],
-                    "^4Не достаточно бабла", // CS 0x8fc8 `^4Не достаточно бабла`, 1000:c0c5
+                    "^4Не достаточно бабла",
                     |g| {
                         g.wear_jacket = true;
-                        term::println("^2Ну весь на понтах."); // CS 0x8fde `^2Ну весь на понтах.`, 1000:c0ee
-                                                               // A byte add, so it wraps at 255 rather than widening.
+                        term::println("^2Ну весь на понтах.");
+                        // A byte add, so it wraps at 255 rather than widening.
                         g.player.armor = g.player.armor.wrapping_add(2);
                     },
                 );
@@ -3285,14 +3275,14 @@ impl Game {
                     price,
                     // Prints `^6У тебя уже есть этот костюм.`
                     &[(owned, Some("^6У тебя уже есть этот костюм."))],
-                    "^4Не хватает денег", // CS 0x8ef9 `^4Не хватает денег`, 1000:c168 -- row 4's literal
+                    "^4Не хватает денег", // reuses row 4's refusal literal
                     |g| {
                         g.wear_suit_adidas = true;
-                        term::println("^2Чистый гопник."); // CS 0x9025 `^2Чистый гопник.`, 1000:c191
-                                                           // The upgrade split: buying this while the lesser
-                                                           // suit is already owned adds only +1 armour (it
-                                                           // already contributed +1); buying it first adds +2
-                                                           // outright. Either order ends on +2 total.
+                        term::println("^2Чистый гопник.");
+                        // The upgrade split: buying this while the lesser
+                        // suit is already owned adds only +1 armour (it
+                        // already contributed +1); buying it first adds +2
+                        // outright. Either order ends on +2 total.
                         g.player.armor =
                             g.player.armor.wrapping_add(if has_abibas { 1 } else { 2 });
                     },
@@ -3314,16 +3304,16 @@ impl Game {
                         // Prints `^6У тебя такие уже есть.` -- the same line row 5 uses.
                         (owned, Some("^6У тебя такие уже есть.")),
                     ],
-                    "^4Нету на них денег", // CS 0x8f6d `^4Нету на них денег`, 1000:c207 -- row 5's too
+                    "^4Нету на них денег", // reuses row 5's refusal literal too
                     |g| {
                         g.wear_boots_pontovye = true;
-                        term::println("^2Офигенные бутцы."); // CS 0x9057 `^2Офигенные бутцы.`, 1000:c230
-                                                             // The upgrade split on the damage range: with the
-                                                             // lesser boots already owned, this only adds +1 to
-                                                             // both min and max damage (since they already
-                                                             // contributed +1); otherwise it adds +2. The menu's
-                                                             // `Урон+2` is always the TOTAL, not this arm's own
-                                                             // add.
+                        term::println("^2Офигенные бутцы.");
+                        // The upgrade split on the damage range: with the
+                        // lesser boots already owned, this only adds +1 to
+                        // both min and max damage (since they already
+                        // contributed +1); otherwise it adds +2. The menu's
+                        // `Урон+2` is always the TOTAL, not this arm's own
+                        // add.
                         let delta = if has_boots { 1 } else { 2 };
                         g.player.dmg_min += delta;
                         g.player.dmg_max += delta;
@@ -3344,14 +3334,14 @@ impl Game {
                         // Prints `^6Ты уже купил это.` -- the same line row 6 uses.
                         (owned, Some("^6Ты уже купил это.")),
                     ],
-                    "^4Не достаточно бабла", // CS 0x8fc8 `^4Не достаточно бабла`, 1000:c2af -- row 6's too
+                    "^4Не достаточно бабла", // reuses row 6's refusal literal too
                     |g| {
                         g.wear_jacket_krutaya = true;
-                        term::println("^2Ну крутой, сдохнуть можно!"); // CS 0x906c `^2Ну крутой, сдохнуть можно!`, 1000:c2d8
-                                                                       // The upgrade split: buying this while the lesser
-                                                                       // jacket is already owned adds +2 more armour (on
-                                                                       // top of its own +2); buying it first adds +4
-                                                                       // outright.
+                        term::println("^2Ну крутой, сдохнуть можно!");
+                        // The upgrade split: buying this while the lesser
+                        // jacket is already owned adds +2 more armour (on
+                        // top of its own +2); buying it first adds +4
+                        // outright.
                         g.player.armor =
                             g.player.armor.wrapping_add(if has_jacket { 2 } else { 4 });
                     },
@@ -4082,7 +4072,7 @@ impl Game {
         if i32::from(self.player.luck) >= i32::from(roll) && enemy.class == 2 {
             // A word add of the draw onto `joints`.
             self.player.joints += self.rng.below(3) as i16;
-            term::println(spoils::EMITTED[7].1); // file 0x540B
+            term::println(spoils::EMITTED[7].1);
         }
         // The class-keyed item table.
         let roll = self.rng.below(u16::from(self.district) * 40);
@@ -4260,7 +4250,7 @@ impl Game {
                     self.player.dmg_max += 6;
                 }
                 if self.weapon_tesak {
-                    term::println(spoils::EMITTED[18].1); // file 0x5516
+                    term::println(spoils::EMITTED[18].1);
                 }
             }
             _ => {
@@ -4729,7 +4719,7 @@ mod tests {
             assert_eq!(
                 &greeted(kind)[..2],
                 ["Слышь Вась..", "^4А чё ваще?"],
-                "param_1 {kind} takes 1000:3d32 and greets first"
+                "param_1 {kind} greets first"
             );
         }
         // The five other class values that skip the opener: 2 is the
@@ -4738,7 +4728,7 @@ mod tests {
             let out = greeted(kind);
             assert!(
                 !out.iter().any(|l| l.contains("Слышь Вась")),
-                "param_1 {kind} takes 1000:3d2f and must not greet: {out:?}"
+                "param_1 {kind} must not greet: {out:?}"
             );
         }
     }
@@ -4788,7 +4778,7 @@ mod tests {
         });
         assert!(
             !out.iter().any(|l| l.contains("вместо")),
-            "1000:4011 / 1000:40b4 refuse both lines: {out:?}"
+            "a zero-agility enemy refuses both lines: {out:?}"
         );
     }
 
@@ -4840,7 +4830,11 @@ mod tests {
         };
         let bare = hit(0);
         assert!((500 - 29..=500 - 20).contains(&bare), "hp {bare}");
-        assert_eq!(hit(60), bare, "1000:4f28 has no `armour div 3` term");
+        assert_eq!(
+            hit(60),
+            bare,
+            "armour of 60 changes nothing: no `armour div 3` term"
+        );
     }
 
     /// The flee penalty end to end: the growth log is spent, the level and
@@ -4862,16 +4856,16 @@ mod tests {
         let threshold = g.progress.threshold;
 
         g.run_combat(0, punchbag(), &mut input(&["run"])).unwrap();
-        assert_eq!(g.player.level, 0, "1000:4ac3 dec [0x38a6]");
+        assert_eq!(g.player.level, 0, "the flee penalty decrements the level");
         assert_eq!(
             g.progress.threshold,
             threshold - progress::THRESHOLD_STEP,
-            "1000:4ac7 sub word [0x38d0],0xa"
+            "the flee penalty subtracts the threshold step"
         );
         assert_eq!(
             g.progress.growth_log[1],
             [0; progress::GAINS_PER_LEVEL],
-            "1000:497d clears the entry"
+            "the flee penalty clears the growth-log entry"
         );
         assert_ne!(
             (
@@ -4930,7 +4924,10 @@ mod tests {
         g.player.level = 3;
         g.player.class = 5;
         g.run_combat(0, punchbag(), &mut input(&["run"])).unwrap();
-        assert!(!g.places.is_found(Location::Den), "class 5 skips 1000:4a8e");
+        assert!(
+            !g.places.is_found(Location::Den),
+            "class 5 skips the den-opening check"
+        );
         assert_eq!(g.player.level, 2, "but still pays the level");
     }
 
@@ -4944,7 +4941,11 @@ mod tests {
         g.player.level = 5;
         let mut lines = input(&["run", "run", "run"]);
         g.run_combat(0, punchbag(), &mut lines).unwrap();
-        assert_eq!(lines.count(), 0, "1000:490b re-prompts instead of leaving");
+        assert_eq!(
+            lines.count(),
+            0,
+            "the rector's refusal re-prompts instead of leaving"
+        );
         assert_eq!(g.player.level, 5, "and the penalty never runs");
 
         // Death: the hospital's own gates are wide open and it still must
@@ -4955,10 +4956,16 @@ mod tests {
         g.player.hpmax = 40;
         g.player.money = 100;
         g.run_combat(0, punchbag(), &mut no_input()).unwrap();
-        assert!(!g.running, "1000:4fb4 calls the end screen, which halts");
-        assert_eq!(g.player.hp, 0, "1000:5018's `hp := hpmax` is not reached");
+        assert!(!g.running, "death calls the end screen, which halts");
+        assert_eq!(
+            g.player.hp, 0,
+            "the hospital's `hp := hpmax` is not reached"
+        );
         assert_eq!(g.player.money, 100, "and no bill was paid");
-        assert_eq!(g.pontovost_street, 500, "1000:4fe7's -10 is not reached");
+        assert_eq!(
+            g.pontovost_street, 500,
+            "the hospital's -10 street-cred cost is not reached"
+        );
     }
 
     /// `kos` reached through the combat prompt (rather than through
@@ -4977,9 +4984,9 @@ mod tests {
         g.player.joints = 2;
         let mut lines = input(&["kos"]);
         g.run_combat(0, enemy(), &mut lines).unwrap();
-        assert_eq!(g.player.joints, 1, "1000:4b4e dec [0x38c5]");
+        assert_eq!(g.player.joints, 1, "kos decrements the joint count");
         assert_eq!(g.player.hp, 11, "the flat +10 heal");
-        assert_eq!(g.buff_countdown, 3, "1000:4b52 stores 3, not 10");
+        assert_eq!(g.buff_countdown, 3, "kos stores a 3-turn buff, not 10");
         assert!(g.player.stoned);
     }
 
@@ -5046,7 +5053,7 @@ mod tests {
         assert_eq!(gated.len(), 2);
         assert!(
             gated[0].contains("^6rep^7"),
-            "1000:eaf7 (Vet) gates before 1000:eb37 (Den); got {gated:?}"
+            "the Vet gate line prints before the Den gate line; got {gated:?}"
         );
         // And the flag-address order really is the other way round, so the
         // assertion above is a contrast and not a restatement.
@@ -5163,8 +5170,8 @@ mod tests {
         g.player.beer_dl = 4;
         let hp0 = g.player.hp;
         g.shop_turn(Location::Vet, "h", &mut no_input()).unwrap();
-        assert_eq!(g.player.hp, hp0 + 5, "vet's h is 1000:d5de, +5 health");
-        assert_eq!(g.player.money, 7, "1000:d5d9 sub 0x3");
+        assert_eq!(g.player.hp, hp0 + 5, "vet's h heals 5 health");
+        assert_eq!(g.player.money, 7, "vet's h costs 3");
         assert_eq!(g.player.beer_dl, 4, "vet's h must not drink beer");
 
         let mut g = game();
@@ -5270,7 +5277,7 @@ mod tests {
         assert_eq!(
             out,
             vec![refusal.to_string()],
-            "1000:2c3d takes while beer > 0, so the tail adds nothing"
+            "the jaw check takes while beer > 0, so the tail adds nothing"
         );
         assert_eq!(g.player.beer_dl, 4, "the jaw arm spends no half-litre");
 
@@ -5283,7 +5290,7 @@ mod tests {
         assert_eq!(
             out,
             vec![refusal.to_string()],
-            "1000:2bba misses for `h` and 1000:2bbc returns"
+            "the tail misses for `h`, which returns instead"
         );
     }
 
@@ -5331,9 +5338,9 @@ mod tests {
         assert_eq!(
             out,
             vec!["^2Пиво прибавляет 3з. ^2Здоровья:20/20. Осталось 1.0л. пива".to_string()],
-            "1000:2a8f writes file 0x41CD without a newline"
+            "the partial-heal line writes without a trailing newline"
         );
-        assert_eq!(g.player.hp, 20, "1000:2a97 tops hp up to hpmax");
+        assert_eq!(g.player.hp, 20, "the partial heal tops hp up to hpmax");
 
         // Flat arm: shortfall of exactly 5 is not "under 5".
         let mut g = game();
@@ -5343,7 +5350,7 @@ mod tests {
         assert_eq!(
             out,
             vec!["^2Пиво прибавляет 5з. Здоровья:20/20. Осталось 4.5л. пива".to_string()],
-            "1000:2a5f is `jl 5`, so a shortfall of exactly 5 takes the flat arm"
+            "the shortfall check is `jl 5`, so a shortfall of exactly 5 takes the flat arm"
         );
 
         // No-beer arm.
@@ -5385,7 +5392,7 @@ mod tests {
                 "^2Пиво прибавляет 10з. Здоровья:15/20. Осталось 0.0л. пива".to_string(),
                 "^4Кончилось пиво".to_string(),
             ],
-            "1000:2c14 misses when the drink emptied it, so file 0x4283 follows"
+            "the loop misses when the drink emptied it, so the out-of-beer line follows"
         );
 
         // Never entered: the loop misses on the first pass, and the tail
@@ -5440,8 +5447,14 @@ mod tests {
         assert_eq!(fight.player.dmg_max, street.player.dmg_max);
         assert!(fight.player.stoned);
 
-        assert_eq!(street.buff_countdown, 10, "1000:e9b8 stores 10");
-        assert_eq!(fight.buff_countdown, 3, "1000:4b52 stores 3");
+        assert_eq!(
+            street.buff_countdown, 10,
+            "joints on the street store a 10-turn buff"
+        );
+        assert_eq!(
+            fight.buff_countdown, 3,
+            "joints in a fight store a 3-turn buff"
+        );
     }
 
     /// The two pools' long heal lines differ by one trailing letter and both
@@ -5571,11 +5584,11 @@ mod tests {
         g.district = 1; // Is `cmp byte [0x3692],0x1`
         g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 1000, "gated row must not be sellable yet");
-        assert!(!g.wear_jacket, "1000:c0e0 must not have run");
+        assert!(!g.wear_jacket, "the jacket row must not have run");
         g.district = 2;
         g.shop_turn(Location::Market, "6", &mut no_input()).unwrap();
         assert_eq!(g.player.money, 1000 - 25);
-        assert!(g.wear_jacket, "1000:c0e0");
+        assert!(g.wear_jacket, "the jacket row ran");
     }
 
     /// The dealers' three pistol rows, each on both sides of every gate its
@@ -5596,13 +5609,16 @@ mod tests {
         let mut g = shop();
         g.shop_turn(Location::Dealers, "7", &mut no_input())
             .unwrap();
-        assert!(g.pistol.owned, "1000:cd05");
+        assert!(g.pistol.owned, "the pistol row ran");
         assert_eq!(g.pistol.cartridges, 3);
         assert_eq!(g.player.money, 850);
         // Buying it twice is refused and costs nothing.
         g.shop_turn(Location::Dealers, "7", &mut no_input())
             .unwrap();
-        assert_eq!(g.player.money, 850, "1000:cd4c is a refusal, not a sale");
+        assert_eq!(
+            g.player.money, 850,
+            "buying it twice is a refusal, not a sale"
+        );
         assert_eq!(g.pistol.cartridges, 3);
 
         // ... and 150 exactly is enough, while 149 is not.
@@ -5619,7 +5635,7 @@ mod tests {
         let mut g = shop();
         g.shop_turn(Location::Dealers, "8", &mut no_input())
             .unwrap();
-        assert_eq!(g.pistol.cartridges, 0, "1000:cdcc -- no gun, no rounds");
+        assert_eq!(g.pistol.cartridges, 0, "no gun means no rounds");
         assert_eq!(g.player.money, 1_000);
         g.pistol.owned = true;
         g.shop_turn(Location::Dealers, "8", &mut no_input())
@@ -5668,8 +5684,8 @@ mod tests {
         let mut g = dealers(40);
         g.shop_turn(Location::Dealers, "1", &mut no_input())
             .unwrap();
-        assert_eq!(g.player.joints, 1, "1000:c90e");
-        assert_eq!(g.player.money, 25, "20ae:0b38 = 15, debit 1000:c90a");
+        assert_eq!(g.player.joints, 1, "the joint row grants one");
+        assert_eq!(g.player.money, 25, "the joint costs 15, debited");
         // No already-own test in the arm at all -- buying again works.
         g.shop_turn(Location::Dealers, "1", &mut no_input())
             .unwrap();
@@ -5692,13 +5708,13 @@ mod tests {
         let mut g = dealers(40);
         g.shop_turn(Location::Dealers, "2", &mut no_input())
             .unwrap();
-        assert!(g.has_mobile, "1000:c969");
-        assert_eq!(g.player.money, 10, "20ae:0b39 = 30, debit 1000:c973");
+        assert!(g.has_mobile, "the mobile row ran");
+        assert_eq!(g.player.money, 10, "the mobile costs 30, debited");
         // The already-own refusal costs nothing.
         g.player.money = 40;
         g.shop_turn(Location::Dealers, "2", &mut no_input())
             .unwrap();
-        assert_eq!(g.player.money, 40, "1000:c992 is a refusal, not a sale");
+        assert_eq!(g.player.money, 40, "the already-own refusal is not a sale");
         // Too poor: 29 is short and 30 is enough.
         for (money, want) in [(29i16, false), (30, true)] {
             let mut g = dealers(money);
@@ -5714,8 +5730,16 @@ mod tests {
             b.call(true, 100, 1, has_mobile);
             b.count()
         };
-        assert_eq!(counter(false), 1, "1000:4cd5");
-        assert_eq!(counter(true), 3, "1000:4ce2 -- the menu line's promise");
+        assert_eq!(
+            counter(false),
+            1,
+            "without the mobile the countdown starts at one"
+        );
+        assert_eq!(
+            counter(true),
+            3,
+            "with the mobile the countdown starts at three -- the menu line's promise"
+        );
     }
 
     /// `bmar` row 4, зоновская наколка -- the number is the wander mugging
@@ -5725,12 +5749,12 @@ mod tests {
         let mut g = dealers(20);
         g.shop_turn(Location::Dealers, "4", &mut no_input())
             .unwrap();
-        assert!(g.prison_tattoo, "1000:cb05");
-        assert_eq!(g.player.money, 10, "20ae:0b3b = 10, debit 1000:cb0f");
+        assert!(g.prison_tattoo, "the tattoo row ran");
+        assert_eq!(g.player.money, 10, "the tattoo costs 10, debited");
         // The already-own refusal costs nothing.
         g.shop_turn(Location::Dealers, "4", &mut no_input())
             .unwrap();
-        assert_eq!(g.player.money, 10, "1000:cb2e is a refusal, not a sale");
+        assert_eq!(g.player.money, 10, "the already-own refusal is not a sale");
         // Too poor.
         for (money, want) in [(9i16, false), (10, true)] {
             let mut g = dealers(money);
@@ -5748,16 +5772,24 @@ mod tests {
         let (min, max) = (g.player.dmg_min, g.player.dmg_max);
         g.shop_turn(Location::Dealers, "5", &mut no_input())
             .unwrap();
-        assert!(g.weapon_kastet, "1000:cb9d");
-        assert_eq!(g.player.money, 15, "20ae:0b3c = 25, debit 1000:cba7");
-        assert_eq!(g.player.dmg_min, min + 2, "1000:cbab");
-        assert_eq!(g.player.dmg_max, max + 2, "1000:cbb0");
+        assert!(g.weapon_kastet, "the knuckles row ran");
+        assert_eq!(g.player.money, 15, "the knuckles cost 25, debited");
+        assert_eq!(
+            g.player.dmg_min,
+            min + 2,
+            "the knuckles raise minimum damage by two"
+        );
+        assert_eq!(
+            g.player.dmg_max,
+            max + 2,
+            "the knuckles raise maximum damage by two"
+        );
         // The already-own refusal costs nothing and does not add the
         // damage a second time.
         g.player.money = 40;
         g.shop_turn(Location::Dealers, "5", &mut no_input())
             .unwrap();
-        assert_eq!(g.player.money, 40, "1000:cbd0 is a refusal, not a sale");
+        assert_eq!(g.player.money, 40, "the already-own refusal is not a sale");
         assert_eq!(g.player.dmg_max, max + 2);
         // The better-weapon gate is a short-circuit AND over all three
         // better weapons, so only owning ALL THREE refuses. Intentional:
@@ -5798,10 +5830,16 @@ mod tests {
         let (min, max) = (g.player.dmg_min, g.player.dmg_max);
         g.shop_turn(Location::Dealers, "6", &mut no_input())
             .unwrap();
-        assert!(g.weapon_dubinka, "1000:cc56");
-        assert_eq!(g.player.money, 10, "20ae:0b3d = 50, debit 1000:cc60");
-        assert_eq!(g.player.dmg_min, min, "1000:cc69 skips 1000:cc6b");
-        assert_eq!(g.player.dmg_max, max, "1000:cc69 skips 1000:cc70");
+        assert!(g.weapon_dubinka, "the club row ran");
+        assert_eq!(g.player.money, 10, "the club costs 50, debited");
+        assert_eq!(
+            g.player.dmg_min, min,
+            "without the knuckles the club adds nothing to minimum damage"
+        );
+        assert_eq!(
+            g.player.dmg_max, max,
+            "without the knuckles the club adds nothing to maximum damage"
+        );
 
         // With the knuckles it is +2/+2 -- never the +4/+4 the loot arm
         // grants.
@@ -5809,14 +5847,22 @@ mod tests {
         g.weapon_kastet = true;
         g.shop_turn(Location::Dealers, "6", &mut no_input())
             .unwrap();
-        assert_eq!(g.player.dmg_min, min + 2, "1000:cc6b");
-        assert_eq!(g.player.dmg_max, max + 2, "1000:cc70");
+        assert_eq!(
+            g.player.dmg_min,
+            min + 2,
+            "with the knuckles the club adds two to minimum damage"
+        );
+        assert_eq!(
+            g.player.dmg_max,
+            max + 2,
+            "with the knuckles the club adds two to maximum damage"
+        );
 
         // The already-own refusal costs nothing.
         g.player.money = 60;
         g.shop_turn(Location::Dealers, "6", &mut no_input())
             .unwrap();
-        assert_eq!(g.player.money, 60, "1000:cc90 is a refusal, not a sale");
+        assert_eq!(g.player.money, 60, "the already-own refusal is not a sale");
         assert_eq!(g.player.dmg_max, max + 2);
 
         // The better-weapon gate has TWO conjuncts here, and the club's
@@ -5881,10 +5927,13 @@ mod tests {
             g.listed_rows("bmar").iter().any(|r| r.key == "9")
         };
         assert!(listed(true, 25));
-        assert!(!listed(false, 25), "1000:c824 wants the pistol");
-        assert!(!listed(true, 24), "1000:c82b is == 25, not >=");
+        assert!(!listed(false, 25), "the silencer row wants the pistol");
+        assert!(!listed(true, 24), "the counter check is == 25, not >=");
         // `jnz` is an equality test, so overshooting shuts the row again.
-        assert!(!listed(true, 26), "1000:c830 is jnz, so 26 misses too");
+        assert!(
+            !listed(true, 26),
+            "the counter check is an equality, so 26 misses too"
+        );
         assert!(!listed(false, 0));
     }
 
@@ -5953,20 +6002,23 @@ mod tests {
         assert_eq!(g.district, 1);
         g.shop_turn(Location::Dealers, "5", &mut no_input())
             .unwrap(); // gate district>1
-        assert!(g.weapon_kastet, "1000:cb9d fires at district 1");
+        assert!(g.weapon_kastet, "the knuckles row fires at district 1");
         g.shop_turn(Location::Dealers, "6", &mut no_input())
             .unwrap(); // gate district>2
-        assert!(g.weapon_dubinka, "1000:cc56 fires at district 1");
+        assert!(g.weapon_dubinka, "the club row fires at district 1");
         g.shop_turn(Location::Dealers, "7", &mut no_input())
             .unwrap(); // gate district>3
-        assert!(g.pistol.owned, "1000:cd05 fires at district 1");
+        assert!(g.pistol.owned, "the pistol row fires at district 1");
         g.shop_turn(Location::Dealers, "8", &mut no_input())
             .unwrap();
-        assert_eq!(g.pistol.cartridges, 8, "1000:cda3 fires at district 1");
+        assert_eq!(
+            g.pistol.cartridges, 8,
+            "the cartridges row fires at district 1"
+        );
         g.dealer_delivery_counter = 25;
         g.shop_turn(Location::Dealers, "9", &mut no_input())
             .unwrap();
-        assert!(g.pistol.silencer, "1000:ce34 fires at district 1");
+        assert!(g.pistol.silencer, "the silencer row fires at district 1");
         assert_eq!(g.player.money, 1_000 - 25 - 50 - 150 - 70 - 60);
     }
 
@@ -5983,10 +6035,10 @@ mod tests {
     fn the_market_sells_the_dark_glasses_exactly_once() {
         let mut g = market(25);
         g.shop_turn(Location::Market, "3", &mut no_input()).unwrap();
-        assert!(g.dark_glasses, "1000:bef6");
-        assert_eq!(g.player.money, 15, "1000:bf00, price 10 at 20ae:0b30");
+        assert!(g.dark_glasses, "the dark-glasses row ran");
+        assert_eq!(g.player.money, 15, "the dark glasses cost 10");
         g.shop_turn(Location::Market, "3", &mut no_input()).unwrap();
-        assert_eq!(g.player.money, 15, "1000:bf1f is a refusal, not a sale");
+        assert_eq!(g.player.money, 15, "the already-own refusal is not a sale");
 
         // 10 exactly buys; 9 does not.
         for (money, want) in [(9i16, false), (10, true)] {
@@ -6004,20 +6056,29 @@ mod tests {
     fn the_market_suits_end_on_two_armour_in_either_purchase_order() {
         let mut g = market(100);
         g.shop_turn(Location::Market, "4", &mut no_input()).unwrap();
-        assert!(g.wear_suit_abibas, "1000:bf80");
-        assert_eq!(g.player.armor, 1, "1000:bfa7");
+        assert!(g.wear_suit_abibas, "the abibas suit row ran");
+        assert_eq!(g.player.armor, 1, "the abibas suit grants one armour");
         g.shop_turn(Location::Market, "7", &mut no_input()).unwrap();
-        assert!(g.wear_suit_adidas, "1000:c183");
-        assert_eq!(g.player.armor, 2, "1000:c1b1, the delta, not 1000:c1b7");
+        assert!(g.wear_suit_adidas, "the adidas suit row ran");
+        assert_eq!(
+            g.player.armor, 2,
+            "the adidas suit adds the upgrade delta, not the full bonus"
+        );
         assert_eq!(g.player.money, 100 - 15 - 30);
 
         // The adidas suit alone takes the full bonus...
         let mut g = market(100);
         g.shop_turn(Location::Market, "7", &mut no_input()).unwrap();
-        assert_eq!(g.player.armor, 2, "1000:c1b7");
+        assert_eq!(
+            g.player.armor, 2,
+            "the adidas suit alone grants the full bonus"
+        );
         // ...and row 4's better-item gate then refuses, free.
         g.shop_turn(Location::Market, "4", &mut no_input()).unwrap();
-        assert!(!g.wear_suit_abibas, "1000:bfc8 is a refusal");
+        assert!(
+            !g.wear_suit_abibas,
+            "the better-item gate refuses the abibas suit"
+        );
         assert_eq!(g.player.money, 70);
         assert_eq!(g.player.armor, 2);
 

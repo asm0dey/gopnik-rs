@@ -88,11 +88,9 @@ fn read_number(stdin: &mut impl BufRead) -> i32 {
     term::read_line_raw(stdin).trim().parse().unwrap_or(0)
 }
 
-/// The original seeds `RandSeed` from the DOS clock (`Randomize`,
-/// `1f78:11e0`) unless pinned for reproducibility -- `src/rng.rs`'s own doc
-/// says that host-clock policy is deliberately left to the caller. This is
-/// that choice: a seed drawn from the wall clock, not part of the game's
-/// verified logic.
+/// The seed comes from the wall clock. Where it comes from is the
+/// caller's choice rather than part of the game's logic, so `crate::rng`
+/// takes it as a parameter and this is where that choice is made.
 fn clock_seed() -> u32 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

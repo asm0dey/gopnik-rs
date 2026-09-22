@@ -383,11 +383,7 @@ mod tests {
     /// at the same point: the boundaries cannot be separated by any test.
     #[test]
     fn the_blow_budget_boundaries_are_unobservable() {
-        assert_eq!(
-            28 - PER_BLOW,
-            10,
-            "1000:3fc9's 0x1c less 1000:3fd4's 0x12 is 1000:3fe2's 0x0a"
-        );
+        assert_eq!(28 - PER_BLOW, 10, "28 less the per-blow cost is ten");
         for d in 0..=255u16 {
             // mine == 10, the guard's own bound: entering the loop either
             // leaves at once or collapses to the same 10.
@@ -475,7 +471,7 @@ mod tests {
         assert_eq!(
             budget_report(&f(6), &f(200)),
             None,
-            "budget 10: 1000:3fc0 skips the collapse"
+            "budget 10: the loop skips the collapse"
         );
     }
 

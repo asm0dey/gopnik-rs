@@ -314,7 +314,7 @@ mod tests {
         b.tick_on_attack();
         assert_eq!(b.count(), 2);
         assert_eq!(b.call(true, 20, 1, false), Called::OnTheWay);
-        assert_eq!(b.count(), 2, "1000:4cd5 is guarded by `counter == 0`");
+        assert_eq!(b.count(), 2, "a second call is guarded by `counter == 0`");
     }
 
     /// The arrival line fires on the transition to 3 and on no other value.
@@ -443,10 +443,10 @@ mod tests {
         };
         let tick_seed = (0..500u32)
             .find(|&s| ticks(s, 3).0 == 4)
-            .expect("some seed rolls 0 at 1000:4e16");
+            .expect("some seed rolls a 0 tick");
         let quiet_seed = (0..500u32)
             .find(|&s| ticks(s, 3).0 == 3)
-            .expect("some seed rolls 1 at 1000:4e16");
+            .expect("some seed rolls a 1 tick");
 
         assert_eq!(ticks(quiet_seed, 6), (6, false), "a 1 leaves 6 alone");
         assert_eq!(ticks(tick_seed, 6), (0, true), "6 -> 7 resets and reports");
@@ -469,7 +469,7 @@ mod tests {
         let mut cred = 26;
         let f = backup_round(&mut rng, &mut b, 5, 0, 500, &mut cred).unwrap();
         assert_eq!(cred, 1, "district 5 costs 25");
-        assert!(!f.gave_up, "1000:4e79 is `<= 0`, and 1 is above it");
+        assert!(!f.gave_up, "the give-up check is `<= 0`, and 1 is above it");
         assert!(b.is_up());
 
         let mut rng = Rng::new(3);
@@ -523,7 +523,7 @@ mod tests {
                 };
                 let hit = matches!(fire(&mut rng, &mut p, false, agility), Shot::Hit { .. });
                 assert_eq!(hit, agility > roll, "seed {seed}, agility {agility}");
-                assert_eq!(p.cartridges, 8, "a miss spends one too (1000:4eed)");
+                assert_eq!(p.cartridges, 8, "a miss spends one too");
                 match agility.cmp(&roll) {
                     std::cmp::Ordering::Greater => checked_hit += 1,
                     std::cmp::Ordering::Equal => checked_equal += 1,

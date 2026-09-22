@@ -101,12 +101,12 @@ pub(crate) struct Out {
 }
 
 impl Out {
-    /// `call 0eed:0x0` -- leaves the line open.
+    /// Append to the current line, leaving it open.
     pub(crate) fn write(&mut self, s: &str) {
         self.open.push_str(s);
     }
 
-    /// `call 0eed:0x1c2` -- appends and closes the line.
+    /// Append to the current line and close it.
     pub(crate) fn writeln(&mut self, s: &str) {
         self.open.push_str(s);
         self.newline();
@@ -228,26 +228,26 @@ fn digit(boosted: bool) -> char {
 fn charms(o: &mut Out, kit: &Kit) {
     // When neither Крестик nor кольцо "Гс" is owned, the whole block is skipped.
     if kit.krestik || kit.ring_gs {
-        o.write(EMITTED[1].1); // CS `0x16d9`
+        o.write(EMITTED[1].1);
         if kit.krestik {
-            o.write(EMITTED[2].1); // CS `0x16e2`
+            o.write(EMITTED[2].1);
         }
         if kit.ring_gs {
-            o.write(EMITTED[3].1); // CS `0x16f7`
+            o.write(EMITTED[3].1);
         }
         o.newline();
     }
     // When either кольцо "Пг" or Мега Кольцо is missing, the charms section is skipped.
     if kit.ring_pg || kit.mega_ring || kit.ring_gp {
-        o.write(EMITTED[4].1); // CS `0x1710`
+        o.write(EMITTED[4].1);
         if kit.ring_pg {
-            o.write(EMITTED[5].1); // CS `0x1720`
+            o.write(EMITTED[5].1);
         }
         if kit.mega_ring {
-            o.write(EMITTED[6].1); // CS `0x1737`
+            o.write(EMITTED[6].1);
         }
         if kit.ring_gp {
-            o.write(EMITTED[7].1); // CS `0x174e`
+            o.write(EMITTED[7].1);
         }
         o.newline();
     }
@@ -256,13 +256,13 @@ fn charms(o: &mut Out, kit: &Kit) {
 /// The three items that get a whole line each.
 fn worn_singletons(o: &mut Out, kit: &Kit) {
     if kit.mobile {
-        o.writeln(EMITTED[8].1); // CS `0x176a`
+        o.writeln(EMITTED[8].1);
     }
     if kit.dark_glasses {
-        o.writeln(EMITTED[9].1); // CS `0x1782`
+        o.writeln(EMITTED[9].1);
     }
     if kit.prison_tattoo {
-        o.writeln(EMITTED[10].1); // CS `0x179c`
+        o.writeln(EMITTED[10].1);
     }
 }
 
@@ -275,23 +275,23 @@ fn pistol_block(o: &mut Out, kit: &Kit) {
     }
     // The blank separator before the pistol details.
     o.newline();
-    o.write(EMITTED[11].1); // CS `0x17b8`
+    o.write(EMITTED[11].1);
 
     // When there is no silencer, this section is skipped.
     if kit.pistol.silencer {
-        o.write(EMITTED[12].1); // CS `0x17cf`, the game's own typo
+        o.write(EMITTED[12].1); // the game's own typo
     }
     let n = kit.pistol.cartridges;
     // The magazine count guard. A signed word.
     if n > 0 {
-        o.writeln(&text::fill(EMITTED[13].1, &[i64::from(n)])); // CS `0x17de`
+        o.writeln(&text::fill(EMITTED[13].1, &[i64::from(n)]));
     }
     // Magazine counts: 1 or 2 rounds left printed distinctly from other states.
     if (1..=2).contains(&n) {
-        o.writeln(EMITTED[14].1); // CS `0x17ef`
+        o.writeln(EMITTED[14].1);
     }
     if n <= 0 {
-        o.writeln(EMITTED[15].1); // CS `0x1805`
+        o.writeln(EMITTED[15].1);
     }
     o.newline();
 }
@@ -317,40 +317,40 @@ fn damage_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     // Best-item-wins: each pair prints the superseded item dim (`^4`) beside
     // the good one, as two arms sharing the lesser item's flag.
     if kit.boots && !kit.boots_pontovye {
-        o.write(EMITTED[16].1); // CS `0x182e`
+        o.write(EMITTED[16].1);
     }
     if kit.boots && kit.boots_pontovye {
-        o.write(EMITTED[17].1); // CS `0x183b`
+        o.write(EMITTED[17].1);
     }
     if kit.boots_pontovye {
-        o.write(EMITTED[18].1); // CS `0x1844`
+        o.write(EMITTED[18].1);
     }
     // The three blades supersede the кастет; the dim arm is the unarmed blows.
     let over_kastet = kit.nozh || kit.dubinka || kit.tesak;
     if kit.kastet && !over_kastet {
-        o.write(EMITTED[19].1); // CS `0x185e`
+        o.write(EMITTED[19].1);
     }
     if kit.kastet && over_kastet {
-        o.write(EMITTED[20].1); // CS `0x186c`
+        o.write(EMITTED[20].1);
     }
     // Дубинка supersedes in multiple forms.
     let over_dubinka = kit.nozh || kit.tesak;
     if kit.dubinka && !over_dubinka {
-        o.write(EMITTED[21].1); // CS `0x1876`
+        o.write(EMITTED[21].1);
     }
     if kit.dubinka && over_dubinka {
-        o.write(EMITTED[22].1); // CS `0x1886`
+        o.write(EMITTED[22].1);
     }
     // Нож supersedes in multiple forms.
     if kit.nozh && !kit.tesak {
-        o.write(EMITTED[23].1); // CS `0x1891`
+        o.write(EMITTED[23].1);
     }
     if kit.nozh && kit.tesak {
-        o.write(EMITTED[24].1); // CS `0x189c`
+        o.write(EMITTED[24].1);
     }
     // Nothing supersedes the тесак.
     if kit.tesak {
-        o.write(EMITTED[25].1); // CS `0x18a3`
+        o.write(EMITTED[25].1);
     }
     o.newline();
 }
@@ -364,19 +364,19 @@ fn health_line(o: &mut Out, p: &Fighter, kit: &Kit) {
     let mut cond = String::new();
     // Челюсть guard is an EQUALITY check, not the `> 0` the item flags use.
     if p.broken_jaw {
-        cond.push_str(CONDITIONS[0]); // CS `0x18b4`
+        cond.push_str(CONDITIONS[0]);
     }
     // Челюсть broken guard.
     if kit.tooth_guard {
-        cond.push_str(CONDITIONS[1]); // CS `0x18c8`
+        cond.push_str(CONDITIONS[1]);
     }
     // Нога guard is EQUALITY, not the `> 0` the item flags use.
     if p.broken_leg {
-        cond.push_str(CONDITIONS[2]); // CS `0x18da`
+        cond.push_str(CONDITIONS[2]);
     }
     // Обдолбаный guard is unsigned.
     if kit.buff_countdown > 0 {
-        cond.push_str(CONDITIONS[3]); // CS `0x18eb`
+        cond.push_str(CONDITIONS[3]);
     }
     o.writeln(&text::fill(
         // The colour digit, the condition accumulator, and the health range placeholder `Здоровье #/#  `.
@@ -468,25 +468,25 @@ fn armour_block(o: &mut Out, p: &Fighter, kit: &Kit) {
     o.write(&text::fill(EMITTED[30].1, &[i64::from(p.armor)]));
     if kit.suit_abibas {
         if kit.suit_adidas {
-            o.write(EMITTED[31].1); // CS `0x1964`
-            o.write(EMITTED[32].1); // CS `0x196e`
+            o.write(EMITTED[31].1);
+            o.write(EMITTED[32].1);
         } else {
-            o.write(EMITTED[33].1); // CS `0x1983`
+            o.write(EMITTED[33].1);
         }
     }
     if kit.suit_adidas && !kit.suit_abibas {
-        o.write(EMITTED[34].1); // CS `0x196e`
+        o.write(EMITTED[34].1);
     }
     if kit.jacket {
         if kit.jacket_krutaya {
-            o.write(EMITTED[35].1); // CS `0x1998`
-            o.write(EMITTED[36].1); // CS `0x19a3`
+            o.write(EMITTED[35].1);
+            o.write(EMITTED[36].1);
         } else {
-            o.write(EMITTED[37].1); // CS `0x19b9`
+            o.write(EMITTED[37].1);
         }
     }
     if kit.jacket_krutaya && !kit.jacket {
-        o.write(EMITTED[38].1); // CS `0x19a3`
+        o.write(EMITTED[38].1);
     }
     o.newline();
 }
@@ -495,31 +495,31 @@ fn armour_block(o: &mut Out, p: &Fighter, kit: &Kit) {
 fn purse(o: &mut Out, p: &Fighter) {
     // Косяки check.
     if p.joints > 0 {
-        o.writeln(&text::fill(EMITTED[39].1, &[i64::from(p.joints)])); // CS `0x19c8`
+        o.writeln(&text::fill(EMITTED[39].1, &[i64::from(p.joints)]));
     }
     // Пиво is stored in HALF-litres: `idiv 2` and `((remainder * 5) mod 10)`
     // so an odd count prints `.5`. The `mod 10` on input 0 or 5 never changes
     // the value; it is kept because this is a port.
     if p.beer_dl > 0 {
         o.writeln(&text::fill(
-            EMITTED[40].1, // CS `0x19d1`
+            EMITTED[40].1,
             &[
                 i64::from(p.beer_dl / 2),
                 (i64::from(p.beer_dl % 2) * 5) % 10,
             ],
         ));
     } else {
-        o.writeln(EMITTED[41].1); // CS `0x19dc`
+        o.writeln(EMITTED[41].1);
     }
     // Бабки check.
     if p.money > 0 {
-        o.writeln(&text::fill(EMITTED[42].1, &[i64::from(p.money)])); // CS `0x19e7`
+        o.writeln(&text::fill(EMITTED[42].1, &[i64::from(p.money)]));
     } else {
-        o.writeln(EMITTED[43].1); // CS `0x19ef`
+        o.writeln(EMITTED[43].1);
     }
     // Хлам check.
     if p.junk > 0 {
-        o.writeln(&text::fill(EMITTED[44].1, &[i64::from(p.junk)])); // CS `0x19fc`
+        o.writeln(&text::fill(EMITTED[44].1, &[i64::from(p.junk)]));
     }
 }
 
